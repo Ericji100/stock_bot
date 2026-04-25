@@ -1,0 +1,16 @@
+{
+  "api_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "chat_id": "YOUR_TELEGRAM_CHAT_ID",
+  "scan_settings": {
+    "min_price": 10,
+    "max_price": 80,
+    "min_avg_volume_20d": 500,
+    "min_monthly_revenue": 50000000
+  },
+  "monitor_stocks": [
+    {
+      "symbol": "2330.TW",
+      "name": "台積電"
+    }
+  ]
+}

@@ -12,7 +12,9 @@ from telegram.request import HTTPXRequest
 
 from data_fetcher import StockExportError, StockNotFoundError
 from export_service import build_stock_export_workbook
+from stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
 from stock_scanner import run_scan as run_tw_market_scan
+from tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
 
 OFFICIAL_NAME_CACHE = {}
 OFFICIAL_SYMBOL_CACHE = {}
@@ -417,7 +419,7 @@ async def safe_send_reply(update: Update, text: str):
 
 # --- 5. 指令處理器 ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list - 查看清單\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/add 代碼 名稱 - 加入\n/del 代碼 - 刪除\n/export 代碼 - 匯出資料")
+    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list - 查看清單\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/add 代碼 名稱 - 加入\n/del 代碼 - 刪除\n/export 代碼 - 匯出資料\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表")
 
 async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
@@ -505,6 +507,86 @@ async def export_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"📁 {display_name} 匯出完成",
     )
 
+
+# 新增指令：產出台股個股的互動式 Lightweight Charts HTML 報表。
+async def export_stock_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chart_request = parse_stock_chart_args(context.args)
+    except StockChartError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+
+    await safe_send_reply(update, "📈 正在生成個股互動圖表，請稍候...")
+
+    try:
+        # 新增流程：圖表資料抓取、指標計算與 HTML 生成都封裝在獨立服務檔，main.py 僅負責 Telegram 互動。
+        html_buffer, filename, meta = await asyncio.to_thread(
+            build_stock_chart_document,
+            chart_request.code,
+            chart_request.start_date.isoformat(),
+            chart_request.end_date.isoformat(),
+            chart_request.frequency,
+        )
+    except StockChartError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ /stock_chart 執行失敗: {exc}")
+        await safe_send_reply(update, "❌ 生成個股圖表時發生未預期錯誤，請稍後再試。")
+        return
+
+    # 新增傳送方式：以記憶體中的 BytesIO 直接回傳 HTML 文件，避免伺服器留下多餘暫存檔。
+    await update.message.reply_document(
+        document=telegram.InputFile(html_buffer, filename=filename),
+        caption=(
+            f"📊 {meta.display_name} {chart_request.start_date} ~ "
+            f"{chart_request.end_date} {chart_request.frequency}"
+        ),
+    )
+
+
+# 新增指令：產出 TMF 的互動式 HTML 技術分析圖表。
+async def export_tmf_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chart_request = parse_tmf_chart_args(context.args)
+    except TmfChartError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+
+    await safe_send_reply(update, "📈 正在生成 TMF 互動圖表，請稍候...")
+
+    html_path = None
+    try:
+        # 新增流程：把圖表生成邏輯放到獨立服務檔，main.py 只保留參數解析與 Telegram 傳送。
+        html_path = await asyncio.to_thread(
+            build_tmf_chart_report,
+            chart_request.start_date.isoformat(),
+            chart_request.end_date.isoformat(),
+            chart_request.session,
+            chart_request.frequency,
+        )
+    except TmfChartError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ /tmf_chart 執行失敗: {exc}")
+        await safe_send_reply(update, "❌ 生成 TMF 圖表時發生未預期錯誤，請稍後再試。")
+        return
+
+    try:
+        with html_path.open("rb") as html_file:
+            await update.message.reply_document(
+                document=telegram.InputFile(html_file, filename=html_path.name),
+                caption=(
+                    f"📊 TMF {chart_request.start_date} ~ {chart_request.end_date} "
+                    f"{chart_request.session} {chart_request.frequency}"
+                ),
+            )
+    finally:
+        # 新增清理：送出完成後立即刪除暫存 HTML，避免暫存資料堆積。
+        if html_path and html_path.exists():
+            html_path.unlink(missing_ok=True)
+
 # --- 6. 定時任務 ---
 async def scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
@@ -575,6 +657,10 @@ def main():
     app.add_handler(CommandHandler("check", run_scan))
     app.add_handler(CommandHandler("scan", run_tw_stock_scan))
     app.add_handler(CommandHandler("export", export_stock))
+    # 新增指令註冊：支援 /stock_chart 生成台股個股的互動式 HTML 技術分析圖表。
+    app.add_handler(CommandHandler("stock_chart", export_stock_chart))
+    # 新增指令註冊：支援 /tmf_chart 生成 TMF 的互動式 Lightweight Charts HTML 報表。
+    app.add_handler(CommandHandler("tmf_chart", export_tmf_chart))
 
     print("🚀 策略機器人啟動中，定時設定：每日 12:30...")
     app.run_polling(bootstrap_retries=-1)

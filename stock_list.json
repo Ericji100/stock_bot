@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-25T15:30:03",
+  "generated_at": "2026-05-05T09:47:17",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -5366,6 +5366,13 @@
       "market": "TPEX",
       "name": "民盛",
       "industry": "運動休閒"
+    },
+    {
+      "code": "7820",
+      "symbol": "7820.TWO",
+      "market": "TPEX",
+      "name": "立盈",
+      "industry": "綠能環保"
     },
     {
       "code": "7828",
@@ -10814,6 +10821,13 @@
       "industry": "生技醫療業"
     },
     {
+      "code": "4178",
+      "symbol": "4178.TW",
+      "market": "TWSE",
+      "name": "永笙-KY",
+      "industry": "生技醫療業"
+    },
+    {
       "code": "4190",
       "symbol": "4190.TW",
       "market": "TWSE",
@@ -12947,6 +12961,13 @@
       "market": "TWSE",
       "name": "新代",
       "industry": "電機機械"
+    },
+    {
+      "code": "7760",
+      "symbol": "7760.TW",
+      "market": "TWSE",
+      "name": "享溫馨",
+      "industry": "觀光餐旅"
     },
     {
       "code": "7765",

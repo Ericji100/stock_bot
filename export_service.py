@@ -32,11 +32,10 @@ def build_stock_export_workbook(symbol_or_code: str) -> tuple[BytesIO, str, str]
         meta = fetcher.resolve_stock(symbol_or_code)
 
         price_df = fetcher.fetch_price_history(meta)
-        recent_start = datetime.now().date() - pd.Timedelta(days=35)
-        recent_trading_dates = [day for day in price_df["Date"].tolist() if day >= recent_start]
+        trading_dates = price_df["Date"].tolist()
 
-        institutional_df = fetcher.fetch_institutional_daily(meta, recent_trading_dates)
-        margin_df = fetcher.fetch_margin_daily(meta, recent_trading_dates)
+        institutional_df = fetcher.fetch_institutional_daily(meta, trading_dates)
+        margin_df = fetcher.fetch_margin_daily(meta, trading_dates)
         revenue_df = fetcher.fetch_monthly_revenue(meta, start_year=2023)
         financial_df = fetcher.fetch_quarterly_financials(meta)
 

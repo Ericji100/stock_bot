@@ -6,12 +6,35 @@ import telegram
 import httpx
 import pytz
 from datetime import time, datetime, timedelta
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
 from telegram.request import HTTPXRequest
 
+from chip_strategies import (
+    STRATEGY_DEFINITIONS,
+    build_chip_reports,
+    get_tw_today,
+    latest_weekly_snapshot_date,
+    mark_weekly_report_sent,
+    should_run_startup_weekly_fallback,
+)
 from data_fetcher import StockExportError, StockNotFoundError
 from export_service import build_stock_export_workbook
+from market_summary import (
+    MarketSummaryError,
+    build_morning_market_report,
+    build_noon_market_report,
+    is_morning_push_window,
+)
+from portfolio_manager import (
+    PORTFOLIO_PUSH_MAX_RETRIES,
+    PORTFOLIO_PUSH_RETRY_DELAY_SECONDS,
+    add_portfolio_stock,
+    build_portfolio_report,
+    escape_markdown_v2,
+    list_portfolio,
+    remove_portfolio_stock,
+)
 from stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
 from stock_scanner import run_scan as run_tw_market_scan
 from tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
@@ -22,6 +45,32 @@ OFFICIAL_NAME_CACHE_EXPIRES_AT = None
 OFFICIAL_NAME_CACHE_TTL = timedelta(hours=12)
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+SCAN_CALLBACK_PREFIX = "scan_strategy:"
+SCAN_MENU_TEXT = (
+    "請選擇選股策略：\n"
+    "1. 財報營收選股\n"
+    "2. 60 日法人動態選股\n"
+    "3. 投信認養股\n"
+    "4. 法人持股比例增加\n"
+    "5. 每週大戶持股選股\n"
+    "6. 全部執行"
+)
+SCAN_SELECTIONS = {
+    "1": ["financial"],
+    "2": ["chip_1"],
+    "3": ["chip_2"],
+    "4": ["chip_3"],
+    "5": ["chip_4"],
+    "6": ["financial", "chip_1", "chip_2", "chip_3", "chip_4"],
+}
+SCAN_MENU_LABELS = {
+    "1": STRATEGY_DEFINITIONS["financial"]["menu"],
+    "2": STRATEGY_DEFINITIONS["chip_1"]["menu"],
+    "3": STRATEGY_DEFINITIONS["chip_2"]["menu"],
+    "4": STRATEGY_DEFINITIONS["chip_3"]["menu"],
+    "5": STRATEGY_DEFINITIONS["chip_4"]["menu"],
+    "6": STRATEGY_DEFINITIONS["all"]["menu"],
+}
 
 # --- 1. 檔案管理 ---
 def load_config():
@@ -264,7 +313,7 @@ def check_signal(stock):
         # 修改點：增加到 100d 並加入 auto_adjust=False
         df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
         if df.empty or len(df) < 30: return None
-        
+
         # 處理多層索引
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -297,7 +346,7 @@ def check_advanced_signal(stock):
         # 1. 抓取資料 (確保 auto_adjust=False 以對齊價格)
         df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
         if df.empty or len(df) < 150: return None
-        
+
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -363,7 +412,7 @@ def check_ma105_signal(stock):
         # 抓取 500 天資料確保足以計算 105MA
         df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
         if df.empty or len(df) < 110: return None # 105MA 至少需要 105 筆資料
-        
+
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -389,8 +438,14 @@ def check_ma105_signal(stock):
     return None
 
 # --- 4. 穩定發送機制 ---
-async def safe_send_reply(update: Update, text: str):
+async def safe_send_reply(update: Update, text: str, reply_markup=None):
     """具備自動重試的發送函式"""
+    message = update.effective_message
+    if message is None and update.callback_query is not None:
+        message = update.callback_query.message
+    if message is None:
+        raise ValueError("找不到可回覆的 Telegram message")
+
     chunks = []
     remaining = text.strip()
     while remaining:
@@ -407,8 +462,9 @@ async def safe_send_reply(update: Update, text: str):
         sent = False
         for i in range(3):
             try:
-                await update.message.reply_text(chunk)
+                await message.reply_text(chunk, reply_markup=reply_markup if not sent else None)
                 sent = True
+                reply_markup = None
                 break
             except Exception as e:
                 print(f"⚠️ 第 {i+1} 次發送失敗: {e}")
@@ -419,7 +475,7 @@ async def safe_send_reply(update: Update, text: str):
 
 # --- 5. 指令處理器 ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list - 查看清單\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/add 代碼 名稱 - 加入\n/del 代碼 - 刪除\n/export 代碼 - 匯出資料\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表")
+    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list_m - 查看策略監控清單\n/add_m 代碼 名稱 - 加入策略監控\n/del_m 代碼 - 刪除策略監控\n/in 代碼或名稱 - 加入個人庫存\n/out 代碼或名稱 - 移除個人庫存\n/my - 查看個人庫存\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/export 代碼 - 匯出資料\n/morning - 晨間美股與台指期夜盤\n/noon - 台股收盤與台指期日盤\n/tw_market - 台股收盤與台指期日盤\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表")
 
 async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
@@ -450,6 +506,107 @@ async def del_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_config(config)
         await safe_send_reply(update, f"🗑️ 已從清單刪除：{format_stock_display(removed_stock)}")
 
+
+# 新增監控指令別名：將策略監控與個人庫存管理分流，避免 /in、/out 與既有 /add、/del 混用。
+async def list_monitor_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await list_stocks(update, context)
+
+
+# 新增監控指令別名：策略監控正式改用 /add_m。
+async def add_monitor_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await add_stock(update, context)
+
+
+# 新增監控指令別名：策略監控正式改用 /del_m。
+async def del_monitor_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await del_stock(update, context)
+
+
+# 新增個人庫存指令：寫入獨立的 portfolio.json，不與 monitor_stocks 共用設定來源。
+async def add_portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await safe_send_reply(update, "請輸入股票代號或名稱，例如 /in 2330 或 /in 台積電")
+        return
+
+    status, stock = await asyncio.to_thread(add_portfolio_stock, " ".join(context.args))
+    if status == "invalid":
+        await safe_send_reply(update, "❌ 查無此股票，請確認輸入正確的台股代號或名稱。")
+        return
+
+    if stock is None:
+        await safe_send_reply(update, "❌ 查無此股票，請確認輸入正確的台股代號或名稱。")
+        return
+
+    if status == "exists":
+        await safe_send_reply(update, f"⚠️ {stock.code} {stock.name} 已在您的庫存清單中。")
+        return
+
+    await safe_send_reply(update, f"✅ 已加入庫存：{stock.code} {stock.name}")
+
+
+# 新增個人庫存指令：支援用代號或股名移除，並優先以現有 portfolio.json 比對。
+async def remove_portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await safe_send_reply(update, "請輸入股票代號或名稱，例如 /out 2330 或 /out 台積電")
+        return
+
+    query = " ".join(context.args).strip()
+    status, stock = await asyncio.to_thread(remove_portfolio_stock, query)
+    if status == "missing":
+        await safe_send_reply(update, f"⚠️ 庫存內找不到 {query}，請確認代號或名稱。")
+        return
+
+    if stock is None:
+        await safe_send_reply(update, f"⚠️ 庫存內找不到 {query}，請確認代號或名稱。")
+        return
+
+    await safe_send_reply(update, f"🗑️ 已從庫存移除：{stock.code} {stock.name}")
+
+
+# 新增個人庫存指令：獨立列出 portfolio.json 內容，不與策略監控清單混用。
+async def list_portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    portfolio = await asyncio.to_thread(list_portfolio)
+    if not portfolio:
+        await safe_send_reply(update, "💼 目前您的庫存清單為空。")
+        return
+
+    lines = [f"{stock.code} {stock.name}" for stock in portfolio]
+    await safe_send_reply(update, "💼 目前庫存股票：\n" + "\n".join(lines))
+
+
+# 新增晨報指令：由 market_summary.py 統一整理美股四大指數與台指期夜盤資料。
+async def morning_market_summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await safe_send_reply(update, "🌅 正在整理晨間市場資料，請稍候...")
+
+    try:
+        report = await asyncio.to_thread(build_morning_market_report)
+    except MarketSummaryError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ /morning 執行失敗: {exc}")
+        await safe_send_reply(update, "❌ 晨間市場資料整理失敗，請稍後再試。")
+        return
+
+    await safe_send_reply(update, report)
+
+
+# 新增午報指令：由 market_summary.py 統一整理台股現貨與台指期日盤收盤資料。
+async def noon_market_summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await safe_send_reply(update, "📊 正在整理台股收盤資料，請稍候...")
+
+    try:
+        report = await asyncio.to_thread(build_noon_market_report)
+    except MarketSummaryError as exc:
+        await safe_send_reply(update, f"❌ {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ /noon 執行失敗: {exc}")
+        await safe_send_reply(update, "❌ 台股收盤資料整理失敗，請稍後再試。")
+        return
+
+    await safe_send_reply(update, report)
+
 async def run_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_send_reply(update, "🔎 正在執行策略掃描，請稍候...")
     config = load_config()
@@ -468,18 +625,75 @@ async def run_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "\n\n".join(final_signals) if final_signals else "📭 目前無突破訊號。"
     await safe_send_reply(update, msg)
 
-async def run_tw_stock_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🔍 正在執行全市場選股掃描，這會花一些時間，請稍候...")
-    config = load_config()
-    scan_settings = config.get('scan_settings', {})
-    try:
-        report = await asyncio.to_thread(run_tw_market_scan, False, None, scan_settings)
-    except Exception as exc:
-        print(f"❌ /scan 執行失敗: {exc}")
-        await safe_send_reply(update, "❌ 全市場掃描失敗，請稍後再試。")
+def build_scan_strategy_keyboard() -> InlineKeyboardMarkup:
+    # 新增 /scan 的互動式按鈕選單，避免使用者每次輸入指令就直接執行所有高成本掃描。
+    rows = [
+        [InlineKeyboardButton("1. 財報營收選股", callback_data=f"{SCAN_CALLBACK_PREFIX}1")],
+        [InlineKeyboardButton("2. 60 日法人動態選股", callback_data=f"{SCAN_CALLBACK_PREFIX}2")],
+        [InlineKeyboardButton("3. 投信認養股", callback_data=f"{SCAN_CALLBACK_PREFIX}3")],
+        [InlineKeyboardButton("4. 法人持股比例增加", callback_data=f"{SCAN_CALLBACK_PREFIX}4")],
+        [InlineKeyboardButton("5. 每週大戶持股選股", callback_data=f"{SCAN_CALLBACK_PREFIX}5")],
+        [InlineKeyboardButton("6. 全部執行", callback_data=f"{SCAN_CALLBACK_PREFIX}6")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+async def run_selected_scan_reports(update: Update, selection: str):
+    selected_keys = SCAN_SELECTIONS.get(selection)
+    if not selected_keys:
+        await safe_send_reply(update, "❌ 無效的選股策略選項。")
         return
 
-    await safe_send_reply(update, report)
+    # 新增執行器：把財報掃描與籌碼掃描拆開執行，全部執行時共用一次籌碼資料上下文，減少重複抓取。
+    try:
+        financial_report = None
+        if "financial" in selected_keys:
+            config = load_config()
+            financial_report = await asyncio.to_thread(
+                run_tw_market_scan,
+                False,
+                None,
+                config.get("scan_settings", {}),
+            )
+
+        chip_keys = [key for key in selected_keys if key.startswith("chip_")]
+        chip_reports = {}
+        if chip_keys:
+            chip_reports, _ = await asyncio.to_thread(build_chip_reports, chip_keys, False, get_tw_today())
+    except Exception as exc:
+        print(f"❌ /scan 選單執行失敗: {exc}")
+        await safe_send_reply(update, "❌ 選股掃描失敗，請稍後再試。")
+        return
+
+    if financial_report:
+        await safe_send_reply(update, financial_report)
+
+    for key in chip_keys:
+        await safe_send_reply(update, chip_reports[key])
+
+
+async def run_tw_stock_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 新增 /scan 互動流程：先讓使用者選策略，再由 callback handler 執行對應掃描。
+    await safe_send_reply(update, SCAN_MENU_TEXT, reply_markup=build_scan_strategy_keyboard())
+
+
+async def handle_scan_strategy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query is None:
+        return
+
+    await query.answer()
+    selection = query.data.replace(SCAN_CALLBACK_PREFIX, "", 1)
+    selected_keys = SCAN_SELECTIONS.get(selection)
+    if not selected_keys:
+        await query.edit_message_text("❌ 無效的選股策略選項。")
+        return
+
+    menu_label = SCAN_MENU_LABELS[selection]
+
+    # 新增 callback 狀態提示：先更新選單訊息，讓使用者知道系統已接受操作並開始計算。
+    await query.edit_message_text(f"已選擇：{menu_label}\n開始執行，請稍候...")
+    await run_selected_scan_reports(update, selection)
 
 async def export_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -607,6 +821,95 @@ async def scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"⚠️ 定時報告發送失敗: {e}")
 
+
+# 新增每日庫存籌碼推播：17:45 讀取 portfolio.json，若官方資料未更新則以 JobQueue 延後 5 分鐘重試。
+async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+    attempt = int((context.job.data or {}).get("attempt", 0)) if context.job else 0
+    report = await asyncio.to_thread(build_portfolio_report)
+
+    if report.get("status") == "empty":
+        print("ℹ️ portfolio.json 為空，本次不發送庫存籌碼推播")
+        return
+
+    if report.get("status") == "retry":
+        if context.job_queue and attempt < PORTFOLIO_PUSH_MAX_RETRIES:
+            context.job_queue.run_once(
+                scheduled_portfolio_report,
+                when=PORTFOLIO_PUSH_RETRY_DELAY_SECONDS,
+                data={"attempt": attempt + 1},
+            )
+            print(f"⚠️ 庫存籌碼資料尚未更新，5 分鐘後第 {attempt + 1} 次重試")
+            return
+
+        await context.bot.send_message(
+            chat_id=config['chat_id'],
+            text="今日無法人籌碼資料更新 (可能為非交易日或交易所延遲)",
+        )
+        return
+
+    message = escape_markdown_v2(str(report.get("message", "")))
+    await context.bot.send_message(
+        chat_id=config['chat_id'],
+        text=message,
+        parse_mode='MarkdownV2',
+    )
+
+
+# 新增午報排程：13:50 自動推播台股現貨與台指期日盤，若非交易日或資料未更新則直接略過。
+async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+
+    try:
+        report = await asyncio.to_thread(build_noon_market_report)
+    except MarketSummaryError as exc:
+        print(f"ℹ️ 午報略過: {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ 午報排程失敗: {exc}")
+        return
+
+    await context.bot.send_message(chat_id=config['chat_id'], text=report)
+
+
+async def scheduled_daily_chip_report(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+    report_date = get_tw_today()
+
+    try:
+        # 新增每日 18:00 籌碼排程：只執行策略 1 到 3，且若最新交易日不是今天就直接略過，避免非交易日誤發。
+        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_1", "chip_2", "chip_3"], False, report_date)
+    except Exception as exc:
+        print(f"❌ 每日籌碼排程失敗: {exc}")
+        return
+
+    if chip_context.latest_trading_date != report_date:
+        print("ℹ️ 每日籌碼排程略過：當日無最新收盤價")
+        return
+
+    for key in ("chip_1", "chip_2", "chip_3"):
+        await context.bot.send_message(chat_id=config['chat_id'], text=reports[key])
+
+
+async def scheduled_weekly_chip_report(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+    report_date = get_tw_today()
+
+    try:
+        # 新增每週六 12:00 籌碼排程：策略 4 使用最近一次集保快照與本地週快取來判斷趨勢。
+        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_4"], False, report_date)
+    except Exception as exc:
+        print(f"❌ 每週大戶排程失敗: {exc}")
+        return
+
+    latest_snapshot = latest_weekly_snapshot_date(chip_context)
+    if latest_snapshot is None:
+        print("ℹ️ 每週大戶排程略過：尚未取得集保快照")
+        return
+
+    await context.bot.send_message(chat_id=config['chat_id'], text=reports["chip_4"])
+    mark_weekly_report_sent(report_date, latest_snapshot)
+
 # --- 7. 啟動後初始掃描 ---
 async def run_post_init_scan(context: ContextTypes.DEFAULT_TYPE):
     application = context.application
@@ -629,9 +932,59 @@ async def run_post_init_scan(context: ContextTypes.DEFAULT_TYPE):
         print(f"⚠️ 初始通知發送失敗: {e}")
 
 
+# 新增啟動晨報檢查：只在台北時間 06:00 到 09:00 之間主動推播一次晨間市場摘要。
+async def run_startup_morning_report_if_needed(context: ContextTypes.DEFAULT_TYPE):
+    if not is_morning_push_window():
+        return
+
+    config = load_config()
+    try:
+        report = await asyncio.to_thread(build_morning_market_report)
+    except MarketSummaryError as exc:
+        print(f"ℹ️ 啟動晨報略過: {exc}")
+        return
+    except Exception as exc:
+        print(f"❌ 啟動晨報失敗: {exc}")
+        return
+
+    try:
+        await context.application.bot.send_message(chat_id=config['chat_id'], text=report)
+        print("✅ 啟動晨報發送成功")
+    except Exception as exc:
+        print(f"⚠️ 啟動晨報發送失敗: {exc}")
+
+
+async def run_startup_weekly_chip_fallback_if_needed(context: ContextTypes.DEFAULT_TYPE):
+    report_date = get_tw_today()
+    if not should_run_startup_weekly_fallback(report_date):
+        return
+
+    config = load_config()
+    try:
+        # 新增週報補發：若週六排程因維護或重啟未執行，週一啟動時自動檢查並補送一次策略 4。
+        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_4"], False, report_date)
+    except Exception as exc:
+        print(f"❌ 啟動週報補發失敗: {exc}")
+        return
+
+    latest_snapshot = latest_weekly_snapshot_date(chip_context)
+    if latest_snapshot is None:
+        print("ℹ️ 啟動週報補發略過：尚未取得集保快照")
+        return
+
+    try:
+        await context.application.bot.send_message(chat_id=config['chat_id'], text=reports["chip_4"])
+        mark_weekly_report_sent(report_date, latest_snapshot, fallback=True)
+        print("✅ 啟動週報補發成功")
+    except Exception as exc:
+        print(f"⚠️ 啟動週報補發發送失敗: {exc}")
+
+
 async def post_init(application):
     if application.job_queue:
-        application.job_queue.run_once(run_post_init_scan, when=0)
+        # 新增啟動任務：與原本啟動掃描分離，避免市場摘要失敗時影響既有策略掃描。
+        application.job_queue.run_once(run_startup_morning_report_if_needed, when=0)
+        application.job_queue.run_once(run_startup_weekly_chip_fallback_if_needed, when=0)
 
 # --- 8. 主程式入口 ---
 def main():
@@ -648,21 +1001,53 @@ def main():
             scheduled_daily_scan, 
             time=time(hour=12, minute=30, tzinfo=tw_tz)
         )
+        # 新增 13:50 午報排程：台股收盤後推播上市櫃指數與台指期日盤摘要。
+        app.job_queue.run_daily(
+            scheduled_noon_market_report,
+            time=time(hour=13, minute=50, tzinfo=tw_tz),
+        )
+        # 新增 17:45 庫存籌碼推播排程：與 12:30 策略掃描分離，避免兩種通知混在同一條任務鏈。
+        app.job_queue.run_daily(
+            scheduled_portfolio_report,
+            time=time(hour=17, minute=45, tzinfo=tw_tz),
+            data={"attempt": 0},
+        )
+        # 新增每日 18:00 籌碼選股排程，獨立於既有監控與庫存推播，避免訊息格式混雜。
+        app.job_queue.run_daily(
+            scheduled_daily_chip_report,
+            time=time(hour=18, minute=0, tzinfo=tw_tz),
+        )
+        # 新增每週六 12:00 大戶持股排程，對應策略 4 的週資料節奏。
+        app.job_queue.run_daily(
+            scheduled_weekly_chip_report,
+            time=time(hour=12, minute=0, tzinfo=tw_tz),
+            days=(5,),
+        )
 
     # 註冊指令
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("list", list_stocks))
-    app.add_handler(CommandHandler("add", add_stock))
-    app.add_handler(CommandHandler("del", del_stock))
+    # 新增策略監控指令命名：正式以 *_m 區隔監控名單與個人庫存名單。
+    app.add_handler(CommandHandler("list_m", list_monitor_stocks))
+    app.add_handler(CommandHandler("add_m", add_monitor_stock))
+    app.add_handler(CommandHandler("del_m", del_monitor_stock))
+    # 新增個人庫存指令：/in、/out、/my 全數委派給 portfolio_manager.py。
+    app.add_handler(CommandHandler("in", add_portfolio_command))
+    app.add_handler(CommandHandler("out", remove_portfolio_command))
+    app.add_handler(CommandHandler("my", list_portfolio_command))
     app.add_handler(CommandHandler("check", run_scan))
     app.add_handler(CommandHandler("scan", run_tw_stock_scan))
+    app.add_handler(CallbackQueryHandler(handle_scan_strategy_callback, pattern=f"^{SCAN_CALLBACK_PREFIX}"))
     app.add_handler(CommandHandler("export", export_stock))
+    # 新增市場摘要指令：/morning 查晨報，/noon 與 /tw_market 共用午報處理器。
+    app.add_handler(CommandHandler("morning", morning_market_summary_command))
+    app.add_handler(CommandHandler("noon", noon_market_summary_command))
+    app.add_handler(CommandHandler("tw_market", noon_market_summary_command))
     # 新增指令註冊：支援 /stock_chart 生成台股個股的互動式 HTML 技術分析圖表。
     app.add_handler(CommandHandler("stock_chart", export_stock_chart))
     # 新增指令註冊：支援 /tmf_chart 生成 TMF 的互動式 Lightweight Charts HTML 報表。
     app.add_handler(CommandHandler("tmf_chart", export_tmf_chart))
 
-    print("🚀 策略機器人啟動中，定時設定：每日 12:30...")
+    print("🚀 策略機器人啟動中，定時設定：12:30 監控掃描、13:50 午報、17:45 庫存推播、18:00 籌碼掃描、週六 12:00 大戶週報...")
     app.run_polling(bootstrap_retries=-1)
 
 if __name__ == "__main__":

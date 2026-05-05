@@ -16,6 +16,7 @@ import yfinance as yf
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 MOPS_API_BASE_URL = "https://mops.twse.com.tw/mops/api/"
+FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 
 
 class StockExportError(Exception):
@@ -130,7 +131,7 @@ class StockDataFetcher:
         self._last_twse_request_at = 0.0
         self._twse_name_cache: dict[str, str] | None = None
         self._tpex_name_cache: dict[str, str] | None = None
-        self._tpex_institutional_cache: dict[tuple[str, str, str], dict[str, float]] = {}
+        self._tpex_institutional_cache: dict[tuple[str, str, str], dict[str, float] | None] = {}
         self.notes: list[str] = []
 
     def close(self) -> None:
@@ -149,12 +150,29 @@ class StockDataFetcher:
             time.sleep(wait_seconds)
         self._last_twse_request_at = time.monotonic()
 
+    def _append_note_once(self, message: str) -> None:
+        if message not in self.notes:
+            self.notes.append(message)
+
     def _get_json(self, url: str, params: dict[str, Any] | None = None, *, is_twse: bool = False) -> Any:
-        if is_twse:
-            self._throttle_twse()
-        response = self.client.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+        last_error: httpx.HTTPStatusError | None = None
+        for attempt in range(3):
+            if is_twse:
+                self._throttle_twse()
+            try:
+                response = self.client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code not in {403, 429, 500, 502, 503, 504} or attempt == 2:
+                    raise
+                last_error = exc
+                time.sleep(0.6 * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(f"無法取得 JSON 資料：{url}")
 
     def _get_text(self, url: str, *, is_twse: bool = False) -> str:
         if is_twse:
@@ -283,18 +301,28 @@ class StockDataFetcher:
     def _fetch_twse_institutional_daily(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
         for trading_date in trading_dates:
-            payload = self._get_json(
-                "https://www.twse.com.tw/fund/T86",
-                params={
-                    "response": "json",
-                    "date": trading_date.strftime("%Y%m%d"),
-                    "selectType": "ALL",
-                },
-                is_twse=True,
-            )
+            try:
+                payload = self._get_json(
+                    "https://www.twse.com.tw/fund/T86",
+                    params={
+                        "response": "json",
+                        "date": trading_date.strftime("%Y%m%d"),
+                        "selectType": "ALL",
+                    },
+                    is_twse=True,
+                )
+            except httpx.HTTPError:
+                fallback_row = self._fetch_finmind_institutional_daily(meta, trading_date)
+                if fallback_row:
+                    rows.append(fallback_row)
+                continue
             if payload.get("stat") != "OK":
+                fallback_row = self._fetch_finmind_institutional_daily(meta, trading_date)
+                if fallback_row:
+                    rows.append(fallback_row)
                 continue
 
+            found = False
             for row in payload.get("data", []):
                 if str(row[0]).strip() != meta.code:
                     continue
@@ -306,9 +334,65 @@ class StockDataFetcher:
                         "Dealer_Net_Lots": _to_lots(row[11]),
                     }
                 )
+                found = True
                 break
+            if not found:
+                fallback_row = self._fetch_finmind_institutional_daily(meta, trading_date)
+                if fallback_row:
+                    rows.append(fallback_row)
 
         return pd.DataFrame(rows)
+
+    def _fetch_finmind_institutional_daily(self, meta: StockMeta, trading_date: date) -> dict[str, Any] | None:
+        try:
+            payload = self._get_json(
+                FINMIND_API_URL,
+                params={
+                    "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
+                    "data_id": meta.code,
+                    "start_date": trading_date.isoformat(),
+                    "end_date": trading_date.isoformat(),
+                },
+            )
+        except httpx.HTTPError:
+            self._append_note_once("部分上市法人歷史資料改用 FinMind 備援；若仍缺漏，可能為免費額度限制或資料源暫時不可用。")
+            return None
+
+        if payload.get("status") != 200:
+            self._append_note_once("部分上市法人歷史資料改用 FinMind 備援；若仍缺漏，可能為免費額度限制或資料源暫時不可用。")
+            return None
+
+        foreign = 0.0
+        investment_trust = 0.0
+        dealer = 0.0
+        has_row = False
+        for row in payload.get("data") or []:
+            if str(row.get("date")) != trading_date.isoformat():
+                continue
+            name = str(row.get("name") or "")
+            buy = _to_number(row.get("buy")) or 0.0
+            sell = _to_number(row.get("sell")) or 0.0
+            net_lots = (buy - sell) / 1000.0
+            if name == "Foreign_Investor":
+                foreign += net_lots
+                has_row = True
+            elif name == "Investment_Trust":
+                investment_trust += net_lots
+                has_row = True
+            elif name in {"Dealer_self", "Dealer_Hedging"}:
+                dealer += net_lots
+                has_row = True
+
+        if not has_row:
+            return None
+
+        self._append_note_once("部分上市法人歷史資料改用 FinMind 備援補齊。")
+        return {
+            "Date": trading_date,
+            "Foreign_Net_Lots": foreign,
+            "Investment_Trust_Net_Lots": investment_trust,
+            "Dealer_Net_Lots": dealer,
+        }
 
     def _fetch_tpex_institutional_history(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
@@ -322,32 +406,39 @@ class StockDataFetcher:
                 }
             )
 
-        self.notes.append("上櫃三大法人改用 TPEx 官方歷史日報 JSON 端點補齊最近 1 個月日序列。")
+        self._append_note_once("上櫃三大法人改用 TPEx 官方歷史日報 JSON 端點補齊匯出範圍內的日序列。")
         return pd.DataFrame(rows)
 
-    def _fetch_tpex_institutional_value(self, action: str, sort_key_name: str, stock_code: str, trading_date: date) -> float:
+    def _fetch_tpex_institutional_value(self, action: str, sort_key_name: str, stock_code: str, trading_date: date) -> float | None:
         cache_key = (action, sort_key_name, trading_date.isoformat())
         if cache_key not in self._tpex_institutional_cache:
             roc_date = f"{trading_date.year - 1911:03d}/{trading_date.month:02d}/{trading_date.day:02d}"
             net_map: dict[str, float] = {}
-            for order in ("buy", "sell"):
-                payload = self._get_json(
-                    f"https://www.tpex.org.tw/www/zh-tw/{action}",
-                    params={
-                        "date": roc_date,
-                        "type": "Daily",
-                        sort_key_name: order,
-                    },
-                )
-                table = (payload.get("tables") or [{}])[0]
-                for row in table.get("data", []):
-                    code = str(row[1]).strip()
-                    net_value = _to_number(row[-1])
-                    if code and net_value is not None:
-                        net_map[code] = net_value
-            self._tpex_institutional_cache[cache_key] = net_map
+            try:
+                for order in ("buy", "sell"):
+                    payload = self._get_json(
+                        f"https://www.tpex.org.tw/www/zh-tw/{action}",
+                        params={
+                            "date": roc_date,
+                            "type": "Daily",
+                            sort_key_name: order,
+                        },
+                    )
+                    table = (payload.get("tables") or [{}])[0]
+                    for row in table.get("data", []):
+                        code = str(row[1]).strip()
+                        net_value = _to_number(row[-1])
+                        if code and net_value is not None:
+                            net_map[code] = net_value
+                self._tpex_institutional_cache[cache_key] = net_map
+            except httpx.HTTPError:
+                self._tpex_institutional_cache[cache_key] = None
+                self._append_note_once("部分上櫃法人歷史資料因 TPEx 單日端點暫時拒絕存取而留白，不影響其餘分頁匯出。")
 
-        return self._tpex_institutional_cache[cache_key].get(stock_code, 0.0)
+        cached_map = self._tpex_institutional_cache[cache_key]
+        if cached_map is None:
+            return None
+        return cached_map.get(stock_code, 0.0)
 
     def fetch_margin_daily(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:
         if meta.market == "TWSE":
@@ -402,15 +493,19 @@ class StockDataFetcher:
         rows: list[dict[str, Any]] = []
         for trading_date in trading_dates:
             roc_date = f"{trading_date.year - 1911:03d}/{trading_date.month:02d}/{trading_date.day:02d}"
-            payload = self._get_json(
-                "https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php",
-                params={
-                    "l": "zh-tw",
-                    "o": "json",
-                    "d": roc_date,
-                    "s": "0,asc,0",
-                },
-            )
+            try:
+                payload = self._get_json(
+                    "https://www.tpex.org.tw/web/stock/margin_trading/margin_balance/margin_bal_result.php",
+                    params={
+                        "l": "zh-tw",
+                        "o": "json",
+                        "d": roc_date,
+                        "s": "0,asc,0",
+                    },
+                )
+            except (httpx.HTTPError, ValueError):
+                self._append_note_once("部分上櫃融資融券歷史資料因 TPEx 單日端點暫時回傳異常內容而留白，不影響其餘分頁匯出。")
+                continue
             table = (payload.get("tables") or [{}])[0]
             for row in table.get("data", []):
                 if str(row[0]).strip() != meta.code:

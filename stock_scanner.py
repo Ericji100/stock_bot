@@ -784,7 +784,7 @@ def format_scan_report(report: ScanReport) -> str:
 
     settings = report.scan_settings
     lines = [
-        "🔍 今日台股選股掃描報告",
+        "🔍 今日財報營收選股掃描報告",
         f"📅 日期：{report.generated_at}",
         "",
         "📌 分類定義說明",

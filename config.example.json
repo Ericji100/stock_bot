@@ -1,6 +1,7 @@
 {
   "api_token": "YOUR_TELEGRAM_BOT_TOKEN",
   "chat_id": "YOUR_TELEGRAM_CHAT_ID",
+  "fugle_api_key": "YOUR_FUGLE_API_KEY",
   "scan_settings": {
     "min_price": 10,
     "max_price": 80,

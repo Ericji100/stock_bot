@@ -12,6 +12,8 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
+from fugle_data import fetch_fugle_history
+
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -232,7 +234,14 @@ class StockDataFetcher:
         start_date = end_date - timedelta(days=months * 31)
 
         if meta.market == "TWSE":
-            return self._fetch_twse_price_history(meta, start_date, end_date)
+            try:
+                return self._fetch_twse_price_history(meta, start_date, end_date)
+            except Exception:
+                fallback = self._fetch_fugle_price_history(meta, start_date, end_date)
+                if not fallback.empty:
+                    self._append_note_once("上市股價歷史資料改用 Fugle 備援補齊。")
+                    return fallback
+                raise
 
         return self._fetch_tpex_price_history_with_fallback(meta, start_date, end_date)
 
@@ -280,6 +289,10 @@ class StockDataFetcher:
             auto_adjust=False,
         )
         if history.empty:
+            fallback = self._fetch_fugle_price_history(meta, start_date, end_date)
+            if not fallback.empty:
+                self._append_note_once("上櫃股價歷史資料改用 Fugle 備援補齊。")
+                return fallback
             raise StockExportError(f"無法取得 {meta.display_name} 的上櫃歷史股價資料")
 
         if isinstance(history.columns, pd.MultiIndex):
@@ -291,6 +304,21 @@ class StockDataFetcher:
         price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.date
         price_df["Volume_Lots"] = price_df["Volume_Lots"].astype(float) / 1000.0
         return price_df
+
+    def _fetch_fugle_price_history(self, meta: StockMeta, start_date: date, end_date: date) -> pd.DataFrame:
+        history = fetch_fugle_history(meta.symbol, start_date, end_date, "1d")
+        if history.empty:
+            return pd.DataFrame()
+        price_df = history.rename(
+            columns={
+                "datetime": "Date",
+                "close": "Close",
+                "volume": "Volume_Lots",
+            }
+        )[["Date", "Close", "Volume_Lots"]].copy()
+        price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.date
+        price_df["Volume_Lots"] = pd.to_numeric(price_df["Volume_Lots"], errors="coerce") / 1000.0
+        return price_df.dropna(subset=["Date", "Close"]).reset_index(drop=True)
 
     def fetch_institutional_daily(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:
         if meta.market == "TWSE":

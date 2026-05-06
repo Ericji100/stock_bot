@@ -241,6 +241,13 @@ def format_portfolio_report_message(report_date: str, records: list[Institutiona
         if index != len(records) - 1:
             lines.append("")
 
+    lines.extend(
+        [
+            "",
+            f"資料日期：{report_date}",
+            "資料來源：TWSE / TPEX / FinMind",
+        ]
+    )
     return "\n".join(lines).strip()
 
 

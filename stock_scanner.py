@@ -14,6 +14,8 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
+from fugle_data import fetch_fugle_history
+
 
 ROOT_DIR = Path(__file__).resolve().parent
 CACHE_DIR = ROOT_DIR / ".cache"
@@ -282,6 +284,19 @@ def _download_single_symbol_price_metric(symbol: str) -> dict[str, float] | None
     return None
 
 
+def _download_fugle_price_metric(symbol: str) -> dict[str, float] | None:
+    history = fetch_fugle_history(symbol, datetime.now().date() - timedelta(days=120), datetime.now().date(), "1d")
+    if history.empty:
+        return None
+    frame = history.rename(
+        columns={
+            "close": "Close",
+            "volume": "Volume",
+        }
+    )
+    return _extract_price_metric(frame)
+
+
 def _download_chunk_price_metrics(chunk: list[str]) -> dict[str, dict[str, float]]:
     chunk_metrics: dict[str, dict[str, float]] = {}
     missing_symbols = list(chunk)
@@ -319,6 +334,8 @@ def _download_chunk_price_metrics(chunk: list[str]) -> dict[str, dict[str, float
 
     for symbol in missing_symbols:
         metric = _download_single_symbol_price_metric(symbol)
+        if not metric:
+            metric = _download_fugle_price_metric(symbol)
         if metric:
             chunk_metrics[symbol] = metric
         time.sleep(YF_PRICE_SINGLE_PAUSE_SECONDS)
@@ -694,6 +711,7 @@ def scan_tw_market(
     max_symbols: int | None = None,
     scan_settings: dict[str, float] | None = None,
 ) -> ScanReport:
+    print("[選股進度][財報營收] 0% 初始化掃描設定", flush=True)
     _ensure_cache_dirs()
     settings = dict(DEFAULT_SCAN_SETTINGS)
     if scan_settings:
@@ -704,12 +722,16 @@ def scan_tw_market(
                 except (TypeError, ValueError):
                     continue
 
+    print("[選股進度][財報營收] 10% 讀取上市櫃股票清單", flush=True)
     universe = load_stock_universe(force_refresh=force_refresh)
     if max_symbols is not None:
         universe = universe[:max_symbols]
 
+    print(f"[選股進度][財報營收] 25% 讀取近月營收資料，共 {len(universe)} 檔", flush=True)
     revenue_history_map = load_recent_revenue_history(universe)
+    print("[選股進度][財報營收] 45% 讀取股價與 20 日均量", flush=True)
     price_metrics = load_price_metrics(universe, force_refresh=force_refresh)
+    print("[選股進度][財報營收] 60% 套用股價、均量、營收硬篩", flush=True)
     gross_margin_cache = _load_gross_margin_cache()
 
     hard_filter_candidates: list[tuple[StockUniverseEntry, list[RevenuePoint], dict[str, float], str]] = []
@@ -737,6 +759,7 @@ def scan_tw_market(
         hard_filter_candidates.append((entry, revenue_history, price_metric, revenue_group))
 
     candidates: list[ScanCandidate] = []
+    total_hard_filter = max(1, len(hard_filter_candidates))
     for entry, revenue_history, price_metric, revenue_group in hard_filter_candidates:
         try:
             gross_margins = load_gross_margin_series(entry.symbol, gross_margin_cache)
@@ -760,8 +783,16 @@ def scan_tw_market(
         except Exception:
             continue
 
+        if len(candidates) % 25 == 0 or len(candidates) == total_hard_filter:
+            progress = min(95, 65 + int(len(candidates) / total_hard_filter * 30))
+            print(
+                f"[選股進度][財報營收] {progress}% 計算毛利率分級 {len(candidates)}/{len(hard_filter_candidates)}",
+                flush=True,
+            )
+
     _save_gross_margin_cache(gross_margin_cache)
     candidates.sort(key=lambda item: (item.revenue_group, item.gross_margin_rating, item.industry, item.code))
+    print(f"[選股進度][財報營收] 100% 完成，符合 {len(candidates)} 檔", flush=True)
     return ScanReport(
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         total_symbols=len(universe),
@@ -797,6 +828,7 @@ def format_scan_report(report: ScanReport) -> str:
     ]
 
     for group_key in GROUP_LABELS:
+        lines.append("")
         lines.append(REPORT_GROUP_TITLES[group_key])
         has_members = False
         for rating in ("A", "B", "C", "D"):
@@ -804,14 +836,15 @@ def format_scan_report(report: ScanReport) -> str:
             if not industry_groups:
                 continue
             has_members = True
+            lines.append("")
             lines.append(REPORT_RATING_TITLES[rating])
             for industry in sorted(industry_groups, key=lambda value: (value == UNCLASSIFIED_INDUSTRY, value)):
                 members = industry_groups[industry]
                 lines.append(f"  【{industry}】")
                 lines.extend(_wrap_report_members(members))
+                lines.append("")
         if not has_members:
             lines.append("(無符合標的)")
-        lines.append("")
 
     lines.extend(
         [
@@ -822,6 +855,8 @@ def format_scan_report(report: ScanReport) -> str:
                 f"(股價 {int(settings['min_price'])}~{int(settings['max_price'])} / 均量 > {int(settings['min_avg_volume_20d'])})"
             ),
             f"符合選股邏輯：{len(report.candidates)} 檔",
+            f"資料日期：{report.generated_at.split()[0]}",
+            "資料來源：本機快取 / TWSE / TPEX / FinMind / 估算",
         ]
     )
     return "\n".join(lines).strip()

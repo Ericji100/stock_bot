@@ -1,22 +1,21 @@
-import yfinance as yf
 import pandas as pd
 import json
 import asyncio
 import telegram
-import httpx
 import pytz
-from datetime import time, datetime, timedelta
+from datetime import date, datetime, time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
 from telegram.request import HTTPXRequest
 
 from chip_strategies import (
+    CHIP_STRATEGY_NAMES,
     STRATEGY_DEFINITIONS,
+    build_chip_grade_maps,
     build_chip_reports,
+    build_market_context,
     get_tw_today,
-    latest_weekly_snapshot_date,
-    mark_weekly_report_sent,
-    should_run_startup_weekly_fallback,
+    warmup_chip_data_cache,
 )
 from data_fetcher import StockExportError, StockNotFoundError
 from export_service import build_stock_export_workbook
@@ -25,6 +24,12 @@ from market_summary import (
     build_morning_market_report,
     build_noon_market_report,
     is_morning_push_window,
+)
+from monitor_service import (
+    add_monitor_stock_to_config,
+    build_monitor_list_message,
+    build_monitor_scan_report,
+    remove_monitor_stock_from_config,
 )
 from portfolio_manager import (
     PORTFOLIO_PUSH_MAX_RETRIES,
@@ -36,24 +41,31 @@ from portfolio_manager import (
     remove_portfolio_stock,
 )
 from stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
-from stock_scanner import run_scan as run_tw_market_scan
+from stock_scanner import (
+    GROUP_LABELS,
+    RATING_LABELS,
+    format_scan_report,
+    run_scan as run_tw_market_scan,
+    scan_tw_market,
+)
+# NEW: 引入技術面選股模組
+import technical_scanner as ts
 from tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
 
-OFFICIAL_NAME_CACHE = {}
-OFFICIAL_SYMBOL_CACHE = {}
-OFFICIAL_NAME_CACHE_EXPIRES_AT = None
-OFFICIAL_NAME_CACHE_TTL = timedelta(hours=12)
-TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 SCAN_CALLBACK_PREFIX = "scan_strategy:"
+NOON_REPORT_MAX_RETRIES = 6
+NOON_REPORT_RETRY_DELAY_SECONDS = 30 * 60
+ACTIVE_USER_TASKS: dict[int, asyncio.Task] = {}
 SCAN_MENU_TEXT = (
-    "請選擇選股策略：\n"
+    "請選擇選股掃描策略：\n"
     "1. 財報營收選股\n"
     "2. 60 日法人動態選股\n"
     "3. 投信認養股\n"
     "4. 法人持股比例增加\n"
     "5. 每週大戶持股選股\n"
-    "6. 全部執行"
+    "6. 技術面選股\n"
+    "7. 全部執行"
+    "\n8. 精選選股"
 )
 SCAN_SELECTIONS = {
     "1": ["financial"],
@@ -61,7 +73,9 @@ SCAN_SELECTIONS = {
     "3": ["chip_2"],
     "4": ["chip_3"],
     "5": ["chip_4"],
-    "6": ["financial", "chip_1", "chip_2", "chip_3", "chip_4"],
+    "6": ["technical"],
+    "7": ["financial", "chip_1", "chip_2", "chip_3", "chip_4", "technical"],
+    "8": ["curated"],
 }
 SCAN_MENU_LABELS = {
     "1": STRATEGY_DEFINITIONS["financial"]["menu"],
@@ -69,7 +83,9 @@ SCAN_MENU_LABELS = {
     "3": STRATEGY_DEFINITIONS["chip_2"]["menu"],
     "4": STRATEGY_DEFINITIONS["chip_3"]["menu"],
     "5": STRATEGY_DEFINITIONS["chip_4"]["menu"],
-    "6": STRATEGY_DEFINITIONS["all"]["menu"],
+    "6": "技術面選股",
+    "7": STRATEGY_DEFINITIONS["all"]["menu"],
+    "8": "精選選股",
 }
 
 # --- 1. 檔案管理 ---
@@ -82,362 +98,43 @@ def save_config(config):
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 
-def fetch_official_stock_name_cache():
-    global OFFICIAL_NAME_CACHE_EXPIRES_AT
-
-    now = datetime.now()
-    if OFFICIAL_NAME_CACHE and OFFICIAL_NAME_CACHE_EXPIRES_AT and now < OFFICIAL_NAME_CACHE_EXPIRES_AT:
-        return OFFICIAL_NAME_CACHE
-
-    updated_cache = {}
-    try:
-        with httpx.Client(timeout=10.0, follow_redirects=True, verify=False) as client:
-            twse_response = client.get(TWSE_NAME_API_URL)
-            twse_response.raise_for_status()
-            for item in twse_response.json():
-                code = str(item.get('公司代號', '')).strip()
-                name = str(item.get('公司簡稱') or item.get('公司名稱') or '').strip()
-                if code and name:
-                    updated_cache[f"{code}.TW"] = name
-                    updated_cache.setdefault(code, name)
-
-            tpex_response = client.get(TPEX_NAME_API_URL)
-            tpex_response.raise_for_status()
-            for item in tpex_response.json():
-                code = str(item.get('SecuritiesCompanyCode', '')).strip()
-                name = str(item.get('CompanyAbbreviation') or item.get('CompanyName') or '').strip()
-                if code and name:
-                    updated_cache[f"{code}.TWO"] = name
-                    updated_cache.setdefault(code, name)
-
-        OFFICIAL_NAME_CACHE.clear()
-        OFFICIAL_NAME_CACHE.update(updated_cache)
-
-        OFFICIAL_SYMBOL_CACHE.clear()
-        for symbol in updated_cache:
-            if '.' in symbol:
-                OFFICIAL_SYMBOL_CACHE[symbol.split('.', 1)[0]] = symbol
-
-        OFFICIAL_NAME_CACHE_EXPIRES_AT = now + OFFICIAL_NAME_CACHE_TTL
-    except Exception as e:
-        print(f"取得官方股名失敗，改用既有名稱設定: {e}")
-
-    return OFFICIAL_NAME_CACHE
-
-
-def get_official_stock_name(symbol):
-    normalized_symbol = str(symbol).upper().strip()
-    if not normalized_symbol:
-        return ''
-
-    cache = fetch_official_stock_name_cache()
-    if normalized_symbol in cache:
-        return cache[normalized_symbol]
-
-    base_symbol = normalized_symbol.split('.', 1)[0]
-    return cache.get(base_symbol, '')
-
-
-def get_canonical_stock_symbol(symbol):
-    normalized_symbol = str(symbol).upper().strip()
-    if not normalized_symbol:
-        return ''
-
-    fetch_official_stock_name_cache()
-    base_symbol = normalized_symbol.split('.', 1)[0]
-    canonical_symbol = OFFICIAL_SYMBOL_CACHE.get(base_symbol)
-
-    if '.' in normalized_symbol:
-        return normalized_symbol if normalized_symbol in OFFICIAL_NAME_CACHE else (canonical_symbol or normalized_symbol)
-
-    return canonical_symbol or normalized_symbol
-
-
-def normalize_stock_entry(stock):
-    if isinstance(stock, str):
-        symbol = get_canonical_stock_symbol(stock)
-        return {'symbol': symbol, 'name': ''}
-
-    if isinstance(stock, dict):
-        symbol = get_canonical_stock_symbol(stock.get('symbol', ''))
-        name = str(stock.get('name', '')).strip()
-        if symbol:
-            return {'symbol': symbol, 'name': name}
-
-    return None
-
-
-def get_monitor_stocks(config):
-    normalized_stocks = []
-    for stock in config.get('monitor_stocks', []):
-        normalized_stock = normalize_stock_entry(stock)
-        if normalized_stock:
-            if not normalized_stock['name']:
-                normalized_stock['name'] = get_official_stock_name(normalized_stock['symbol'])
-            normalized_stocks.append(normalized_stock)
-    return normalized_stocks
-
-
-def format_stock_display(stock):
-    if stock.get('name'):
-        return f"{stock['symbol']} ({stock['name']})"
-    return stock['symbol']
-
-
-def find_stock_index(stocks, symbol):
-    symbol = get_canonical_stock_symbol(symbol)
-    for index, stock in enumerate(stocks):
-        normalized_stock = normalize_stock_entry(stock)
-        if normalized_stock and normalized_stock['symbol'] == symbol:
-            return index
-    return -1
-
-
-def get_tw_local_now():
-    return datetime.now(pytz.timezone('Asia/Taipei'))
-
-
-def build_official_realtime_channel(symbol):
-    normalized_symbol = str(symbol).upper().strip()
-    code = normalized_symbol.split('.', 1)[0]
-    suffix = normalized_symbol.split('.', 1)[1] if '.' in normalized_symbol else ''
-    market = 'otc' if suffix == 'TWO' else 'tse'
-    return f"{market}_{code}.tw"
-
-
-def parse_official_price_value(raw_value):
-    if raw_value in (None, '', '-'):
-        return None
-
-    first_value = str(raw_value).split('_', 1)[0].strip()
-    if first_value in ('', '-'):
-        return None
-
-    try:
-        return float(first_value)
-    except (TypeError, ValueError):
-        return None
-
-
-def pick_official_quote_price(msg):
-    trade_price = parse_official_price_value(msg.get('z'))
-    if trade_price is not None:
-        return trade_price, '官方成交價'
-
-    best_bid = parse_official_price_value(msg.get('b'))
-    best_ask = parse_official_price_value(msg.get('a'))
-    if best_bid is not None and best_ask is not None:
-        return (best_bid + best_ask) / 2.0, '官方委買賣中間價'
-    if best_bid is not None:
-        return best_bid, '官方委買價'
-    if best_ask is not None:
-        return best_ask, '官方委賣價'
-
-    return None, None
-
-
-def get_official_realtime_price(symbol):
-    try:
-        with httpx.Client(timeout=10.0, follow_redirects=True, verify=False) as client:
-            response = client.get(
-                'https://mis.twse.com.tw/stock/api/getStockInfo.jsp',
-                params={
-                    'ex_ch': build_official_realtime_channel(symbol),
-                    'json': '1',
-                    'delay': '0',
-                },
-                headers={'Referer': 'https://mis.twse.com.tw/stock/fibest.jsp'},
-            )
-            response.raise_for_status()
-            data = response.json()
-    except Exception as e:
-        print(f"⚠️ 取得官方即時報價失敗 {symbol}: {e}")
-        return None, None
-
-    msg = (data.get('msgArray') or [{}])[0]
-    official_price, official_source = pick_official_quote_price(msg)
-    quote_date = str(msg.get('d') or '').strip()
-
-    return official_price, quote_date, official_source
-
-
-def get_current_market_price(symbol, fallback_price=None):
-    today_tw = get_tw_local_now().strftime('%Y%m%d')
-    yahoo_price = None
-    yahoo_quote_date = None
-
-    try:
-        ticker = yf.Ticker(symbol)
-        try:
-            fast_info = ticker.fast_info
-            last_price = fast_info.get('lastPrice') if fast_info else None
-            if last_price not in (None, 0):
-                yahoo_price = float(last_price)
-        except Exception:
-            pass
-
-        try:
-            info = ticker.info
-            market_timestamp = info.get('regularMarketTime')
-            if market_timestamp:
-                yahoo_quote_date = datetime.fromtimestamp(
-                    market_timestamp,
-                    tz=pytz.utc,
-                ).astimezone(pytz.timezone('Asia/Taipei')).strftime('%Y%m%d')
-
-            for key in ('regularMarketPrice', 'currentPrice'):
-                value = info.get(key)
-                if value not in (None, 0):
-                    yahoo_price = float(value)
-                    break
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"⚠️ 取得盤中現價失敗 {symbol}: {e}")
-
-    if yahoo_price is not None and yahoo_quote_date == today_tw:
-        return yahoo_price, 'Yahoo 盤中'
-
-    official_price, official_quote_date, official_source = get_official_realtime_price(symbol)
-    if official_price is not None and official_quote_date == today_tw:
-        return official_price, official_source
-
-    return fallback_price, '前日收盤 fallback'
-
-# --- 2. 策略邏輯 A：原始 21MA 突破 ---
-def check_signal(stock):
-    symbol = stock['symbol']
-    stock_display = format_stock_display(stock)
-    print(f"🔍 正在檢查(突破21MA) {stock_display}...")
-    try:
-        # 修改點：增加到 100d 並加入 auto_adjust=False
-        df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
-        if df.empty or len(df) < 30: return None
-
-        # 處理多層索引
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df['MA21'] = df['Close'].rolling(window=21).mean()
-
-        latest_close = df['Close'].iloc[-1].item()
-        current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
-        today_m = df['MA21'].iloc[-1].item()
-        yest_p = df['Close'].iloc[-2].item()
-        yest_m = df['MA21'].iloc[-2].item()
-
-        if yest_p < yest_m and current_price > today_m:
-            stop_loss = df['Low'].iloc[-3:].min().item()
-            return (f"🚀 【21MA 突破】\n"
-                    f"股票：{stock_display}\n"
-                    f"現價：{current_price:,.2f} (MA21: {today_m:,.2f})\n"
-                    f"現價來源：{price_source}\n"
-                    f"建議停損線：{stop_loss:,.2f} (前三日低)")
-    except Exception as e:
-        print(f"❌ 基礎判斷出錯 {stock_display}: {e}")
-    return None
-
-# --- 2. 策略邏輯 B：MACD 翻紅後回測突破 (進階) ---
-def check_advanced_signal(stock):
-    symbol = stock['symbol']
-    stock_display = format_stock_display(stock)
-    print(f"🔍 正在檢查(回測突破) {stock_display}...")
-    try:
-        # 1. 抓取資料 (確保 auto_adjust=False 以對齊價格)
-        df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
-        if df.empty or len(df) < 150: return None
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        # 2. 計算指標
-        df['MA21'] = df['Close'].rolling(window=21).mean()
-        ema21 = df['Close'].ewm(span=21, adjust=False).mean()
-        ema55 = df['Close'].ewm(span=55, adjust=False).mean()
-        df['DIF'] = ema21 - ema55
-        df['DEA'] = df['DIF'].ewm(span=55, adjust=False).mean()
-        df['MACD_Hist'] = df['DIF'] - df['DEA']
-
-        # 3. 尋找「當前這波」紅柱的起點
-        # 如果今天不是紅柱，直接結束
-        if df['MACD_Hist'].iloc[-1] <= 0:
-            return None
-
-        # 往前找最近一個綠柱(<=0)的日子
-        green_days = df[df['MACD_Hist'] <= 0]
-        if green_days.empty: return None
-        
-        red_start_date = green_days.index[-1] + pd.Timedelta(days=1)
-        
-        # 定義「翻紅以來」到「昨天」的區間 (用來找前高與確認回測)
-        df_red_zone_past = df.loc[red_start_date : df.index[-2]]
-        
-        if df_red_zone_past.empty:
-            return None # 剛翻紅的第一天，通常還沒經過回測，不發訊號
-
-        # --- 驗證三大條件 (與回測邏輯一致) ---
-        
-        # 條件 A: 過去這段紅柱期間，是否曾碰觸過 21MA (Low <= MA21)
-        had_touch = (df_red_zone_past['Low'] <= df_red_zone_past['MA21']).any()
-        
-        # 條件 B: 突破「這段紅柱」以來的所有高點
-        period_high = df_red_zone_past['High'].max()
-        latest_close = df['Close'].iloc[-1].item()
-        current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
-        
-        # 條件 C: 今日必須站在 MA21 之上
-        above_ma21 = current_price > df['MA21'].iloc[-1].item()
-
-        # 4. 輸出通知
-        if had_touch and current_price > period_high and above_ma21:
-            # 額外計算停損線提供給使用者參考
-            stop_loss = df['Low'].iloc[-3:].min().item()
-            return (f"🔥 【回測突破】\n"
-                    f"股票：{stock_display}\n"
-                    f"現價：{current_price:.2f}\n"
-                    f"現價來源：{price_source}\n"
-                    f"原因：已完成 21MA 回測，今日突破波段前高 {period_high:.2f}！\n"
-                    f"建議停損線：{stop_loss:.2f} (前三日低)")
-            
-    except Exception as e:
-        print(f"❌ 進階判斷出錯 {stock_display}: {e}")
-    return None
-
-# --- 3. 新增策略 C：105MA 突破 (邏輯與策略 A 一致) ---
-def check_ma105_signal(stock):
-    symbol = stock['symbol']
-    stock_display = format_stock_display(stock)
-    print(f"🔍 正在檢查(突破105MA) {stock_display}...")
-    try:
-        # 抓取 500 天資料確保足以計算 105MA
-        df = yf.download(symbol, period="500d", interval="1d", progress=False, auto_adjust=False)
-        if df.empty or len(df) < 110: return None # 105MA 至少需要 105 筆資料
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        # 計算 105MA
-        df['MA105'] = df['Close'].rolling(window=105).mean()
-
-        latest_close = df['Close'].iloc[-1].item()
-        current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
-        today_m = df['MA105'].iloc[-1].item()
-        yest_p = df['Close'].iloc[-2].item()
-        yest_m = df['MA105'].iloc[-2].item()
-
-        # 判斷穿越邏輯：昨日在下，今日在上
-        if yest_p < yest_m and current_price > today_m:
-            stop_loss = df['Low'].iloc[-3:].min().item()
-            return (f"🚀 【105MA 突破】\n"
-                    f"股票：{stock_display}\n"
-                f"現價：{current_price:,.2f} (MA105: {today_m:,.2f})\n"
-                    f"現價來源：{price_source}\n"
-                    f"建議停損線：{stop_loss:,.2f} (前三日低)")
-    except Exception as e:
-        print(f"❌ 105MA 判斷出錯 {stock_display}: {e}")
-    return None
-
 # --- 4. 穩定發送機制 ---
+def split_telegram_message(text: str, limit: int = 4000) -> list[str]:
+    chunks = []
+    remaining = text.strip()
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+        split_at = remaining.rfind("\n", 0, limit)
+        if split_at == -1:
+            split_at = limit
+        chunks.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].strip()
+    return chunks or [text]
+
+
+def append_data_footer(text: str, data_date: str, source: str) -> str:
+    if "資料日期：" in text and "資料來源：" in text:
+        return text
+    return f"{text.rstrip()}\n\n資料日期：{data_date}\n資料來源：{source}"
+
+
+async def safe_send_bot_message(bot, chat_id, text: str, **kwargs):
+    for chunk in split_telegram_message(text):
+        sent = False
+        for i in range(3):
+            try:
+                await bot.send_message(chat_id=chat_id, text=chunk, **kwargs)
+                sent = True
+                break
+            except Exception as e:
+                print(f"⚠️ 排程訊息第 {i+1} 次發送失敗: {e}")
+                await asyncio.sleep(3)
+        if not sent:
+            raise RuntimeError("排程訊息發送失敗")
+
+
 async def safe_send_reply(update: Update, text: str, reply_markup=None):
     """具備自動重試的發送函式"""
     message = update.effective_message
@@ -446,19 +143,7 @@ async def safe_send_reply(update: Update, text: str, reply_markup=None):
     if message is None:
         raise ValueError("找不到可回覆的 Telegram message")
 
-    chunks = []
-    remaining = text.strip()
-    while remaining:
-        if len(remaining) <= 4000:
-            chunks.append(remaining)
-            break
-        split_at = remaining.rfind("\n", 0, 4000)
-        if split_at == -1:
-            split_at = 4000
-        chunks.append(remaining[:split_at].strip())
-        remaining = remaining[split_at:].strip()
-
-    for chunk in chunks or [text]:
+    for chunk in split_telegram_message(text):
         sent = False
         for i in range(3):
             try:
@@ -473,38 +158,108 @@ async def safe_send_reply(update: Update, text: str, reply_markup=None):
             print("❌ 訊息發送失敗，已放棄本段回覆")
             return
 
+
+async def safe_reply_document(update: Update, document, filename: str, caption: str, retries: int = 3):
+    message = update.effective_message
+    if message is None and update.callback_query is not None:
+        message = update.callback_query.message
+    if message is None:
+        raise ValueError("找不到可回覆的 Telegram message")
+
+    for attempt in range(retries):
+        try:
+            if hasattr(document, "seek"):
+                document.seek(0)
+            await message.reply_document(
+                document=telegram.InputFile(document, filename=filename),
+                caption=caption,
+                connect_timeout=90,
+                read_timeout=180,
+                write_timeout=180,
+                pool_timeout=90,
+            )
+            return
+        except (telegram.error.TimedOut, telegram.error.NetworkError) as exc:
+            print(f"⚠️ 檔案上傳第 {attempt + 1} 次逾時/網路失敗: {exc}")
+            if attempt == retries - 1:
+                raise
+            await asyncio.sleep(5)
+
+
+def get_update_chat_id(update: Update) -> int | None:
+    chat = update.effective_chat
+    if chat is None:
+        return None
+    return chat.id
+
+
+async def run_stoppable_command(update: Update, label: str, worker):
+    chat_id = get_update_chat_id(update)
+    if chat_id is None:
+        await worker()
+        return
+
+    existing_task = ACTIVE_USER_TASKS.get(chat_id)
+    current_task = asyncio.current_task()
+    if existing_task and not existing_task.done() and existing_task is not current_task:
+        await safe_send_reply(update, f"目前已有任務執行中：{existing_task.get_name()}。\n如需停止，請輸入 /stop")
+        return
+
+    if current_task:
+        current_task.set_name(label)
+        ACTIVE_USER_TASKS[chat_id] = current_task
+
+    try:
+        await worker()
+    except asyncio.CancelledError:
+        print(f"⏹️ 使用者已停止任務：{label}")
+    finally:
+        if ACTIVE_USER_TASKS.get(chat_id) is current_task:
+            ACTIVE_USER_TASKS.pop(chat_id, None)
+
+
+async def stop_running_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = get_update_chat_id(update)
+    if chat_id is None:
+        return
+
+    task = ACTIVE_USER_TASKS.get(chat_id)
+    if task is None or task.done():
+        ACTIVE_USER_TASKS.pop(chat_id, None)
+        await safe_send_reply(update, "目前沒有正在執行中的任務。")
+        return
+
+    task.cancel()
+    await safe_send_reply(update, f"已送出停止指令：{task.get_name()}\n若任務正在等待外部資料來源，背景執行緒可能需要一點時間才會結束。")
+
+
+def make_stoppable_handler(label: str, handler):
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await run_stoppable_command(update, label, lambda: handler(update, context))
+
+    return wrapped
+
 # --- 5. 指令處理器 ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list_m - 查看策略監控清單\n/add_m 代碼 名稱 - 加入策略監控\n/del_m 代碼 - 刪除策略監控\n/in 代碼或名稱 - 加入個人庫存\n/out 代碼或名稱 - 移除個人庫存\n/my - 查看個人庫存\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/export 代碼 - 匯出資料\n/morning - 晨間美股與台指期夜盤\n/noon - 台股收盤與台指期日盤\n/tw_market - 台股收盤與台指期日盤\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表")
+    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list_m - 查看策略監控清單\n/add_m 代碼 名稱 - 加入策略監控\n/del_m 代碼 - 刪除策略監控\n/in 代碼或名稱 - 加入個人庫存\n/out 代碼或名稱 - 移除個人庫存\n/my - 查看個人庫存\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/export 代碼 - 匯出資料\n/morning - 晨間美股與台指期夜盤\n/noon - 台股收盤與台指期日盤\n/tw_market - 台股收盤與台指期日盤\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表\n/stop - 停止目前執行中的耗時任務")
 
 async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
-    stocks = get_monitor_stocks(config)
-    stock_lines = [format_stock_display(stock) for stock in stocks]
-    msg = "📊 目前監控清單：\n" + ("\n".join(stock_lines) if stock_lines else "清單為空")
-    await safe_send_reply(update, msg)
+    await safe_send_reply(update, build_monitor_list_message(config))
 
 async def add_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args: return
-    stock = get_canonical_stock_symbol(context.args[0])
-    stock_name = " ".join(context.args[1:]).strip() or get_official_stock_name(stock)
     config = load_config()
-    if find_stock_index(config.get('monitor_stocks', []), stock) == -1:
-        entry = {'symbol': stock, 'name': stock_name} if stock_name else stock
-        config.setdefault('monitor_stocks', []).append(entry)
+    changed, message = add_monitor_stock_to_config(config, context.args)
+    if changed:
         save_config(config)
-        await safe_send_reply(update, f"✅ 已加入：{format_stock_display({'symbol': stock, 'name': stock_name})}")
+    await safe_send_reply(update, message)
 
 async def del_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args: return
-    stock = context.args[0].upper()
     config = load_config()
-    stock_index = find_stock_index(config.get('monitor_stocks', []), stock)
-    if stock_index != -1:
-        removed_stock = normalize_stock_entry(config['monitor_stocks'][stock_index])
-        config['monitor_stocks'].pop(stock_index)
+    changed, message = remove_monitor_stock_from_config(config, context.args)
+    if changed:
         save_config(config)
-        await safe_send_reply(update, f"🗑️ 已從清單刪除：{format_stock_display(removed_stock)}")
+    await safe_send_reply(update, message)
 
 
 # 新增監控指令別名：將策略監控與個人庫存管理分流，避免 /in、/out 與既有 /add、/del 混用。
@@ -608,46 +363,260 @@ async def noon_market_summary_command(update: Update, context: ContextTypes.DEFA
     await safe_send_reply(update, report)
 
 async def run_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🔎 正在執行策略掃描，請稍候...")
+    await safe_send_reply(update, "🔍 正在執行監控掃描，請稍候...")
     config = load_config()
-    final_signals = []
-    for stock in get_monitor_stocks(config):
-        # 策略 A
-        res_a = check_signal(stock)
-        if res_a: final_signals.append(res_a)
-        # 策略 B（回測突破）暫時停用
-        # res_b = check_advanced_signal(stock)
-        # if res_b: final_signals.append(res_b)
-        # 策略 C
-        res_c = check_ma105_signal(stock)
-        if res_c: final_signals.append(res_c)
-    
-    msg = "\n\n".join(final_signals) if final_signals else "📭 目前無突破訊號。"
+    msg = await asyncio.to_thread(build_monitor_scan_report, config)
     await safe_send_reply(update, msg)
 
-def build_scan_strategy_keyboard() -> InlineKeyboardMarkup:
+def parse_scan_report_date(args: list[str] | tuple[str, ...] | None) -> date:
+    if not args:
+        return get_tw_today()
+
+    raw = str(args[0]).strip()
+    today = get_tw_today()
+    candidates = [raw]
+    if raw.isdigit() and len(raw) == 8:
+        candidates.append(f"{raw[:4]}-{raw[4:6]}-{raw[6:]}")
+    if "/" in raw:
+        parts = raw.split("/")
+        try:
+            if len(parts) == 2:
+                candidates.append(f"{today.year}-{int(parts[0]):02d}-{int(parts[1]):02d}")
+            elif len(parts) == 3:
+                candidates.append(f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}")
+        except ValueError:
+            pass
+
+    parsed_any = False
+    for candidate in candidates:
+        try:
+            parsed = datetime.strptime(candidate, "%Y-%m-%d").date()
+            parsed_any = True
+            if parsed > today:
+                raise ValueError("日期不可晚於今天")
+            return parsed
+        except ValueError:
+            continue
+    if parsed_any:
+        raise ValueError("日期不可晚於今天")
+    raise ValueError("日期格式錯誤，請使用 YYYY-MM-DD、YYYY/MM/DD、YYYYMMDD 或 M/D")
+
+
+def build_scan_strategy_keyboard(report_date: date | None = None) -> InlineKeyboardMarkup:
     # 新增 /scan 的互動式按鈕選單，避免使用者每次輸入指令就直接執行所有高成本掃描。
+    target_date = report_date or get_tw_today()
+    suffix = f":{target_date.isoformat()}"
     rows = [
-        [InlineKeyboardButton("1. 財報營收選股", callback_data=f"{SCAN_CALLBACK_PREFIX}1")],
-        [InlineKeyboardButton("2. 60 日法人動態選股", callback_data=f"{SCAN_CALLBACK_PREFIX}2")],
-        [InlineKeyboardButton("3. 投信認養股", callback_data=f"{SCAN_CALLBACK_PREFIX}3")],
-        [InlineKeyboardButton("4. 法人持股比例增加", callback_data=f"{SCAN_CALLBACK_PREFIX}4")],
-        [InlineKeyboardButton("5. 每週大戶持股選股", callback_data=f"{SCAN_CALLBACK_PREFIX}5")],
-        [InlineKeyboardButton("6. 全部執行", callback_data=f"{SCAN_CALLBACK_PREFIX}6")],
+        [InlineKeyboardButton("1. 財報營收選股", callback_data=f"{SCAN_CALLBACK_PREFIX}1{suffix}")],
+        [InlineKeyboardButton("2. 60 日法人動態選股", callback_data=f"{SCAN_CALLBACK_PREFIX}2{suffix}")],
+        [InlineKeyboardButton("3. 投信認養股", callback_data=f"{SCAN_CALLBACK_PREFIX}3{suffix}")],
+        [InlineKeyboardButton("4. 法人持股比例增加", callback_data=f"{SCAN_CALLBACK_PREFIX}4{suffix}")],
+        [InlineKeyboardButton("5. 每週大戶持股選股", callback_data=f"{SCAN_CALLBACK_PREFIX}5{suffix}")],
+        [InlineKeyboardButton("6. 技術面選股", callback_data=f"{SCAN_CALLBACK_PREFIX}6{suffix}")],
+        [InlineKeyboardButton("7. 全部執行", callback_data=f"{SCAN_CALLBACK_PREFIX}7{suffix}")],
+        [InlineKeyboardButton("8. 精選選股", callback_data=f"{SCAN_CALLBACK_PREFIX}8{suffix}")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
-async def run_selected_scan_reports(update: Update, selection: str):
+def _format_compact_number(value: float | None) -> str:
+    if value is None:
+        return "無資料"
+    if abs(value) >= 100_000_000:
+        return f"{value / 100_000_000:.2f}億"
+    if abs(value) >= 10_000:
+        return f"{value / 10_000:.2f}萬"
+    return f"{value:,.0f}"
+
+
+def _format_compact_price(value: float | None) -> str:
+    if value is None:
+        return "無資料"
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
+def _financial_hit_label(revenue_group: str, gross_margin_rating: str) -> str:
+    group_label = {"group_1": "G1營收連續成長", "group_2": "G2營收轉強"}.get(revenue_group, revenue_group)
+    rating_label = {
+        "A": "毛利率A",
+        "B": "毛利率B",
+        "C": "毛利率C",
+        "D": "毛利率D",
+    }.get(gross_margin_rating, gross_margin_rating)
+    return f"營收財報選股({group_label}/{rating_label})"
+
+
+def _extract_code_from_technical_display(display: str) -> str:
+    return str(display).strip().split(maxsplit=1)[0]
+
+
+def _collect_technical_signal_codes(result: ts.TechnicalScanResult) -> dict[str, set[str]]:
+    signal_codes: dict[str, set[str]] = {}
+    for signal in ts.BULLISH_SIGNAL_ORDER:
+        industries = result.bullish.get(signal)
+        if not industries:
+            continue
+        codes: set[str] = set()
+        for displays in industries.values():
+            for display in displays:
+                code = _extract_code_from_technical_display(display)
+                if code:
+                    codes.add(code)
+        if codes:
+            signal_codes[signal] = codes
+    return signal_codes
+
+
+def build_curated_scan_report(scan_settings: dict[str, float] | None = None, report_date: date | None = None) -> str:
+    settings = scan_settings or {}
+    target_date = report_date or get_tw_today()
+    financial_report = scan_tw_market(False, None, settings)
+    chip_context = build_market_context(False, target_date, include_daily_data=True)
+    chip_grade_maps = build_chip_grade_maps(chip_context, ["chip_1", "chip_2", "chip_3", "chip_4"])
+    technical_result = ts.run_technical_scan(settings, target_date)
+    technical_signal_codes = _collect_technical_signal_codes(technical_result)
+
+    stock_info: dict[str, dict[str, object]] = {}
+    hits: dict[str, list[str]] = {}
+
+    for candidate in financial_report.candidates:
+        stock_info[candidate.code] = {
+            "code": candidate.code,
+            "name": candidate.name,
+            "industry": candidate.industry,
+            "price": candidate.price,
+            "avg_volume_20d": candidate.avg_volume_20d,
+            "monthly_revenue": candidate.latest_monthly_revenue,
+            "financial_group": candidate.revenue_group,
+            "gross_margin_rating": candidate.gross_margin_rating,
+        }
+        hits.setdefault(candidate.code, []).append(
+            _financial_hit_label(candidate.revenue_group, candidate.gross_margin_rating)
+        )
+
+    if not chip_context.candidates.empty:
+        for _, row in chip_context.candidates.iterrows():
+            code = str(row["code"])
+            stock_info.setdefault(
+                code,
+                {
+                    "code": code,
+                    "name": str(row.get("name", "")),
+                    "industry": str(row.get("industry", "")),
+                    "price": float(row["price"]) if pd.notna(row.get("price")) else None,
+                    "avg_volume_20d": float(row["avg_volume_20d"]) if pd.notna(row.get("avg_volume_20d")) else None,
+                    "monthly_revenue": float(row["monthly_revenue"]) if pd.notna(row.get("monthly_revenue")) else None,
+                    "financial_group": None,
+                    "gross_margin_rating": None,
+                },
+            )
+
+    for strategy_key, grade_map in chip_grade_maps.items():
+        strategy_name = CHIP_STRATEGY_NAMES.get(strategy_key, strategy_key)
+        for code, grade in grade_map.items():
+            hits.setdefault(code, []).append(f"{strategy_name}({grade}級)")
+
+    selected_by_signal: dict[str, list[str]] = {}
+    selected_codes: set[str] = set()
+    for signal in ts.BULLISH_SIGNAL_ORDER:
+        signal_codes = technical_signal_codes.get(signal, set())
+        codes = [code for code in signal_codes if len(hits.get(code, [])) >= 2]
+        codes.sort(
+            key=lambda code: (
+                -len(hits.get(code, [])),
+                stock_info.get(code, {}).get("industry") or "",
+                code,
+            )
+        )
+        if codes:
+            selected_by_signal[signal] = codes
+            selected_codes.update(codes)
+
+    lines = [
+        "⭐ 精選選股交叉命中報告",
+        f"📅 日期：{target_date.isoformat()}",
+        "",
+        "篩選邏輯：以技術面正面訊號為主要分類，列出同時命中營收財報或法人大戶 2 個以上策略的股票。",
+        "",
+    ]
+
+    if not selected_by_signal:
+        lines.append("目前沒有技術面訊號且重複命中的股票。")
+    else:
+        for signal in ts.BULLISH_SIGNAL_ORDER:
+            codes = selected_by_signal.get(signal)
+            if not codes:
+                continue
+            lines.extend(["", f"📂 {signal}", ""])
+            current_hit_count: int | None = None
+            for code in codes:
+                info = stock_info.get(code, {})
+                code_hits = hits.get(code, [])
+                hit_count = len(code_hits)
+                if current_hit_count != hit_count:
+                    current_hit_count = hit_count
+                    lines.extend(["", f"【命中 {hit_count} 個策略】", ""])
+                lines.append(
+                    (
+                        f"{code} {info.get('name', '')} | "
+                        f"產業：{info.get('industry') or '未分類'} | "
+                        f"股價：{_format_compact_price(info.get('price'))} | "
+                        f"20日均量：{_format_compact_number(info.get('avg_volume_20d'))} 張 | "
+                        f"月營收：{_format_compact_number(info.get('monthly_revenue'))} | "
+                        f"命中：{', '.join(code_hits)}"
+                    )
+                )
+                lines.append("")
+
+    settings = chip_context.scan_settings
+    lines.extend(
+        [
+            "",
+            "掃描統計",
+            f"營收財報選股命中：{len(financial_report.candidates)} 檔",
+            f"法人大戶硬篩標的：{len(chip_context.candidates)} 檔 (股價 {int(settings['min_price'])}~{int(settings['max_price'])} / 均量 > {int(settings['min_avg_volume_20d'])})",
+            f"技術面硬篩標的：{technical_result.hard_filter_passed} 檔",
+            f"技術面訊號命中：{technical_result.matched_symbols} 檔",
+            f"重複命中精選：{len(selected_codes)} 檔",
+            f"資料日期：{target_date.isoformat()}",
+            f"資料來源：本機快取 / TWSE / TPEX / FinMind / 估算 / {' / '.join(sorted(technical_result.sources))}",
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
+async def run_selected_scan_reports(update: Update, selection: str, report_date: date | None = None):
     selected_keys = SCAN_SELECTIONS.get(selection)
     if not selected_keys:
         await safe_send_reply(update, "❌ 無效的選股策略選項。")
         return
 
-    # 新增執行器：把財報掃描與籌碼掃描拆開執行，全部執行時共用一次籌碼資料上下文，減少重複抓取。
-    try:
-        financial_report = None
-        if "financial" in selected_keys:
+    target_date = report_date or get_tw_today()
+    menu_label = SCAN_MENU_LABELS.get(selection, selection)
+    print(f"[選股進度][{menu_label}] 0.00% 收到 /scan 選股任務，目標日期 {target_date.isoformat()}", flush=True)
+
+    if "curated" in selected_keys:
+        print(f"[選股進度][{menu_label}] 10.00% 開始精選交叉比對", flush=True)
+        await safe_send_reply(update, "正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
+        try:
+            config = load_config()
+            curated_report = await asyncio.to_thread(
+                build_curated_scan_report,
+                config.get("scan_settings", {}),
+                target_date,
+            )
+            print(f"[選股進度][{menu_label}] 90.00% 精選報告產生完成，準備傳送 Telegram", flush=True)
+            await safe_send_reply(update, curated_report)
+            print(f"[選股進度][{menu_label}] 100.00% 完成", flush=True)
+        except Exception as exc:
+            print(f"❌ /scan 精選選股失敗: {exc}")
+            await safe_send_reply(update, "⚠️ 精選選股產生失敗，請稍後再試。")
+        return
+
+    # 完成一段就先送一段，避免全部選股遇到單一資料源變慢時使用者長時間沒有任何回應。
+    if "financial" in selected_keys:
+        try:
+            print(f"[選股進度][{menu_label}] 10.00% 開始財報營收選股", flush=True)
             config = load_config()
             financial_report = await asyncio.to_thread(
                 run_tw_market_scan,
@@ -655,26 +624,72 @@ async def run_selected_scan_reports(update: Update, selection: str):
                 None,
                 config.get("scan_settings", {}),
             )
+            print(f"[選股進度][{menu_label}] 35.00% 財報營收報告完成，準備傳送 Telegram", flush=True)
+            await safe_send_reply(update, financial_report)
+        except Exception as exc:
+            print(f"❌ /scan 財報選股失敗: {exc}")
+            await safe_send_reply(update, "⚠️ 財報選股產生失敗，會繼續嘗試其他已選策略。")
 
-        chip_keys = [key for key in selected_keys if key.startswith("chip_")]
-        chip_reports = {}
-        if chip_keys:
-            chip_reports, _ = await asyncio.to_thread(build_chip_reports, chip_keys, False, get_tw_today())
-    except Exception as exc:
-        print(f"❌ /scan 選單執行失敗: {exc}")
-        await safe_send_reply(update, "❌ 選股掃描失敗，請稍後再試。")
+    chip_keys = [key for key in selected_keys if key.startswith("chip_")]
+    has_technical = "technical" in selected_keys
+    if not chip_keys and not has_technical:
+        print(f"[選股進度][{menu_label}] 100.00% 完成", flush=True)
         return
 
-    if financial_report:
-        await safe_send_reply(update, financial_report)
+    if chip_keys:
+        chip_progress_end = 70.0 if has_technical else 90.0
+        print(f"[選股進度][{menu_label}] 40.00% 開始籌碼策略資料整理", flush=True)
+        await safe_send_reply(update, "籌碼選股資料整理中。")
+        try:
+            chip_reports, _ = await asyncio.to_thread(
+                build_chip_reports,
+                chip_keys,
+                False,
+                target_date,
+                menu_label,
+                40.0,
+                chip_progress_end,
+            )
+        except Exception as exc:
+            print(f"❌ /scan 籌碼選股失敗: {exc}")
+            await safe_send_reply(update, "⚠️ 籌碼選股產生失敗，請稍後再試或先單獨執行其他策略。")
+            return
 
-    for key in chip_keys:
-        await safe_send_reply(update, chip_reports[key])
+        for index, key in enumerate(chip_keys, start=1):
+            progress = chip_progress_end + index / max(1, len(chip_keys)) * 5.0
+            print(f"[選股進度][{menu_label}] {progress:.2f}% 傳送 {CHIP_STRATEGY_NAMES.get(key, key)} 報告", flush=True)
+            await safe_send_reply(update, chip_reports[key])
+
+    # NEW: 技術面選股路由
+    if has_technical:
+        technical_start_progress = 75.0 if chip_keys or "financial" in selected_keys else 10.0
+        print(f"[選股進度][{menu_label}] {technical_start_progress:.2f}% 開始技術面選股", flush=True)
+        await safe_send_reply(update, "技術面選股資料整理中。")
+        try:
+            config = load_config()
+            technical_report = await asyncio.to_thread(
+                ts.build_technical_scan_report,
+                config.get("scan_settings", {}),
+                target_date,
+            )
+            print(f"[選股進度][{menu_label}] 98.00% 技術面報告完成，準備傳送 Telegram", flush=True)
+            await safe_send_reply(update, technical_report)
+        except Exception as exc:
+            print(f"❌ /scan 技術面選股失敗: {exc}")
+            await safe_send_reply(update, "⚠️ 技術面選股產生失敗，請稍後再試。")
+    print(f"[選股進度][{menu_label}] 100.00% 完成", flush=True)
 
 
 async def run_tw_stock_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 新增 /scan 互動流程：先讓使用者選策略，再由 callback handler 執行對應掃描。
-    await safe_send_reply(update, SCAN_MENU_TEXT, reply_markup=build_scan_strategy_keyboard())
+    try:
+        report_date = parse_scan_report_date(context.args)
+    except ValueError as exc:
+        await safe_send_reply(update, f"❌ {exc}\n範例：/scan 2026-05-05")
+        return
+
+    text = f"{SCAN_MENU_TEXT}\n\n目標資料日期：{report_date.isoformat()}"
+    await safe_send_reply(update, text, reply_markup=build_scan_strategy_keyboard(report_date))
 
 
 async def handle_scan_strategy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -683,7 +698,13 @@ async def handle_scan_strategy_callback(update: Update, context: ContextTypes.DE
         return
 
     await query.answer()
-    selection = query.data.replace(SCAN_CALLBACK_PREFIX, "", 1)
+    payload = query.data.replace(SCAN_CALLBACK_PREFIX, "", 1)
+    payload_parts = payload.split(":", 1)
+    selection = payload_parts[0]
+    try:
+        report_date = datetime.strptime(payload_parts[1], "%Y-%m-%d").date() if len(payload_parts) > 1 else get_tw_today()
+    except ValueError:
+        report_date = get_tw_today()
     selected_keys = SCAN_SELECTIONS.get(selection)
     if not selected_keys:
         await query.edit_message_text("❌ 無效的選股策略選項。")
@@ -692,8 +713,12 @@ async def handle_scan_strategy_callback(update: Update, context: ContextTypes.DE
     menu_label = SCAN_MENU_LABELS[selection]
 
     # 新增 callback 狀態提示：先更新選單訊息，讓使用者知道系統已接受操作並開始計算。
-    await query.edit_message_text(f"已選擇：{menu_label}\n開始執行，請稍候...")
-    await run_selected_scan_reports(update, selection)
+    await query.edit_message_text(f"已選擇：{menu_label}\n目標資料日期：{report_date.isoformat()}\n開始執行，請稍候...")
+    await run_stoppable_command(
+        update,
+        f"選股：{menu_label}",
+        lambda: run_selected_scan_reports(update, selection, report_date),
+    )
 
 async def export_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -718,7 +743,11 @@ async def export_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_document(
         document=telegram.InputFile(export_buffer, filename=filename),
-        caption=f"📁 {display_name} 匯出完成",
+        caption=append_data_footer(
+            f"📁 {display_name} 匯出完成",
+            get_tw_today().isoformat(),
+            "TWSE / TPEX / Yahoo Finance / FinMind / Fugle / 本機快取",
+        ),
     )
 
 
@@ -749,14 +778,22 @@ async def export_stock_chart(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await safe_send_reply(update, "❌ 生成個股圖表時發生未預期錯誤，請稍後再試。")
         return
 
-    # 新增傳送方式：以記憶體中的 BytesIO 直接回傳 HTML 文件，避免伺服器留下多餘暫存檔。
-    await update.message.reply_document(
-        document=telegram.InputFile(html_buffer, filename=filename),
-        caption=(
-            f"📊 {meta.display_name} {chart_request.start_date} ~ "
-            f"{chart_request.end_date} {chart_request.frequency}"
-        ),
-    )
+    try:
+        await safe_reply_document(
+            update,
+            html_buffer,
+            filename,
+            append_data_footer(
+                (
+                    f"📊 {meta.display_name} {chart_request.start_date} ~ "
+                    f"{chart_request.end_date} {chart_request.frequency}"
+                ),
+                f"{chart_request.start_date} ~ {chart_request.end_date}",
+                "TWSE / TPEX / Yahoo Finance / Fugle",
+            ),
+        )
+    except (telegram.error.TimedOut, telegram.error.NetworkError):
+        await safe_send_reply(update, "⚠️ 個股圖表已產生，但 Telegram 上傳檔案逾時，請稍後再試。")
 
 
 # 新增指令：產出 TMF 的互動式 HTML 技術分析圖表。
@@ -789,13 +826,21 @@ async def export_tmf_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         with html_path.open("rb") as html_file:
-            await update.message.reply_document(
-                document=telegram.InputFile(html_file, filename=html_path.name),
-                caption=(
-                    f"📊 TMF {chart_request.start_date} ~ {chart_request.end_date} "
-                    f"{chart_request.session} {chart_request.frequency}"
+            await safe_reply_document(
+                update,
+                html_file,
+                html_path.name,
+                append_data_footer(
+                    (
+                        f"📊 TMF {chart_request.start_date} ~ {chart_request.end_date} "
+                        f"{chart_request.session} {chart_request.frequency}"
+                    ),
+                    f"{chart_request.start_date} ~ {chart_request.end_date}",
+                    "TAIFEX / 本機快取",
                 ),
             )
+    except (telegram.error.TimedOut, telegram.error.NetworkError):
+        await safe_send_reply(update, "⚠️ TMF 圖表已產生，但 Telegram 上傳檔案逾時，請稍後再試。")
     finally:
         # 新增清理：送出完成後立即刪除暫存 HTML，避免暫存資料堆積。
         if html_path and html_path.exists():
@@ -804,25 +849,20 @@ async def export_tmf_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 6. 定時任務 ---
 async def scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
-    print("⏰ 執行定時任務掃描...")
-    final_signals = []
-    for stock in get_monitor_stocks(config):
-        res_a = check_signal(stock)
-        if res_a: final_signals.append(res_a)
-        # 策略 B（回測突破）暫時停用
-        # res_b = check_advanced_signal(stock)
-        # if res_b: final_signals.append(res_b)
-        res_c = check_ma105_signal(stock)
-        if res_c: final_signals.append(res_c)
-    msg = "⏰ **12:30 策略監測報告**\n\n" + ("\n\n".join(final_signals) if final_signals else "今日無符合條件標的。")
+    print("🔍 執行 12:30 監控掃描...")
+    msg = await asyncio.to_thread(
+        build_monitor_scan_report,
+        config,
+        "📌 12:30 監控突破通知",
+        "目前沒有符合條件的突破訊號。",
+    )
     try:
-        await context.bot.send_message(chat_id=config['chat_id'], text=msg, parse_mode='Markdown')
-        print("✅ 定時報告發送成功")
+        await context.bot.send_message(chat_id=config['chat_id'], text=msg)
+        print("✅ 12:30 監控通知已發送")
     except Exception as e:
-        print(f"⚠️ 定時報告發送失敗: {e}")
+        print(f"⚠️ 12:30 監控通知發送失敗：{e}")
 
 
-# 新增每日庫存籌碼推播：17:45 讀取 portfolio.json，若官方資料未更新則以 JobQueue 延後 5 分鐘重試。
 async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     attempt = int((context.job.data or {}).get("attempt", 0)) if context.job else 0
@@ -859,11 +899,28 @@ async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
 # 新增午報排程：13:50 自動推播台股現貨與台指期日盤，若非交易日或資料未更新則直接略過。
 async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
+    attempt = 0
+    if context.job and isinstance(context.job.data, dict):
+        try:
+            attempt = int(context.job.data.get("attempt", 0))
+        except (TypeError, ValueError):
+            attempt = 0
 
     try:
         report = await asyncio.to_thread(build_noon_market_report)
     except MarketSummaryError as exc:
-        print(f"ℹ️ 午報略過: {exc}")
+        if context.job_queue and attempt < NOON_REPORT_MAX_RETRIES:
+            context.job_queue.run_once(
+                scheduled_noon_market_report,
+                when=NOON_REPORT_RETRY_DELAY_SECONDS,
+                data={"attempt": attempt + 1},
+            )
+            print(
+                f"ℹ️ 午報略過: {exc} "
+                f"retry_in={NOON_REPORT_RETRY_DELAY_SECONDS // 60}m attempt={attempt + 1}"
+            )
+            return
+        print(f"ℹ️ 午報略過: {exc} retry_exhausted")
         return
     except Exception as exc:
         print(f"❌ 午報排程失敗: {exc}")
@@ -872,67 +929,43 @@ async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=config['chat_id'], text=report)
 
 
-async def scheduled_daily_chip_report(context: ContextTypes.DEFAULT_TYPE):
-    config = load_config()
+async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
+    job_data = context.job.data if context.job and isinstance(context.job.data, dict) else {}
+    full_backfill = bool(job_data.get("full_backfill", False))
+    label = str(job_data.get("label") or ("????????" if full_backfill else "????????"))
     report_date = get_tw_today()
 
+    print(f"[????][{label}] 0.00% ????????? {report_date.isoformat()}", flush=True)
     try:
-        # 新增每日 18:00 籌碼排程：只執行策略 1 到 3，且若最新交易日不是今天就直接略過，避免非交易日誤發。
-        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_1", "chip_2", "chip_3"], False, report_date)
+        await asyncio.to_thread(
+            warmup_chip_data_cache,
+            report_date,
+            full_backfill,
+            False,
+            label,
+        )
     except Exception as exc:
-        print(f"❌ 每日籌碼排程失敗: {exc}")
-        return
+        print(f"?? ???????????{exc}", flush=True)
 
-    if chip_context.latest_trading_date != report_date:
-        print("ℹ️ 每日籌碼排程略過：當日無最新收盤價")
-        return
-
-    for key in ("chip_1", "chip_2", "chip_3"):
-        await context.bot.send_message(chat_id=config['chat_id'], text=reports[key])
-
-
-async def scheduled_weekly_chip_report(context: ContextTypes.DEFAULT_TYPE):
-    config = load_config()
-    report_date = get_tw_today()
-
-    try:
-        # 新增每週六 12:00 籌碼排程：策略 4 使用最近一次集保快照與本地週快取來判斷趨勢。
-        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_4"], False, report_date)
-    except Exception as exc:
-        print(f"❌ 每週大戶排程失敗: {exc}")
-        return
-
-    latest_snapshot = latest_weekly_snapshot_date(chip_context)
-    if latest_snapshot is None:
-        print("ℹ️ 每週大戶排程略過：尚未取得集保快照")
-        return
-
-    await context.bot.send_message(chat_id=config['chat_id'], text=reports["chip_4"])
-    mark_weekly_report_sent(report_date, latest_snapshot)
 
 # --- 7. 啟動後初始掃描 ---
 async def run_post_init_scan(context: ContextTypes.DEFAULT_TYPE):
     application = context.application
     config = load_config()
-    print("🚀 執行啟動初始掃描...")
-    final_signals = []
-    for stock in get_monitor_stocks(config):
-        res_a = check_signal(stock)
-        if res_a: final_signals.append(res_a)
-        # 策略 B（回測突破）暫時停用
-        # res_b = check_advanced_signal(stock)
-        # if res_b: final_signals.append(res_b)
-        res_c = check_ma105_signal(stock)
-        if res_c: final_signals.append(res_c)
-    init_msg = "🤖 機器人上線！\n\n【啟動掃描結果】\n" + ("\n\n".join(final_signals) if final_signals else "目前無突破訊號。")
+    print("🔍 啟動後執行監控掃描...")
+    init_msg = await asyncio.to_thread(
+        build_monitor_scan_report,
+        config,
+        "🤖 機器人啟動完成\n\n盤中監控初始掃描",
+        "目前無突破訊號。",
+    )
     try:
         await application.bot.send_message(chat_id=config['chat_id'], text=init_msg)
-        print("✅ 初始通知發送成功")
+        print("✅ 啟動後監控掃描通知已發送")
     except Exception as e:
-        print(f"⚠️ 初始通知發送失敗: {e}")
+        print(f"⚠️ 啟動後監控掃描通知發送失敗：{e}")
 
 
-# 新增啟動晨報檢查：只在台北時間 06:00 到 09:00 之間主動推播一次晨間市場摘要。
 async def run_startup_morning_report_if_needed(context: ContextTypes.DEFAULT_TYPE):
     if not is_morning_push_window():
         return
@@ -954,37 +987,10 @@ async def run_startup_morning_report_if_needed(context: ContextTypes.DEFAULT_TYP
         print(f"⚠️ 啟動晨報發送失敗: {exc}")
 
 
-async def run_startup_weekly_chip_fallback_if_needed(context: ContextTypes.DEFAULT_TYPE):
-    report_date = get_tw_today()
-    if not should_run_startup_weekly_fallback(report_date):
-        return
-
-    config = load_config()
-    try:
-        # 新增週報補發：若週六排程因維護或重啟未執行，週一啟動時自動檢查並補送一次策略 4。
-        reports, chip_context = await asyncio.to_thread(build_chip_reports, ["chip_4"], False, report_date)
-    except Exception as exc:
-        print(f"❌ 啟動週報補發失敗: {exc}")
-        return
-
-    latest_snapshot = latest_weekly_snapshot_date(chip_context)
-    if latest_snapshot is None:
-        print("ℹ️ 啟動週報補發略過：尚未取得集保快照")
-        return
-
-    try:
-        await context.application.bot.send_message(chat_id=config['chat_id'], text=reports["chip_4"])
-        mark_weekly_report_sent(report_date, latest_snapshot, fallback=True)
-        print("✅ 啟動週報補發成功")
-    except Exception as exc:
-        print(f"⚠️ 啟動週報補發發送失敗: {exc}")
-
-
 async def post_init(application):
     if application.job_queue:
         # 新增啟動任務：與原本啟動掃描分離，避免市場摘要失敗時影響既有策略掃描。
         application.job_queue.run_once(run_startup_morning_report_if_needed, when=0)
-        application.job_queue.run_once(run_startup_weekly_chip_fallback_if_needed, when=0)
 
 # --- 8. 主程式入口 ---
 def main():
@@ -993,7 +999,14 @@ def main():
     req = HTTPXRequest(connect_timeout=60, read_timeout=60, write_timeout=60, pool_timeout=60)
     tw_tz = pytz.timezone('Asia/Taipei')
 
-    app = ApplicationBuilder().token(config['api_token']).request(req).post_init(post_init).build()
+    app = (
+        ApplicationBuilder()
+        .token(config['api_token'])
+        .request(req)
+        .post_init(post_init)
+        .concurrent_updates(True)
+        .build()
+    )
 
     # 設定每天 12:30 鬧鐘
     if app.job_queue:
@@ -1012,20 +1025,26 @@ def main():
             time=time(hour=17, minute=45, tzinfo=tw_tz),
             data={"attempt": 0},
         )
-        # 新增每日 18:00 籌碼選股排程，獨立於既有監控與庫存推播，避免訊息格式混雜。
+        # 籌碼資料改為背景慢速回補，不主動推播選股報告；/scan 執行時優先讀快取。
         app.job_queue.run_daily(
-            scheduled_daily_chip_report,
-            time=time(hour=18, minute=0, tzinfo=tw_tz),
+            scheduled_chip_cache_backfill,
+            time=time(hour=16, minute=30, tzinfo=tw_tz),
+            data={"label": "籌碼快取 16:30 今日回補", "full_backfill": False},
         )
-        # 新增每週六 12:00 大戶持股排程，對應策略 4 的週資料節奏。
         app.job_queue.run_daily(
-            scheduled_weekly_chip_report,
-            time=time(hour=12, minute=0, tzinfo=tw_tz),
-            days=(5,),
+            scheduled_chip_cache_backfill,
+            time=time(hour=18, minute=30, tzinfo=tw_tz),
+            data={"label": "籌碼快取 18:30 今日回補", "full_backfill": False},
+        )
+        app.job_queue.run_daily(
+            scheduled_chip_cache_backfill,
+            time=time(hour=21, minute=0, tzinfo=tw_tz),
+            data={"label": "籌碼快取 21:00 完整回補", "full_backfill": True},
         )
 
     # 註冊指令
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stop", stop_running_command))
     # 新增策略監控指令命名：正式以 *_m 區隔監控名單與個人庫存名單。
     app.add_handler(CommandHandler("list_m", list_monitor_stocks))
     app.add_handler(CommandHandler("add_m", add_monitor_stock))
@@ -1034,20 +1053,20 @@ def main():
     app.add_handler(CommandHandler("in", add_portfolio_command))
     app.add_handler(CommandHandler("out", remove_portfolio_command))
     app.add_handler(CommandHandler("my", list_portfolio_command))
-    app.add_handler(CommandHandler("check", run_scan))
+    app.add_handler(CommandHandler("check", make_stoppable_handler("監控掃描", run_scan)))
     app.add_handler(CommandHandler("scan", run_tw_stock_scan))
     app.add_handler(CallbackQueryHandler(handle_scan_strategy_callback, pattern=f"^{SCAN_CALLBACK_PREFIX}"))
-    app.add_handler(CommandHandler("export", export_stock))
+    app.add_handler(CommandHandler("export", make_stoppable_handler("匯出股票資料", export_stock)))
     # 新增市場摘要指令：/morning 查晨報，/noon 與 /tw_market 共用午報處理器。
-    app.add_handler(CommandHandler("morning", morning_market_summary_command))
-    app.add_handler(CommandHandler("noon", noon_market_summary_command))
-    app.add_handler(CommandHandler("tw_market", noon_market_summary_command))
+    app.add_handler(CommandHandler("morning", make_stoppable_handler("晨報", morning_market_summary_command)))
+    app.add_handler(CommandHandler("noon", make_stoppable_handler("午報", noon_market_summary_command)))
+    app.add_handler(CommandHandler("tw_market", make_stoppable_handler("台股午報", noon_market_summary_command)))
     # 新增指令註冊：支援 /stock_chart 生成台股個股的互動式 HTML 技術分析圖表。
-    app.add_handler(CommandHandler("stock_chart", export_stock_chart))
+    app.add_handler(CommandHandler("stock_chart", make_stoppable_handler("個股圖表匯出", export_stock_chart)))
     # 新增指令註冊：支援 /tmf_chart 生成 TMF 的互動式 Lightweight Charts HTML 報表。
-    app.add_handler(CommandHandler("tmf_chart", export_tmf_chart))
+    app.add_handler(CommandHandler("tmf_chart", make_stoppable_handler("TMF 圖表匯出", export_tmf_chart)))
 
-    print("🚀 策略機器人啟動中，定時設定：12:30 監控掃描、13:50 午報、17:45 庫存推播、18:00 籌碼掃描、週六 12:00 大戶週報...")
+    print("🚀 策略機器人啟動中，定時設定：12:30 監控掃描、13:50 午報、17:45 庫存推播、16:30/18:30/21:00 籌碼快取回補...")
     app.run_polling(bootstrap_retries=-1)
 
 if __name__ == "__main__":

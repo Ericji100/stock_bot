@@ -14,6 +14,8 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
+from fugle_data import fetch_fugle_history
+
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -212,7 +214,7 @@ def load_daily_bars(request: StockChartRequest, meta: StockChartMeta) -> pd.Data
     fetch_end = request.end_date
 
     if meta.market == "TWSE":
-        bars = fetch_twse_daily_history(meta.code, fetch_start, fetch_end)
+        bars = fetch_twse_daily_history(meta.code, meta.symbol, fetch_start, fetch_end)
     else:
         bars = fetch_tpex_daily_history(meta.code, meta.symbol, fetch_start, fetch_end)
 
@@ -222,42 +224,47 @@ def load_daily_bars(request: StockChartRequest, meta: StockChartMeta) -> pd.Data
     return standardize_ohlcv_frame(bars, is_intraday=False)
 
 
-def fetch_twse_daily_history(code: str, start_date: date, end_date: date) -> pd.DataFrame:
+def fetch_twse_daily_history(code: str, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     months = month_starts_between(start_date, end_date)
-    with httpx.Client(timeout=20.0, follow_redirects=True, verify=False) as client:
-        for month_start in months:
-            response = client.get(
-                TWSE_STOCK_DAY_URL,
-                params={
-                    "response": "json",
-                    "date": month_start.strftime("%Y%m01"),
-                    "stockNo": code,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if payload.get("stat") != "OK" or not payload.get("data"):
-                continue
-
-            rows = []
-            for row in payload["data"]:
-                rows.append(
-                    {
-                        "datetime": roc_date_to_timestamp(row[0]),
-                        "open": to_number(row[3]),
-                        "high": to_number(row[4]),
-                        "low": to_number(row[5]),
-                        "close": to_number(row[6]),
-                        "volume": to_number(row[1]),
-                    }
+    try:
+        with httpx.Client(timeout=20.0, follow_redirects=True, verify=False) as client:
+            for month_start in months:
+                response = client.get(
+                    TWSE_STOCK_DAY_URL,
+                    params={
+                        "response": "json",
+                        "date": month_start.strftime("%Y%m01"),
+                        "stockNo": code,
+                    },
                 )
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    return fetch_yfinance_daily_history(symbol, start_date, end_date)
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get("stat") != "OK" or not payload.get("data"):
+                    continue
 
-            frame = pd.DataFrame(rows)
-            frames.append(frame)
+                rows = []
+                for row in payload["data"]:
+                    rows.append(
+                        {
+                            "datetime": roc_date_to_timestamp(row[0]),
+                            "open": to_number(row[3]),
+                            "high": to_number(row[4]),
+                            "low": to_number(row[5]),
+                            "close": to_number(row[6]),
+                            "volume": to_number(row[1]),
+                        }
+                    )
+
+                frame = pd.DataFrame(rows)
+                frames.append(frame)
+    except Exception:
+        return fetch_yfinance_daily_history(symbol, start_date, end_date)
 
     if not frames:
-        return pd.DataFrame()
+        return fetch_yfinance_daily_history(symbol, start_date, end_date)
 
     merged = pd.concat(frames, ignore_index=True)
     merged = merged.dropna(subset=["datetime", "open", "high", "low", "close"])
@@ -267,10 +274,25 @@ def fetch_twse_daily_history(code: str, start_date: date, end_date: date) -> pd.
 
 def fetch_tpex_daily_history(code: str, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
     official_snapshot = fetch_tpex_latest_snapshot(code)
-    yf_frame = download_yfinance_history(symbol, start_date, end_date + timedelta(days=1), interval="1d")
+    frame = fetch_yfinance_daily_history(symbol, start_date, end_date)
 
-    if yf_frame.empty:
+    if frame.empty:
         raise StockChartError(f"無法取得 {code} 的上櫃日線資料。")
+
+    if official_snapshot:
+        snapshot_date = official_snapshot["datetime"]
+        mask = frame["datetime"] == snapshot_date
+        if mask.any():
+            for field in ("open", "high", "low", "close", "volume"):
+                frame.loc[mask, field] = official_snapshot[field]
+
+    return frame
+
+
+def fetch_yfinance_daily_history(symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+    yf_frame = download_yfinance_history(symbol, start_date, end_date + timedelta(days=1), interval="1d")
+    if yf_frame.empty or "Date" not in yf_frame.columns:
+        return fetch_fugle_history(symbol, start_date, end_date, "1d")
 
     frame = yf_frame.rename(
         columns={
@@ -281,17 +303,8 @@ def fetch_tpex_daily_history(code: str, symbol: str, start_date: date, end_date:
             "Volume": "volume",
         }
     )
-    frame["datetime"] = pd.to_datetime(frame["Date"]).dt.normalize()
-    frame = frame[["datetime", "open", "high", "low", "close", "volume"]]
-
-    if official_snapshot:
-        snapshot_date = official_snapshot["datetime"]
-        mask = frame["datetime"] == snapshot_date
-        if mask.any():
-            for field in ("open", "high", "low", "close", "volume"):
-                frame.loc[mask, field] = official_snapshot[field]
-
-    return frame
+    frame["datetime"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
+    return frame[["datetime", "open", "high", "low", "close", "volume"]]
 
 
 def fetch_tpex_latest_snapshot(code: str) -> dict | None:
@@ -329,6 +342,9 @@ def load_intraday_bars(request: StockChartRequest, meta: StockChartMeta) -> pd.D
             base_frame = download_yfinance_history(meta.symbol, fetch_start, fetch_end, interval=request.frequency)
 
     if base_frame.empty:
+        fugle_frame = fetch_fugle_history(meta.symbol, fetch_start, fetch_end, request.frequency)
+        if not fugle_frame.empty:
+            return standardize_ohlcv_frame(fugle_frame, is_intraday=True)
         raise StockChartError(
             f"無法取得 {meta.display_name} 的 {request.frequency} 分鐘資料，請縮短日期區間或改用 1d。"
         )
@@ -439,6 +455,12 @@ def apply_indicators(frame: pd.DataFrame) -> pd.DataFrame:
     enriched = frame.copy()
     enriched["MA21"] = enriched["close"].rolling(window=21).mean()
     enriched["MA105"] = enriched["close"].rolling(window=105).mean()
+    lowest_low = enriched["low"].rolling(window=9, min_periods=1).min()
+    highest_high = enriched["high"].rolling(window=9, min_periods=1).max()
+    range_value = highest_high - lowest_low
+    enriched["RSV"] = ((enriched["close"] - lowest_low) / range_value.replace(0, pd.NA) * 100.0).fillna(50.0)
+    enriched["K"] = enriched["RSV"].ewm(alpha=9 / 55, adjust=False).mean()
+    enriched["D"] = enriched["K"].ewm(alpha=9 / 55, adjust=False).mean()
     ema21 = enriched["close"].ewm(span=21, adjust=False).mean()
     ema55_fast = enriched["close"].ewm(span=55, adjust=False).mean()
     enriched["DIF"] = ema21 - ema55_fast
@@ -464,6 +486,8 @@ def build_chart_payload(frame: pd.DataFrame, request: StockChartRequest, meta: S
     dif_data = []
     dea_data = []
     histogram_data = []
+    k_data = []
+    d_data = []
     legend_data = []
     is_intraday = bool(frame["is_intraday"].iloc[-1])
 
@@ -493,6 +517,8 @@ def build_chart_payload(frame: pd.DataFrame, request: StockChartRequest, meta: S
         )
         dif_data.append({"time": int(row.time), "value": round_number(row.DIF, 4)})
         dea_data.append({"time": int(row.time), "value": round_number(row.DEA, 4)})
+        k_data.append({"time": int(row.time), "value": round_number(row.K, 4)})
+        d_data.append({"time": int(row.time), "value": round_number(row.D, 4)})
         if not pd.isna(row.MA21):
             ma21_data.append({"time": int(row.time), "value": round_number(row.MA21, precision)})
         if not pd.isna(row.MA105):
@@ -506,6 +532,8 @@ def build_chart_payload(frame: pd.DataFrame, request: StockChartRequest, meta: S
                 "dif": round_number(row.DIF, 4),
                 "dea": round_number(row.DEA, 4),
                 "histogram": round_number(row.Histogram, 4),
+                "k": round_number(row.K, 4),
+                "d": round_number(row.D, 4),
             }
         )
 
@@ -526,6 +554,8 @@ def build_chart_payload(frame: pd.DataFrame, request: StockChartRequest, meta: S
         "dif": dif_data,
         "dea": dea_data,
         "histogram": histogram_data,
+        "k": k_data,
+        "d": d_data,
         "legend": legend_data,
     }
 
@@ -587,16 +617,50 @@ def build_html_template(payload: dict) -> str:
       box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
     }}
     .chart-stack {{
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 4px;
-      grid-template-rows: minmax(360px, 62vh) minmax(110px, 16vh) minmax(150px, 21vh);
+      height: calc(100vh - 104px);
+      min-height: 620px;
     }}
     .pane {{
       position: relative;
       overflow: hidden;
+      min-height: 54px;
       border-radius: 10px;
       border: 1px solid var(--line);
       background: linear-gradient(180deg, rgba(14, 19, 28, 0.98), rgba(10, 14, 20, 0.98));
+    }}
+    .pane.price-pane {{ height: 58%; }}
+    .pane.indicator-pane {{ height: 14%; }}
+    .pane.macd-pane {{ height: 20%; }}
+    .pane.collapsed {{ height: 34px !important; min-height: 34px; }}
+    .pane.collapsed .chart {{ display: none; }}
+    .pane-controls {{
+      position: absolute;
+      top: 7px;
+      right: 8px;
+      z-index: 3;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }}
+    .control-btn {{
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(130, 153, 190, 0.18);
+      background: rgba(16, 24, 36, 0.96);
+      color: #dbe7ff;
+      font-size: 11px;
+      cursor: pointer;
+    }}
+    .resize-handle {{
+      height: 7px;
+      margin: -1px 8px;
+      border-radius: 999px;
+      cursor: row-resize;
+      background: rgba(130, 153, 190, 0.18);
     }}
     .pane-label {{
       position: absolute;
@@ -635,11 +699,13 @@ def build_html_template(payload: dict) -> str:
     .ma105 {{ color: #d54bcb; }}
     .dif {{ color: #80cbc4; }}
     .dea {{ color: #ffd54f; }}
+    .kd-k {{ color: #f6c453; }}
+    .kd-d {{ color: #7aa2ff; }}
     @media (max-width: 768px) {{
       .page {{ padding: 4px; }}
       .hero {{ border-radius: 10px; padding: 8px 10px 7px; margin-bottom: 4px; }}
       .board {{ padding: 3px; border-radius: 10px; }}
-      .chart-stack {{ gap: 3px; grid-template-rows: minmax(300px, 58vh) minmax(90px, 14vh) minmax(120px, 19vh); }}
+      .chart-stack {{ gap: 3px; min-height: 560px; height: calc(100vh - 92px); }}
       .legend {{ top: 38px; font-size: 11px; padding: 7px 8px; }}
       .kv {{ margin-right: 8px; }}
     }}
@@ -658,13 +724,18 @@ def build_html_template(payload: dict) -> str:
     </section>
     <section class=\"board\">
       <div class=\"chart-stack\">
-        <div class=\"pane\">
+        <div class=\"pane price-pane\" data-pane=\"price\">
           <div class=\"pane-label\">Price + MA</div>
+          <div class=\"pane-controls\"><button id=\"priceScaleToggle\" class=\"control-btn\" type=\"button\">價格軸：自動</button></div>
           <div id=\"legend\" class=\"legend\"></div>
           <div id=\"mainChart\" class=\"chart\"></div>
         </div>
-        <div class=\"pane\"><div class=\"pane-label\">Volume</div><div id=\"volumeChart\" class=\"chart\"></div></div>
-        <div class=\"pane\"><div class=\"pane-label\">MACD 21 / 55 / 55</div><div id=\"macdChart\" class=\"chart\"></div></div>
+        <div class=\"resize-handle\" data-resize-before=\"price\" data-resize-after=\"volume\"></div>
+        <div class=\"pane indicator-pane\" data-pane=\"volume\"><div class=\"pane-label\">Volume</div><div class=\"pane-controls\"><button class=\"control-btn\" type=\"button\" data-toggle-pane=\"volume\">收合</button></div><div id=\"volumeChart\" class=\"chart\"></div></div>
+        <div class=\"resize-handle\" data-resize-before=\"volume\" data-resize-after=\"kd\"></div>
+        <div class=\"pane indicator-pane\" data-pane=\"kd\"><div class=\"pane-label\">KD 9 / 9 / 55</div><div class=\"pane-controls\"><button class=\"control-btn\" type=\"button\" data-toggle-pane=\"kd\">收合</button></div><div id=\"kdChart\" class=\"chart\"></div></div>
+        <div class=\"resize-handle\" data-resize-before=\"kd\" data-resize-after=\"macd\"></div>
+        <div class=\"pane macd-pane\" data-pane=\"macd\"><div class=\"pane-label\">MACD 21 / 55 / 55</div><div class=\"pane-controls\"><button class=\"control-btn\" type=\"button\" data-toggle-pane=\"macd\">收合</button></div><div id=\"macdChart\" class=\"chart\"></div></div>
       </div>
     </section>
   </div>
@@ -763,6 +834,7 @@ def build_html_template(payload: dict) -> str:
 
     const mainContainer = document.getElementById('mainChart');
     const volumeContainer = document.getElementById('volumeChart');
+    const kdContainer = document.getElementById('kdChart');
     const macdContainer = document.getElementById('macdChart');
 
     function makeChart(container, extraOptions = {{}}) {{
@@ -777,6 +849,9 @@ def build_html_template(payload: dict) -> str:
     const mainChart = makeChart(mainContainer);
     const volumeChart = makeChart(volumeContainer, {{
       rightPriceScale: {{ scaleMargins: {{ top: 0.1, bottom: 0.15 }}, borderColor: 'rgba(122, 148, 186, 0.18)' }},
+    }});
+    const kdChart = makeChart(kdContainer, {{
+      rightPriceScale: {{ scaleMargins: {{ top: 0.12, bottom: 0.12 }}, borderColor: 'rgba(122, 148, 186, 0.18)' }},
     }});
     const macdChart = makeChart(macdContainer, {{
       rightPriceScale: {{ scaleMargins: {{ top: 0.12, bottom: 0.12 }}, borderColor: 'rgba(122, 148, 186, 0.18)' }},
@@ -831,11 +906,25 @@ def build_html_template(payload: dict) -> str:
       {{ priceLineVisible: false, lastValueVisible: false }},
       'addHistogramSeries',
     );
+    const kSeries = addSeriesCompat(
+      kdChart,
+      'LineSeries',
+      {{ color: '#f6c453', lineWidth: 2, priceLineVisible: false }},
+      'addLineSeries',
+    );
+    const dSeries = addSeriesCompat(
+      kdChart,
+      'LineSeries',
+      {{ color: '#7aa2ff', lineWidth: 2, priceLineVisible: false }},
+      'addLineSeries',
+    );
 
     candleSeries.setData(payload.candles);
     ma21Series.setData(payload.ma21);
     ma105Series.setData(payload.ma105);
     volumeSeries.setData(payload.volume);
+    kSeries.setData(payload.k);
+    dSeries.setData(payload.d);
     difSeries.setData(payload.dif);
     deaSeries.setData(payload.dea);
     histSeries.setData(payload.histogram);
@@ -861,6 +950,8 @@ def build_html_template(payload: dict) -> str:
         `<span class=\"kv ma105\">MA105 <strong>${{formatNumber(extras.ma105)}}</strong></span>`,
         `<span class=\"kv dif\">DIF <strong>${{formatMacd(extras.dif)}}</strong></span>`,
         `<span class=\"kv dea\">DEA <strong>${{formatMacd(extras.dea)}}</strong></span>`,
+        `<span class=\"kv kd-k\">K <strong>${{formatMacd(extras.k)}}</strong></span>`,
+        `<span class=\"kv kd-d\">D <strong>${{formatMacd(extras.d)}}</strong></span>`,
         `<span class=\"kv ${{histClass}}\">Hist <strong>${{formatMacd(extras.histogram)}}</strong></span>`,
       ].join('');
     }}
@@ -885,25 +976,165 @@ def build_html_template(payload: dict) -> str:
       }});
     }}
 
-    syncVisibleRange(mainChart, [volumeChart, macdChart]);
-    syncVisibleRange(volumeChart, [mainChart, macdChart]);
-    syncVisibleRange(macdChart, [mainChart, volumeChart]);
+    syncVisibleRange(mainChart, [volumeChart, kdChart, macdChart]);
+    syncVisibleRange(volumeChart, [mainChart, kdChart, macdChart]);
+    syncVisibleRange(kdChart, [mainChart, volumeChart, macdChart]);
+    syncVisibleRange(macdChart, [mainChart, volumeChart, kdChart]);
 
     bindLegend(mainChart);
     bindLegend(volumeChart);
+    bindLegend(kdChart);
     bindLegend(macdChart);
     renderLegend(payload.candles[payload.candles.length - 1]?.time);
 
     mainChart.timeScale().fitContent();
     volumeChart.timeScale().fitContent();
+    kdChart.timeScale().fitContent();
     macdChart.timeScale().fitContent();
 
-    const resizeObserver = new ResizeObserver(() => {{
-      mainChart.applyOptions({{ width: mainContainer.clientWidth, height: mainContainer.clientHeight }});
-      volumeChart.applyOptions({{ width: volumeContainer.clientWidth, height: volumeContainer.clientHeight }});
-      macdChart.applyOptions({{ width: macdContainer.clientWidth, height: macdContainer.clientHeight }});
+    const chartsByPane = {{ price: mainChart, volume: volumeChart, kd: kdChart, macd: macdChart }};
+    const containersByPane = {{ price: mainContainer, volume: volumeContainer, kd: kdContainer, macd: macdContainer }};
+    const paneElements = {{
+      price: document.querySelector('[data-pane="price"]'),
+      volume: document.querySelector('[data-pane="volume"]'),
+      kd: document.querySelector('[data-pane="kd"]'),
+      macd: document.querySelector('[data-pane="macd"]'),
+    }};
+    const chartStack = document.querySelector('.chart-stack');
+    const indicatorKeys = ['volume', 'kd', 'macd'];
+    const collapsedPaneHeight = 34;
+    const minPriceHeight = 180;
+    const minIndicatorHeight = 70;
+    const defaultPaneHeights = {{ volume: 110, kd: 110, macd: 150 }};
+
+    function getPaneHeight(pane) {{
+      return pane.getBoundingClientRect().height || parseFloat(pane.style.height) || 0;
+    }}
+
+    function setPaneHeight(pane, height) {{
+      pane.style.height = `${{Math.max(34, height)}}px`;
+    }}
+
+    function getAvailablePaneHeight() {{
+      const handlesHeight = Array.from(document.querySelectorAll('.resize-handle'))
+        .reduce((total, handle) => total + handle.getBoundingClientRect().height, 0);
+      return Math.max(360, chartStack.getBoundingClientRect().height - handlesHeight);
+    }}
+
+    function normalizePaneHeights() {{
+      const availableHeight = getAvailablePaneHeight();
+      const expandedKeys = indicatorKeys.filter((key) => !paneElements[key].classList.contains('collapsed'));
+      let usedIndicatorHeight = 0;
+
+      indicatorKeys.forEach((key) => {{
+        const pane = paneElements[key];
+        if (pane.classList.contains('collapsed')) {{
+          setPaneHeight(pane, collapsedPaneHeight);
+          usedIndicatorHeight += collapsedPaneHeight;
+          return;
+        }}
+        const targetHeight = Math.max(
+          minIndicatorHeight,
+          getPaneHeight(pane) || Number(pane.dataset.expandedHeight) || defaultPaneHeights[key],
+        );
+        setPaneHeight(pane, targetHeight);
+        usedIndicatorHeight += targetHeight;
+      }});
+
+      const maxIndicatorHeight = Math.max(0, availableHeight - minPriceHeight);
+      if (usedIndicatorHeight > maxIndicatorHeight && expandedKeys.length) {{
+        const overflow = usedIndicatorHeight - maxIndicatorHeight;
+        const shrinkable = expandedKeys
+          .map((key) => [key, Math.max(0, getPaneHeight(paneElements[key]) - minIndicatorHeight)])
+          .filter(([, amount]) => amount > 0);
+        const totalShrinkable = shrinkable.reduce((total, [, amount]) => total + amount, 0);
+        shrinkable.forEach(([key, amount]) => {{
+          const shrink = totalShrinkable ? overflow * (amount / totalShrinkable) : overflow / shrinkable.length;
+          setPaneHeight(paneElements[key], getPaneHeight(paneElements[key]) - shrink);
+        }});
+        usedIndicatorHeight = indicatorKeys.reduce((total, key) => total + getPaneHeight(paneElements[key]), 0);
+      }}
+
+      setPaneHeight(paneElements.price, Math.max(minPriceHeight, availableHeight - usedIndicatorHeight));
+    }}
+
+    function toggleIndicatorPane(paneKey, button) {{
+      const pane = paneElements[paneKey];
+      if (!pane) return;
+
+      if (pane.classList.contains('collapsed')) {{
+        const restoreHeight = Number(pane.dataset.expandedHeight || 110);
+        pane.classList.remove('collapsed');
+        setPaneHeight(pane, restoreHeight);
+        button.textContent = '收合';
+      }} else {{
+        const currentHeight = getPaneHeight(pane);
+        pane.dataset.expandedHeight = String(currentHeight);
+        pane.classList.add('collapsed');
+        button.textContent = '展開';
+      }}
+
+      normalizePaneHeights();
+      requestAnimationFrame(resizeCharts);
+    }}
+
+    function resizeCharts() {{
+      Object.entries(chartsByPane).forEach(([key, chart]) => {{
+        const container = containersByPane[key];
+        if (!container || container.offsetParent === null) return;
+        chart.applyOptions({{ width: container.clientWidth, height: container.clientHeight }});
+      }});
+    }}
+
+    let autoPriceScale = true;
+    const priceScaleToggle = document.getElementById('priceScaleToggle');
+    priceScaleToggle.addEventListener('click', () => {{
+      autoPriceScale = !autoPriceScale;
+      mainChart.priceScale('right').applyOptions({{ autoScale: autoPriceScale }});
+      priceScaleToggle.textContent = autoPriceScale ? '價格軸：自動' : '價格軸：手動';
     }});
-    [mainContainer, volumeContainer, macdContainer].forEach((container) => resizeObserver.observe(container));
+
+    document.querySelectorAll('[data-toggle-pane]').forEach((button) => {{
+      button.addEventListener('click', () => {{
+        toggleIndicatorPane(button.dataset.togglePane, button);
+      }});
+    }});
+
+    document.querySelectorAll('.resize-handle').forEach((handle) => {{
+      handle.addEventListener('pointerdown', (event) => {{
+        event.preventDefault();
+        const beforePane = document.querySelector(`[data-pane="${{handle.dataset.resizeBefore}}"]`);
+        const afterPane = document.querySelector(`[data-pane="${{handle.dataset.resizeAfter}}"]`);
+        if (!beforePane || !afterPane || beforePane.classList.contains('collapsed') || afterPane.classList.contains('collapsed')) return;
+        const startY = event.clientY;
+        const beforeStart = beforePane.getBoundingClientRect().height;
+        const afterStart = afterPane.getBoundingClientRect().height;
+        const move = (moveEvent) => {{
+          const delta = moveEvent.clientY - startY;
+          const beforeHeight = Math.max(80, beforeStart + delta);
+          const afterHeight = Math.max(70, afterStart - delta);
+          beforePane.style.height = `${{beforeHeight}}px`;
+          afterPane.style.height = `${{afterHeight}}px`;
+          resizeCharts();
+        }};
+        const up = () => {{
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+        }};
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      }});
+    }});
+
+    const resizeObserver = new ResizeObserver(() => {{
+      normalizePaneHeights();
+      resizeCharts();
+    }});
+    resizeObserver.observe(chartStack);
+    requestAnimationFrame(() => {{
+      normalizePaneHeights();
+      resizeCharts();
+    }});
   </script>
 </body>
 </html>

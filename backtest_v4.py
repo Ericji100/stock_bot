@@ -104,9 +104,15 @@ def get_backtest_report(symbol, strategy_input, max_positions=3, start_date="201
                             if not green.empty:
                                 red_s = green.index[-1] + pd.Timedelta(days=1)
                                 df_rz = df.loc[red_s : df.index[i-1]]
-                                if not df_rz.empty and (df_rz['Low'] <= df_rz['MA21']).any():
-                                    if today['Close'] > df_rz['High'].max() and today['Close'] > today['MA21']:
-                                        trigger = True; needs_cooldown_b = True
+                                if not df_rz.empty:
+                                    touch_days = df_rz.index[df_rz['Low'] <= df_rz['MA21']]
+                                    if len(touch_days) > 0:
+                                        touch_pos = df_rz.index.get_loc(touch_days[-1])
+                                        df_pre_touch = df_rz.iloc[:touch_pos]
+                                        if not df_pre_touch.empty:
+                                            breakout_high = df_pre_touch['High'].max()
+                                            if yesterday['Close'] <= breakout_high and today['Close'] > breakout_high and today['Close'] > today['MA21']:
+                                                trigger = True; needs_cooldown_b = True
                     elif mode == "C":
                         if today['MACD_Hist'] < 0 and can_trade_c:
                             if (yesterday['Close'] < yesterday['MA21']) and (today['Close'] > today['MA21']): trigger = True

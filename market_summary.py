@@ -74,6 +74,9 @@ def build_morning_market_report(reference_time: datetime | None = None) -> str:
             "",
             "🇹🇼 台指期 (夜盤收盤)：",
             *tx_lines,
+            "",
+            f"資料日期：{report_time.date().isoformat()}",
+            "資料來源：Yahoo Finance / TAIFEX / 本機快取",
         ]
     )
 
@@ -103,6 +106,9 @@ def build_noon_market_report(reference_time: datetime | None = None) -> str:
             "",
             "🇹🇼 台指期 (日盤收盤)：",
             *tx_lines,
+            "",
+            f"資料日期：{report_date.isoformat()}",
+            "資料來源：TWSE MIS / TAIFEX / 本機快取",
         ]
     )
 

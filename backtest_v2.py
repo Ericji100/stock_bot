@@ -75,10 +75,14 @@ def get_backtest_report(symbol, strategy_mode, years=2, verbose=False):
                             red_start_date = green_days.index[-1] + pd.Timedelta(days=1)
                             df_red_zone = df.loc[red_start_date : df.index[i-1]]
                             if not df_red_zone.empty:
-                                had_touch = (df_red_zone['Low'] <= df_red_zone['MA21']).any()
-                                period_high = df_red_zone['High'].max()
-                                if not needs_cooldown and had_touch and today['Close'] > period_high and today['Close'] > today['MA21']:
-                                    trigger_entry = True
+                                touch_days = df_red_zone.index[df_red_zone['Low'] <= df_red_zone['MA21']]
+                                if len(touch_days) > 0:
+                                    touch_pos = df_red_zone.index.get_loc(touch_days[-1])
+                                    df_pre_touch = df_red_zone.iloc[:touch_pos]
+                                    if not df_pre_touch.empty:
+                                        breakout_high = df_pre_touch['High'].max()
+                                        if not needs_cooldown and yesterday['Close'] <= breakout_high and today['Close'] > breakout_high and today['Close'] > today['MA21']:
+                                            trigger_entry = True
 
                 # --- [位置 3] 策略 C 入場邏輯 ---
                 elif strategy_mode == "C":

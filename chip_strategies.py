@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable
 
 import httpx
@@ -45,6 +47,41 @@ TRADING_DAY_LOOKBACK = 120
 TDCC_TARGET_WEEKS = 8
 SOURCE_COOLDOWN_SECONDS = 30 * 60
 FINMIND_MAX_FALLBACK_STOCKS_PER_DATE = 50
+CHIP_PROGRESS_DEFAULT_LABEL = "籌碼資料"
+SOURCE_MIN_INTERVAL_SECONDS = {
+    "twse_t86": 3.0,
+    "twse_mi_qfiis": 3.0,
+    "tpex_qfii": 3.0,
+    "tpex_sitc": 3.0,
+    "finmind": 1.2,
+    "tdcc": 3.0,
+}
+SOURCE_BACKOFF_SECONDS = [60, 300, SOURCE_COOLDOWN_SECONDS]
+SOURCE_LABELS = {
+    "twse_t86": "TWSE",
+    "twse_mi_qfiis": "TWSE",
+    "tpex_qfii": "TPEX",
+    "tpex_sitc": "TPEX",
+    "finmind": "FinMind",
+    "tdcc": "TDCC",
+}
+
+
+def _print_chip_progress(label: str, progress: float, message: str) -> None:
+    print(f"[選股進度][{label}] {progress:.2f}% {message}", flush=True)
+
+
+def _chip_progress_value(
+    progress_start: float,
+    progress_end: float,
+    collected_days: int,
+    checked_days: int,
+    target_days: int = TARGET_DAILY_TRADING_DAYS,
+) -> float:
+    collected_fraction = min(1.0, collected_days / max(1, target_days))
+    checked_fraction = min(1.0, checked_days / max(1, TRADING_DAY_LOOKBACK))
+    fraction = min(0.98, collected_fraction * 0.85 + checked_fraction * 0.15)
+    return progress_start + (progress_end - progress_start) * fraction
 
 TDCC_RETAIL_BUCKETS = {1, 2, 3, 4, 5, 6, 7, 8}
 TDCC_BIG_BUCKETS = {12, 13, 14, 15}
@@ -118,6 +155,8 @@ class HardFilterCandidate:
 class ChipMarketContext:
     report_date: date
     latest_trading_date: date | None
+    total_symbols: int
+    scan_settings: dict[str, float]
     candidates: pd.DataFrame
     daily_data: pd.DataFrame
     weekly_data: pd.DataFrame
@@ -145,6 +184,9 @@ def _write_json(path: Path, payload: Any) -> None:
 
 
 SOURCE_COOLDOWNS: dict[str, datetime] = {}
+SOURCE_FAILURE_COUNTS: dict[str, int] = {}
+SOURCE_LAST_REQUEST_AT: dict[str, float] = {}
+SOURCE_LOCK = Lock()
 
 
 def _is_source_available(source_key: str) -> bool:
@@ -156,6 +198,32 @@ def _is_source_available(source_key: str) -> bool:
 
 def _mark_source_cooldown(source_key: str) -> None:
     SOURCE_COOLDOWNS[source_key] = datetime.now(TIMEZONE) + timedelta(seconds=SOURCE_COOLDOWN_SECONDS)
+
+
+def _mark_source_failure(source_key: str) -> None:
+    failures = SOURCE_FAILURE_COUNTS.get(source_key, 0) + 1
+    SOURCE_FAILURE_COUNTS[source_key] = failures
+    backoff_seconds = SOURCE_BACKOFF_SECONDS[min(failures - 1, len(SOURCE_BACKOFF_SECONDS) - 1)]
+    SOURCE_COOLDOWNS[source_key] = datetime.now(TIMEZONE) + timedelta(seconds=backoff_seconds)
+    print(
+        f"[資料來源][{SOURCE_LABELS.get(source_key, source_key)}] 失敗 {failures} 次，暫停 {backoff_seconds // 60 if backoff_seconds >= 60 else backoff_seconds} {'分鐘' if backoff_seconds >= 60 else '秒'}",
+        flush=True,
+    )
+
+
+def _mark_source_success(source_key: str) -> None:
+    SOURCE_FAILURE_COUNTS.pop(source_key, None)
+    SOURCE_COOLDOWNS.pop(source_key, None)
+
+
+def _wait_for_source_slot(source_key: str) -> None:
+    interval = SOURCE_MIN_INTERVAL_SECONDS.get(source_key, 3.0)
+    with SOURCE_LOCK:
+        now = time.monotonic()
+        wait_seconds = interval - (now - SOURCE_LAST_REQUEST_AT.get(source_key, 0.0))
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        SOURCE_LAST_REQUEST_AT[source_key] = time.monotonic()
 
 
 def _to_float(value: Any) -> float | None:
@@ -215,7 +283,7 @@ def _wrap_report_members(members: list[str], max_line_length: int = 180) -> list
 
 
 def _render_bucket(title: str, industry_groups: dict[str, list[str]]) -> list[str]:
-    lines = [title]
+    lines = ["", title]
     if not industry_groups:
         lines.extend([_format_report_members([]), ""])
         return lines
@@ -223,7 +291,7 @@ def _render_bucket(title: str, industry_groups: dict[str, list[str]]) -> list[st
     for industry in sorted(industry_groups, key=lambda value: (value == UNCLASSIFIED_INDUSTRY, value)):
         lines.append(f"  【{industry}】")
         lines.extend(_wrap_report_members(industry_groups[industry]))
-    lines.append("")
+        lines.append("")
     return lines
 
 
@@ -260,12 +328,43 @@ def _fetch_json(client: httpx.Client, url: str, params: dict[str, Any] | None = 
     return response.json()
 
 
+def _fetch_source_json(
+    client: httpx.Client,
+    source_key: str,
+    url: str,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    if not _is_source_available(source_key):
+        raise RuntimeError(f"{source_key} is cooling down")
+    _wait_for_source_slot(source_key)
+    response = client.get(
+        url,
+        params=params,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+            "Referer": "https://www.twse.com.tw/",
+        },
+    )
+    if response.status_code in {301, 302, 303, 307, 308, 429}:
+        _mark_source_failure(source_key)
+        raise RuntimeError(f"{source_key} blocked or redirected: HTTP {response.status_code}")
+    try:
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        _mark_source_failure(source_key)
+        raise
+    _mark_source_success(source_key)
+    return payload
+
+
 def _daily_chip_cache_path(target_date: date) -> Path:
     return DAILY_CHIP_CACHE_DIR / f"{target_date.strftime('%Y%m%d')}.csv"
 
 
 def _normalize_daily_chip_frame(frame: pd.DataFrame, target_date: date | None = None) -> pd.DataFrame:
-    columns = ["date", "code", "market", "foreign_net_lots", "trust_net_lots", "foreign_ratio_pct"]
+    columns = ["date", "code", "market", "foreign_net_lots", "trust_net_lots", "foreign_ratio_pct", "source"]
     if frame.empty:
         return pd.DataFrame(columns=columns)
 
@@ -279,6 +378,8 @@ def _normalize_daily_chip_frame(frame: pd.DataFrame, target_date: date | None = 
     normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce").dt.date
     normalized["code"] = normalized["code"].astype(str).str.strip()
     normalized["market"] = normalized["market"].astype(str).replace({"nan": ""})
+    normalized["source"] = normalized["source"].fillna("cache").astype(str).str.strip()
+    normalized.loc[normalized["source"].isin(["", "nan", "None"]), "source"] = "cache"
     for column in ("foreign_net_lots", "trust_net_lots", "foreign_ratio_pct"):
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
 
@@ -325,10 +426,9 @@ def _save_daily_chip_cache(target_date: date, frame: pd.DataFrame) -> None:
 
 
 def _finmind_payload(client: httpx.Client, params: dict[str, Any]) -> list[dict[str, Any]]:
-    response = client.get(FINMIND_API_URL, params=params)
-    response.raise_for_status()
-    payload = response.json()
+    payload = _fetch_source_json(client, "finmind", FINMIND_API_URL, params=params)
     if payload.get("status") != 200:
+        _mark_source_failure("finmind")
         raise RuntimeError(str(payload.get("msg") or "FinMind request failed"))
     data = payload.get("data") or []
     return data if isinstance(data, list) else []
@@ -442,14 +542,17 @@ def _build_hard_filter_candidates(report_date: date, force_refresh: bool = False
         )
 
     frame = pd.DataFrame(rows)
+    frame.attrs["total_symbols"] = len(universe)
+    frame.attrs["scan_settings"] = dict(HARD_FILTERS)
     if frame.empty:
         return frame
     return frame.sort_values("code").reset_index(drop=True)
 
 
 def _fetch_twse_net_buy_for_date(client: httpx.Client, target_date: date, candidate_codes: set[str]) -> pd.DataFrame:
-    payload = _fetch_json(
+    payload = _fetch_source_json(
         client,
+        "twse_t86",
         TWSE_FUND_T86_URL,
         params={"response": "json", "date": target_date.strftime("%Y%m%d"), "selectType": "ALL"},
     )
@@ -467,6 +570,7 @@ def _fetch_twse_net_buy_for_date(client: httpx.Client, target_date: date, candid
                 "code": code,
                 "foreign_net_lots": _to_lots_from_shares(row[4]) or 0.0,
                 "trust_net_lots": _to_lots_from_shares(row[10]) or 0.0,
+                "source": "TWSE",
             }
         )
     return pd.DataFrame(rows)
@@ -478,8 +582,9 @@ def _fetch_twse_foreign_ratio_for_date(client: httpx.Client, target_date: date, 
     for select_type in TWSE_FOREIGN_RATIO_SELECT_TYPES:
         if not remaining_codes:
             break
-        payload = _fetch_json(
+        payload = _fetch_source_json(
             client,
+            "twse_mi_qfiis",
             TWSE_FOREIGN_HOLDING_URL,
             params={"response": "json", "date": target_date.strftime("%Y%m%d"), "selectType": select_type},
         )
@@ -491,15 +596,16 @@ def _fetch_twse_foreign_ratio_for_date(client: httpx.Client, target_date: date, 
             if code not in remaining_codes:
                 continue
             ratio = _to_float(row[7])
-            rows.append({"date": target_date, "code": code, "foreign_ratio_pct": ratio})
+            rows.append({"date": target_date, "code": code, "foreign_ratio_pct": ratio, "source": "TWSE"})
             remaining_codes.discard(code)
     return pd.DataFrame(rows)
 
 
-def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, sort_key: str) -> dict[str, float]:
+def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, sort_key: str, source_key: str) -> dict[str, float]:
     roc_date = f"{target_date.year - 1911:03d}/{target_date.month:02d}/{target_date.day:02d}"
-    payload = _fetch_json(
+    payload = _fetch_source_json(
         client,
+        source_key,
         url,
         params={"date": roc_date, "type": "Daily", sort_key: "buy"},
     )
@@ -515,8 +621,8 @@ def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, s
 
 def _fetch_tpex_net_buy_for_date(client: httpx.Client, target_date: date, candidate_codes: set[str]) -> pd.DataFrame:
     try:
-        foreign_map = _fetch_tpex_net_payload(client, target_date, TPEX_QFII_URL, "searchType")
-        trust_map = _fetch_tpex_net_payload(client, target_date, TPEX_SITC_URL, "searchType")
+        foreign_map = _fetch_tpex_net_payload(client, target_date, TPEX_QFII_URL, "searchType", "tpex_qfii")
+        trust_map = _fetch_tpex_net_payload(client, target_date, TPEX_SITC_URL, "searchType", "tpex_sitc")
     except Exception:
         return pd.DataFrame()
 
@@ -530,6 +636,7 @@ def _fetch_tpex_net_buy_for_date(client: httpx.Client, target_date: date, candid
                 "code": code,
                 "foreign_net_lots": float(foreign_map.get(code, 0.0)),
                 "trust_net_lots": float(trust_map.get(code, 0.0)),
+                "source": "TPEX",
             }
         )
     return pd.DataFrame(rows)
@@ -571,20 +678,29 @@ def _fetch_finmind_net_buy_for_stock(client: httpx.Client, target_date: date, co
                 "market": market,
                 "foreign_net_lots": foreign_net_shares / 1000.0,
                 "trust_net_lots": trust_net_shares / 1000.0,
+                "source": "FinMind",
             }
         ]
     )
 
 
-def _fetch_finmind_net_buy_for_codes(client: httpx.Client, target_date: date, code_market_map: dict[str, str]) -> pd.DataFrame:
+def _fetch_finmind_net_buy_for_codes(
+    client: httpx.Client,
+    target_date: date,
+    code_market_map: dict[str, str],
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> pd.DataFrame:
     if not _is_source_available("finmind"):
         return pd.DataFrame()
     frames: list[pd.DataFrame] = []
-    for code, market in sorted(code_market_map.items())[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]:
+    items = sorted(code_market_map.items())[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]
+    total = len(items)
+    for index, (code, market) in enumerate(items, start=1):
+        if progress_callback and (index == 1 or index % 5 == 0 or index == total):
+            progress_callback(index, total, f"FinMind 法人買賣超補資料 {target_date.isoformat()} {index}/{total}")
         try:
             frame = _fetch_finmind_net_buy_for_stock(client, target_date, code, market)
         except Exception:
-            _mark_source_cooldown("finmind")
             continue
         if not frame.empty:
             frames.append(frame)
@@ -612,19 +728,27 @@ def _fetch_finmind_foreign_ratio_for_stock(client: httpx.Client, target_date: da
             or _to_float(row.get("foreign_investment_shares_ratio"))
         )
         if ratio is not None:
-            return pd.DataFrame([{"date": target_date, "code": code, "foreign_ratio_pct": ratio}])
+            return pd.DataFrame([{"date": target_date, "code": code, "foreign_ratio_pct": ratio, "source": "FinMind"}])
     return pd.DataFrame()
 
 
-def _fetch_finmind_foreign_ratio_for_codes(client: httpx.Client, target_date: date, codes: set[str]) -> pd.DataFrame:
+def _fetch_finmind_foreign_ratio_for_codes(
+    client: httpx.Client,
+    target_date: date,
+    codes: set[str],
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> pd.DataFrame:
     if not _is_source_available("finmind"):
         return pd.DataFrame()
     frames: list[pd.DataFrame] = []
-    for code in sorted(codes)[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]:
+    code_list = sorted(codes)[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]
+    total = len(code_list)
+    for index, code in enumerate(code_list, start=1):
+        if progress_callback and (index == 1 or index % 5 == 0 or index == total):
+            progress_callback(index, total, f"FinMind 外資持股比例補資料 {target_date.isoformat()} {index}/{total}")
         try:
             frame = _fetch_finmind_foreign_ratio_for_stock(client, target_date, code)
         except Exception:
-            _mark_source_cooldown("finmind")
             continue
         if not frame.empty:
             frames.append(frame)
@@ -633,10 +757,18 @@ def _fetch_finmind_foreign_ratio_for_codes(client: httpx.Client, target_date: da
     return pd.concat(frames, ignore_index=True)
 
 
-def _fetch_recent_daily_chip_data(report_date: date, candidates: pd.DataFrame) -> tuple[pd.DataFrame, date | None]:
+def _fetch_recent_daily_chip_data(
+    report_date: date,
+    candidates: pd.DataFrame,
+    progress_label: str = CHIP_PROGRESS_DEFAULT_LABEL,
+    progress_start: float = 0.0,
+    progress_end: float = 100.0,
+    target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+) -> tuple[pd.DataFrame, date | None]:
     if candidates.empty:
         return pd.DataFrame(), None
 
+    _print_chip_progress(progress_label, progress_start, f"準備法人日資料，候選 {len(candidates)} 檔")
     candidate_codes = set(candidates["code"].astype(str).tolist())
     twse_codes = set(candidates.loc[candidates["market"] == "TWSE", "code"].tolist())
     tpex_codes = set(candidates.loc[candidates["market"] == "TPEX", "code"].tolist())
@@ -646,41 +778,116 @@ def _fetch_recent_daily_chip_data(report_date: date, candidates: pd.DataFrame) -
 
     calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
-        for target_date in calendar:
+        for checked_index, target_date in enumerate(calendar, start=1):
+            progress = _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days)
+            _print_chip_progress(
+                progress_label,
+                progress,
+                f"檢查 {target_date.isoformat()}，已收集 {len(collected_dates)}/{target_trading_days} 個交易日",
+            )
+
+            def progress_callback(index: int, total: int, message: str) -> None:
+                finmind_fraction = index / max(1, total)
+                callback_progress = min(progress_end - 0.01, progress + (progress_end - progress) * 0.015 * finmind_fraction)
+                _print_chip_progress(progress_label, callback_progress, message)
+
             cached_net = _load_daily_chip_cache(target_date, candidate_codes)
             cached_codes = set(cached_net["code"].tolist()) if not cached_net.empty else set()
             missing_twse_codes = twse_codes - cached_codes
             missing_tpex_codes = tpex_codes - cached_codes
+            if cached_codes:
+                _print_chip_progress(
+                    progress_label,
+                    progress,
+                    f"本機快取 {target_date.isoformat()} 已有 {len(cached_codes)}/{len(candidate_codes)} 檔，僅補缺口",
+                )
+            else:
+                _print_chip_progress(
+                    progress_label,
+                    progress,
+                    f"本機快取 {target_date.isoformat()} 無可用資料，準備抓官方資料",
+                )
 
             fetched_frames: list[pd.DataFrame] = []
             if missing_twse_codes:
                 if _is_source_available("twse_t86"):
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"嘗試 TWSE T86 {target_date.isoformat()}，上市缺口 {len(missing_twse_codes)} 檔",
+                    )
                     try:
                         twse_net = _fetch_twse_net_buy_for_date(client, target_date, missing_twse_codes)
-                    except Exception:
-                        _mark_source_cooldown("twse_t86")
+                    except Exception as exc:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TWSE T86 {target_date.isoformat()} 失敗，將改用 FinMind 補上市缺口：{exc}",
+                        )
                         twse_net = pd.DataFrame()
                 else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE T86 目前冷卻中，{target_date.isoformat()} 上市缺口改用 FinMind",
+                    )
                     twse_net = pd.DataFrame()
                 if not twse_net.empty:
                     twse_net = twse_net.assign(market="TWSE")
                     fetched_frames.append(twse_net)
                     _save_daily_chip_cache(target_date, twse_net)
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE T86 {target_date.isoformat()} 成功，補到 {len(twse_net)}/{len(missing_twse_codes)} 檔",
+                    )
+                else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE T86 {target_date.isoformat()} 未補到上市缺口",
+                    )
 
                 fetched_twse_codes = set(twse_net["code"].tolist()) if not twse_net.empty else set()
                 finmind_twse_codes = missing_twse_codes - fetched_twse_codes
                 if finmind_twse_codes:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"剩餘上市缺口 {len(finmind_twse_codes)} 檔，改用 FinMind 單檔補資料",
+                    )
                     finmind_map = {code: code_market_map[code] for code in finmind_twse_codes if code in code_market_map}
-                    finmind_net = _fetch_finmind_net_buy_for_codes(client, target_date, finmind_map)
+                    finmind_net = _fetch_finmind_net_buy_for_codes(
+                        client,
+                        target_date,
+                        finmind_map,
+                        progress_callback,
+                    )
                     if not finmind_net.empty:
                         fetched_frames.append(finmind_net)
 
             if missing_tpex_codes:
+                _print_chip_progress(
+                    progress_label,
+                    progress,
+                    f"嘗試 TPEX 官方法人資料 {target_date.isoformat()}，上櫃缺口 {len(missing_tpex_codes)} 檔",
+                )
                 tpex_net = _fetch_tpex_net_buy_for_date(client, target_date, missing_tpex_codes)
                 if not tpex_net.empty:
                     tpex_net = tpex_net.assign(market="TPEX")
                     fetched_frames.append(tpex_net)
                     _save_daily_chip_cache(target_date, tpex_net)
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TPEX 官方法人資料 {target_date.isoformat()} 成功，補到 {len(tpex_net)}/{len(missing_tpex_codes)} 檔",
+                    )
+                else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TPEX 官方法人資料 {target_date.isoformat()} 未補到上櫃缺口",
+                    )
 
             date_frames = []
             if not cached_net.empty:
@@ -705,41 +912,93 @@ def _fetch_recent_daily_chip_data(report_date: date, candidates: pd.DataFrame) -
             ratio_missing_codes = twse_date_codes - cached_ratio_codes
             if ratio_missing_codes:
                 if _is_source_available("twse_mi_qfiis"):
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"嘗試 TWSE MI_QFIIS {target_date.isoformat()}，外資持股比例缺口 {len(ratio_missing_codes)} 檔",
+                    )
                     try:
                         foreign_ratio = _fetch_twse_foreign_ratio_for_date(client, target_date, ratio_missing_codes)
-                    except Exception:
-                        _mark_source_cooldown("twse_mi_qfiis")
+                    except Exception as exc:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TWSE MI_QFIIS {target_date.isoformat()} 失敗，將改用 FinMind 補持股比例：{exc}",
+                        )
                         foreign_ratio = pd.DataFrame()
                 else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE MI_QFIIS 目前冷卻中，{target_date.isoformat()} 外資持股比例改用 FinMind",
+                    )
                     foreign_ratio = pd.DataFrame()
                 fetched_ratio_codes = set(foreign_ratio["code"].tolist()) if not foreign_ratio.empty else set()
+                if fetched_ratio_codes:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE MI_QFIIS {target_date.isoformat()} 成功，補到 {len(fetched_ratio_codes)}/{len(ratio_missing_codes)} 檔",
+                    )
+                else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TWSE MI_QFIIS {target_date.isoformat()} 未補到外資持股比例缺口",
+                    )
                 finmind_ratio_codes = ratio_missing_codes - fetched_ratio_codes
                 if finmind_ratio_codes:
-                    finmind_ratio = _fetch_finmind_foreign_ratio_for_codes(client, target_date, finmind_ratio_codes)
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"剩餘外資持股比例缺口 {len(finmind_ratio_codes)} 檔，改用 FinMind 單檔補資料",
+                    )
+                    finmind_ratio = _fetch_finmind_foreign_ratio_for_codes(
+                        client,
+                        target_date,
+                        finmind_ratio_codes,
+                        progress_callback,
+                    )
                     if not finmind_ratio.empty:
                         foreign_ratio = pd.concat([foreign_ratio, finmind_ratio], ignore_index=True)
                 if not foreign_ratio.empty:
                     ratio_update = foreign_ratio.drop_duplicates(["date", "code"], keep="last").rename(
-                        columns={"foreign_ratio_pct": "foreign_ratio_pct_update"}
+                        columns={
+                            "foreign_ratio_pct": "foreign_ratio_pct_update",
+                            "source": "foreign_ratio_source",
+                        }
                     )
                     date_net = date_net.merge(
-                        ratio_update,
+                        ratio_update[["date", "code", "foreign_ratio_pct_update", "foreign_ratio_source"]],
                         on=["date", "code"],
                         how="left",
                     )
+                    missing_ratio_mask = date_net["foreign_ratio_pct"].isna() & date_net["foreign_ratio_pct_update"].notna()
                     date_net["foreign_ratio_pct"] = date_net["foreign_ratio_pct"].fillna(
                         date_net["foreign_ratio_pct_update"]
                     )
-                    date_net = date_net.drop(columns=["foreign_ratio_pct_update"])
+                    date_net.loc[missing_ratio_mask, "source"] = (
+                        date_net.loc[missing_ratio_mask, "source"].astype(str)
+                        + "+"
+                        + date_net.loc[missing_ratio_mask, "foreign_ratio_source"].astype(str)
+                    )
+                    date_net = date_net.drop(columns=["foreign_ratio_pct_update", "foreign_ratio_source"])
 
             _save_daily_chip_cache(target_date, date_net)
             collected_frames.append(date_net)
 
             collected_dates.append(target_date)
-            if len(collected_dates) >= TARGET_DAILY_TRADING_DAYS:
+            progress = _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days)
+            _print_chip_progress(
+                progress_label,
+                progress,
+                f"完成 {target_date.isoformat()}，已收集 {len(collected_dates)}/{target_trading_days} 個交易日",
+            )
+            if len(collected_dates) >= target_trading_days:
                 break
 
     if not collected_frames:
+        _print_chip_progress(progress_label, progress_end, "無可用法人日資料")
         return pd.DataFrame(), None
 
     daily_df = pd.concat(collected_frames, ignore_index=True)
@@ -762,10 +1021,17 @@ def _fetch_recent_daily_chip_data(report_date: date, candidates: pd.DataFrame) -
         daily_df["foreign_net_lots"].fillna(0.0) * 1000.0 / daily_df["issued_shares"] * 100.0
     )
     estimated_foreign_ratio = estimated_foreign_ratio.groupby(daily_df["code"]).cumsum()
+    estimated_mask = daily_df["foreign_ratio_pct"].isna()
     daily_df["foreign_ratio_pct"] = daily_df["foreign_ratio_pct"].fillna(estimated_foreign_ratio)
+    daily_df.loc[estimated_mask, "source"] = daily_df.loc[estimated_mask, "source"].astype(str) + "+estimated"
     daily_df["combined_ratio_pct"] = daily_df["foreign_ratio_pct"].fillna(0.0) + daily_df["trust_ratio_pct"].fillna(0.0)
 
     latest_trading_date = max(collected_dates) if collected_dates else None
+    _print_chip_progress(
+        progress_label,
+        progress_end,
+        f"完成，最新交易日 {latest_trading_date.isoformat() if latest_trading_date else '無資料'}",
+    )
     return daily_df, latest_trading_date
 
 
@@ -858,17 +1124,34 @@ def _build_weekly_distribution(candidates: pd.DataFrame) -> pd.DataFrame:
     return aggregated.sort_values(["code", "snapshot_date"]).reset_index(drop=True)
 
 
-def build_market_context(force_refresh: bool = False, report_date: date | None = None, include_daily_data: bool = True) -> ChipMarketContext:
+def build_market_context(
+    force_refresh: bool = False,
+    report_date: date | None = None,
+    include_daily_data: bool = True,
+    progress_label: str = CHIP_PROGRESS_DEFAULT_LABEL,
+    progress_start: float = 0.0,
+    progress_end: float = 100.0,
+    target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+) -> ChipMarketContext:
     report_date = report_date or get_tw_today()
     candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh)
     if include_daily_data:
-        daily_data, latest_trading_date = _fetch_recent_daily_chip_data(report_date, candidates)
+        daily_data, latest_trading_date = _fetch_recent_daily_chip_data(
+            report_date,
+            candidates,
+            progress_label=progress_label,
+            progress_start=progress_start,
+            progress_end=progress_end,
+            target_trading_days=target_trading_days,
+        )
     else:
         daily_data, latest_trading_date = pd.DataFrame(), None
     weekly_data = _build_weekly_distribution(candidates)
     return ChipMarketContext(
         report_date=report_date,
         latest_trading_date=latest_trading_date,
+        total_symbols=int(candidates.attrs.get("total_symbols", len(candidates))),
+        scan_settings=dict(candidates.attrs.get("scan_settings", HARD_FILTERS)),
         candidates=candidates,
         daily_data=daily_data,
         weekly_data=weekly_data,
@@ -897,6 +1180,57 @@ def _candidate_members(context: ChipMarketContext, selector: Callable[[str], str
     return members
 
 
+def _count_strategy_members(members: dict[str, dict[str, list[str]]]) -> int:
+    return sum(len(items) for industry_groups in members.values() for items in industry_groups.values())
+
+
+def _format_context_sources(context: ChipMarketContext) -> str:
+    source_order = ["cache", "TWSE", "TPEX", "FinMind", "estimated", "TDCC"]
+    source_labels = {
+        "cache": "本機快取",
+        "TWSE": "TWSE",
+        "TPEX": "TPEX",
+        "FinMind": "FinMind",
+        "estimated": "估算",
+        "TDCC": "TDCC",
+    }
+    found: set[str] = set()
+    if not context.daily_data.empty and "source" in context.daily_data.columns:
+        for raw_source in context.daily_data["source"].dropna().astype(str):
+            for source in raw_source.replace("/", "+").split("+"):
+                cleaned = source.strip()
+                if cleaned:
+                    found.add(cleaned)
+    if not context.weekly_data.empty:
+        found.add("TDCC")
+        found.add("cache")
+    if not found:
+        return "本機快取 / TWSE / TPEX / FinMind / 估算"
+    ordered = [source_labels[source] for source in source_order if source in found]
+    extras = sorted(source_labels.get(source, source) for source in found if source not in source_order)
+    return " / ".join(ordered + extras)
+
+
+def _format_scan_statistics(context: ChipMarketContext, matched_count: int, data_date_text: str | None = None) -> list[str]:
+    settings = context.scan_settings or HARD_FILTERS
+    min_price = _format_price(float(settings.get("min_price", HARD_FILTERS["min_price"])))
+    max_price = _format_price(float(settings.get("max_price", HARD_FILTERS["max_price"])))
+    min_volume = _format_price(float(settings.get("min_avg_volume_20d", HARD_FILTERS["min_avg_volume_20d"])))
+    resolved_data_date = data_date_text or (context.latest_trading_date.isoformat() if context.latest_trading_date else context.report_date.isoformat())
+    return [
+        "",
+        "掃描統計",
+        f"總掃描範圍：{context.total_symbols} 檔",
+        (
+            f"通過硬篩標的：{len(context.candidates)} 檔 "
+            f"(股價 {min_price}~{max_price} / 均量 > {min_volume})"
+        ),
+        f"符合選股邏輯：{matched_count} 檔",
+        f"資料日期：{resolved_data_date}",
+        f"資料來源：{_format_context_sources(context)}",
+    ]
+
+
 def _render_strategy_template(
     title: str,
     context: ChipMarketContext,
@@ -905,6 +1239,7 @@ def _render_strategy_template(
     members: dict[str, dict[str, list[str]]],
     labels: dict[str, str],
     latest_line: str | None = None,
+    data_date_text: str | None = None,
 ) -> str:
     latest_date_text = context.latest_trading_date.isoformat() if context.latest_trading_date else "無資料"
     lines = [
@@ -920,6 +1255,7 @@ def _render_strategy_template(
     ]
     for grade in ("S", "A", "B"):
         lines.extend(_render_bucket(labels[grade], members.get(grade, [])))
+    lines.extend(_format_scan_statistics(context, _count_strategy_members(members), data_date_text))
     return "\n".join(lines).strip()
 
 
@@ -1151,6 +1487,7 @@ def build_chip_strategy_four_report(context: ChipMarketContext) -> str:
             "B": "🥉 B級 (突發性大戶卡位)",
         },
         latest_line=f"📦 最新集保快照：{latest_snapshot}",
+        data_date_text=latest_snapshot,
     )
 
 
@@ -1161,12 +1498,76 @@ REPORT_BUILDERS: dict[str, Callable[[ChipMarketContext], str]] = {
     "chip_4": build_chip_strategy_four_report,
 }
 
+CHIP_STRATEGY_NAMES = {
+    "chip_1": "60 日法人動態",
+    "chip_2": "投信認養股",
+    "chip_3": "法人持股比例增加",
+    "chip_4": "大戶持股週變化",
+}
 
-def build_chip_reports(strategy_keys: list[str], force_refresh: bool = False, report_date: date | None = None) -> tuple[dict[str, str], ChipMarketContext]:
+CHIP_GRADE_BUILDERS: dict[str, Callable[[ChipMarketContext], dict[str, str]]] = {
+    "chip_1": _strategy_one_grades,
+    "chip_2": _strategy_two_grades,
+    "chip_3": _strategy_three_grades,
+    "chip_4": _strategy_four_grades,
+}
+
+
+def build_chip_grade_maps(context: ChipMarketContext, strategy_keys: list[str]) -> dict[str, dict[str, str]]:
+    return {key: CHIP_GRADE_BUILDERS[key](context) for key in strategy_keys}
+
+
+def build_chip_reports(
+    strategy_keys: list[str],
+    force_refresh: bool = False,
+    report_date: date | None = None,
+    progress_label: str = CHIP_PROGRESS_DEFAULT_LABEL,
+    progress_start: float = 0.0,
+    progress_end: float = 100.0,
+    target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+) -> tuple[dict[str, str], ChipMarketContext]:
     include_daily_data = any(key != "chip_4" for key in strategy_keys)
-    context = build_market_context(force_refresh=force_refresh, report_date=report_date, include_daily_data=include_daily_data)
+    context = build_market_context(
+        force_refresh=force_refresh,
+        report_date=report_date,
+        include_daily_data=include_daily_data,
+        progress_label=progress_label,
+        progress_start=progress_start,
+        progress_end=progress_end,
+        target_trading_days=target_trading_days,
+    )
     reports = {key: REPORT_BUILDERS[key](context) for key in strategy_keys}
     return reports, context
+
+
+def warmup_chip_data_cache(
+    report_date: date | None = None,
+    full_backfill: bool = False,
+    force_refresh: bool = False,
+    progress_label: str = "籌碼快取回補",
+) -> ChipMarketContext:
+    target_date = report_date or get_tw_today()
+    target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1
+    context = build_market_context(
+        force_refresh=force_refresh,
+        report_date=target_date,
+        include_daily_data=True,
+        progress_label=progress_label,
+        progress_start=0.0,
+        progress_end=95.0,
+        target_trading_days=target_days,
+    )
+    update_tdcc_snapshot_cache()
+    _print_chip_progress(
+        progress_label,
+        100.0,
+        (
+            f"回補完成，法人最新交易日 "
+            f"{context.latest_trading_date.isoformat() if context.latest_trading_date else '無資料'}，"
+            f"候選 {len(context.candidates)} 檔"
+        ),
+    )
+    return context
 
 
 def load_push_state() -> dict[str, Any]:

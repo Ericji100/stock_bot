@@ -764,11 +764,14 @@ def _fetch_recent_daily_chip_data(
     progress_start: float = 0.0,
     progress_end: float = 100.0,
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+    include_foreign_ratio: bool = True,
 ) -> tuple[pd.DataFrame, date | None]:
     if candidates.empty:
         return pd.DataFrame(), None
 
     _print_chip_progress(progress_label, progress_start, f"準備法人日資料，候選 {len(candidates)} 檔")
+    if not include_foreign_ratio:
+        _print_chip_progress(progress_label, progress_start, "本次策略不需要外資持股比例，略過 MI_QFIIS / FinMind 持股比例補資料")
     candidate_codes = set(candidates["code"].astype(str).tolist())
     twse_codes = set(candidates.loc[candidates["market"] == "TWSE", "code"].tolist())
     tpex_codes = set(candidates.loc[candidates["market"] == "TPEX", "code"].tolist())
@@ -902,87 +905,88 @@ def _fetch_recent_daily_chip_data(
             if date_net.empty:
                 continue
 
-            twse_date_codes = set(date_net.loc[date_net["market"] == "TWSE", "code"].tolist())
-            cached_ratio_codes = set(
-                date_net.loc[
-                    (date_net["market"] == "TWSE") & date_net["foreign_ratio_pct"].notna(),
-                    "code",
-                ].tolist()
-            )
-            ratio_missing_codes = twse_date_codes - cached_ratio_codes
-            if ratio_missing_codes:
-                if _is_source_available("twse_mi_qfiis"):
-                    _print_chip_progress(
-                        progress_label,
-                        progress,
-                        f"嘗試 TWSE MI_QFIIS {target_date.isoformat()}，外資持股比例缺口 {len(ratio_missing_codes)} 檔",
-                    )
-                    try:
-                        foreign_ratio = _fetch_twse_foreign_ratio_for_date(client, target_date, ratio_missing_codes)
-                    except Exception as exc:
+            if include_foreign_ratio:
+                twse_date_codes = set(date_net.loc[date_net["market"] == "TWSE", "code"].tolist())
+                cached_ratio_codes = set(
+                    date_net.loc[
+                        (date_net["market"] == "TWSE") & date_net["foreign_ratio_pct"].notna(),
+                        "code",
+                    ].tolist()
+                )
+                ratio_missing_codes = twse_date_codes - cached_ratio_codes
+                if ratio_missing_codes:
+                    if _is_source_available("twse_mi_qfiis"):
                         _print_chip_progress(
                             progress_label,
                             progress,
-                            f"TWSE MI_QFIIS {target_date.isoformat()} 失敗，將改用 FinMind 補持股比例：{exc}",
+                            f"嘗試 TWSE MI_QFIIS {target_date.isoformat()}，外資持股比例缺口 {len(ratio_missing_codes)} 檔",
+                        )
+                        try:
+                            foreign_ratio = _fetch_twse_foreign_ratio_for_date(client, target_date, ratio_missing_codes)
+                        except Exception as exc:
+                            _print_chip_progress(
+                                progress_label,
+                                progress,
+                                f"TWSE MI_QFIIS {target_date.isoformat()} 失敗，將改用 FinMind 補持股比例：{exc}",
+                            )
+                            foreign_ratio = pd.DataFrame()
+                    else:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TWSE MI_QFIIS 目前冷卻中，{target_date.isoformat()} 外資持股比例改用 FinMind",
                         )
                         foreign_ratio = pd.DataFrame()
-                else:
-                    _print_chip_progress(
-                        progress_label,
-                        progress,
-                        f"TWSE MI_QFIIS 目前冷卻中，{target_date.isoformat()} 外資持股比例改用 FinMind",
-                    )
-                    foreign_ratio = pd.DataFrame()
-                fetched_ratio_codes = set(foreign_ratio["code"].tolist()) if not foreign_ratio.empty else set()
-                if fetched_ratio_codes:
-                    _print_chip_progress(
-                        progress_label,
-                        progress,
-                        f"TWSE MI_QFIIS {target_date.isoformat()} 成功，補到 {len(fetched_ratio_codes)}/{len(ratio_missing_codes)} 檔",
-                    )
-                else:
-                    _print_chip_progress(
-                        progress_label,
-                        progress,
-                        f"TWSE MI_QFIIS {target_date.isoformat()} 未補到外資持股比例缺口",
-                    )
-                finmind_ratio_codes = ratio_missing_codes - fetched_ratio_codes
-                if finmind_ratio_codes:
-                    _print_chip_progress(
-                        progress_label,
-                        progress,
-                        f"剩餘外資持股比例缺口 {len(finmind_ratio_codes)} 檔，改用 FinMind 單檔補資料",
-                    )
-                    finmind_ratio = _fetch_finmind_foreign_ratio_for_codes(
-                        client,
-                        target_date,
-                        finmind_ratio_codes,
-                        progress_callback,
-                    )
-                    if not finmind_ratio.empty:
-                        foreign_ratio = pd.concat([foreign_ratio, finmind_ratio], ignore_index=True)
-                if not foreign_ratio.empty:
-                    ratio_update = foreign_ratio.drop_duplicates(["date", "code"], keep="last").rename(
-                        columns={
-                            "foreign_ratio_pct": "foreign_ratio_pct_update",
-                            "source": "foreign_ratio_source",
-                        }
-                    )
-                    date_net = date_net.merge(
-                        ratio_update[["date", "code", "foreign_ratio_pct_update", "foreign_ratio_source"]],
-                        on=["date", "code"],
-                        how="left",
-                    )
-                    missing_ratio_mask = date_net["foreign_ratio_pct"].isna() & date_net["foreign_ratio_pct_update"].notna()
-                    date_net["foreign_ratio_pct"] = date_net["foreign_ratio_pct"].fillna(
-                        date_net["foreign_ratio_pct_update"]
-                    )
-                    date_net.loc[missing_ratio_mask, "source"] = (
-                        date_net.loc[missing_ratio_mask, "source"].astype(str)
-                        + "+"
-                        + date_net.loc[missing_ratio_mask, "foreign_ratio_source"].astype(str)
-                    )
-                    date_net = date_net.drop(columns=["foreign_ratio_pct_update", "foreign_ratio_source"])
+                    fetched_ratio_codes = set(foreign_ratio["code"].tolist()) if not foreign_ratio.empty else set()
+                    if fetched_ratio_codes:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TWSE MI_QFIIS {target_date.isoformat()} 成功，補到 {len(fetched_ratio_codes)}/{len(ratio_missing_codes)} 檔",
+                        )
+                    else:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TWSE MI_QFIIS {target_date.isoformat()} 未補到外資持股比例缺口",
+                        )
+                    finmind_ratio_codes = ratio_missing_codes - fetched_ratio_codes
+                    if finmind_ratio_codes:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"剩餘外資持股比例缺口 {len(finmind_ratio_codes)} 檔，改用 FinMind 單檔補資料",
+                        )
+                        finmind_ratio = _fetch_finmind_foreign_ratio_for_codes(
+                            client,
+                            target_date,
+                            finmind_ratio_codes,
+                            progress_callback,
+                        )
+                        if not finmind_ratio.empty:
+                            foreign_ratio = pd.concat([foreign_ratio, finmind_ratio], ignore_index=True)
+                    if not foreign_ratio.empty:
+                        ratio_update = foreign_ratio.drop_duplicates(["date", "code"], keep="last").rename(
+                            columns={
+                                "foreign_ratio_pct": "foreign_ratio_pct_update",
+                                "source": "foreign_ratio_source",
+                            }
+                        )
+                        date_net = date_net.merge(
+                            ratio_update[["date", "code", "foreign_ratio_pct_update", "foreign_ratio_source"]],
+                            on=["date", "code"],
+                            how="left",
+                        )
+                        missing_ratio_mask = date_net["foreign_ratio_pct"].isna() & date_net["foreign_ratio_pct_update"].notna()
+                        date_net["foreign_ratio_pct"] = date_net["foreign_ratio_pct"].fillna(
+                            date_net["foreign_ratio_pct_update"]
+                        )
+                        date_net.loc[missing_ratio_mask, "source"] = (
+                            date_net.loc[missing_ratio_mask, "source"].astype(str)
+                            + "+"
+                            + date_net.loc[missing_ratio_mask, "foreign_ratio_source"].astype(str)
+                        )
+                        date_net = date_net.drop(columns=["foreign_ratio_pct_update", "foreign_ratio_source"])
 
             _save_daily_chip_cache(target_date, date_net)
             collected_frames.append(date_net)
@@ -1128,6 +1132,7 @@ def build_market_context(
     force_refresh: bool = False,
     report_date: date | None = None,
     include_daily_data: bool = True,
+    include_foreign_ratio: bool = True,
     progress_label: str = CHIP_PROGRESS_DEFAULT_LABEL,
     progress_start: float = 0.0,
     progress_end: float = 100.0,
@@ -1143,6 +1148,7 @@ def build_market_context(
             progress_start=progress_start,
             progress_end=progress_end,
             target_trading_days=target_trading_days,
+            include_foreign_ratio=include_foreign_ratio,
         )
     else:
         daily_data, latest_trading_date = pd.DataFrame(), None
@@ -1527,10 +1533,12 @@ def build_chip_reports(
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
 ) -> tuple[dict[str, str], ChipMarketContext]:
     include_daily_data = any(key != "chip_4" for key in strategy_keys)
+    include_foreign_ratio = "chip_3" in strategy_keys
     context = build_market_context(
         force_refresh=force_refresh,
         report_date=report_date,
         include_daily_data=include_daily_data,
+        include_foreign_ratio=include_foreign_ratio,
         progress_label=progress_label,
         progress_start=progress_start,
         progress_end=progress_end,
@@ -1545,13 +1553,16 @@ def warmup_chip_data_cache(
     full_backfill: bool = False,
     force_refresh: bool = False,
     progress_label: str = "籌碼快取回補",
+    strategy_keys: list[str] | None = None,
 ) -> ChipMarketContext:
     target_date = report_date or get_tw_today()
     target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1
+    warmup_strategy_keys = strategy_keys or ["chip_1", "chip_2", "chip_3"]
     context = build_market_context(
         force_refresh=force_refresh,
         report_date=target_date,
         include_daily_data=True,
+        include_foreign_ratio="chip_3" in warmup_strategy_keys,
         progress_label=progress_label,
         progress_start=0.0,
         progress_end=95.0,

@@ -1,0 +1,121 @@
+﻿{
+  "metadata": {
+    "status": "starter_manual_database_expanded",
+    "updated_at": "2026-05-07",
+    "notes": [
+      "這是人工維護的公司知識庫，用於 AI 投研報告的產品、客戶、營收暴露與供應鏈交叉驗證。",
+      "資料若未覆蓋或未確認，系統只會標示待驗證，不會自動推論成投資結論。",
+      "客戶名稱若公司未公開，請使用公開分類或供應鏈角色標籤，避免填入未授權或未驗證資訊。"
+    ]
+  },
+  "companies": {
+    "2330": {
+      "product_lines": ["晶圓代工", "先進製程", "先進封裝"],
+      "customers": ["全球IC設計客戶", "HPC/AI客戶"],
+      "revenue_exposure": ["HPC", "智慧型手機", "車用電子", "IoT"],
+      "supply_chain_roles": ["晶圓代工", "CoWoS/先進封裝生態系"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "high_level_public",
+      "updated_at": "2026-05-07"
+    },
+    "2317": {
+      "product_lines": ["電子代工服務", "伺服器組裝", "消費電子組裝"],
+      "customers": ["全球品牌客戶", "雲端服務客戶"],
+      "revenue_exposure": ["消費智能產品", "雲端網路產品", "電腦終端產品"],
+      "supply_chain_roles": ["AI伺服器組裝", "系統整合"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "high_level_public",
+      "updated_at": "2026-05-07"
+    },
+    "2382": {
+      "product_lines": ["筆電", "伺服器", "AI伺服器", "車用電子"],
+      "customers": ["全球品牌客戶", "雲端服務客戶"],
+      "revenue_exposure": ["雲端產品", "智慧裝置", "車用/工業"],
+      "supply_chain_roles": ["AI伺服器組裝", "系統整合"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "high_level_public",
+      "updated_at": "2026-05-07"
+    },
+    "2356": {
+      "product_lines": ["PC", "顯示器", "伺服器", "邊緣運算設備"],
+      "customers": ["全球通路與企業客戶", "資料中心供應鏈"],
+      "revenue_exposure": ["PC", "商用設備", "伺服器"],
+      "supply_chain_roles": ["AI PC", "邊緣運算", "系統品牌"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "2376": {
+      "product_lines": ["主機板", "顯示卡", "伺服器", "AI PC"],
+      "customers": ["通路客戶", "企業與雲端客戶"],
+      "revenue_exposure": ["板卡", "伺服器", "網通"],
+      "supply_chain_roles": ["AI伺服器", "板卡", "邊緣AI"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "2454": {
+      "product_lines": ["手機晶片", "無線通訊晶片", "智慧裝置晶片"],
+      "customers": ["手機品牌客戶", "智慧裝置客戶"],
+      "revenue_exposure": ["智慧型手機", "智慧邊緣平台", "電源管理/連接"],
+      "supply_chain_roles": ["IC設計", "邊緣AI晶片"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "high_level_public",
+      "updated_at": "2026-05-07"
+    },
+    "3037": {
+      "product_lines": ["DRAM", "記憶體模組", "快閃記憶體產品"],
+      "customers": ["工控客戶", "消費電子客戶", "企業儲存客戶"],
+      "revenue_exposure": ["記憶體", "工控", "資料中心"],
+      "supply_chain_roles": ["記憶體模組", "AI伺服器記憶體周邊"],
+      "evidence_sources": ["年報", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "3443": {
+      "product_lines": ["高速傳輸IC", "USB控制IC", "PCIe相關IC"],
+      "customers": ["PC/週邊供應鏈", "資料中心周邊供應鏈"],
+      "revenue_exposure": ["高速傳輸", "PC週邊", "資料中心"],
+      "supply_chain_roles": ["高速傳輸IC", "AI伺服器資料傳輸"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "6669": {
+      "product_lines": ["伺服器滑軌", "機構件"],
+      "customers": ["伺服器品牌/系統廠", "資料中心供應鏈"],
+      "revenue_exposure": ["伺服器零組件", "資料中心"],
+      "supply_chain_roles": ["AI伺服器機構件", "滑軌"],
+      "evidence_sources": ["年報", "法說會", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "1513": {
+      "product_lines": ["重電設備", "變壓器", "配電盤"],
+      "customers": ["電力工程客戶", "台灣電網供應鏈"],
+      "revenue_exposure": ["重電", "電網工程"],
+      "supply_chain_roles": ["電網升級", "電力基礎建設"],
+      "evidence_sources": ["年報", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "1519": {
+      "product_lines": ["重電設備", "電力工程", "機電系統"],
+      "customers": ["電力工程客戶", "公共工程/企業客戶"],
+      "revenue_exposure": ["重電", "工程服務", "能源基建"],
+      "supply_chain_roles": ["電網升級", "電力基礎建設"],
+      "evidence_sources": ["年報", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    },
+    "1504": {
+      "product_lines": ["電線電纜", "銅材", "電力線纜"],
+      "customers": ["電力工程客戶", "建設/工業客戶"],
+      "revenue_exposure": ["電線電纜", "電網工程"],
+      "supply_chain_roles": ["電網升級", "電力線纜"],
+      "evidence_sources": ["年報", "公開資訊觀測站"],
+      "confidence": "manual_review_required",
+      "updated_at": "2026-05-07"
+    }
+  }
+}

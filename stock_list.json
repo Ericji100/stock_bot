@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-06T09:57:19",
+  "generated_at": "2026-05-07T14:16:05",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -1193,6 +1193,13 @@
       "symbol": "3484.TWO",
       "market": "TPEX",
       "name": "崧騰",
+      "industry": "電子零組件業"
+    },
+    {
+      "code": "3485",
+      "symbol": "3485.TWO",
+      "market": "TPEX",
+      "name": "敘豐",
       "industry": "電子零組件業"
     },
     {

@@ -1,12 +1,13 @@
-import pandas as pd
+﻿import pandas as pd
 import json
 import asyncio
 import telegram
 import pytz
 from datetime import date, datetime, time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
+from research_center.recent_scans import save_recent_scan_result
 
 from chip_strategies import (
     CHIP_STRATEGY_NAMES,
@@ -31,6 +32,7 @@ from monitor_service import (
     build_monitor_scan_report,
     remove_monitor_stock_from_config,
 )
+from research_center.telegram_handlers import build_research_handlers
 from portfolio_manager import (
     PORTFOLIO_PUSH_MAX_RETRIES,
     PORTFOLIO_PUSH_RETRY_DELAY_SECONDS,
@@ -241,7 +243,7 @@ def make_stoppable_handler(label: str, handler):
 
 # --- 5. 指令處理器 ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list_m - 查看策略監控清單\n/add_m 代碼 名稱 - 加入策略監控\n/del_m 代碼 - 刪除策略監控\n/in 代碼或名稱 - 加入個人庫存\n/out 代碼或名稱 - 移除個人庫存\n/my - 查看個人庫存\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/export 代碼 - 匯出資料\n/morning - 晨間美股與台指期夜盤\n/noon - 台股收盤與台指期日盤\n/tw_market - 台股收盤與台指期日盤\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表\n/stop - 停止目前執行中的耗時任務")
+    await safe_send_reply(update, "🤖 策略機器人已就緒！\n/list_m - 查看策略監控清單\n/add_m 代碼 名稱 - 加入策略監控\n/del_m 代碼 - 刪除策略監控\n/in 代碼或名稱 - 加入個人庫存\n/out 代碼或名稱 - 移除個人庫存\n/my - 查看個人庫存\n/check - 監控清單掃描\n/scan - 全市場選股掃描\n/export 代碼 - 匯出資料\n/morning - 晨間美股與台指期夜盤\n/noon - 台股收盤與台指期日盤\n/tw_market - 台股收盤與台指期日盤\n/stock_chart 代碼 起日 迄日 頻率 - 匯出個股互動圖表\n/tmf_chart 起日 迄日 盤別 頻率 - 匯出 TMF 互動圖表\n/research 代號 - AI 個股研究\n/macro [市場] [主題] - AI 宏觀研究\n/theme 題材 --top 20 - AI 題材研究\n/value_scan [候選池] --top 30 - AI 價值重估掃描\n/report latest - 查詢最近 AI 報告\n/ai_help - AI 投研指令說明\n/stop - 停止目前執行中的耗時任務")
 
 async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
@@ -606,6 +608,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
                 target_date,
             )
             print(f"[選股進度][{menu_label}] 90.00% 精選報告產生完成，準備傳送 Telegram", flush=True)
+            save_recent_scan_result(menu_label, target_date, curated_report)
             await safe_send_reply(update, curated_report)
             print(f"[選股進度][{menu_label}] 100.00% 完成", flush=True)
         except Exception as exc:
@@ -932,10 +935,10 @@ async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
 async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data if context.job and isinstance(context.job.data, dict) else {}
     full_backfill = bool(job_data.get("full_backfill", False))
-    label = str(job_data.get("label") or ("????????" if full_backfill else "????????"))
+    label = str(job_data.get("label") or ("籌碼快取完整回補" if full_backfill else "籌碼快取今日回補"))
     report_date = get_tw_today()
 
-    print(f"[????][{label}] 0.00% ????????? {report_date.isoformat()}", flush=True)
+    print(f"[開始][{label}] 0.00% 準備回補資料 {report_date.isoformat()}", flush=True)
     try:
         await asyncio.to_thread(
             warmup_chip_data_cache,
@@ -945,7 +948,7 @@ async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
             label,
         )
     except Exception as exc:
-        print(f"?? ???????????{exc}", flush=True)
+        print(f"⚠️ 籌碼快取回補失敗：{exc}", flush=True)
 
 
 # --- 7. 啟動後初始掃描 ---
@@ -1043,6 +1046,8 @@ def main():
         )
 
     # 註冊指令
+    research_handlers = build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_command, make_stoppable_handler)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stop", stop_running_command))
     # 新增策略監控指令命名：正式以 *_m 區隔監控名單與個人庫存名單。
@@ -1065,9 +1070,20 @@ def main():
     app.add_handler(CommandHandler("stock_chart", make_stoppable_handler("個股圖表匯出", export_stock_chart)))
     # 新增指令註冊：支援 /tmf_chart 生成 TMF 的互動式 Lightweight Charts HTML 報表。
     app.add_handler(CommandHandler("tmf_chart", make_stoppable_handler("TMF 圖表匯出", export_tmf_chart)))
+    app.add_handler(CommandHandler("research", research_handlers["research"]))
+    app.add_handler(CommandHandler("macro", research_handlers["macro"]))
+    app.add_handler(CommandHandler("theme", research_handlers["theme"]))
+    app.add_handler(CommandHandler("value_scan", research_handlers["value_scan"]))
+    app.add_handler(CommandHandler("report", research_handlers["report"]))
+    app.add_handler(CommandHandler("ai_help", research_handlers["ai_help"]))
+    app.add_handler(CallbackQueryHandler(research_handlers["ai_menu_callback"], pattern="^ai_menu:"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, research_handlers["ai_menu_text"]))
 
     print("🚀 策略機器人啟動中，定時設定：12:30 監控掃描、13:50 午報、17:45 庫存推播、16:30/18:30/21:00 籌碼快取回補...")
     app.run_polling(bootstrap_retries=-1)
 
 if __name__ == "__main__":
     main()
+
+
+

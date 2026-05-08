@@ -1,0 +1,20 @@
+{
+  "model": "gemini-3-pro-preview",
+  "fallback_models": [
+    "gemini-3-flash-preview"
+  ],
+  "enable_grounding": true,
+  "report_root": "reports",
+  "database_path": "database/stock_research.db",
+  "api_host": "127.0.0.1",
+  "api_port": 8000,
+  "output_formats": [
+    "md",
+    "html",
+    "json"
+  ],
+  "minimax_model": "MiniMax-M2.7",
+  "minimax_base_url": "https://api.minimax.io/v1",
+  "enable_minimax_search": true,
+  "enable_minimax_comparison": true
+}

@@ -5,3 +5,5 @@ httpx
 pytz
 openpyxl
 lxml
+fastapi
+uvicorn

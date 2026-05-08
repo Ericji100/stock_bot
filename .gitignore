@@ -1,4 +1,4 @@
-.cache/
+﻿.cache/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -9,3 +9,12 @@ config.json
 portfolio.json
 
 *.log
+config/secrets.json
+database/*.db
+reports/
+backup/
+logs/
+database/*.db-*
+database/*.db-journal
+research_center/__pycache__/
+tests/__pycache__/

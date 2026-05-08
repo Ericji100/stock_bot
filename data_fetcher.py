@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import math
 import re
@@ -234,14 +234,20 @@ class StockDataFetcher:
         start_date = end_date - timedelta(days=months * 31)
 
         if meta.market == "TWSE":
+            official_error: Exception | None = None
             try:
                 return self._fetch_twse_price_history(meta, start_date, end_date)
-            except Exception:
+            except Exception as exc:
+                official_error = exc
                 fallback = self._fetch_fugle_price_history(meta, start_date, end_date)
                 if not fallback.empty:
                     self._append_note_once("上市股價歷史資料改用 Fugle 備援補齊。")
                     return fallback
-                raise
+                yahoo_fallback = self._fetch_yahoo_price_history(meta, start_date, end_date)
+                if not yahoo_fallback.empty:
+                    self._append_note_once("上市股價歷史資料改用 Yahoo Finance 備援補齊。")
+                    return yahoo_fallback
+                raise official_error
 
         return self._fetch_tpex_price_history_with_fallback(meta, start_date, end_date)
 
@@ -305,6 +311,32 @@ class StockDataFetcher:
         price_df["Volume_Lots"] = price_df["Volume_Lots"].astype(float) / 1000.0
         return price_df
 
+    def _fetch_yahoo_price_history(self, meta: StockMeta, start_date: date, end_date: date) -> pd.DataFrame:
+        try:
+            history = yf.download(
+                meta.symbol,
+                start=start_date.isoformat(),
+                end=(end_date + timedelta(days=1)).isoformat(),
+                interval="1d",
+                progress=False,
+                auto_adjust=False,
+                threads=False,
+            )
+        except Exception:
+            return pd.DataFrame()
+        if history.empty:
+            return pd.DataFrame()
+        if isinstance(history.columns, pd.MultiIndex):
+            history.columns = history.columns.get_level_values(0)
+        required = {"Date", "Close", "Volume"}
+        reset = history.reset_index()
+        if not required.issubset(set(reset.columns)):
+            return pd.DataFrame()
+        price_df = reset[["Date", "Close", "Volume"]].rename(columns={"Volume": "Volume_Lots"})
+        price_df["Date"] = pd.to_datetime(price_df["Date"], errors="coerce").dt.date
+        price_df["Volume_Lots"] = pd.to_numeric(price_df["Volume_Lots"], errors="coerce") / 1000.0
+        price_df["Close"] = pd.to_numeric(price_df["Close"], errors="coerce")
+        return price_df.dropna(subset=["Date", "Close"]).reset_index(drop=True)
     def _fetch_fugle_price_history(self, meta: StockMeta, start_date: date, end_date: date) -> pd.DataFrame:
         history = fetch_fugle_history(meta.symbol, start_date, end_date, "1d")
         if history.empty:
@@ -753,3 +785,4 @@ class StockDataFetcher:
             summary_rows.append({"Item": "備註", "Value": note})
 
         return pd.DataFrame(summary_rows)
+

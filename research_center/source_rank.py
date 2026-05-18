@@ -39,6 +39,12 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
                 source_level=rank_source(url, title),
                 published_date=raw.get("published_date"),
                 snippet=raw.get("snippet"),
+                provider=raw.get("provider"),
+                provider_detail=raw.get("provider_detail"),
+                fetch_provider=raw.get("fetch_provider"),
+                fetch_status=raw.get("fetch_status"),
+                failure_reason=raw.get("failure_reason"),
+                found_by=raw.get("found_by", []),
             )
         )
     return items

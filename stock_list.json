@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-07T14:16:05",
+  "generated_at": "2026-05-17T23:50:25",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -5326,6 +5326,13 @@
       "industry": "半導體業"
     },
     {
+      "code": "7772",
+      "symbol": "7772.TWO",
+      "market": "TPEX",
+      "name": "耀穎",
+      "industry": "半導體業"
+    },
+    {
       "code": "7777",
       "symbol": "7777.TWO",
       "market": "TPEX",
@@ -5387,6 +5394,13 @@
       "market": "TPEX",
       "name": "創新服務",
       "industry": "半導體業"
+    },
+    {
+      "code": "7842",
+      "symbol": "7842.TWO",
+      "market": "TPEX",
+      "name": "天能綠電",
+      "industry": "綠能環保"
     },
     {
       "code": "8024",
@@ -10842,6 +10856,13 @@
       "industry": "生技醫療業"
     },
     {
+      "code": "4195",
+      "symbol": "4195.TW",
+      "market": "TWSE",
+      "name": "基米-創",
+      "industry": "生技醫療業"
+    },
+    {
       "code": "4306",
       "symbol": "4306.TW",
       "market": "TWSE",
@@ -12982,6 +13003,13 @@
       "market": "TWSE",
       "name": "中華資安",
       "industry": "數位雲端"
+    },
+    {
+      "code": "7768",
+      "symbol": "7768.TW",
+      "market": "TWSE",
+      "name": "頌勝科技",
+      "industry": "半導體業"
     },
     {
       "code": "7769",

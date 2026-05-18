@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
 from data_fetcher import StockExportError
 
 from .command_parser import parse_command_text
-from .config import ResearchCenterConfig, load_research_config
+from .config import ROOT_DIR, ResearchCenterConfig, load_research_config
 from .data_services import collect_structured_data
 from .database import ResearchDatabase
 from .date_guard import filter_sources_for_report_date
@@ -15,6 +16,9 @@ from .event_store import build_source_events, extract_structured_events, histori
 from .gemini_service import GeminiService, build_prompt
 from .minimax_service import MiniMaxService
 from .minimax_search_service import MiniMaxSearchService
+from .opencode_service import OpenCodeService
+from .tavily_search_service import TavilySearchService, TavilyQuotaError
+from .quota_guard import SearchProviderQuotaGuard
 from .knowledge_drafts import write_knowledge_draft
 from .models import CommandRequest, ReportArtifacts, ResearchCenterResult, SourceItem
 from .prompt_registry import build_grounding_discovery_prompts, prompt_metadata
@@ -23,6 +27,7 @@ from .source_snapshots import build_source_snapshots, snapshots_to_structured_co
 from .report_builder import fallback_markdown, summarize_for_telegram, write_report_artifacts
 from .research_logger import log_error, log_task
 from .scoring_engine import build_buy_rating, build_local_scores
+from .web_fetch_service import WebFetchService
 
 ProgressCallback = Callable[[str], None]
 
@@ -47,6 +52,23 @@ class ResearchCenter:
             jina_api_key=self.config.jina_api_key,
             minimax=self.minimax,
         )
+        self.opencode = OpenCodeService(
+            api_key=self.config.opencode_api_key,
+            model=self.config.opencode_model,
+            base_url=self.config.opencode_base_url,
+            reasoning_effort=self.config.opencode_reasoning_effort,
+        )
+        self.tavily_search = TavilySearchService(
+            api_key=self.config.tavily_api_key,
+            enable_search=self.config.enable_tavily_search,
+            enable_extract=self.config.enable_tavily_extract,
+            search_depth=self.config.tavily_search_depth,
+            extract_depth=self.config.tavily_extract_depth,
+            max_results_per_query=self.config.tavily_max_results_per_query,
+            max_extract_urls_per_task=self.config.tavily_max_extract_urls_per_task,
+        )
+        self.quota_guard = SearchProviderQuotaGuard(ROOT_DIR / ".cache" / "search_provider_quota.json")
+        self._gemini_discovery_runner = _GeminiDiscoveryRunner(self)
 
     def parse(self, raw_text: str, user_id: str | None = None) -> CommandRequest:
         request = parse_command_text(raw_text, user_id=user_id)
@@ -95,77 +117,24 @@ class ResearchCenter:
         structured_data["historical_data_policy"] = historical_policy(request, dropped_sources)
         structured_data["prompt_policy"] = prompt_metadata(request)
         scores = build_local_scores(request, structured_data)
+        mechanical_buy_rating = build_buy_rating(scores) if request.command == "research" and request.mode in {"score", "deep"} else None
         structured_data["local_scoring"] = {
-            "policy": "本地評分依可驗證資料保守計算；CAGR、護城河、轉型效益與題材熱度若缺來源不得高分。",
+            "name": "本地量化底稿",
+            "role": "機械式資料檢查，不是最終投研評分。",
+            "policy": "本地量化底稿依可驗證結構化資料保守計算；CAGR、護城河、轉型效益與題材熱度若缺來源不得高分。AI 最終投研評分必須根據全部資料、搜尋來源與反證重新評估。",
             "scores": scores,
-            "buy_rating": build_buy_rating(scores) if request.command == "research" and request.mode in {"score", "deep"} else None,
+            "buy_rating": mechanical_buy_rating,
+            "mechanical_buy_rating": mechanical_buy_rating,
         }
         if scores:
-            _emit_progress(progress, f"Local scoring completed: {len(scores)} items")
+            _emit_progress(progress, f"本地量化底稿完成：{len(scores)} 項")
         else:
-            _emit_progress(progress, "Local full scoring skipped for this mode; AI will organize and analyze the collected data")
+            _emit_progress(progress, "本地量化底稿略過：本模式不需要機械式資料檢查，AI 將整理與分析已收集資料")
 
         _emit_progress(progress, "Build shared model prompt for parallel AI reports")
         use_grounding = self.config.enable_grounding and request.report_date is None
-        discovery_tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources) if request.report_date is None else []
-        discovery_sources: list[SourceItem] = []
-        discovery_runs: list[dict[str, Any]] = []
-        if use_grounding:
-            _emit_progress(progress, f"Run multi-stage Gemini Search discovery: {len(discovery_tasks)} compact prompts")
-            for task_index, task in enumerate(discovery_tasks, 1):
-                label = task.get("label") or f"task_{task_index}"
-                discovery_prompt = task.get("prompt") or ""
-                try:
-                    _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] start")
-                    discovery_log_path = write_prompt_log(
-                        request,
-                        discovery_prompt,
-                        self.config.model,
-                        True,
-                        sources,
-                        {**(structured_data.get("prompt_policy") or {}), "purpose": "grounding_discovery", "discovery_label": label, "discovery_index": task_index},
-                    )
-                    _emit_progress(progress, f"Search discovery prompt saved: {discovery_log_path}")
-                    discovery_result = self.gemini.generate_report(discovery_prompt, enable_grounding=True)
-                    task_sources = discovery_result.sources
-                    before_count = len(sources)
-                    sources = _merge_sources(sources, task_sources)
-                    added_count = len(sources) - before_count
-                    discovery_sources = _merge_sources(discovery_sources, task_sources)
-                    discovery_runs.append({
-                        "label": label,
-                        "prompt_path": str(discovery_log_path),
-                        "diagnostics": discovery_result.diagnostics,
-                        "source_count": len(task_sources),
-                        "added_source_count": added_count,
-                        "markdown": discovery_result.markdown,
-                    })
-                    _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added_count}")
-                except Exception as discovery_exc:
-                    discovery_runs.append({"label": label, "status": "failed", "error": str(discovery_exc), "source_count": 0, "added_source_count": 0})
-                    _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed: {discovery_exc}")
-            structured_data["gemini_search_discovery"] = {
-                "mode": "multi_stage",
-                "task_count": len(discovery_tasks),
-                "source_count": len(discovery_sources),
-                "runs": discovery_runs,
-            }
-            if discovery_sources:
-                _emit_progress(progress, f"Multi-stage Gemini Search discovery completed: {len(discovery_sources)} unique Google sources merged into final prompt")
-            else:
-                _emit_progress(progress, "Multi-stage Gemini Search discovery returned no parseable citations; model reports will still run")
-
-        if self.config.enable_minimax_search and request.report_date is None and discovery_tasks:
-            if self.minimax_search.is_configured():
-                _emit_progress(progress, f"Run MiniMax Search discovery: {len(discovery_tasks)} compact Google search tasks")
-                minimax_search_result = self.minimax_search.discover(request, discovery_tasks, progress=progress)
-                before_count = len(sources)
-                sources = _merge_sources(sources, minimax_search_result.sources)
-                structured_data["minimax_search_discovery"] = minimax_search_result.diagnostics
-                _emit_progress(progress, f"MiniMax Search completed: {len(minimax_search_result.sources)} sources, added={len(sources) - before_count}")
-            else:
-                structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "SERPER_API_KEY not configured"}
-                _emit_progress(progress, "MiniMax Search skipped: SERPER_API_KEY not configured")
+        sources, gemini_search_used = self._gemini_discovery_runner.run_discovery_flow(request, sources, structured_data, use_grounding, progress)
+        _enrich_sources_with_web_fetch(request, sources, structured_data, progress)
 
         prompt = build_prompt(request, structured_data=structured_data, source_list=sources)
         prompt_log_path = write_prompt_log(request, prompt, self.config.model, use_grounding, sources, structured_data.get("prompt_policy"))
@@ -182,7 +151,7 @@ class ResearchCenter:
                 "prompt_path": str(prompt_log_path),
                 "sources": list(sources),
                 "structured_data": dict(structured_data),
-                "use_grounding": use_grounding,
+                "use_grounding": bool(gemini_search_used),
                 "model_jobs": model_jobs,
             }
         }
@@ -249,7 +218,13 @@ class ResearchCenter:
         minimax_prompt_log_path = ""
         try:
             _emit_progress(progress, f"Calling parallel AI model: {self.config.minimax_model}")
-            minimax_prompt_log_path = str(write_prompt_log(request, prompt, self.config.minimax_model, False, sources, {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "primary_model": self.config.model, "shared_prompt_path": shared_prompt_path, "model_key": "minimax"}))
+            minimax_prompt_log_path = str(write_prompt_log(
+                request,
+                prompt,
+                self.config.minimax_model,
+                False,
+                sources,
+                {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "primary_model": self.config.model, "shared_prompt_path": shared_prompt_path, "model_key": "minimax"}))
             _emit_progress(progress, f"MiniMax model prompt saved: {minimax_prompt_log_path}")
             minimax_result = self.minimax.generate_report(prompt)
             summary = summarize_for_telegram(minimax_result.markdown)
@@ -285,17 +260,23 @@ class ResearchCenter:
             _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；Gemini Search 將停用，只整理快照與本地資料")
         structured_data["historical_data_policy"] = historical_policy(request, dropped_sources)
         structured_data["prompt_policy"] = prompt_metadata(request)
-        structured_data["analysis_model"] = self.config.model
+        selected_ai_model = request.ai_model or "gemini"
+        structured_data["analysis_model_choice"] = selected_ai_model
+        structured_data["analysis_model"] = self.config.model if selected_ai_model == "gemini" else self.config.opencode_model
         scores = build_local_scores(request, structured_data)
+        mechanical_buy_rating = build_buy_rating(scores) if request.command == "research" and request.mode in {"score", "deep"} else None
         structured_data["local_scoring"] = {
-            "policy": "本地評分依可驗證資料保守計算；CAGR、護城河、轉型效益與題材熱度若缺來源不得高分。",
+            "name": "本地量化底稿",
+            "role": "機械式資料檢查，不是最終投研評分。",
+            "policy": "本地量化底稿依可驗證結構化資料保守計算；CAGR、護城河、轉型效益與題材熱度若缺來源不得高分。AI 最終投研評分必須根據全部資料、搜尋來源與反證重新評估。",
             "scores": scores,
-            "buy_rating": build_buy_rating(scores) if request.command == "research" and request.mode in {"score", "deep"} else None,
+            "buy_rating": mechanical_buy_rating,
+            "mechanical_buy_rating": mechanical_buy_rating,
         }
         if scores:
-            _emit_progress(progress, f"Local scoring completed: {len(scores)} items")
+            _emit_progress(progress, f"本地量化底稿完成：{len(scores)} 項")
         else:
-            _emit_progress(progress, "Local full scoring skipped for this mode; AI will organize and analyze the collected data")
+            _emit_progress(progress, "本地量化底稿略過：本模式不需要機械式資料檢查，AI 將整理與分析已收集資料")
 
         ai_used = False
         fallback_reason: str | None = None
@@ -308,91 +289,52 @@ class ResearchCenter:
             markdown = fallback_markdown(request, structured_data, sources)
         else:
             try:
-                _emit_progress(progress, f"Build Gemini prompt, model={self.config.model}")
+                _emit_progress(progress, f"Build AI prompt, selected_model={selected_ai_model}")
                 use_grounding = self.config.enable_grounding and request.report_date is None
-                discovery_tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources) if request.report_date is None else []
-                discovery_sources: list[SourceItem] = []
-                discovery_runs: list[dict[str, Any]] = []
-                if use_grounding:
-                    _emit_progress(progress, f"Run multi-stage Gemini Search discovery: {len(discovery_tasks)} compact prompts")
-                    for task_index, task in enumerate(discovery_tasks, 1):
-                        label = task.get("label") or f"task_{task_index}"
-                        discovery_prompt = task.get("prompt") or ""
-                        try:
-                            _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] start")
-                            discovery_log_path = write_prompt_log(
-                                request,
-                                discovery_prompt,
-                                self.config.model,
-                                True,
-                                sources,
-                                {**(structured_data.get("prompt_policy") or {}), "purpose": "grounding_discovery", "discovery_label": label, "discovery_index": task_index},
-                            )
-                            _emit_progress(progress, f"Search discovery prompt saved: {discovery_log_path}")
-                            discovery_result = self.gemini.generate_report(discovery_prompt, enable_grounding=True)
-                            task_sources = discovery_result.sources
-                            before_count = len(sources)
-                            sources = _merge_sources(sources, task_sources)
-                            added_count = len(sources) - before_count
-                            discovery_sources = _merge_sources(discovery_sources, task_sources)
-                            run_info = {
-                                "label": label,
-                                "prompt_path": str(discovery_log_path),
-                                "diagnostics": discovery_result.diagnostics,
-                                "source_count": len(task_sources),
-                                "added_source_count": added_count,
-                                "markdown": discovery_result.markdown,
-                            }
-                            discovery_runs.append(run_info)
-                            _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added_count}")
-                        except Exception as discovery_exc:
-                            discovery_runs.append({"label": label, "status": "failed", "error": str(discovery_exc), "source_count": 0, "added_source_count": 0})
-                            _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed: {discovery_exc}")
-                    structured_data["gemini_search_discovery"] = {
-                        "mode": "multi_stage",
-                        "task_count": len(discovery_tasks),
-                        "source_count": len(discovery_sources),
-                        "runs": discovery_runs,
-                    }
-                    if discovery_sources:
-                        _emit_progress(progress, f"Multi-stage Gemini Search discovery completed: {len(discovery_sources)} unique Google sources merged into final prompt")
-                    else:
-                        _emit_progress(progress, "Multi-stage Gemini Search discovery returned no parseable citations; final report grounding will still run")
-                if self.config.enable_minimax_search and request.report_date is None and discovery_tasks:
-                    if self.minimax_search.is_configured():
-                        _emit_progress(progress, f"Run MiniMax Search discovery: {len(discovery_tasks)} compact Google search tasks")
-                        minimax_search_result = self.minimax_search.discover(request, discovery_tasks, progress=progress)
-                        before_count = len(sources)
-                        sources = _merge_sources(sources, minimax_search_result.sources)
-                        structured_data["minimax_search_discovery"] = minimax_search_result.diagnostics
-                        _emit_progress(progress, f"MiniMax Search completed: {len(minimax_search_result.sources)} sources, added={len(sources) - before_count}")
-                    else:
-                        structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "SERPER_API_KEY not configured"}
-                        _emit_progress(progress, "MiniMax Search skipped: SERPER_API_KEY not configured")
+                sources, gemini_search_used = self._gemini_discovery_runner.run_discovery_flow(request, sources, structured_data, use_grounding, progress)
+                _enrich_sources_with_web_fetch(request, sources, structured_data, progress)
                 prompt = build_prompt(request, structured_data=structured_data, source_list=sources)
-                prompt_log_path = write_prompt_log(request, prompt, self.config.model, use_grounding, sources, structured_data.get("prompt_policy"))
+                final_model_name = self.config.model if selected_ai_model == "gemini" else self.config.opencode_model
+                final_grounding = bool(gemini_search_used) and selected_ai_model == "gemini"
+                prompt_log_path = write_prompt_log(request, prompt, final_model_name, final_grounding, sources, structured_data.get("prompt_policy"))
                 _emit_progress(progress, f"Prompt saved: {prompt_log_path}")
-                _emit_progress(progress, f"Prompt template={structured_data.get('prompt_policy', {}).get('template')}, length={len(prompt)} chars, grounding={use_grounding}, sources={len(sources)}")
-                _emit_progress(progress, f"Calling AI model: {self.config.model}")
-                gemini_result = self.gemini.generate_report(prompt, enable_grounding=use_grounding)
-                markdown = gemini_result.markdown
-                gemini_raw = gemini_result.raw
-                structured_data["gemini_search_diagnostics"] = gemini_result.diagnostics
-                actual_gemini_model = str(gemini_result.diagnostics.get("actual_model") or self.config.model)
-                structured_data["analysis_model"] = actual_gemini_model
-                if gemini_result.diagnostics.get("fallback_used"):
-                    _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_gemini_model}")
-                _emit_progress(progress, f"Gemini Search diagnostics: metadata={gemini_result.diagnostics.get('grounding_metadata_present')}, queries={gemini_result.diagnostics.get('web_search_query_count')}, chunks={gemini_result.diagnostics.get('grounding_chunk_count')}, sources={len(gemini_result.sources)}")
-                if gemini_result.sources:
-                    _emit_progress(progress, f"Gemini grounding citations: {len(gemini_result.sources)} sources will be written")
-                elif discovery_sources:
-                    _emit_progress(progress, f"Final report returned no citations; keeping {len(discovery_sources)} Google sources from Search discovery")
-                elif use_grounding:
-                    _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
-                sources = _merge_sources(sources, gemini_result.sources)
+                _emit_progress(progress, f"Prompt template={structured_data.get('prompt_policy', {}).get('template')}, length={len(prompt)} chars, grounding={final_grounding}, sources={len(sources)}")
+                _emit_progress(progress, f"Calling AI model: {final_model_name}")
+                if selected_ai_model == "deepseek":
+                    if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
+                        raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
+                    opencode_result = self.opencode.generate_report(prompt)
+                    markdown = opencode_result.markdown
+                    gemini_raw = opencode_result.raw
+                    actual_gemini_model = str(opencode_result.diagnostics.get("actual_model") or self.config.opencode_model)
+                    structured_data["analysis_model"] = actual_gemini_model
+                    structured_data["analysis_provider"] = "opencode_go"
+                    structured_data["opencode_diagnostics"] = opencode_result.diagnostics
+                    gemini_discovery_count = _gemini_discovery_source_count(structured_data)
+                    if gemini_discovery_count:
+                        _emit_progress(progress, f"DeepSeek analysis will use {gemini_discovery_count} Gemini Search fallback sources")
+                else:
+                    gemini_result = self.gemini.generate_report(prompt, enable_grounding=final_grounding)
+                    markdown = gemini_result.markdown
+                    gemini_raw = gemini_result.raw
+                    structured_data["gemini_search_diagnostics"] = gemini_result.diagnostics
+                    actual_gemini_model = str(gemini_result.diagnostics.get("actual_model") or self.config.model)
+                    structured_data["analysis_model"] = actual_gemini_model
+                    structured_data["analysis_provider"] = "gemini"
+                    gemini_discovery_count = _gemini_discovery_source_count(structured_data)
+                    if gemini_result.diagnostics.get("fallback_used"):
+                        _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_gemini_model}")
+                    _emit_progress(progress, f"Gemini Search diagnostics: metadata={gemini_result.diagnostics.get('grounding_metadata_present')}, queries={gemini_result.diagnostics.get('web_search_query_count')}, chunks={gemini_result.diagnostics.get('grounding_chunk_count')}, sources={len(gemini_result.sources)}")
+                    if gemini_result.sources:
+                        _emit_progress(progress, f"Gemini grounding citations: {len(gemini_result.sources)} sources will be written")
+                    elif gemini_discovery_count:
+                        _emit_progress(progress, f"Final report returned no citations; keeping {gemini_discovery_count} Gemini Search fallback sources")
+                    elif use_grounding:
+                        _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
+                    sources = _merge_sources(sources, gemini_result.sources)
                 ai_used = True
                 _emit_progress(progress, f"AI model completed: {actual_gemini_model or self.config.model}")
-                if self.config.enable_minimax_comparison and self.minimax.is_configured():
+                if selected_ai_model == "gemini" and self.config.enable_minimax_comparison and self.minimax.is_configured():
                     structured_data["comparison_reports"] = [{"model": self.config.minimax_model, "status": "pending"}]
                     runtime_context["minimax_comparison"] = {
                         "prompt": prompt,
@@ -519,6 +461,13 @@ class ResearchCenter:
 
         artifacts = _artifacts_from_row(row)
         ai_used = bool(row.get("ai_used"))
+        metadata = (report_json or {}).get("metadata") or {}
+        ai_model = (
+            metadata.get("analysis_model")
+            or metadata.get("analysis_model_choice")
+            or row.get("model")
+            or (self.config.model if ai_used else None)
+        )
         return ResearchCenterResult(
             status="success",
             request=request,
@@ -528,7 +477,7 @@ class ResearchCenter:
             sources=sources,
             artifacts=artifacts,
             ai_used=ai_used,
-            ai_model=self.config.model if ai_used else None,
+            ai_model=ai_model,
             fallback_reason=row.get("fallback_reason"),
         )
 
@@ -612,17 +561,51 @@ def _with_output_formats(request: CommandRequest, formats: tuple[str, ...]) -> C
         output_formats=output_formats,
         user_id=request.user_id,
         created_at=request.created_at,
+        ai_model=request.ai_model,
     )
 
 
 def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[SourceItem]:
+    merged_dict: dict[str, SourceItem] = {}
+    for item in base:
+        merged_dict[item.url] = item
+    for item in extra:
+        existing = merged_dict.get(item.url)
+        if existing is None:
+            merged_dict[item.url] = item
+        else:
+            existing_priority = PROVIDER_PRIORITY.get(existing.provider, 0)
+            new_priority = PROVIDER_PRIORITY.get(item.provider, 0)
+            if new_priority > existing_priority:
+                merged_dict[item.url] = item
+            else:
+                # Merge fields when same priority or new priority lower
+                existing_found_by = list(existing.found_by) if existing.found_by else []
+                item_found_by = list(item.found_by) if item.found_by else []
+                combined_found_by = list(set(existing_found_by + item_found_by))
+                merged_dict[item.url] = SourceItem(
+                    source_id=existing.source_id,
+                    title=existing.title,
+                    url=existing.url,
+                    source_level=existing.source_level,
+                    published_date=existing.published_date or item.published_date,
+                    snippet=existing.snippet or item.snippet,
+                    used_in_section=list(set(existing.used_in_section + item.used_in_section)),
+                    provider=existing.provider,
+                    provider_detail=existing.provider_detail,
+                    fetch_provider=item.fetch_provider or existing.fetch_provider,
+                    fetch_status=item.fetch_status or existing.fetch_status,
+                    failure_reason=item.failure_reason or existing.failure_reason,
+                    found_by=combined_found_by,
+                )
     merged: list[SourceItem] = []
-    seen: set[str] = set()
-    for item in [*base, *extra]:
-        if item.url in seen:
-            continue
-        seen.add(item.url)
-        merged.append(SourceItem(f"S{len(merged) + 1:03d}", item.title, item.url, item.source_level, item.published_date, item.snippet, item.used_in_section))
+    for url, item in merged_dict.items():
+        merged.append(SourceItem(
+            f"S{len(merged) + 1:03d}", item.title, item.url, item.source_level,
+            item.published_date, item.snippet, item.used_in_section,
+            item.provider, item.provider_detail,
+            item.fetch_provider, item.fetch_status, item.failure_reason, item.found_by,
+        ))
     return merged
 
 
@@ -659,6 +642,296 @@ def _emit_progress(progress: ProgressCallback | None, message: str) -> None:
     if progress is not None:
         progress(message)
 
+
+PROVIDER_PRIORITY = {
+    "official_connector": 100,
+    "tavily_extract": 90,
+    "requests_bs4": 75,
+    "gemini_grounding": 80,
+    "html_fetch": 70,
+    "minimax_mcp_search": 65,
+    "tavily_search": 60,
+    "forum_direct": 50,
+    "forum_search": 40,
+    None: 0,
+}
+
+
+class _GeminiDiscoveryRunner:
+    def __init__(self, center: ResearchCenter):
+        self._center = center
+
+    def run_discovery_flow(self, request: CommandRequest, sources: list[SourceItem], structured_data: dict[str, Any], use_grounding: bool, progress: ProgressCallback | None) -> tuple[list[SourceItem], bool]:
+        discovery_tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources) if request.report_date is None else []
+        discovery_sources: list[SourceItem] = []
+        discovery_runs: list[dict[str, Any]] = []
+        gemini_search_used = False
+
+        if request.report_date is None and discovery_tasks:
+            # Step 1: MiniMax MCP Search (highest priority)
+            self._run_minimax_mcp(request, discovery_tasks, sources, structured_data, progress)
+            # Step 2: Tavily Search (second priority)
+            self._run_tavily(request, discovery_tasks, sources, structured_data, progress)
+            # Step 3: Gemini fallback if needed
+            should_run = self._should_run_gemini(request, sources)
+            if should_run and use_grounding:
+                self._run_gemini(request, discovery_tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
+                gemini_search_used = True
+            else:
+                structured_data["gemini_search_discovery"] = {
+                    "enabled": False,
+                    "reason": "skipped_enough_non_gemini_sources" if not should_run else "gemini_search_mode_off",
+                    "source_quality": _source_quality_summary(sources, request),
+                }
+                if progress:
+                    _emit_progress(progress, "Gemini Search skipped: sources sufficient or mode not enabled")
+
+        return sources, gemini_search_used
+
+    def _run_minimax_mcp(self, request, discovery_tasks, sources, structured_data, progress):
+        if not self._center.config.enable_minimax_search:
+            structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "disabled_by_config"}
+            _emit_progress(progress, "MiniMax MCP Search skipped: disabled by config")
+            return
+        if not self._center.minimax_search.is_configured():
+            structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "not_configured"}
+            _emit_progress(progress, "MiniMax MCP Search skipped: not configured")
+            return
+        try:
+            _emit_progress(progress, f"MiniMax MCP Search: {len(discovery_tasks)} tasks")
+            minimax_result = self._center.minimax_search.discover(request, discovery_tasks, progress=progress)
+            before = len(sources)
+            merged = _merge_sources(sources, minimax_result.sources)
+            sources.clear()
+            sources.extend(merged)
+            added = len(sources) - before
+            structured_data["minimax_search_discovery"] = minimax_result.diagnostics
+            _emit_progress(progress, f"MiniMax MCP Search completed: {len(minimax_result.sources)} sources, added={added}")
+        except Exception as exc:
+            structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "failed", "error": str(exc)}
+            _emit_progress(progress, f"MiniMax MCP Search failed: {exc}")
+
+    def _run_tavily(self, request, discovery_tasks, sources, structured_data, progress):
+        if not self._center.config.enable_tavily_search:
+            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "disabled_by_config"}
+            _emit_progress(progress, "Tavily Search skipped: disabled by config")
+            return
+        if not self._center.quota_guard.is_available("tavily"):
+            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "quota_exhausted_this_month"}
+            _emit_progress(progress, "Tavily Search skipped: quota exhausted this month")
+            return
+        if not self._center.quota_guard.is_under_monthly_limit("tavily", self._center.config.tavily_monthly_credit_limit, self._center.config.tavily_credit_reserve):
+            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "monthly_credit_reserve_reached"}
+            _emit_progress(progress, "Tavily Search skipped: monthly credit reserve reached")
+            return
+        try:
+            _emit_progress(progress, f"Run Tavily Search discovery: {len(discovery_tasks)} tasks")
+            tavily_result = self._center.tavily_search.discover(request, discovery_tasks, progress=progress)
+            before = len(sources)
+            merged = _merge_sources(sources, tavily_result.sources)
+            sources.clear()
+            sources.extend(merged)
+            added = len(sources) - before
+            structured_data["tavily_search_discovery"] = tavily_result.diagnostics
+            estimated_units = int((tavily_result.diagnostics or {}).get("estimated_credits") or 1)
+            self._center.quota_guard.record_usage("tavily", estimated_units)
+            _emit_progress(progress, f"Tavily Search completed: {len(tavily_result.sources)} sources, added={added}")
+        except TavilyQuotaError as exc:
+            self._center.quota_guard.mark_exhausted("tavily", str(exc))
+            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "quota_exhausted", "error": str(exc)}
+            _emit_progress(progress, f"Tavily quota exhausted; disabled until next month: {exc}")
+        except Exception as exc:
+            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "failed", "error": str(exc)}
+            _emit_progress(progress, f"Tavily Search failed: {exc}")
+
+    def _should_run_gemini(self, request, sources):
+        mode = self._center.config.gemini_search_mode
+        if mode == "always":
+            return True
+        if mode == "off":
+            return False
+        return _should_run_gemini_search_fallback(request, sources, self._center.config)
+
+    def _run_gemini(self, request, discovery_tasks, sources, structured_data, discovery_sources, discovery_runs, progress):
+        _emit_progress(progress, f"Run Gemini Search discovery (fallback): {len(discovery_tasks)} compact prompts")
+        for task_index, task in enumerate(discovery_tasks, 1):
+            label = task.get("label") or f"task_{task_index}"
+            discovery_prompt = task.get("prompt") or ""
+            try:
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] start")
+                discovery_log_path = write_prompt_log(
+                    request, discovery_prompt, self._center.config.model, True, sources,
+                    {**(structured_data.get("prompt_policy") or {}), "purpose": "grounding_discovery", "discovery_label": label, "discovery_index": task_index},
+                )
+                _emit_progress(progress, f"Search discovery prompt saved: {discovery_log_path}")
+                discovery_result = self._center.gemini.generate_report(discovery_prompt, enable_grounding=True)
+                task_sources = discovery_result.sources
+                before = len(sources)
+                merged = _merge_sources(sources, task_sources)
+                sources.clear()
+                sources.extend(merged)
+                added = len(sources) - before
+                merged_discovery = _merge_sources(discovery_sources, task_sources)
+                discovery_sources.clear()
+                discovery_sources.extend(merged_discovery)
+                discovery_runs.append({
+                    "label": label, "prompt_path": str(discovery_log_path), "diagnostics": discovery_result.diagnostics,
+                    "source_count": len(task_sources), "added_source_count": added, "markdown": discovery_result.markdown,
+                })
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added}")
+            except Exception as exc:
+                discovery_runs.append({"label": label, "status": "failed", "error": str(exc), "source_count": 0, "added_source_count": 0})
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed: {exc}")
+        structured_data["gemini_search_discovery"] = {
+            "mode": "multi_stage", "task_count": len(discovery_tasks),
+            "source_count": len(discovery_sources), "runs": discovery_runs,
+        }
+        if discovery_sources:
+            _emit_progress(progress, f"Gemini Search discovery completed: {len(discovery_sources)} unique Google sources merged")
+        else:
+            _emit_progress(progress, "Gemini Search discovery returned no parseable citations")
+
+
+def _fallback_threshold_key(request: CommandRequest) -> str:
+    if request.command == "research":
+        return f"research_{request.mode}"
+    if request.command == "macro":
+        return f"macro_{request.mode if request.mode == 'deep' else 'normal'}"
+    if request.command == "theme":
+        return f"theme_{request.mode if request.mode == 'deep' else 'normal'}"
+    if request.command == "value_scan":
+        return f"value_scan_{request.mode if request.mode == 'deep' else 'normal'}"
+    return "default"
+
+
+def _source_quality_summary(sources: list[SourceItem], request: CommandRequest) -> dict[str, Any]:
+    total = len(sources)
+    level1 = sum(1 for s in sources if s.source_level == "Level 1")
+    level23 = sum(1 for s in sources if s.source_level in {"Level 2", "Level 3"})
+    risk_terms = ("風險", "反證", "衰退", "下滑", "庫存", "毛利", "虧損", "制裁", "關稅", "戰爭", "risk", "decline", "inventory")
+    risk = sum(1 for s in sources if any(term.lower() in ((s.title or "") + " " + (s.snippet or "")).lower() for term in risk_terms))
+    by_provider: dict[str, int] = {}
+    for s in sources:
+        provider = s.provider or "unknown"
+        by_provider[provider] = by_provider.get(provider, 0) + 1
+    return {"total": total, "level1": level1, "level2_or_3": level23, "risk_or_contradiction": risk, "by_provider": by_provider}
+
+
+def _gemini_discovery_source_count(structured_data: dict[str, Any]) -> int:
+    discovery = structured_data.get("gemini_search_discovery") or {}
+    if not discovery.get("enabled", True) and discovery.get("reason"):
+        return 0
+    return int(discovery.get("source_count") or 0)
+
+
+def _should_run_gemini_search_fallback(request: CommandRequest, sources: list[SourceItem], config) -> bool:
+    thresholds = config.gemini_fallback_thresholds.get(_fallback_threshold_key(request), {})
+    summary = _source_quality_summary(sources, request)
+    if summary["total"] < thresholds.get("min_total_sources", 10):
+        return True
+    if summary["level1"] < thresholds.get("min_level1_sources", 0):
+        return True
+    if summary["level2_or_3"] < thresholds.get("min_level2_or_3_sources", 0):
+        return True
+    if summary["risk_or_contradiction"] < thresholds.get("min_risk_or_contradiction_sources", 0):
+        return True
+    return False
+
+
+def _enrich_sources_with_web_fetch(
+    request: CommandRequest,
+    sources: list[SourceItem],
+    structured_data: dict[str, Any],
+    progress: ProgressCallback | None = None,
+) -> None:
+    """Best-effort page-content enrichment; failures must never block AI analysis."""
+    if request.report_date is not None or not sources:
+        return
+
+    max_urls = 8 if request.mode == "deep" else 4
+    selected: list[SourceItem] = []
+    seen: set[str] = set()
+    for source in sources:
+        url = (source.url or "").strip()
+        if not url or url in seen:
+            continue
+        lower = url.lower()
+        if not lower.startswith(("http://", "https://")):
+            continue
+        if any(lower.endswith(ext) for ext in (".pdf", ".xls", ".xlsx", ".csv", ".zip")):
+            continue
+        selected.append(source)
+        seen.add(url)
+        if len(selected) >= max_urls:
+            break
+
+    if not selected:
+        structured_data["web_fetch_diagnostics"] = {
+            "enabled": True,
+            "status": "skipped",
+            "reason": "no_fetchable_urls",
+            "total_urls": 0,
+        }
+        return
+
+    try:
+        if progress:
+            progress(f"WebFetch：開始讀取來源正文 {len(selected)} 筆")
+        service = WebFetchService(timeout=12.0, max_workers=3)
+        result = service.fetch_many([item.url for item in selected], progress=progress)
+        by_url = {item.url: item for item in result.results}
+        enriched_sources: list[SourceItem] = []
+        enriched_count = 0
+        for source in sources:
+            fetched = by_url.get(source.url)
+            if not fetched:
+                enriched_sources.append(source)
+                continue
+            if fetched.content:
+                enriched_count += 1
+                snippet = fetched.content[:2000]
+            else:
+                snippet = source.snippet
+            enriched_sources.append(
+                replace(
+                    source,
+                    title=fetched.title or source.title,
+                    snippet=snippet,
+                    fetch_provider=fetched.fetch_provider,
+                    fetch_status=fetched.content_status,
+                    failure_reason=fetched.failure_reason,
+                )
+            )
+        sources[:] = enriched_sources
+        structured_data["web_fetch_diagnostics"] = {
+            **result.diagnostics,
+            "enabled": True,
+            "status": "completed",
+            "selected_url_count": len(selected),
+            "enriched_source_count": enriched_count,
+        }
+        structured_data["web_fetched_sources"] = [
+            {
+                "url": item.url,
+                "title": item.title,
+                "content_status": item.content_status,
+                "fetch_provider": item.fetch_provider,
+                "failure_reason": item.failure_reason,
+                "content_preview": item.content[:1200],
+            }
+            for item in result.results
+        ]
+        if progress:
+            progress(f"WebFetch：完成，成功補正文 {enriched_count}/{len(selected)} 筆")
+    except Exception as exc:
+        structured_data["web_fetch_diagnostics"] = {
+            "enabled": True,
+            "status": "failed",
+            "error": str(exc),
+            "selected_url_count": len(selected),
+        }
+        if progress:
+            progress(f"WebFetch：失敗但不中斷 AI 分析：{exc}")
 
 
 

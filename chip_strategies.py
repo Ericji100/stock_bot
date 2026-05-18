@@ -13,7 +13,12 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
+from data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
+
+# Singletons for health and quota tracking
+_CHIP_HEALTH = SourceHealthManager()
+_FINMIND_QUOTA = FinMindQuotaManager()
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -425,11 +430,17 @@ def _save_daily_chip_cache(target_date: date, frame: pd.DataFrame) -> None:
     merged.to_csv(cache_path, index=False, encoding="utf-8")
 
 
-def _finmind_payload(client: httpx.Client, params: dict[str, Any]) -> list[dict[str, Any]]:
+def _finmind_payload(client: httpx.Client, params: dict[str, Any], scope: str = "default") -> list[dict[str, Any]]:
+    # Check health cooldown and quota before sending request
+    if not _CHIP_HEALTH.is_available("finmind"):
+        raise RuntimeError("FinMind source currently in cooldown")
+    if not _FINMIND_QUOTA.can_use(cost=1, scope=scope):
+        raise RuntimeError("FinMind quota exceeded (500/hour safe limit)")
     payload = _fetch_source_json(client, "finmind", FINMIND_API_URL, params=params)
     if payload.get("status") != 200:
         _mark_source_failure("finmind")
         raise RuntimeError(str(payload.get("msg") or "FinMind request failed"))
+    _FINMIND_QUOTA.record_use(cost=1, scope=scope)
     data = payload.get("data") or []
     return data if isinstance(data, list) else []
 
@@ -642,7 +653,13 @@ def _fetch_tpex_net_buy_for_date(client: httpx.Client, target_date: date, candid
     return pd.DataFrame(rows)
 
 
-def _fetch_finmind_net_buy_for_stock(client: httpx.Client, target_date: date, code: str, market: str) -> pd.DataFrame:
+def _fetch_finmind_net_buy_for_stock(
+    client: httpx.Client,
+    target_date: date,
+    code: str,
+    market: str,
+    scope: str = "default",
+) -> pd.DataFrame:
     data = _finmind_payload(
         client,
         {
@@ -651,6 +668,7 @@ def _fetch_finmind_net_buy_for_stock(client: httpx.Client, target_date: date, co
             "start_date": target_date.isoformat(),
             "end_date": target_date.isoformat(),
         },
+        scope=scope,
     )
     foreign_net_shares = 0.0
     trust_net_shares = 0.0
@@ -689,6 +707,7 @@ def _fetch_finmind_net_buy_for_codes(
     target_date: date,
     code_market_map: dict[str, str],
     progress_callback: Callable[[int, int, str], None] | None = None,
+    scope: str = "default",
 ) -> pd.DataFrame:
     if not _is_source_available("finmind"):
         return pd.DataFrame()
@@ -699,7 +718,7 @@ def _fetch_finmind_net_buy_for_codes(
         if progress_callback and (index == 1 or index % 5 == 0 or index == total):
             progress_callback(index, total, f"FinMind 法人買賣超補資料 {target_date.isoformat()} {index}/{total}")
         try:
-            frame = _fetch_finmind_net_buy_for_stock(client, target_date, code, market)
+            frame = _fetch_finmind_net_buy_for_stock(client, target_date, code, market, scope=scope)
         except Exception:
             continue
         if not frame.empty:
@@ -710,7 +729,12 @@ def _fetch_finmind_net_buy_for_codes(
     return pd.concat(frames, ignore_index=True)
 
 
-def _fetch_finmind_foreign_ratio_for_stock(client: httpx.Client, target_date: date, code: str) -> pd.DataFrame:
+def _fetch_finmind_foreign_ratio_for_stock(
+    client: httpx.Client,
+    target_date: date,
+    code: str,
+    scope: str = "default",
+) -> pd.DataFrame:
     data = _finmind_payload(
         client,
         {
@@ -719,6 +743,7 @@ def _fetch_finmind_foreign_ratio_for_stock(client: httpx.Client, target_date: da
             "start_date": target_date.isoformat(),
             "end_date": target_date.isoformat(),
         },
+        scope=scope,
     )
     for row in data:
         if str(row.get("date")) != target_date.isoformat():
@@ -737,6 +762,7 @@ def _fetch_finmind_foreign_ratio_for_codes(
     target_date: date,
     codes: set[str],
     progress_callback: Callable[[int, int, str], None] | None = None,
+    scope: str = "default",
 ) -> pd.DataFrame:
     if not _is_source_available("finmind"):
         return pd.DataFrame()
@@ -747,7 +773,7 @@ def _fetch_finmind_foreign_ratio_for_codes(
         if progress_callback and (index == 1 or index % 5 == 0 or index == total):
             progress_callback(index, total, f"FinMind 外資持股比例補資料 {target_date.isoformat()} {index}/{total}")
         try:
-            frame = _fetch_finmind_foreign_ratio_for_stock(client, target_date, code)
+            frame = _fetch_finmind_foreign_ratio_for_stock(client, target_date, code, scope=scope)
         except Exception:
             continue
         if not frame.empty:
@@ -765,6 +791,7 @@ def _fetch_recent_daily_chip_data(
     progress_end: float = 100.0,
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
     include_foreign_ratio: bool = True,
+    scope: str = "default",
 ) -> tuple[pd.DataFrame, date | None]:
     if candidates.empty:
         return pd.DataFrame(), None
@@ -782,6 +809,10 @@ def _fetch_recent_daily_chip_data(
     calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
         for checked_index, target_date in enumerate(calendar, start=1):
+            # Extra safety: skip obvious weekends if calendar ever contains them
+            if target_date.weekday() >= 5:
+                _print_chip_progress(progress_label, _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days), f"略過週末非交易日 {target_date.isoformat()}")
+                continue
             progress = _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days)
             _print_chip_progress(
                 progress_label,
@@ -865,6 +896,7 @@ def _fetch_recent_daily_chip_data(
                         target_date,
                         finmind_map,
                         progress_callback,
+                        scope=scope,
                     )
                     if not finmind_net.empty:
                         fetched_frames.append(finmind_net)
@@ -962,6 +994,7 @@ def _fetch_recent_daily_chip_data(
                             target_date,
                             finmind_ratio_codes,
                             progress_callback,
+                            scope=scope,
                         )
                         if not finmind_ratio.empty:
                             foreign_ratio = pd.concat([foreign_ratio, finmind_ratio], ignore_index=True)
@@ -1137,6 +1170,7 @@ def build_market_context(
     progress_start: float = 0.0,
     progress_end: float = 100.0,
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+    scope: str = "default",
 ) -> ChipMarketContext:
     report_date = report_date or get_tw_today()
     candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh)
@@ -1149,6 +1183,7 @@ def build_market_context(
             progress_end=progress_end,
             target_trading_days=target_trading_days,
             include_foreign_ratio=include_foreign_ratio,
+            scope=scope,
         )
     else:
         daily_data, latest_trading_date = pd.DataFrame(), None
@@ -1554,6 +1589,7 @@ def warmup_chip_data_cache(
     force_refresh: bool = False,
     progress_label: str = "籌碼快取回補",
     strategy_keys: list[str] | None = None,
+    scope: str = "default",
 ) -> ChipMarketContext:
     target_date = report_date or get_tw_today()
     target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1
@@ -1567,6 +1603,7 @@ def warmup_chip_data_cache(
         progress_start=0.0,
         progress_end=95.0,
         target_trading_days=target_days,
+        scope=scope,
     )
     update_tdcc_snapshot_cache()
     _print_chip_progress(

@@ -185,7 +185,7 @@ def _extract_sources(data: dict[str, Any]) -> list[SourceItem]:
         uri = web.get("uri") or web.get("url")
         title = web.get("title") or uri
         if uri:
-            raw_sources.append({"url": str(uri), "title": str(title or uri), "snippet": "Gemini grounding source"})
+            raw_sources.append({"url": str(uri), "title": str(title or uri), "snippet": "Gemini grounding source", "provider": "gemini_grounding", "provider_detail": "google_search_grounding"})
     return make_source_items(raw_sources)
 
 

@@ -1,7 +1,10 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -76,18 +79,27 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_url ON source_snapshots(source_url);
 class ResearchDatabase:
     def __init__(self, path: Path):
         self.path = path
+        self._original_path = path
         self._memory_uri: str | None = None
         self._memory_anchor: sqlite3.Connection | None = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.init_schema()
         except sqlite3.OperationalError as exc:
+            if _is_sqlite_io_error(exc):
+                self._use_memory_fallback()
+                self.init_schema()
+                return
             if not _is_recoverable_sqlite_error(exc):
                 raise
             self._recover_corrupt_database(exc)
             try:
                 self.init_schema()
             except sqlite3.OperationalError as second_exc:
+                if _is_sqlite_io_error(second_exc):
+                    self._use_memory_fallback()
+                    self.init_schema()
+                    return
                 if not _is_recoverable_sqlite_error(second_exc):
                     raise
                 self._use_memory_fallback()
@@ -108,7 +120,15 @@ class ResearchDatabase:
             self.path = self.path.with_name(f"{self.path.stem}.recovered_{stamp}{self.path.suffix}")
 
     def _use_memory_fallback(self) -> None:
-        self._memory_uri = "file:stock_research_fallback?mode=memory&cache=shared"
+        # Close any previous anchor before creating a new one to avoid unclosed connections.
+        if self._memory_anchor is not None:
+            self._memory_anchor.close()
+            self._memory_anchor = None
+
+        # Use a deterministic hash of the DB path so each path gets its own
+        # in-memory DB, but the same path always maps to the same URI.
+        safe_name = hashlib.sha1(str(self._original_path.resolve()).encode("utf-8")).hexdigest()[:16]
+        self._memory_uri = f"file:stock_research_fallback_{safe_name}?mode=memory&cache=shared"
         self._memory_anchor = sqlite3.connect(self._memory_uri, uri=True)
 
     def connect(self) -> sqlite3.Connection:
@@ -116,8 +136,30 @@ class ResearchDatabase:
             return sqlite3.connect(self._memory_uri, uri=True)
         return sqlite3.connect(self.path)
 
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        """Context manager that opens, yields, and properly closes a SQLite connection."""
+        connection = self.connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+    def close(self) -> None:
+        """Close the memory fallback anchor connection if it exists."""
+        if self._memory_anchor is not None:
+            self._memory_anchor.close()
+            self._memory_anchor = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def init_schema(self) -> None:
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.executescript(SCHEMA)
 
     def save_report(
@@ -130,7 +172,7 @@ class ResearchDatabase:
         fallback_reason: str | None,
     ) -> None:
         payload = _request_to_json(request)
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO reports (
@@ -190,7 +232,7 @@ class ResearchDatabase:
             params.append(report_date)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         query = f"SELECT * FROM reports {where} ORDER BY created_at DESC LIMIT 1"
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(query, params).fetchone()
             return dict(row) if row else None
@@ -205,13 +247,13 @@ class ResearchDatabase:
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         params.append(limit)
         query = f"SELECT * FROM reports {where} ORDER BY created_at DESC LIMIT ?"
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query, params).fetchall()
             return [dict(row) for row in rows]
 
     def get_report(self, report_id: str) -> dict[str, Any] | None:
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute("SELECT * FROM reports WHERE report_id = ?", (report_id,)).fetchone()
             return dict(row) if row else None
@@ -220,7 +262,7 @@ class ResearchDatabase:
         if not events:
             return
         now = datetime.now().astimezone().isoformat(timespec="seconds")
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.executemany(
                 """
                 INSERT INTO events (
@@ -247,7 +289,7 @@ class ResearchDatabase:
         if not snapshots:
             return
         now = datetime.now().astimezone().isoformat(timespec="seconds")
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.executemany(
                 """
                 INSERT INTO source_snapshots (
@@ -281,7 +323,7 @@ class ResearchDatabase:
             params.append(command)
         params.append(limit)
         query = f"SELECT * FROM source_snapshots WHERE {' AND '.join(clauses)} ORDER BY COALESCE(published_date, fetched_at) DESC LIMIT ?"
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query, params).fetchall()
             results = []
@@ -305,14 +347,27 @@ class ResearchDatabase:
             params.append(event_type)
         params.append(limit)
         query = f"SELECT * FROM events WHERE {' AND '.join(clauses)} ORDER BY COALESCE(published_date, created_at) DESC LIMIT ?"
-        with self.connect() as connection:
+        with self.connection() as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query, params).fetchall()
             return [dict(row) for row in rows]
 
 def _is_recoverable_sqlite_error(exc: sqlite3.OperationalError) -> bool:
     text = str(exc).lower()
-    return "disk i/o" in text or "unable to open database file" in text
+    return (
+        "file is not a database" in text
+        or "database disk image is malformed" in text
+        or "file is encrypted or is not a database" in text
+    )
+
+def _is_sqlite_io_error(exc: sqlite3.OperationalError) -> bool:
+    text = str(exc).lower()
+    return (
+        "disk i/o" in text
+        or "unable to open database file" in text
+        or "attempt to write a readonly database" in text
+        or "readonly database" in text
+    )
 
 def _request_to_json(request: CommandRequest) -> dict[str, Any]:
     payload = asdict(request)
@@ -321,7 +376,6 @@ def _request_to_json(request: CommandRequest) -> dict[str, Any]:
         if value is not None:
             payload[key] = value.isoformat()
     return payload
-
 
 
 

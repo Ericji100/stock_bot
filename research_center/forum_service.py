@@ -29,16 +29,17 @@ COMMON_HEADERS = {
 class ForumFetchResult:
     sources: list[SourceItem]
     notes: list[str]
+    failure_count: int = 0
 
 
 def fetch_forum_sources(query: str, report_date: date | None = None, deep: bool = False, progress: Callable[[str], None] | None = None) -> ForumFetchResult:
     if not query.strip():
-        return ForumFetchResult([], ["論壇查詢略過：查詢字串為空。"])
+        return ForumFetchResult([], ["論壇查詢略過：查詢字串為空。"], failure_count=0)
 
     raw_sources: list[dict[str, str]] = []
     notes: list[str] = []
     limit = 8 if deep else 4
-    serper_key = _serper_api_key()
+    failure_count = 0
     collectors = (_collect_ptt_stock, _collect_dcard, _collect_mobile01, _collect_cmoney)
     with httpx.Client(timeout=10.0, follow_redirects=True, headers=COMMON_HEADERS) as client:
         for collector in collectors:
@@ -51,26 +52,24 @@ def fetch_forum_sources(query: str, report_date: date | None = None, deep: bool 
                 added = len(raw_sources) - before
                 if progress:
                     progress(f"論壇來源：{label} 完成，新增 {added} 筆")
-                if added == 0:
-                    fallback = _collect_forum_search_fallback(client, query, label, limit=2 if not deep else 3, serper_api_key=serper_key)
-                    raw_sources.extend(fallback)
-                    if fallback and progress:
-                        progress(f"論壇來源：{label} 搜尋引擎 fallback 新增 {len(fallback)} 筆")
             except Exception as exc:
                 note = f"{collector.__name__} 失敗：{exc}"
                 notes.append(note)
+                failure_count += 1
                 if progress:
                     progress(f"論壇來源：{label} 失敗：{exc}")
-                fallback = _collect_forum_search_fallback(client, query, label, limit=2 if not deep else 3, serper_api_key=serper_key)
-                raw_sources.extend(fallback)
-                if fallback:
-                    notes.append(f"{label} 直接抓取失敗，已改用 Serper site: 搜尋 fallback。")
-                    if progress:
-                        progress(f"論壇來源：{label} fallback 完成，新增 {len(fallback)} 筆")
-                elif serper_key:
-                    notes.append(f"{label} 直接抓取與搜尋 fallback 均未取得可用來源。")
-                else:
-                    notes.append(f"{label} 搜尋 fallback 略過：Serper API Key 未設定。")
+
+        if progress:
+            progress(f"論壇來源搜尋完成：成功 {len(raw_sources)} 筆，失敗 {failure_count} 筆")
+
+    if failure_count > 0 and raw_sources:
+        notes.append(
+            "論壇搜尋備援：部分論壇直連失敗；Serper/Jina 已停用，後續由 Tavily Search 與 Gemini Search fallback 補足外部來源。"
+        )
+    elif failure_count > 0:
+        notes.append(
+            "論壇搜尋備援：Serper/Jina 已停用；後續由 Tavily Search 與 Gemini Search fallback 補足外部來源。"
+        )
 
     sources = make_source_items(raw_sources)
     if report_date is not None:
@@ -78,7 +77,7 @@ def fetch_forum_sources(query: str, report_date: date | None = None, deep: bool 
         notes.append("--date 模式：論壇來源若無法確認發布日期，會被保守排除。")
     if not sources and not notes:
         notes.append("未找到可用論壇來源。")
-    return ForumFetchResult(sources[: limit * 5], notes)
+    return ForumFetchResult(sources[: limit * 5], notes, failure_count=failure_count)
 
 
 def _collector_label(name: str) -> str:
@@ -247,6 +246,8 @@ def _serper_api_key() -> str | None:
     try:
         config = load_research_config()
     except Exception:
+        return None
+    if not getattr(config, "enable_serper_search", False):
         return None
     return config.serper_api_key
 

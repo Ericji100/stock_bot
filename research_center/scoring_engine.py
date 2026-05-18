@@ -107,7 +107,7 @@ def _theme_scores(data: dict[str, Any]) -> list[Score]:
 
 
 def _value_scan_scores(data: dict[str, Any]) -> list[Score]:
-    candidates = data.get("candidates") or []
+    candidates = data.get("ai_candidates") or data.get("candidates") or []
     scores: list[Score] = []
     for row in candidates[: int(data.get("top_n") or 10)]:
         base = _number(row.get("rerating_score"), 0)
@@ -130,7 +130,7 @@ def _value_scan_scores(data: dict[str, Any]) -> list[Score]:
 
 
 def _operating_margin_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
-    values = _series(rows, ("operating_margin", "OperatingMargin", "營益率"))[-4:]
+    values = _series(rows, ("operating_margin", "Operating_Margin", "OperatingMargin", "營益率"))[-4:]
     if not values:
         return 0, "缺少營益率資料。", "資料不足，無法評分。"
     avg = mean(values)
@@ -147,7 +147,7 @@ def _operating_margin_score(rows: list[dict[str, Any]]) -> tuple[float, str, str
 
 
 def _revenue_growth_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
-    values = _series(rows, ("YoY", "yoy", "revenue_yoy", "年增率"))[-6:]
+    values = _series(rows, ("YoY", "YoY%", "yoy", "revenue_yoy", "年增率"))[-6:]
     if not values:
         return 0, "缺少月營收 YoY 資料。", "資料不足，無法評分。"
     avg = mean(values)
@@ -182,7 +182,7 @@ def _eps_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
 
 
 def _profit_growth_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
-    values = _series(rows, ("net_income_yoy", "NetIncomeYoY", "稅後淨利年增率"))[-4:]
+    values = _series(rows, ("net_income_yoy", "Net_Income_YoY", "NetIncomeYoY", "稅後淨利年增率"))[-4:]
     if not values:
         return 0, "缺少稅後淨利年增率資料。", "資料不足，無法評分。"
     if len(values) >= 3 and all(value > 0 for value in values[-3:]) and values[-1] >= values[-2]:
@@ -195,7 +195,7 @@ def _profit_growth_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
 
 
 def _cash_flow_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
-    values = _series(rows, ("free_cash_flow", "FreeCashFlow", "自由現金流量"))[-6:]
+    values = _series(rows, ("free_cash_flow", "Free_Cash_Flow", "FreeCashFlow", "自由現金流量"))[-6:]
     if not values:
         return 0, "缺少自由現金流資料。", "資料不足，無法評分。"
     six_sum = sum(values)
@@ -212,7 +212,7 @@ def _cash_flow_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
 
 
 def _inventory_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
-    values = _series(rows, ("inventory_turnover", "InventoryTurnover", "存貨週轉率"))[-4:]
+    values = _series(rows, ("inventory_turnover", "Inventory_Turnover", "InventoryTurnover", "存貨週轉率"))[-4:]
     if not values:
         return 50, "缺少存貨週轉率資料，暫以不評分/中性處理。", "若產業非低庫存，仍需補資料。"
     avg = mean(values)

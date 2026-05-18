@@ -10,9 +10,14 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"
 
 
-def save_recent_scan_result(scan_type: str, report_date: date, report_text: str) -> dict[str, Any]:
+def save_recent_scan_result(
+    scan_type: str,
+    report_date: date,
+    report_text: str,
+    selected_codes: list[str] | None = None,
+) -> dict[str, Any]:
     records = load_recent_scan_results(limit=20)
-    codes = extract_stock_codes(report_text)
+    codes = _normalise_stock_codes(selected_codes) if selected_codes is not None else extract_stock_codes(report_text)
     record = {
         "scan_id": f"{_safe(scan_type)}_{report_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M%S')}",
         "scan_type": scan_type,
@@ -20,6 +25,7 @@ def save_recent_scan_result(scan_type: str, report_date: date, report_text: str)
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "candidate_count": len(codes),
         "codes": codes,
+        "selected_codes": codes,
         "summary": report_text[:3000],
     }
     records.insert(0, record)
@@ -64,6 +70,20 @@ def extract_stock_codes(text: str) -> list[str]:
     for match in re.finditer(r"(?<!\d)(\d{4})(?!\d)", text or ""):
         code = match.group(1)
         if code in seen:
+            continue
+        seen.add(code)
+        codes.append(code)
+    return codes
+
+
+def _normalise_stock_codes(values: list[str] | None) -> list[str]:
+    codes: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        code = str(value).strip()
+        if not code or code in seen:
+            continue
+        if not re.fullmatch(r"\d{4}", code):
             continue
         seen.add(code)
         codes.append(code)

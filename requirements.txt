@@ -7,3 +7,5 @@ openpyxl
 lxml
 fastapi
 uvicorn
+beautifulsoup4
+mcp

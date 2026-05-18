@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -36,10 +35,12 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         self.assertIn('候選', qa['missing_sections'])
 
     def test_write_report_artifacts_respects_output_formats(self):
-        request = parse_command_text('/research 2330 --no-html --no-json')
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("report_schema/test_write_report_artifacts")
+        try:
+            request = parse_command_text('/research 2330 --no-html --no-json')
             artifacts, report_json = write_report_artifacts(
-                Path(tmp),
+                tmp,
                 request,
                 '# 2330 個股研究報告\n\n## 資料來源列表\n- [S001] TWSE',
                 'summary',
@@ -53,6 +54,8 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
             self.assertFalse(artifacts.json_path.exists())
             self.assertTrue(artifacts.sources_path.exists())
             self.assertIn('qa_validation', report_json['metadata'])
+        finally:
+            safe_remove_test_cache("report_schema/test_write_report_artifacts")
 
 
 
@@ -68,6 +71,42 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         self.assertIn('overflow-x: hidden', rendered)
         self.assertIn('overflow-wrap: anywhere', rendered)
         self.assertIn('source-card', rendered)
+
+    def test_report_sources_render_provider_in_markdown_and_html(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("report_schema/test_report_sources_render")
+        try:
+            request = parse_command_text('/research 2330')
+            sources = [
+                SourceItem(
+                    'S001',
+                    'Tavily source',
+                    'https://example.com/a',
+                    'Level 3',
+                    snippet='content',
+                    provider='tavily_extract',
+                    provider_detail='extract_depth=basic',
+                )
+            ]
+            markdown = '# 2330 研究\n\n## 資料來源列表\n- [S001] Tavily source'
+            artifacts, report_json = write_report_artifacts(
+                tmp,
+                request,
+                markdown,
+                'summary',
+                sources,
+                True,
+                None,
+                {'analysis_model': 'test', 'local_scoring': {'scores': []}},
+            )
+            written_md = artifacts.markdown_path.read_text(encoding='utf-8')
+            html = artifacts.html_path.read_text(encoding='utf-8')
+            self.assertIn('tavily_extract', written_md)
+            self.assertIn('extract_depth=basic', written_md)
+            self.assertIn('tavily_extract', html)
+            self.assertIn('extract_depth=basic', html)
+        finally:
+            safe_remove_test_cache("report_schema/test_report_sources_render")
 
 
 if __name__ == '__main__':

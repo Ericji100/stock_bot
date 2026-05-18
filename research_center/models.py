@@ -21,6 +21,7 @@ class CommandRequest:
     score: bool = False
     brief: bool = False
     top: int | None = None
+    ai_model: str = "gemini"
     report_date: date | None = None
     output_formats: tuple[str, ...] = ("md", "html", "json")
     user_id: str | None = None
@@ -36,6 +37,12 @@ class SourceItem:
     published_date: str | None = None
     snippet: str | None = None
     used_in_section: list[str] = field(default_factory=list)
+    provider: str | None = None
+    provider_detail: str | None = None
+    fetch_provider: str | None = None
+    fetch_status: str | None = None
+    failure_reason: str | None = None
+    found_by: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

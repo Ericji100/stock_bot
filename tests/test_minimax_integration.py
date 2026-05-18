@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,9 +16,11 @@ from research_center.report_builder import write_report_artifacts
 
 class MiniMaxIntegrationTests(unittest.TestCase):
     def test_config_loads_minimax_and_search_keys(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            root = Path(tmp)
-            (root / "config").mkdir()
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("minimax_integration/test_config_loads_minimax_and_search_keys")
+        try:
+            root = tmp
+            (root / "config").mkdir(parents=True, exist_ok=True)
             (root / "config" / "research_center.json").write_text(
                 json.dumps(
                     {
@@ -42,6 +43,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             config = load_research_config(root)
+        finally:
+            safe_remove_test_cache("minimax_integration/test_config_loads_minimax_and_search_keys")
         self.assertEqual(config.minimax_model, "MiniMax-M2.7")
         self.assertEqual(config.minimax_api_key, "mini")
         self.assertEqual(config.serper_api_key, "serper")
@@ -50,12 +53,16 @@ class MiniMaxIntegrationTests(unittest.TestCase):
 
 
     def test_config_defaults_gemini_pro_with_flash_fallback(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            root = Path(tmp)
-            (root / "config").mkdir()
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("minimax_integration/test_config_defaults_gemini_pro_with_flash_fallback")
+        try:
+            root = tmp
+            (root / "config").mkdir(parents=True, exist_ok=True)
             (root / "config" / "research_center.json").write_text("{}", encoding="utf-8")
             (root / "config" / "secrets.json").write_text(json.dumps({"gemini_api_key": "gemini"}), encoding="utf-8")
             config = load_research_config(root)
+        finally:
+            safe_remove_test_cache("minimax_integration/test_config_defaults_gemini_pro_with_flash_fallback")
         self.assertEqual(config.model, "gemini-3-pro-preview")
         self.assertEqual(config.fallback_models, ("gemini-3-flash-preview",))
 
@@ -76,23 +83,82 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertEqual(text, "# Report")
 
     def test_minimax_search_discover_builds_sources_without_network(self):
+        # Create a service with a mock MCP session
         service = MiniMaxSearchService("serper", "jina", minimax=None)
-        service._serper_search = lambda query: [  # type: ignore[method-assign]
-            {"title": "TWSE", "url": "https://www.twse.com.tw/test", "snippet": "official", "published_date": None}
-        ]
-        service._read_with_jina = lambda url: "official content"  # type: ignore[method-assign]
+        # Mock _search_many directly since new implementation uses async MCP without persistent session
+        def mock_search_many(queries, api_key=None):
+            return [
+                {"title": "TWSE", "url": "https://www.twse.com.tw/test", "snippet": "official", "published_date": None, "query": queries[0] if queries else ""}
+            ]
+        service._search_many = mock_search_many  # type: ignore[method-assign]
         request = parse_command_text("/research 2330")
         result = service.discover(request, [{"label": "official", "queries": ["2330 TWSE"], "objective": "official data"}])
         self.assertGreaterEqual(len(result.sources), 1)
         self.assertEqual(result.sources[0].source_level, "Level 1")
-        self.assertIn("MiniMax Search", result.sources[0].snippet)
+        self.assertIn("official", result.sources[0].snippet)
         self.assertGreaterEqual(result.diagnostics["source_count"], 1)
 
+    def test_minimax_extract_search_items_supports_organic(self):
+        from research_center.minimax_search_service import _extract_search_items
+        raw = {"organic": [{"title": "A", "link": "https://a.com", "snippet": "s"}]}
+        items = _extract_search_items(raw)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://a.com")
+        self.assertEqual(items[0]["snippet"], "s")
+
+    def test_minimax_extract_search_items_supports_results(self):
+        from research_center.minimax_search_service import _extract_search_items
+        raw = {"results": [{"title": "B", "url": "https://b.com", "summary": "sum"}]}
+        items = _extract_search_items(raw)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://b.com")
+        self.assertEqual(items[0]["snippet"], "sum")
+
+    def test_minimax_extract_search_items_supports_sources(self):
+        from research_center.minimax_search_service import _extract_search_items
+        raw = {
+            "sources": [
+                {
+                    "title": "Source A",
+                    "url": "https://example.com/a",
+                    "snippet": "source snippet",
+                    "published_date": "2026-05-17"
+                }
+            ]
+        }
+        items = _extract_search_items(raw)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://example.com/a")
+        self.assertEqual(items[0]["snippet"], "source snippet")
+        self.assertEqual(items[0]["published_date"], "2026-05-17")
+
+    def test_minimax_discover_handles_mcp_failure_without_raise(self):
+        service = MiniMaxSearchService("serper", "jina", minimax=None)
+        def mock_search_many(queries, api_key=None):
+            raise RuntimeError("MCP subprocess failed")
+        service._search_many = mock_search_many  # type: ignore[method-assign]
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "official", "queries": ["2330"], "objective": "test"}])
+        self.assertEqual(len(result.sources), 0)
+        self.assertEqual(result.diagnostics["runs"][0]["status"], "failed")
+
+    def test_minimax_discover_builds_provider_fields(self):
+        service = MiniMaxSearchService("serper", "jina", minimax=None)
+        def mock_search_many(queries, api_key=None):
+            return [{"title": "Test", "url": "https://test.com", "snippet": "test", "published_date": None, "query": "test"}]
+        service._search_many = mock_search_many  # type: ignore[method-assign]
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "test", "queries": ["2330"], "objective": "test"}])
+        self.assertGreaterEqual(len(result.sources), 1)
+        self.assertEqual(result.sources[0].provider, "minimax_mcp_search")
+
     def test_comparison_report_filename_uses_minimax_variant(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("minimax_integration/test_comparison_report_filename_uses_minimax_variant")
+        try:
             request = parse_command_text("/research 2330 --no-html --no-json")
             artifacts, report_json = write_report_artifacts(
-                Path(tmp),
+                tmp,
                 request,
                 "# MiniMax Report\n\n## 摘要\n測試",
                 "測試",
@@ -102,6 +168,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                 {"analysis_model": "MiniMax-M2.7"},
                 report_variant="minimax",
             )
+        finally:
+            safe_remove_test_cache("minimax_integration/test_comparison_report_filename_uses_minimax_variant")
         self.assertIn("_minimax_", artifacts.report_id)
         self.assertEqual(report_json["report_variant"], "minimax")
         self.assertEqual(report_json["metadata"]["analysis_model"], "MiniMax-M2.7")
@@ -109,6 +177,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
 
 
     def test_parallel_model_jobs_use_same_prompt_and_write_reports(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
         class FakeGemini:
             def __init__(self):
                 self.prompts = []
@@ -131,8 +201,9 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                 self.prompts.append(prompt)
                 return MiniMaxResult("# MiniMax\n\n## 摘要\nOK [S001]", {"raw": "m"}, {"finish_reason": "stop"})
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            root = Path(tmp)
+        tmp = ensure_test_cache_dir("minimax_integration/test_parallel_model_jobs")
+        try:
+            root = tmp
             config = ResearchCenterConfig(
                 api_key="gemini",
                 minimax_api_key="mini",
@@ -173,6 +244,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
             self.assertTrue(Path(minimax_entry["markdown_path"]).exists())
             self.assertEqual(center.gemini.prompts, ["SAME FULL PROMPT"])
             self.assertEqual(center.minimax.prompts, ["SAME FULL PROMPT"])
+        finally:
+            safe_remove_test_cache("minimax_integration/test_parallel_model_jobs")
 
 
 if __name__ == "__main__":

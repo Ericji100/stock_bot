@@ -18,3 +18,13 @@ database/*.db-*
 database/*.db-journal
 research_center/__pycache__/
 tests/__pycache__/
+tools/__pycache__/
+.pytest_cache/
+.tmp*/
+.tmp_*.py
+tmp_*/
+debug_*.py
+_debug_*.py
+fix_tests*.py
+tests/sqlite_probe*/
+prompt/*.zip

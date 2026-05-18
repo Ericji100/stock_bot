@@ -48,16 +48,24 @@ def build_report_json(
             "ai_used": ai_used,
             "report_variant": report_variant,
             "analysis_model": data.get("analysis_model"),
+            "analysis_model_choice": data.get("analysis_model_choice"),
+            "analysis_provider": data.get("analysis_provider"),
             "comparison_reports": data.get("comparison_reports"),
             "fallback_reason": fallback_reason,
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "output_formats": list(request.output_formats),
             "local_scoring_policy": local_scoring.get("policy"),
+            "local_scoring": local_scoring,
+            "ai_final_scoring_policy": {
+                "role": "AI 最終投研評分",
+                "rule": "AI 必須根據全部資料、搜尋來源與反證重新評估；若高於本地量化底稿需說明原因。",
+            },
             "gemini_search_diagnostics": data.get("gemini_search_diagnostics"),
             "gemini_search_discovery": data.get("gemini_search_discovery"),
             "minimax_search_discovery": data.get("minimax_search_discovery"),
             "minimax_diagnostics": data.get("minimax_diagnostics"),
-            "value_scan_candidate_count": len(data.get("candidates") or []) if request.command == "value_scan" else None,
+            "opencode_diagnostics": data.get("opencode_diagnostics"),
+            "value_scan_candidate_count": len(data.get("ai_candidates") or data.get("candidates") or []) if request.command == "value_scan" else None,
             "value_scan_candidates": _value_scan_candidate_refs(data) if request.command == "value_scan" else None,
         },
     }
@@ -119,14 +127,15 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
     data = structured_data or {}
     if request.command != "value_scan":
         return markdown
-    candidates = data.get("candidates") or []
+    # 使用實際送 AI 的候選股（ai_candidates），不是本地 display 的 candidates
+    candidates = data.get("ai_candidates") or data.get("candidates") or []
     if not candidates:
         return markdown
     marker = "\u5b8c\u6574\u5019\u9078\u80a1\u9010\u6a94\u91cd\u4f30\u5206\u6790"
     if marker in markdown:
         return markdown
     lines = [markdown.rstrip(), "", "---", "", "## " + marker, ""]
-    lines.append("\u4ee5\u4e0b\u7ae0\u7bc0\u7531\u7a0b\u5f0f\u4f9d\u672c\u6b21 value_scan \u5be6\u969b\u9001\u5165 AI \u7684 candidates \u81ea\u52d5\u9644\u52a0\uff0c\u78ba\u4fdd --top \u9078\u5230\u7684\u6bcf\u4e00\u6a94\u90fd\u6709\u53ef\u8ffd\u6eaf\u7684\u9010\u6a94\u5206\u6790\u5e95\u7a3f\u3002")
+    lines.append("\u4ee5\u4e0b\u7ae0\u7bc0\u7531\u7a0b\u5f0f\u4f9d\u672c\u6b21\u5be6\u969b\u9001\u5165 AI \u7684 ai_candidates \u81ea\u52d5\u9644\u52a0\uff0c\u78ba\u4fdd\u5be6\u969b\u5206\u6790\u5019\u9078\u80a1\u6709\u53ef\u8ffd\u6eaf\u7684\u9010\u6a94\u5206\u6790\u5e95\u7a3f\u3002")
     for index, row in enumerate(candidates, 1):
         code = str(row.get("code") or "").strip()
         name = str(row.get("name") or "").strip()
@@ -153,7 +162,8 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
 
 def _value_scan_candidate_refs(data: dict[str, Any]) -> list[dict[str, str]]:
     refs = []
-    for row in data.get("candidates") or []:
+    # 使用實際送 AI 的候選股（ai_candidates），不是本地 display 的 candidates
+    for row in data.get("ai_candidates") or data.get("candidates") or []:
         refs.append({"code": str(row.get("code") or ""), "name": str(row.get("name") or "")})
     return refs
 
@@ -249,9 +259,11 @@ def _append_complete_source_appendix(markdown: str, sources: list[SourceItem]) -
     lines.append("")
     for item in sources:
         title = item.title or item.url
-        date_part = f"\uff0cdate={item.published_date}" if item.published_date else ""
-        snippet_part = f"\uff0c{item.snippet}" if item.snippet else ""
-        lines.append(f"- [{item.source_id}] {item.source_level} {title} - {item.url}{date_part}{snippet_part}")
+        date_part = f"，date={item.published_date}" if item.published_date else ""
+        provider = item.provider or "unknown"
+        provider_detail = f"，provider_detail={item.provider_detail}" if item.provider_detail else ""
+        snippet_part = f"，{item.snippet}" if item.snippet else ""
+        lines.append(f"- [{item.source_id}] {item.source_level} / {provider} {title} - {item.url}{date_part}{provider_detail}{snippet_part}")
     return "\n".join(lines).strip() + "\n"
 
 def render_html(report_json: dict[str, Any], markdown: str) -> str:
@@ -293,12 +305,14 @@ def render_html(report_json: dict[str, Any], markdown: str) -> str:
     #tab-qa:checked ~ .tab-list label[for="tab-qa"],
     #tab-sources:checked ~ .tab-list label[for="tab-sources"],
     #tab-metadata:checked ~ .tab-list label[for="tab-metadata"],
-    #tab-candidates:checked ~ .tab-list label[for="tab-candidates"] {{ background: #1d4ed8; color: #fff; border-color: #1d4ed8; }}
+    #tab-candidates:checked ~ .tab-list label[for="tab-candidates"],
+    #tab-local-scoring:checked ~ .tab-list label[for="tab-local-scoring"] {{ background: #1d4ed8; color: #fff; border-color: #1d4ed8; }}
     #tab-main:checked ~ .panels #panel-main,
     #tab-qa:checked ~ .panels #panel-qa,
     #tab-sources:checked ~ .panels #panel-sources,
     #tab-metadata:checked ~ .panels #panel-metadata,
-    #tab-candidates:checked ~ .panels #panel-candidates {{ display: block; }}
+    #tab-candidates:checked ~ .panels #panel-candidates,
+    #tab-local-scoring:checked ~ .panels #panel-local-scoring {{ display: block; }}
     @media (max-width: 640px) {{
       main {{ padding: 16px 12px 42px; }}
       h1 {{ font-size: 23px; }}
@@ -325,6 +339,7 @@ def _build_html_tabs(report_json: dict[str, Any], markdown: str) -> str:
     sources_html = _sources_to_html(report_json) or _markdown_to_html(sections["sources"] or "目前沒有完整資料來源清單。")
     metadata_html = f"<pre>{html.escape(json.dumps(_metadata_summary(report_json), ensure_ascii=False, indent=2, default=str))}</pre>"
     candidates_html = _markdown_to_html(sections["candidates"])
+    local_scoring_html = _local_scoring_html(report_json)
     candidate_tab = ""
     candidate_panel = ""
     if sections["candidates"].strip():
@@ -335,12 +350,14 @@ def _build_html_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <h1>{title}</h1>
   <div class="report-meta">日期：{report_date}｜模式：{mode}{'｜模型：' + model if model else ''}</div>
   <input class="tab-input" type="radio" name="report-tabs" id="tab-main" checked>
+  <input class="tab-input" type="radio" name="report-tabs" id="tab-local-scoring">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-qa">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-sources">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-metadata">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-candidates">
   <nav class="tab-list" aria-label="報告內容切換">
     <label class="tab-label" for="tab-main">主報告</label>
+    <label class="tab-label" for="tab-local-scoring">本地量化底稿</label>
     <label class="tab-label" for="tab-qa">QA 驗證</label>
     <label class="tab-label" for="tab-sources">完整資料來源</label>
     <label class="tab-label" for="tab-metadata">Metadata</label>
@@ -348,6 +365,7 @@ def _build_html_tabs(report_json: dict[str, Any], markdown: str) -> str:
   </nav>
   <div class="panels">
     <section class="tab-panel" id="panel-main">{main_html}</section>
+    <section class="tab-panel" id="panel-local-scoring">{local_scoring_html}</section>
     <section class="tab-panel" id="panel-qa">{qa_html}</section>
     <section class="tab-panel" id="panel-sources">{sources_html}</section>
     <section class="tab-panel" id="panel-metadata">{metadata_html}</section>
@@ -391,6 +409,29 @@ def _qa_markdown(report_json: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _local_scoring_html(report_json: dict[str, Any]) -> str:
+    local_scoring = ((report_json.get("metadata") or {}).get("local_scoring") or {})
+    scores = local_scoring.get("scores") or []
+    if not scores:
+        return '<h2>本地量化底稿</h2><p>本模式不產生本地量化底稿。</p>'
+    rows = []
+    for item in scores:
+        rows.append(
+            f"<tr>"
+            f"<td>{html.escape(str(item.get('score_name') or ''))}</td>"
+            f"<td>{html.escape(str(item.get('score_value') or ''))}/{html.escape(str(item.get('score_max') or ''))}</td>"
+            f"<td>{html.escape(str(item.get('score_reason') or ''))}</td>"
+            f"<td>{html.escape(str(item.get('deduction_reason') or ''))}</td>"
+            f"</tr>"
+        )
+    return f"""<h2>本地量化底稿</h2>
+<p>本區為機械式資料檢查，不是 AI 最終投研評分。AI 最終投研評分請見主報告。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>項目</th><th>機械分數</th><th>理由</th><th>扣分原因</th></tr></thead>
+<tbody>{''.join(rows)}</tbody>
+</table></div>"""
+
+
 def _sources_to_html(report_json: dict[str, Any]) -> str:
     sources = report_json.get("sources") or []
     if not sources:
@@ -403,8 +444,14 @@ def _sources_to_html(report_json: dict[str, Any]) -> str:
         url = html.escape(str(item.get("url") or ""))
         date = html.escape(str(item.get("published_date") or ""))
         snippet = html.escape(str(item.get("snippet") or ""))
+        provider = html.escape(str(item.get("provider") or "unknown"))
+        provider_detail = html.escape(str(item.get("provider_detail") or ""))
         link = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>' if url.startswith(("http://", "https://")) else url
-        cards.append(f'<article class="source-card"><div class="source-title">[{sid}] {level} {title}</div><div class="source-meta">{date}</div><div>{link}</div>{f"<p>{snippet}</p>" if snippet else ""}</article>')
+        meta_parts = [part for part in [level, provider, date] if part]
+        if provider_detail:
+            meta_parts.append(provider_detail)
+        meta = " / ".join(meta_parts)
+        cards.append(f'<article class="source-card"><div class="source-title">[{sid}] {title}</div><div class="source-meta">{meta}</div><div>{link}</div>{f"<p>{snippet}</p>" if snippet else ""}</article>')
     return "\n".join(cards)
 
 
@@ -472,7 +519,7 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
 {data_block}
 ```
 
-## 評分摘要
+## 本地量化底稿（機械式資料檢查，非最終投研評分）
 {_score_markdown(structured_data)}
 
 ## 主要限制
@@ -500,11 +547,13 @@ def _buy_rating_markdown(structured_data: dict[str, Any]) -> str:
 def _score_markdown(structured_data: dict[str, Any]) -> str:
     scores = ((structured_data.get("local_scoring") or {}).get("scores") or [])
     if not scores:
-        return "- 本模式不產生本地評分。"
-    return "\n".join(
+        return "- 本模式不產生本地量化底稿。"
+    lines = ["- 此分數僅為結構化資料檢查結果，不是 AI 最終投研評分。", ""]
+    lines.extend(
         f"- {item.get('score_name')}: {item.get('score_value')}/{item.get('score_max')}。{item.get('score_reason')} 扣分：{item.get('deduction_reason')}"
         for item in scores
     )
+    return "\n".join(lines)
 
 
 def _report_title(request: CommandRequest) -> str:

@@ -292,7 +292,19 @@ def fetch_tpex_daily_history(code: str, symbol: str, start_date: date, end_date:
 def fetch_yfinance_daily_history(symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
     yf_frame = download_yfinance_history(symbol, start_date, end_date + timedelta(days=1), interval="1d")
     if yf_frame.empty or "Date" not in yf_frame.columns:
-        return fetch_fugle_history(symbol, start_date, end_date, "1d")
+        fugle_frame = fetch_fugle_history(symbol, start_date, end_date, "1d")
+        if not fugle_frame.empty:
+            return fugle_frame.rename(
+                columns={
+                    "datetime": "datetime",
+                    "open": "open",
+                    "high": "high",
+                    "low": "low",
+                    "close": "close",
+                    "volume": "volume",
+                }
+            )[["datetime", "open", "high", "low", "close", "volume"]]
+        return pd.DataFrame()
 
     frame = yf_frame.rename(
         columns={

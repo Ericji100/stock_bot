@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +10,9 @@ DEFAULT_MODEL = "gemini-3-pro-preview"
 DEFAULT_FALLBACK_MODELS = ("gemini-3-flash-preview",)
 DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7"
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
+DEFAULT_OPENCODE_MODEL = "deepseek-v4-pro"
+DEFAULT_OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"
+DEFAULT_OPENCODE_REASONING_EFFORT = "medium"
 
 
 @dataclass(frozen=True)
@@ -21,10 +24,30 @@ class ResearchCenterConfig:
     minimax_api_key: str | None = None
     minimax_model: str = DEFAULT_MINIMAX_MODEL
     minimax_base_url: str = DEFAULT_MINIMAX_BASE_URL
+    opencode_api_key: str | None = None
+    opencode_model: str = DEFAULT_OPENCODE_MODEL
+    opencode_base_url: str = DEFAULT_OPENCODE_BASE_URL
+    opencode_reasoning_effort: str = DEFAULT_OPENCODE_REASONING_EFFORT
+    enable_opencode_analysis: bool = False
     serper_api_key: str | None = None
     jina_api_key: str | None = None
     enable_minimax_search: bool = False
     enable_minimax_comparison: bool = False
+    minimax_mcp_timeout_seconds: float = 60.0
+    minimax_mcp_max_results_per_query: int = 10
+    enable_serper_search: bool = False
+    enable_jina_reader: bool = False
+    enable_tavily_search: bool = True
+    enable_tavily_extract: bool = True
+    gemini_search_mode: str = "fallback"
+    tavily_api_key: str | None = None
+    tavily_monthly_credit_limit: int = 1000
+    tavily_credit_reserve: int = 20
+    tavily_search_depth: str = "basic"
+    tavily_extract_depth: str = "basic"
+    tavily_max_results_per_query: int = 5
+    tavily_max_extract_urls_per_task: int = 5
+    gemini_fallback_thresholds: dict[str, dict[str, int]] = field(default_factory=dict)
     api_token: str | None = None
     report_root: Path = ROOT_DIR / "reports"
     database_path: Path = ROOT_DIR / "database" / "stock_research.db"
@@ -61,10 +84,30 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     minimax_api_key = secrets.get("minimax_api_key")
     minimax_model = str(public_config.get("minimax_model") or secrets.get("minimax_model") or DEFAULT_MINIMAX_MODEL)
     minimax_base_url = str(public_config.get("minimax_base_url") or secrets.get("minimax_base_url") or DEFAULT_MINIMAX_BASE_URL)
+    opencode_api_key = secrets.get("opencode_api_key")
+    opencode_model = str(public_config.get("opencode_model") or secrets.get("opencode_model") or DEFAULT_OPENCODE_MODEL)
+    opencode_base_url = str(public_config.get("opencode_base_url") or secrets.get("opencode_base_url") or DEFAULT_OPENCODE_BASE_URL)
+    opencode_reasoning_effort = str(public_config.get("opencode_reasoning_effort") or secrets.get("opencode_reasoning_effort") or DEFAULT_OPENCODE_REASONING_EFFORT)
+    enable_opencode_analysis = bool(public_config.get("enable_opencode_analysis", bool(opencode_api_key)))
     serper_api_key = secrets.get("serper_api_key")
     jina_api_key = secrets.get("jina_api_key")
-    enable_minimax_search = bool(public_config.get("enable_minimax_search", bool(serper_api_key)))
+    enable_minimax_search = bool(public_config.get("enable_minimax_search", False))
     enable_minimax_comparison = bool(public_config.get("enable_minimax_comparison", bool(minimax_api_key)))
+    minimax_mcp_timeout_seconds = float(public_config.get("minimax_mcp_timeout_seconds", 60.0))
+    minimax_mcp_max_results_per_query = int(public_config.get("minimax_mcp_max_results_per_query", 10))
+    enable_serper_search = bool(public_config.get("enable_serper_search", False))
+    enable_jina_reader = bool(public_config.get("enable_jina_reader", False))
+    enable_tavily_search = bool(public_config.get("enable_tavily_search", True))
+    enable_tavily_extract = bool(public_config.get("enable_tavily_extract", True))
+    gemini_search_mode = str(public_config.get("gemini_search_mode", "fallback"))
+    tavily_api_key = secrets.get("tavily_api_key")
+    tavily_monthly_credit_limit = int(public_config.get("tavily_monthly_credit_limit", 1000))
+    tavily_credit_reserve = int(public_config.get("tavily_credit_reserve", 20))
+    tavily_search_depth = str(public_config.get("tavily_search_depth", "basic"))
+    tavily_extract_depth = str(public_config.get("tavily_extract_depth", "basic"))
+    tavily_max_results_per_query = int(public_config.get("tavily_max_results_per_query", 5))
+    tavily_max_extract_urls_per_task = int(public_config.get("tavily_max_extract_urls_per_task", 5))
+    gemini_fallback_thresholds = public_config.get("gemini_fallback_thresholds") or {}
     api_token = secrets.get("research_api_token") or public_config.get("api_token")
 
     return ResearchCenterConfig(
@@ -75,10 +118,28 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         minimax_api_key=str(minimax_api_key).strip() if minimax_api_key else None,
         minimax_model=minimax_model,
         minimax_base_url=minimax_base_url,
+        opencode_api_key=str(opencode_api_key).strip() if opencode_api_key else None,
+        opencode_model=opencode_model,
+        opencode_base_url=opencode_base_url,
+        opencode_reasoning_effort=opencode_reasoning_effort,
+        enable_opencode_analysis=enable_opencode_analysis,
         serper_api_key=str(serper_api_key).strip() if serper_api_key else None,
         jina_api_key=str(jina_api_key).strip() if jina_api_key else None,
         enable_minimax_search=enable_minimax_search,
         enable_minimax_comparison=enable_minimax_comparison,
+        enable_serper_search=enable_serper_search,
+        enable_jina_reader=enable_jina_reader,
+        enable_tavily_search=enable_tavily_search,
+        enable_tavily_extract=enable_tavily_extract,
+        gemini_search_mode=gemini_search_mode,
+        tavily_api_key=str(tavily_api_key).strip() if tavily_api_key else None,
+        tavily_monthly_credit_limit=tavily_monthly_credit_limit,
+        tavily_credit_reserve=tavily_credit_reserve,
+        tavily_search_depth=tavily_search_depth,
+        tavily_extract_depth=tavily_extract_depth,
+        tavily_max_results_per_query=tavily_max_results_per_query,
+        tavily_max_extract_urls_per_task=tavily_max_extract_urls_per_task,
+        gemini_fallback_thresholds=gemini_fallback_thresholds,
         api_token=str(api_token).strip() if api_token else None,
         report_root=report_root,
         database_path=database_path,

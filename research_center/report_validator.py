@@ -29,6 +29,16 @@ EXPECTED_SECTIONS = {
     "value_scan": ["價值重估", "候選", "排名", "舊市場標籤", "新市場標籤", "風險", "資料來源"],
 }
 
+AI_FINAL_SECTION_KEYWORDS = (
+    "AI 最終推薦買入評分",
+    "AI 最終財務與題材評分",
+    "AI 最終飆股基因評分",
+    "AI 最終價值重估評分",
+    "AI 最終投研評分",
+    "AI 最終重估判斷",
+    "AI 最終重估排序",
+)
+
 
 def validate_report(markdown: str, request: CommandRequest, sources: list[SourceItem], report_json: dict[str, Any]) -> dict[str, Any]:
     headings = _headings(markdown)
@@ -41,6 +51,8 @@ def validate_report(markdown: str, request: CommandRequest, sources: list[Source
     has_scores_when_required = True
     if ((request.command == "research" and request.mode in {"score", "deep"}) or request.command == "value_scan") and not report_json.get("scores"):
         has_scores_when_required = False
+    has_ai_final_scoring = any(_contains_heading(headings, kw) for kw in AI_FINAL_SECTION_KEYWORDS)
+    requires_ai_final_scoring = (request.command == "research" and request.mode in {"score", "deep"}) or request.command == "value_scan"
 
     warnings = []
     if not source_list_present:
@@ -49,13 +61,23 @@ def validate_report(markdown: str, request: CommandRequest, sources: list[Source
         warnings.append("報告未引用任何 [Sxxx] 來源代號。")
     if not has_scores_when_required:
         warnings.append("評分模式缺少 scores 結構化資料。")
+    if not has_ai_final_scoring and requires_ai_final_scoring:
+        warnings.append("缺少 AI 最終投研評分章節；請確認報告有「AI 最終推薦買入評分」、「AI 最終財務與題材評分」等章節。")
     missing_value_scan_candidates = _missing_value_scan_candidates(markdown, request, report_json)
     if missing_value_scan_candidates:
         warnings.append("/value_scan missing per-candidate rerating analysis: " + ", ".join(missing_value_scan_candidates))
     if forbidden_hits:
         warnings.append("報告含禁止語句：" + ", ".join(forbidden_hits))
 
-    passed = not missing_sections and not schema_errors and not forbidden_hits and source_list_present and has_scores_when_required and not missing_value_scan_candidates
+    passed = (
+        not missing_sections
+        and not schema_errors
+        and not forbidden_hits
+        and source_list_present
+        and has_scores_when_required
+        and not missing_value_scan_candidates
+        and (has_ai_final_scoring or not requires_ai_final_scoring)
+    )
     return {
         "passed": passed,
         "missing_sections": missing_sections,

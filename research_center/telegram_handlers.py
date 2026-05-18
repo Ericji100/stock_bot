@@ -86,19 +86,18 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
                 return
             state["source"] = _value_source_label(source)
             if source == "portfolio":
-                state["top"] = "9999"
                 await query.edit_message_text("我的持股預設分析全部持股，請選擇分析模式：", reply_markup=_value_mode_keyboard())
                 return
-            await query.edit_message_text("請選擇要送進 AI 分析的數量：", reply_markup=_value_top_keyboard())
+            if source == "curated":
+                await query.edit_message_text("請選擇分析模式：", reply_markup=_value_mode_keyboard())
+                return
+            # 其他來源（all 等）直接進入模式選擇，不詢問幾檔
+            await query.edit_message_text("請選擇分析模式：", reply_markup=_value_mode_keyboard())
             return
 
         if data.startswith("recent_scan:"):
             scan_id = data.split(":", 1)[1]
             state["source"] = "最近掃描:" + scan_id
-            await query.edit_message_text("請選擇要送進 AI 分析的數量：", reply_markup=_value_top_keyboard())
-            return
-        if data.startswith("value_top:"):
-            state["top"] = data.split(":", 1)[1]
             await query.edit_message_text("請選擇分析模式：", reply_markup=_value_mode_keyboard())
             return
 
@@ -110,13 +109,19 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
         if data.startswith("date:"):
             _, command, choice = data.split(":", 2)
             if choice == "latest":
-                raw = _compose_menu_command(state)
-                state.clear()
-                await query.edit_message_text(f"已選擇最新日期，開始執行：\n{raw}")
-                await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
+                state.pop("date", None)
+                await query.edit_message_text("請選擇分析模型：", reply_markup=_analysis_model_keyboard())
                 return
             state["awaiting"] = "date"
             await query.edit_message_text("請輸入日期，格式 YYYY-MM-DD，例如 2026-05-07")
+            return
+
+        if data.startswith("analysis_model:"):
+            state["model"] = data.split(":", 1)[1]
+            raw = _compose_menu_command(state)
+            state.clear()
+            await query.edit_message_text(f"已選擇分析模型，開始執行：\n{raw}")
+            await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
             return
 
     async def handle_ai_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,7 +132,6 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
         text = (update.effective_message.text or "").strip() if update.effective_message else ""
         if awaiting == "custom_codes":
             state["source"] = "自訂:" + text
-            state["top"] = "9999"
             state.pop("awaiting", None)
             await safe_send_reply(update, "自訂股票清單預設分析全部股票，請選擇分析模式：", reply_markup=_value_mode_keyboard())
             return
@@ -144,10 +148,8 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
                 await safe_send_reply(update, "日期格式錯誤，請輸入 YYYY-MM-DD，例如 2026-05-07")
                 return
             state["date"] = text
-            raw = _compose_menu_command(state)
-            state.clear()
-            await safe_send_reply(update, f"已收到指定日期，開始執行：\n{raw}")
-            await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
+            state.pop("awaiting", None)
+            await safe_send_reply(update, "請選擇分析模型：", reply_markup=_analysis_model_keyboard())
 
     return {
         "research": make_stoppable_handler("AI個股研究", run_ai_command),
@@ -269,13 +271,6 @@ def _value_source_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def _value_top_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("前 10 名", callback_data=f"{AI_CALLBACK_PREFIX}value_top:10"), InlineKeyboardButton("前 30 名", callback_data=f"{AI_CALLBACK_PREFIX}value_top:30")],
-        [InlineKeyboardButton("全部", callback_data=f"{AI_CALLBACK_PREFIX}value_top:9999")],
-    ])
-
-
 def _value_mode_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("一般重估", callback_data=f"{AI_CALLBACK_PREFIX}value_mode:normal"), InlineKeyboardButton("深度重估", callback_data=f"{AI_CALLBACK_PREFIX}value_mode:deep")],
@@ -289,21 +284,30 @@ def _date_keyboard(command: str) -> InlineKeyboardMarkup:
     ])
 
 
+def _analysis_model_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:gemini")],
+        [InlineKeyboardButton("DeepSeek V4 Pro (OpenCode Go)", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:deepseek")],
+    ])
+
+
 def _compose_menu_command(state: dict) -> str:
     command = state.get("command")
     date_flag = f" --date {state['date']}" if state.get("date") else ""
     mode = state.get("mode") or "normal"
     mode_flag = " --deep" if mode == "deep" else " --score" if mode == "score" else " --source-only" if mode == "source_only" else ""
+    model_flag = f" --model {state.get('model') or 'gemini'}"
+    default_market = "\u5168\u7403"
+    default_value_source = "\u7cbe\u9078\u9078\u80a1"
     if command == "research":
-        return f"/research {state.get('target')}{mode_flag}{date_flag}"
+        return f"/research {state.get('target')}{mode_flag}{date_flag}{model_flag}"
     if command == "macro":
-        return f"/macro {state.get('market_scope') or '全球'}{mode_flag}{date_flag}"
+        return f"/macro {state.get('market_scope') or default_market}{mode_flag}{date_flag}{model_flag}"
     if command == "theme":
-        return f"/theme {state.get('theme')}{mode_flag}{date_flag}"
+        return f"/theme {state.get('theme')}{mode_flag}{date_flag}{model_flag}"
     if command == "value_scan":
-        top = state.get("top") or "10"
-        top_flag = f" --top {top}"
-        return f"/value_scan {state.get('source') or '精選選股'}{mode_flag}{top_flag}{date_flag}"
+        # 不再附加 --top，回歸資料服務層的內建限制（一般 10、deep 30）
+        return f"/value_scan {state.get('source') or default_value_source}{mode_flag}{date_flag}{model_flag}"
     return "/report"
 
 

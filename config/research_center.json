@@ -16,5 +16,79 @@
   "minimax_model": "MiniMax-M2.7",
   "minimax_base_url": "https://api.minimax.io/v1",
   "enable_minimax_search": true,
-  "enable_minimax_comparison": true
+  "enable_minimax_comparison": false,
+  "minimax_mcp_timeout_seconds": 60,
+  "minimax_mcp_max_results_per_query": 10,
+  "enable_serper_search": false,
+  "enable_jina_reader": false,
+  "enable_tavily_search": true,
+  "enable_tavily_extract": true,
+  "gemini_search_mode": "fallback",
+  "tavily_monthly_credit_limit": 1000,
+  "tavily_credit_reserve": 20,
+  "tavily_search_depth": "basic",
+  "tavily_extract_depth": "basic",
+  "tavily_max_results_per_query": 5,
+  "tavily_max_extract_urls_per_task": 5,
+  "gemini_fallback_thresholds": {
+    "research_normal": {
+      "min_total_sources": 10,
+      "min_level1_sources": 1,
+      "min_level2_or_3_sources": 3,
+      "min_risk_or_contradiction_sources": 1
+    },
+    "research_score": {
+      "min_total_sources": 15,
+      "min_level1_sources": 1,
+      "min_level2_or_3_sources": 4,
+      "min_risk_or_contradiction_sources": 1
+    },
+    "research_deep": {
+      "min_total_sources": 20,
+      "min_level1_sources": 1,
+      "min_level2_or_3_sources": 5,
+      "min_risk_or_contradiction_sources": 2
+    },
+    "macro_normal": {
+      "min_total_sources": 15,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 5,
+      "min_risk_or_contradiction_sources": 2
+    },
+    "macro_deep": {
+      "min_total_sources": 20,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 7,
+      "min_risk_or_contradiction_sources": 3
+    },
+    "theme_normal": {
+      "min_total_sources": 15,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 5,
+      "min_risk_or_contradiction_sources": 2
+    },
+    "theme_deep": {
+      "min_total_sources": 20,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 7,
+      "min_risk_or_contradiction_sources": 3
+    },
+    "value_scan_normal": {
+      "min_total_sources": 20,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 5,
+      "min_risk_or_contradiction_sources": 2
+    },
+    "value_scan_deep": {
+      "min_total_sources": 20,
+      "min_level1_sources": 0,
+      "min_level2_or_3_sources": 7,
+      "min_risk_or_contradiction_sources": 3,
+      "min_sources_per_candidate": 3
+    }
+  },
+  "opencode_model": "deepseek-v4-pro",
+  "opencode_base_url": "https://opencode.ai/zen/go/v1",
+  "opencode_reasoning_effort": "medium",
+  "enable_opencode_analysis": true
 }

@@ -47,7 +47,7 @@ def _split_args(args: list[str]) -> tuple[list[str], dict[str, str | bool]]:
         name = token[2:].strip().replace("-", "_")
         if not name:
             raise CommandParseError("參數格式錯誤，請使用 /help 查看指令格式。")
-        if name in {"date", "top"}:
+        if name in {"date", "top", "model"}:
             if index + 1 >= len(args) or args[index + 1].startswith("--"):
                 raise CommandParseError("參數格式錯誤，請使用 /help 查看指令格式。")
             flags[name] = args[index + 1]
@@ -61,6 +61,7 @@ def _split_args(args: list[str]) -> tuple[list[str], dict[str, str | bool]]:
 def _build_request(command: str, raw_text: str, positionals: list[str], flags: dict[str, str | bool], user_id: str | None) -> CommandRequest:
     report_date = _parse_report_date(flags.get("date"))
     top = _parse_top(flags.get("top"))
+    ai_model = _parse_ai_model(flags.get("model"))
     source_only = bool(flags.get("source_only"))
     score = bool(flags.get("score"))
     brief = bool(flags.get("brief"))
@@ -77,6 +78,7 @@ def _build_request(command: str, raw_text: str, positionals: list[str], flags: d
         "score": score,
         "brief": brief,
         "top": top,
+        "ai_model": ai_model,
         "report_date": report_date,
         "user_id": user_id,
         "created_at": datetime.now().astimezone(),
@@ -102,6 +104,10 @@ def _build_request(command: str, raw_text: str, positionals: list[str], flags: d
         return CommandRequest(target=theme, theme_scope=theme, target_type="theme", **common)
 
     if command == "value_scan":
+        first_arg = positionals[0] if positionals else None
+        if first_arg and _looks_like_stock_code(first_arg):
+            # 單檔模式：/value_scan 6217
+            return CommandRequest(target=first_arg, candidate_pool=None, target_type="stock", **common)
         candidate_pool = " ".join(positionals).strip() or "精選選股"
         return CommandRequest(target=candidate_pool, candidate_pool=candidate_pool, target_type="candidate_pool", **common)
 
@@ -159,6 +165,23 @@ def _parse_top(value: str | bool | None) -> int | None:
     return parsed
 
 
+def _parse_ai_model(value: str | bool | None) -> str:
+    if value in (None, False):
+        return "gemini"
+    normalized = str(value).strip().lower().replace("_", "-")
+    aliases = {
+        "gemini": "gemini",
+        "google": "gemini",
+        "deepseek": "deepseek",
+        "opencode": "deepseek",
+        "opencode-go": "deepseek",
+        "deepseek-v4-pro": "deepseek",
+    }
+    if normalized not in aliases:
+        raise CommandParseError("--model 僅支援 gemini 或 deepseek")
+    return aliases[normalized]
+
+
 def _validate_request(request: CommandRequest, flags: dict[str, str | bool]) -> None:
     if request.source_only and request.score:
         raise CommandParseError("--source-only 與 --score 不能同時使用。若要評分請移除 --source-only；若只要資料請移除 --score。")
@@ -174,12 +197,17 @@ def _validate_request(request: CommandRequest, flags: dict[str, str | bool]) -> 
         raise CommandParseError("--top 目前僅支援 /theme 與 /value_scan 指令。")
 
     supported = {
-        "research": {"source_only", "score", "deep", "date", "html", "no_html", "no_md", "no_json"},
-        "macro": {"source_only", "brief", "deep", "date", "html", "no_html", "no_md", "no_json"},
-        "theme": {"source_only", "deep", "date", "top", "html", "no_html", "no_md", "no_json"},
-        "value_scan": {"source_only", "deep", "date", "top", "html", "no_html", "no_md", "no_json"},
+        "research": {"source_only", "score", "deep", "date", "model", "html", "no_html", "no_md", "no_json"},
+        "macro": {"source_only", "brief", "deep", "date", "model", "html", "no_html", "no_md", "no_json"},
+        "theme": {"source_only", "deep", "date", "top", "model", "html", "no_html", "no_md", "no_json"},
+        "value_scan": {"source_only", "deep", "date", "top", "model", "html", "no_html", "no_md", "no_json"},
         "report": {"date", "html", "no_html", "no_md", "no_json"},
     }
     unknown = set(flags) - supported.get(request.command, set())
     if unknown:
         raise CommandParseError("參數格式錯誤，請使用 /help 查看指令格式。")
+
+
+def _looks_like_stock_code(text: str) -> bool:
+    """判斷是否像股票代號（純數字 4-6 碼）。"""
+    return bool(text) and text.isdigit() and 4 <= len(text) <= 6

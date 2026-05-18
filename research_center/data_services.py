@@ -12,7 +12,9 @@ import yfinance as yf
 from data_fetcher import StockDataFetcher, StockNotFoundError
 from market_summary import MarketSummaryError, build_morning_market_report, build_noon_market_report
 from portfolio_manager import list_portfolio, resolve_stock_reference
-from stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe, scan_tw_market
+from stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
+from chip_strategies import get_tw_today
+from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 
 from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot
 from .forum_service import fetch_forum_sources
@@ -21,10 +23,12 @@ from .knowledge_base import enrich_company_rows, theme_knowledge_summary
 from .macro_indicators import build_macro_indicators
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
 from .price_fallbacks import load_price_metrics_with_fallback
-from .recent_scans import find_recent_scan
+from .recent_scans import find_recent_scan, save_recent_scan_result
 from .value_validation import build_value_cross_validation
+from .rerating_snapshot_service import build_rerating_snapshot_for_stock
 from .models import CommandRequest
 from .source_rank import make_source_items
+from .structured_cache import load_research_structured_cache, save_research_structured_cache
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
@@ -47,7 +51,7 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
         progress(f"論壇來源搜尋開始：{forum_query}")
     forum_result = fetch_forum_sources(forum_query, request.report_date, request.mode == "deep", progress=progress)
     if progress:
-        progress(f"論壇來源搜尋完成：成功 {len(forum_result.sources)} 筆，訊息 {len(forum_result.notes)} 筆")
+        progress(f"論壇來源搜尋完成：成功 {len(forum_result.sources)} 筆，失敗 {forum_result.failure_count} 筆")
         for note in forum_result.notes:
             progress(f"論壇來源訊息：{note}")
     data["forum_data"] = {
@@ -67,6 +71,14 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
     resolved = resolve_stock_reference(target)
     code = resolved.code if resolved else target
     report_date = request.report_date
+    cache_date = report_date or datetime.now().date()
+
+    # Try loading from structured cache (24-hour TTL)
+    cached = load_research_structured_cache(code, cache_date)
+    if cached is not None:
+        if progress:
+            progress(f"個股研究：使用投研結構化快取 {code} {cache_date.isoformat()}")
+        return cached
 
     with StockDataFetcher() as fetcher:
         try:
@@ -113,9 +125,11 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
         progress("個股研究：讀取選股程式法人/籌碼/大戶備用資料")
     chip_backup = build_chip_backup_snapshot(meta.code, report_date)
 
-    return {
+    cache_date = report_date or datetime.now().date()
+
+    result = {
         "stock": {"code": meta.code, "name": meta.name, "symbol": meta.symbol, "market": meta.market},
-        "report_date": report_date.isoformat() if report_date else datetime.now().date().isoformat(),
+        "report_date": cache_date.isoformat(),
         "price_data": _tail_records(price_df, 30),
         "technical_data": _technical_snapshot(price_df),
         "institutional_data": _tail_records(institutional_df, 30),
@@ -134,6 +148,22 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
             "--date 模式目前對本地結構化資料採日期切片；若原始抓取函式只取近期資料，較久日期可能資料不足。"
         ] if report_date else [],
     }
+
+    # /research --deep 或 --score 時寫入價值重估底稿
+    if request.mode in ("deep", "score"):
+        if progress:
+            progress(f"個股研究（{request.mode}）：建立價值重估底稿")
+        result["local_rerating_snapshot"] = build_rerating_snapshot_for_stock(
+            meta.code, report_date, progress=progress
+        )
+
+    try:
+        save_research_structured_cache(meta.code, cache_date, result)
+    except Exception:
+        pass
+
+    return result
+
 
 def collect_macro_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {
@@ -202,10 +232,48 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
         "supply_chain_profile": profile,
         "company_knowledge_summary": theme_knowledge_summary(matched),
         "matched_universe": matched,
+        "matched_companies": matched,  # alias for backward compatibility with prompt/discovery
         "notes": ["Theme 第三版加入 config/company_knowledge.json 公司產品、客戶、營收占比與供應鏈角色資料庫；未覆蓋公司會標示待驗證。"],
     }
 
 def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    # 單檔模式（/value_scan 6217）
+    if request.target_type == "stock" and request.target:
+        if progress:
+            progress(f"價值重估：單檔模式 {request.target}")
+        snapshot = build_rerating_snapshot_for_stock(request.target, request.report_date, progress=progress)
+        return {
+            "candidate_pool": request.target,
+            "candidate_source_policy": {"source": "單一股票", "status": "single_stock"},
+            "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
+            "top_n": 1,
+            "candidates": [
+                {
+                    "code": snapshot.get("stock_id"),
+                    "name": snapshot.get("stock_name"),
+                    "symbol": snapshot.get("symbol"),
+                    "industry": snapshot.get("industry"),
+                    "rerating_score": snapshot.get("rerating_score"),
+                    "verification_score": snapshot.get("verification_score"),
+                    "tdcc_score": snapshot.get("tdcc_score"),
+                    "valuation_score": snapshot.get("valuation_score"),
+                    "old_market_label": snapshot.get("old_market_label"),
+                    "new_market_label": snapshot.get("new_market_label"),
+                    "rerating_evidence": snapshot.get("rerating_evidence", []),
+                    "counter_evidence": snapshot.get("counter_evidence", []),
+                    "data_gaps": snapshot.get("data_gaps", []),
+                    "source_coverage": snapshot.get("source_coverage", {}),
+                    "financial_detail": snapshot.get("financial_detail", {}),
+                    "local_rerating_snapshot": snapshot,
+                }
+            ],
+            "local_rerating_snapshot": snapshot,
+            "source_events": [],
+            "scoring_rules": _value_scan_rules(),
+            "verification_policy": "單一股票價值重估模式",
+            "notes": ["單檔模式直接使用價值重估底稿服務，不走候選池掃描。"],
+        }
+
     if progress:
         progress("價值重估：載入候選股票池")
     universe, universe_policy = _value_scan_universe(request, progress=progress)
@@ -271,30 +339,57 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
 
     rows.sort(key=lambda row: row["rerating_score"], reverse=True)
     rows = enrich_company_rows(rows)
-    rows = rows[: max(top_n, 30)]
-    evidence_limit = min(len(rows), top_n, 30 if request.mode == "deep" else 12)
+    # 保留足夠 rows（至少 ai_candidate_limit），確保 deep 模式可取到 30 檔
+    rows = rows[: max(request.top or 30, 30)]
+
+    # AI candidates 上限：source-only 不送 AI，一般 mode 上限 10，deep 上限 30
+    if request.source_only:
+        ai_candidate_limit = 0
+    elif request.mode == "deep":
+        ai_candidate_limit = 30
+    else:
+        ai_candidate_limit = 10
+
+    # 官方/公開資料蒐證：對預篩候選股執行（數量至少涵蓋 ai_candidate_limit）
+    evidence_scope = min(len(rows), ai_candidate_limit if ai_candidate_limit > 0 else 10)
     if progress:
-        progress(f"價值重估：本地排序完成，可評 {len(rows)} 檔；開始逐檔官方蒐證 {evidence_limit} 檔")
-    _attach_value_scan_evidence(rows[:evidence_limit], request.report_date, progress=progress)
+        progress(f"價值重估：本地排序完成，可評 {len(rows)} 檔；開始逐檔官方蒐證 {evidence_scope} 檔")
+    _attach_value_scan_evidence(rows[:evidence_scope], request.report_date, progress=progress)
     for row in rows:
         events = row.get("source_events") or []
         row["cross_validation"] = build_value_cross_validation(row, events)
         row["verification_score"] = row["cross_validation"]["verification_score"]
     rows.sort(key=lambda row: (row["rerating_score"], row["verification_score"]), reverse=True)
     if progress:
-        progress(f"價值重估：交叉驗證完成，準備輸出前 {min(top_n, len(rows))} 檔")
+        progress(f"價值重估：交叉驗證完成，準備輸出 AI 候選股 {min(ai_candidate_limit, len(rows))} 檔")
 
+    # ai_candidates 必須在交叉驗證後建立，確保是最終排序結果
+    if request.source_only:
+        ai_candidates: list[dict[str, Any]] = []
+    else:
+        ai_candidates = rows[:ai_candidate_limit]
+
+    # source_events 從最終 ai_candidates 彙整
     source_events: list[dict[str, Any]] = []
-    for row in rows[:top_n]:
+    for row in ai_candidates if ai_candidates else rows[:evidence_scope]:
         source_events.extend(row.get("source_events") or [])
+
+    # 建立 AI 候選股完整證據包（每檔固定欄位，避免 JSON 截斷导致資料漏送）
+    ai_candidate_evidence_pack = _build_ai_candidate_evidence_pack(ai_candidates if ai_candidates else rows[:evidence_scope])
 
     return {
         "candidate_pool": request.candidate_pool or "精選選股",
         "candidate_source_policy": universe_policy,
         "price_data_policy": price_policy,
         "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
-        "top_n": top_n,
-        "candidates": rows[:top_n],
+        "top_n": request.top or ai_candidate_limit or 10,
+        "total_candidate_count": len(rows),
+        "ai_candidate_limit": ai_candidate_limit,
+        "ai_candidates": ai_candidates,
+        "ai_candidate_evidence_pack": ai_candidate_evidence_pack,
+        "local_ranking": [{"code": r["code"], "name": r["name"], "rerating_score": r["rerating_score"]} for r in rows],
+        "local_ranking_truncated": len(rows) > ai_candidate_limit if ai_candidate_limit else False,
+        "candidates": rows[: min(request.top or 10, 10)],
         "source_events": source_events,
         "scoring_rules": _value_scan_rules(),
         "verification_policy": "第三版後續強化：前段候選股會接 MOPS 官方查詢入口/連線檢查、季度財報 snapshot、公司知識庫與既有事件資料，形成 evidence coverage。",
@@ -310,17 +405,56 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
     by_code = {entry.code: entry for entry in all_universe}
 
     if pool in {"精選選股", "精選選股名單", "curated"}:
+        target_date = request.report_date or get_tw_today()
+        cached = find_cached_curated_scan(target_date)
+        if cached:
+            codes = [str(code) for code in cached.get("codes") or []]
+            selected = [by_code[code] for code in codes if code in by_code]
+            missing = [code for code in codes if code not in by_code]
+            if progress:
+                progress(f"價值重估：找到資料日期 {target_date.isoformat()} 的精選選股快取，使用候選名單 {len(selected)} 檔")
+            return selected, {
+                "source": "精選選股交叉命中快取",
+                "status": "cached",
+                "candidate_count": len(selected),
+                "report_date": target_date.isoformat(),
+                "scan_id": cached.get("scan_id"),
+                "requested_codes": codes,
+                "missing_codes": missing,
+                "note": "已使用相同資料日期的 /scan 精選選股交叉命中快取，不重新執行選股程式。",
+            }
         try:
             if progress:
-                progress("價值重估：調用精選選股程式取得候選名單")
-            report = scan_tw_market(False, None, None)
-            codes = [candidate.code for candidate in report.candidates]
+                progress(f"價值重估：沒有資料日期 {target_date.isoformat()} 的精選選股快取，開始執行精選選股交叉命中")
+            curated_result = build_curated_scan_result(report_date=target_date)
+            codes = curated_result.selected_codes
             selected = [by_code[code] for code in codes if code in by_code]
-            return selected or all_universe, {"source": "精選選股程式", "status": "covered", "candidate_count": len(selected), "note": "已調用 stock_scanner.scan_tw_market 取得精選/財報營收候選名單後再做本地重估排序。"}
+            missing = [code for code in codes if code not in by_code]
+            save_recent_scan_result(CURATED_SCAN_TYPE, target_date, curated_result.report_text, curated_result.selected_codes)
+            status = "covered" if selected else "empty"
+            note = "已調用主程式精選選股交叉命中邏輯取得候選名單後再做本地重估排序。"
+            if not selected:
+                note = "精選選股交叉命中結果為 0 檔，未自動改用全市場初篩。若要掃全市場，請使用 /value_scan 全市場初篩。"
+            return selected, {
+                "source": "精選選股交叉命中",
+                "status": status,
+                "candidate_count": len(selected),
+                "report_date": target_date.isoformat(),
+                "requested_codes": codes,
+                "missing_codes": missing,
+                "note": note,
+            }
         except Exception as exc:
             if progress:
-                progress(f"價值重估：精選選股程式失敗，改用全市場初篩：{exc}")
-            return all_universe, {"source": "精選選股程式", "status": "fallback_all_universe", "error": str(exc)}
+                progress(f"價值重估：精選選股交叉命中失敗，不改用全市場初篩：{exc}")
+            return [], {
+                "source": "精選選股交叉命中",
+                "status": "failed",
+                "candidate_count": 0,
+                "report_date": target_date.isoformat(),
+                "error": str(exc),
+                "note": "精選選股交叉命中失敗，未自動改用全市場初篩，避免候選池語意被放寬。",
+            }
 
     if pool in {"我的持股", "持股", "portfolio"}:
         portfolio = list_portfolio()
@@ -377,6 +511,111 @@ def _attach_value_scan_evidence(rows: list[dict[str, Any]], report_date: date | 
                 row["financial_detail"] = financial_detail_snapshot(_tail_records(financial_df, 4))
             except Exception as exc:
                 row["financial_detail"] = {"status": "unavailable", "error": str(exc), "score_points": 0}
+
+
+def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """為每檔 AI 候選股建立結構化證據包，避免 JSON 截斷導致資料漏送。
+
+    每檔候選股包含完整欄位：
+    code, name, symbol, industry, price, avg_volume_20d,
+    latest_monthly_revenue, revenue_yoy,
+    old_market_label, new_market_label,
+    rerating_score, verification_score,
+    local_rerating_composite_score, tdcc_score, valuation_score,
+    rerating_evidence, counter_evidence, score_components, cross_validation,
+    financial_detail, gross_margin_cache, chip_backup_summary,
+    valuation_data, tdcc_data, mops_documents,
+    source_events, company_knowledge, source_coverage,
+    missing_data_status
+    """
+    pack: list[dict[str, Any]] = []
+    for row in candidates:
+        code = str(row.get("code") or "")
+        name = str(row.get("name") or "")
+
+        # 確認哪些關鍵資料缺失（固定欄位，缺資料也要保留 key）
+        missing: list[str] = []
+        if not row.get("financial_detail") or row["financial_detail"].get("status") == "unavailable":
+            missing.append("financial_detail")
+        if not row.get("gross_margin_cache"):
+            missing.append("gross_margin_cache")
+        if not row.get("chip_backup_data"):
+            missing.append("chip_backup_data")
+        if not row.get("latest_monthly_revenue"):
+            missing.append("revenue")
+        if not row.get("mops_documents"):
+            missing.append("mops_documents")
+        if not row.get("source_events"):
+            missing.append("source_events")
+        if not row.get("company_knowledge"):
+            missing.append("company_knowledge")
+
+        # 籌碼摘要（取最重要欄位，避免完整晶片資料過大）
+        chip = row.get("chip_backup_data") or {}
+        chip_summary: dict[str, Any] = {}
+        if chip:
+            chip_summary = {
+                "top3_holders": chip.get("top3_holders"),
+                "holding_ratio": chip.get("holding_ratio"),
+                "total_shares": chip.get("total_shares"),
+            }
+            if len(str(chip)) > 2000:
+                chip_summary["_note"] = "chip_backup_data too large, showing summary only"
+                chip_summary["holder_count"] = chip.get("holder_count")
+        else:
+            chip_summary = {"status": "no data"}
+
+        cross_val = row.get("cross_validation") or {}
+        tdcc_score = cross_val.get("tdcc_score") if cross_val.get("tdcc_score") is not None else 0.0
+        valuation_score = cross_val.get("valuation_score") if cross_val.get("valuation_score") is not None else 0.0
+        rerating_s = row.get("rerating_score") or 0.0
+        verification_s = row.get("verification_score") or 0.0
+        composite = round(rerating_s * 0.6 + verification_s * 0.25 + tdcc_score * 0.1 + valuation_score * 0.05, 2)
+        composite = max(0.0, min(100.0, composite))
+        pack.append({
+            # 基本識別
+            "code": code,
+            "name": name,
+            "symbol": row.get("symbol"),
+            "industry": row.get("industry"),
+            # 價量
+            "price": row.get("price"),
+            "avg_volume_20d": row.get("avg_volume_20d"),
+            # 營收
+            "latest_monthly_revenue": row.get("latest_monthly_revenue"),
+            "revenue_yoy": row.get("revenue_yoy"),
+            # 標籤
+            "old_market_label": row.get("old_market_label"),
+            "new_market_label": row.get("new_market_label"),
+            # 分數
+            "rerating_score": rerating_s,
+            "verification_score": verification_s,
+            "local_rerating_composite_score": composite,
+            "tdcc_score": tdcc_score,
+            "valuation_score": valuation_score,
+            # 證據
+            "rerating_evidence": row.get("rerating_evidence") or [],
+            "counter_evidence": row.get("counter_evidence") or [],
+            "score_components": row.get("score_components"),
+            "cross_validation": cross_val,
+            # 財務
+            "financial_detail": row.get("financial_detail") or {"status": "unavailable"},
+            "gross_margin_cache": row.get("gross_margin_cache") or {},
+            # 籌碼
+            "chip_backup_summary": chip_summary,
+            "valuation_data": row.get("valuation_data") or {},
+            "tdcc_data": row.get("tdcc_data") or {},
+            "mops_documents": row.get("mops_documents") or {},
+            # 事件與知識
+            "source_events": row.get("source_events") or [],
+            "company_knowledge": row.get("company_knowledge") or {},
+            "source_coverage": cross_val.get("source_coverage"),
+            # 缺失狀態
+            "missing_data_status": missing if missing else None,
+        })
+    return pack
+
+
 def _filter_date_frame(frame: pd.DataFrame, column: str, report_date: date) -> pd.DataFrame:
     if frame.empty or column not in frame.columns:
         return frame

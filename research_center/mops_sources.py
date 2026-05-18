@@ -149,7 +149,7 @@ def financial_detail_snapshot(financial_rows: list[dict[str, Any]]) -> dict[str,
         return {"status": "missing", "fields": [], "latest_period": None, "score_points": 0}
     latest = financial_rows[-1]
     fields = [key for key, value in latest.items() if value not in (None, "", "-")]
-    useful = [key for key in fields if any(token in str(key).lower() for token in ("eps", "margin", "profit", "revenue", "毛利", "營益", "淨利", "每股"))]
+    useful = [key for key in fields if any(token in str(key).lower() for token in ("eps", "margin", "profit", "revenue", "cash", "flow", "inventory", "turnover", "ytd", "ocf", "capex", "毛利", "營益", "淨利", "每股", "現金", "存貨", "週轉"))]
     status = "covered" if len(useful) >= 2 else "partial"
     return {
         "status": status,

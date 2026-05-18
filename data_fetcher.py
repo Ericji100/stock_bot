@@ -12,6 +12,7 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
+from finmind_client import FinMindClient
 from fugle_data import fetch_fugle_history
 
 
@@ -110,6 +111,72 @@ def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
     if numerator_value is None or denominator_value in (None, 0):
         return None
     return numerator_value / denominator_value
+
+
+def _safe_pct_change(current: Any, previous: Any) -> float | None:
+    """Calculate percentage change: (current - previous) / |previous| * 100.
+
+    Returns None if either value is missing or previous is zero.
+    """
+    current_value = _to_number(current)
+    previous_value = _to_number(previous)
+    if current_value is None or previous_value in (None, 0):
+        return None
+    return (current_value - previous_value) / abs(previous_value) * 100
+
+
+def _first_match(report_map: dict[str, float | None], *candidates: str) -> float | None:
+    """Return the first non-None value from *candidates* found in *report_map*."""
+    for key in candidates:
+        value = report_map.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _quarter_number(quarter_value: Any) -> int | None:
+    """Extract quarter number (1-4) from a string like '2024Q3'."""
+    text = str(quarter_value or "").upper().strip()
+    match = re.search(r"Q([1-4])", text)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _derive_quarterly_from_ytd(financial_df: pd.DataFrame, column: str) -> list[float | None]:
+    """Convert YTD cumulative cash flow values to single-quarter values.
+
+    For Q1, keeps the original value.  For Q2-Q4, subtracts the previous
+    quarter's YTD value.  If the previous quarter is missing or not contiguous,
+    conservatively keeps the original YTD value.
+    """
+    values: list[float | None] = []
+
+    for index in range(len(financial_df)):
+        current_value = _to_number(financial_df.iloc[index].get(column))
+        quarter_no = _quarter_number(financial_df.iloc[index].get("Quarter"))
+
+        if current_value is None:
+            values.append(None)
+            continue
+
+        if quarter_no == 1:
+            values.append(current_value)
+            continue
+
+        if index == 0:
+            values.append(current_value)
+            continue
+
+        previous_quarter = _quarter_number(financial_df.iloc[index - 1].get("Quarter"))
+        previous_value = _to_number(financial_df.iloc[index - 1].get(column))
+
+        if previous_value is not None and previous_quarter == quarter_no - 1:
+            values.append(current_value - previous_value)
+        else:
+            values.append(current_value)
+
+    return values
 
 
 def _quarter_sequence(start_year: int, end_year: int, end_quarter: int = 4) -> list[tuple[int, int]]:
@@ -404,29 +471,29 @@ class StockDataFetcher:
         return pd.DataFrame(rows)
 
     def _fetch_finmind_institutional_daily(self, meta: StockMeta, trading_date: date) -> dict[str, Any] | None:
-        try:
-            payload = self._get_json(
-                FINMIND_API_URL,
-                params={
-                    "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
-                    "data_id": meta.code,
-                    "start_date": trading_date.isoformat(),
-                    "end_date": trading_date.isoformat(),
-                },
-            )
-        except httpx.HTTPError:
-            self._append_note_once("部分上市法人歷史資料改用 FinMind 備援；若仍缺漏，可能為免費額度限制或資料源暫時不可用。")
+        # Use FinMindClient for unified quota/health management
+        finmind = FinMindClient()
+        result = finmind.request_dataset(
+            dataset="TaiwanStockInstitutionalInvestorsBuySell",
+            params={
+                "stock_id": meta.code,
+                "start_date": trading_date.isoformat(),
+                "end_date": trading_date.isoformat(),
+            },
+            scope="scan",
+        )
+        if not result:
+            self._append_note_once("FinMind 法人資料未取得（quota 不足或 source cooldown），已略過。")
             return None
-
-        if payload.get("status") != 200:
-            self._append_note_once("部分上市法人歷史資料改用 FinMind 備援；若仍缺漏，可能為免費額度限制或資料源暫時不可用。")
+        if result.get("status") != 200:
+            self._append_note_once("FinMind 法人資料未取得（quota 不足或 source cooldown），已略過。")
             return None
 
         foreign = 0.0
         investment_trust = 0.0
         dealer = 0.0
         has_row = False
-        for row in payload.get("data") or []:
+        for row in result.get("data") or []:
             if str(row.get("date")) != trading_date.isoformat():
                 continue
             name = str(row.get("name") or "")
@@ -636,7 +703,16 @@ class StockDataFetcher:
 
         revenue_df = pd.DataFrame(rows).drop_duplicates(subset=["Month"]).sort_values("Month").reset_index(drop=True)
         revenue_df["MoM%"] = revenue_df["Monthly_Revenue"].pct_change() * 100
-        revenue_df["YoY%"] = revenue_df["Monthly_Revenue"].pct_change(12) * 100
+        # Per-row YoY: prefer official Prior_Year_Revenue, fallback to pct_change(12)
+        official_yoy = revenue_df.apply(
+            lambda row: _safe_pct_change(row.get("Monthly_Revenue"), row.get("Prior_Year_Revenue")),
+            axis=1,
+        )
+        shift_yoy = revenue_df["Monthly_Revenue"].pct_change(12) * 100
+        revenue_df["YoY%"] = official_yoy.combine_first(shift_yoy)
+        revenue_df["YoY"] = revenue_df["YoY%"]
+        revenue_df["yoy"] = revenue_df["YoY%"]
+        revenue_df["revenue_yoy"] = revenue_df["YoY%"]
         return revenue_df
 
     def _find_revenue_row(self, tables: list[pd.DataFrame], stock_code: str) -> dict[str, Any] | None:
@@ -679,10 +755,33 @@ class StockDataFetcher:
 
     def fetch_quarterly_financials(self, meta: StockMeta) -> pd.DataFrame:
         quarterly_rows: list[dict[str, Any]] = []
+        balance_sheet_notes = False
+        cash_flow_notes = False
         for gregorian_year, quarter in _quarter_sequence(2023, datetime.now().year, 4):
-            quarter_row = self._fetch_mops_quarter_income_statement(meta, gregorian_year - 1911, quarter)
-            if quarter_row:
-                quarterly_rows.append(quarter_row)
+            income_row = self._fetch_mops_quarter_income_statement(meta, gregorian_year - 1911, quarter)
+            bs_row = self._fetch_mops_quarter_balance_sheet(meta, gregorian_year - 1911, quarter)
+            cf_row = self._fetch_mops_quarter_cash_flow(meta, gregorian_year - 1911, quarter)
+
+            if not income_row:
+                continue
+
+            quarter_row: dict[str, Any] = {
+                "Quarter": f"{gregorian_year}Q{quarter}",
+                **income_row,
+            }
+            # Merge balance sheet fields
+            for key in ("Inventory", "Total_Assets", "Current_Assets", "Current_Liabilities", "Equity"):
+                quarter_row[key] = bs_row.get(key) if bs_row else None
+            if bs_row is None:
+                balance_sheet_notes = True
+
+            # Merge cash flow fields
+            for key in ("Operating_Cash_Flow", "Capital_Expenditure", "Free_Cash_Flow"):
+                quarter_row[key] = cf_row.get(key) if cf_row else None
+            if cf_row is None:
+                cash_flow_notes = True
+
+            quarterly_rows.append(quarter_row)
 
         if not quarterly_rows:
             return pd.DataFrame(columns=["Quarter", "Revenue", "Gross_Profit", "Operating_Income", "Net_Income", "EPS"])
@@ -691,6 +790,13 @@ class StockDataFetcher:
         financial_df = financial_df.drop_duplicates(subset=["Quarter"]).sort_values("Quarter").reset_index(drop=True)
         if len(financial_df) > 12:
             financial_df = financial_df.tail(12).reset_index(drop=True)
+
+        financial_df = self._enrich_quarterly_financials(financial_df)
+
+        if balance_sheet_notes:
+            self._append_note_once("部分季度資產負債表未取得，存貨週轉率可能缺漏。")
+        if cash_flow_notes:
+            self._append_note_once("部分季度現金流量表未取得，自由現金流可能缺漏。")
 
         self.notes.append("季財報改用 MOPS Plus 官方 API 逐季回溯，已涵蓋自 2023 年起的 12 季資料。")
         return financial_df
@@ -734,6 +840,185 @@ class StockDataFetcher:
             "Net_Income": report_map.get("本期淨利（淨損）") or report_map.get("母公司業主（淨利／損）"),
             "EPS": report_map.get("　基本每股盈餘") or report_map.get("基本每股盈餘"),
         }
+
+    def _fetch_mops_quarter_report(self, meta: StockMeta, endpoint: str, roc_year: int, quarter: int) -> dict[str, float | None]:
+        """Fetch a MOPS quarterly financial report and return a label→value map."""
+        payload = {
+            "companyId": meta.code,
+            "dataType": "2",
+            "season": str(quarter),
+            "year": str(roc_year),
+            "subsidiaryCompanyId": "",
+        }
+        try:
+            response = self.client.post(
+                f"{MOPS_API_BASE_URL}{endpoint}",
+                json=payload,
+                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            return {}
+
+        report_list = (data.get("result") or {}).get("reportList") or []
+        if not report_list:
+            return {}
+
+        report_map: dict[str, float | None] = {}
+        for row in report_list:
+            if not row:
+                continue
+            label = str(row[0]).strip()
+            report_map[label] = _to_number(row[1]) if len(row) > 1 else None
+        return report_map
+
+    def _fetch_mops_quarter_balance_sheet(self, meta: StockMeta, roc_year: int, quarter: int) -> dict[str, Any] | None:
+        """Fetch quarterly balance sheet (t164sb03) and extract key fields."""
+        report_map = self._fetch_mops_quarter_report(meta, "t164sb03", roc_year, quarter)
+        if not report_map:
+            return None
+
+        inventory = _first_match(report_map, "存貨", "存貨合計")
+        total_assets = _first_match(report_map, "資產總計", "資產總額")
+        current_assets = _first_match(report_map, "流動資產合計", "流動資產總額")
+        current_liabilities = _first_match(report_map, "流動負債合計", "流動負債總額")
+        equity = _first_match(report_map, "權益總計", "權益總額")
+
+        return {
+            "Inventory": inventory,
+            "Total_Assets": total_assets,
+            "Current_Assets": current_assets,
+            "Current_Liabilities": current_liabilities,
+            "Equity": equity,
+        }
+
+    def _fetch_mops_quarter_cash_flow(self, meta: StockMeta, roc_year: int, quarter: int) -> dict[str, Any] | None:
+        """Fetch quarterly cash flow statement (t164sb05) and compute Free Cash Flow."""
+        report_map = self._fetch_mops_quarter_report(meta, "t164sb05", roc_year, quarter)
+        if not report_map:
+            return None
+
+        operating_cash_flow = _first_match(
+            report_map,
+            "營業活動之淨現金流入（流出）",
+            "營業活動之淨現金流入(流出)",
+            "營業活動產生之現金流量淨額",
+            "營業活動之現金流量",
+        )
+        capital_expenditure = _first_match(
+            report_map,
+            "取得不動產、廠房及設備",
+            "購置不動產、廠房及設備",
+            "取得不動產及設備",
+        )
+
+        # Free Cash Flow = OCF - |CapEx|  (CapEx from MOPS is typically negative)
+        free_cash_flow: float | None = None
+        if operating_cash_flow is not None and capital_expenditure is not None:
+            if capital_expenditure < 0:
+                free_cash_flow = operating_cash_flow + capital_expenditure
+            else:
+                free_cash_flow = operating_cash_flow - capital_expenditure
+
+        return {
+            "Operating_Cash_Flow": operating_cash_flow,
+            "Capital_Expenditure": capital_expenditure,
+            "Free_Cash_Flow": free_cash_flow,
+        }
+
+    def _enrich_quarterly_financials(self, financial_df: pd.DataFrame) -> pd.DataFrame:
+        """Compute derived financial ratios and YoY metrics."""
+        n = len(financial_df)
+        if n == 0:
+            return financial_df
+
+        # Gross Margin
+        financial_df["Gross_Margin"] = financial_df.apply(
+            lambda row: (lambda r: r * 100 if r is not None else None)(
+                _safe_ratio(row.get("Gross_Profit"), row.get("Revenue"))
+            ),
+            axis=1,
+        )
+        financial_df["gross_margin"] = financial_df["Gross_Margin"]
+
+        # Operating Margin
+        financial_df["Operating_Margin"] = financial_df.apply(
+            lambda row: (lambda r: r * 100 if r is not None else None)(
+                _safe_ratio(row.get("Operating_Income"), row.get("Revenue"))
+            ),
+            axis=1,
+        )
+        financial_df["operating_margin"] = financial_df["Operating_Margin"]
+
+        # Net Margin
+        financial_df["Net_Margin"] = financial_df.apply(
+            lambda row: (lambda r: r * 100 if r is not None else None)(
+                _safe_ratio(row.get("Net_Income"), row.get("Revenue"))
+            ),
+            axis=1,
+        )
+        financial_df["net_margin"] = financial_df["Net_Margin"]
+
+        # Net Income YoY (same-quarter comparison)
+        net_income_yoy_values: list[float | None] = []
+        for i in range(n):
+            current_ni = _to_number(financial_df.iloc[i].get("Net_Income"))
+            if i >= 4 and current_ni is not None:
+                prior_ni = _to_number(financial_df.iloc[i - 4].get("Net_Income"))
+                net_income_yoy_values.append(_safe_pct_change(current_ni, prior_ni))
+            else:
+                net_income_yoy_values.append(None)
+        financial_df["Net_Income_YoY"] = net_income_yoy_values
+        financial_df["net_income_yoy"] = financial_df["Net_Income_YoY"]
+
+        # Convert YTD cash flow to single-quarter values, preserving originals as _YTD
+        for column in ("Operating_Cash_Flow", "Capital_Expenditure", "Free_Cash_Flow"):
+            if column in financial_df.columns:
+                financial_df[f"{column}_YTD"] = financial_df[column]
+                financial_df[column] = _derive_quarterly_from_ytd(financial_df, column)
+
+        # Cash flow aliases
+        if "Operating_Cash_Flow" in financial_df.columns:
+            financial_df["operating_cash_flow"] = financial_df["Operating_Cash_Flow"]
+
+        if "Capital_Expenditure" in financial_df.columns:
+            financial_df["capital_expenditure"] = financial_df["Capital_Expenditure"]
+
+        if "Free_Cash_Flow" in financial_df.columns:
+            financial_df["free_cash_flow"] = financial_df["Free_Cash_Flow"]
+
+        # Inventory Turnover: trailing-4Q COGS / average inventory
+        inventory_turnover_values: list[float | None] = []
+        for i in range(n):
+            current_inv = _to_number(financial_df.iloc[i].get("Inventory"))
+            if i < 3 or current_inv is None:
+                inventory_turnover_values.append(None)
+                continue
+            # Trailing 4Q COGS = sum of (Revenue - Gross_Profit) for last 4 quarters
+            cogs_values = []
+            inv_values = []
+            for j in range(i - 3, i + 1):
+                rev = _to_number(financial_df.iloc[j].get("Revenue"))
+                gp = _to_number(financial_df.iloc[j].get("Gross_Profit"))
+                inv = _to_number(financial_df.iloc[j].get("Inventory"))
+                if rev is not None and gp is not None:
+                    cogs_values.append(rev - gp)
+                if inv is not None:
+                    inv_values.append(inv)
+            if len(cogs_values) == 4 and inv_values:
+                trailing_cogs = sum(cogs_values)
+                avg_inventory = sum(inv_values) / len(inv_values)
+                if avg_inventory != 0:
+                    inventory_turnover_values.append(trailing_cogs / avg_inventory)
+                else:
+                    inventory_turnover_values.append(None)
+            else:
+                inventory_turnover_values.append(None)
+        financial_df["Inventory_Turnover"] = inventory_turnover_values
+        financial_df["inventory_turnover"] = financial_df["Inventory_Turnover"]
+
+        return financial_df
 
     def merge_daily_frames(
         self,

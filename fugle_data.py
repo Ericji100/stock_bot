@@ -11,6 +11,11 @@ from typing import Any
 import httpx
 import pandas as pd
 
+from data_source_manager import SourceHealthManager, FugleRateLimiter
+
+# Module-level singletons for health + rate limiting
+_FUGLE_HEALTH = SourceHealthManager()
+_FUGLE_LIMITER = FugleRateLimiter()
 
 ROOT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT_DIR / "config.json"
@@ -69,6 +74,12 @@ def fetch_fugle_history(symbol: str, start_date: date, end_date: date, frequency
     if not api_key or not timeframe:
         return pd.DataFrame()
 
+    # Check rate limit and health cooldown
+    if not _FUGLE_LIMITER.can_use("historical"):
+        return pd.DataFrame()
+    if not _FUGLE_HEALTH.is_available("fugle"):
+        return pd.DataFrame()
+
     params: dict[str, Any] = {
         "timeframe": timeframe,
         "fields": "open,high,low,close,volume",
@@ -88,8 +99,12 @@ def fetch_fugle_history(symbol: str, start_date: date, end_date: date, frequency
             )
             response.raise_for_status()
             payload = response.json()
-    except Exception:
+    except Exception as exc:
+        _FUGLE_HEALTH.record_failure("fugle", str(exc))
         return pd.DataFrame()
+
+    _FUGLE_LIMITER.record_use("historical")
+    _FUGLE_HEALTH.record_success("fugle")
 
     rows = []
     for item in payload.get("data", []):

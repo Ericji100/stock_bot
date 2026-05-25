@@ -8,6 +8,7 @@ from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"
+STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
 
 
 def save_recent_scan_result(
@@ -49,7 +50,7 @@ def load_recent_scan_results(limit: int = 10) -> list[dict[str, Any]]:
         data = json.loads(RECENT_SCAN_PATH.read_text(encoding="utf-8-sig"))
     except Exception:
         return []
-    return [item for item in data if isinstance(item, dict)][:limit]
+    return [_sanitize_recent_scan_record(item) for item in data if isinstance(item, dict)][:limit]
 
 
 def find_recent_scan(scan_id: str | None = None) -> dict[str, Any] | None:
@@ -65,10 +66,13 @@ def find_recent_scan(scan_id: str | None = None) -> dict[str, Any] | None:
 
 
 def extract_stock_codes(text: str) -> list[str]:
+    valid_codes = _load_valid_stock_codes()
     codes: list[str] = []
     seen: set[str] = set()
-    for match in re.finditer(r"(?<!\d)(\d{4})(?!\d)", text or ""):
+    for match in re.finditer(r"(?:^|[|】])\s*(\d{4})(?!\d)\s+[^\s|()（）,，:：]+", text or "", re.MULTILINE):
         code = match.group(1)
+        if valid_codes is not None and code not in valid_codes:
+            continue
         if code in seen:
             continue
         seen.add(code)
@@ -77,6 +81,7 @@ def extract_stock_codes(text: str) -> list[str]:
 
 
 def _normalise_stock_codes(values: list[str] | None) -> list[str]:
+    valid_codes = _load_valid_stock_codes()
     codes: list[str] = []
     seen: set[str] = set()
     for value in values or []:
@@ -85,9 +90,39 @@ def _normalise_stock_codes(values: list[str] | None) -> list[str]:
             continue
         if not re.fullmatch(r"\d{4}", code):
             continue
+        if valid_codes is not None and code not in valid_codes:
+            continue
         seen.add(code)
         codes.append(code)
     return codes
+
+
+def _load_valid_stock_codes() -> set[str] | None:
+    try:
+        payload = json.loads(STOCK_LIST_PATH.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None
+    stocks = payload.get("stocks") if isinstance(payload, dict) else None
+    if not isinstance(stocks, list):
+        return None
+    codes = {
+        str(item.get("code", "")).strip()
+        for item in stocks
+        if isinstance(item, dict) and re.fullmatch(r"\d{4}", str(item.get("code", "")).strip())
+    }
+    return codes or None
+
+
+def _sanitize_recent_scan_record(item: dict[str, Any]) -> dict[str, Any]:
+    record = dict(item)
+    raw_codes = record.get("selected_codes") or record.get("codes")
+    codes = _normalise_stock_codes(raw_codes)
+    if not codes and record.get("summary"):
+        codes = extract_stock_codes(str(record.get("summary") or ""))
+    record["codes"] = codes
+    record["selected_codes"] = codes
+    record["candidate_count"] = len(codes)
+    return record
 
 
 def _safe(value: str) -> str:

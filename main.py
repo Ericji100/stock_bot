@@ -133,7 +133,7 @@ SCAN_SELECTIONS = {
     "4": ["chip_3"],
     "5": ["chip_4"],
     "6": ["technical"],
-    "7": ["financial", "chip_1", "chip_2", "chip_3", "chip_4", "technical"],
+    "7": ["financial", "chip_1", "chip_2", "chip_3", "chip_4", "technical", "curated"],
     "8": ["curated"],
 }
 SCAN_MENU_LABELS = {
@@ -582,9 +582,13 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
 
     target_date = report_date or get_tw_today()
     menu_label = SCAN_MENU_LABELS.get(selection, selection)
+    report_parts: list[str] = []
     print(f"[{now_timestamp()}] [選股進度][{menu_label}] 0.00% 收到 /scan 選股任務，目標日期 {target_date.isoformat()}", flush=True)
 
-    if "curated" in selected_keys:
+    is_curated_only = selected_keys == ["curated"]
+    has_curated = "curated" in selected_keys
+
+    if is_curated_only:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 10.00% 開始精選交叉比對", flush=True)
         await safe_send_reply(update, "正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
         try:
@@ -615,6 +619,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
                 config.get("scan_settings", {}),
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 35.00% 財報營收報告完成，準備傳送 Telegram", flush=True)
+            report_parts.append(financial_report)
             await safe_send_reply(update, financial_report)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 財報選股失敗: {exc}")
@@ -622,7 +627,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
 
     chip_keys = [key for key in selected_keys if key.startswith("chip_")]
     has_technical = "technical" in selected_keys
-    if not chip_keys and not has_technical:
+    if not chip_keys and not has_technical and not has_curated:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
         return
 
@@ -648,6 +653,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
         for index, key in enumerate(chip_keys, start=1):
             progress = chip_progress_end + index / max(1, len(chip_keys)) * 5.0
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] {progress:.2f}% 傳送 {CHIP_STRATEGY_NAMES.get(key, key)} 報告", flush=True)
+            report_parts.append(chip_reports[key])
             await safe_send_reply(update, chip_reports[key])
 
     # NEW: 技術面選股路由
@@ -663,10 +669,32 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
                 target_date,
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 98.00% 技術面報告完成，準備傳送 Telegram", flush=True)
+            report_parts.append(technical_report)
             await safe_send_reply(update, technical_report)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 技術面選股失敗: {exc}")
             await safe_send_reply(update, "⚠️ 技術面選股產生失敗，請稍後再試。")
+
+    if has_curated:
+        print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.00% 開始精選交叉比對", flush=True)
+        await safe_send_reply(update, "正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
+        try:
+            config = load_config()
+            curated_result = await asyncio.to_thread(
+                curated_scan_service.build_curated_scan_result,
+                config.get("scan_settings", {}),
+                target_date,
+            )
+            print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.50% 精選報告產生完成，準備傳送 Telegram", flush=True)
+            report_parts.append(curated_result.report_text)
+            await safe_send_reply(update, curated_result.report_text)
+        except Exception as exc:
+            print(f"[{now_timestamp()}] ❌ /scan 精選選股失敗: {exc}")
+            await safe_send_reply(update, "⚠️ 精選選股產生失敗，會繼續完成其他已選策略。")
+
+    if selection == "7" and report_parts:
+        save_recent_scan_result(menu_label, target_date, "\n\n".join(report_parts))
+
     print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
 
 

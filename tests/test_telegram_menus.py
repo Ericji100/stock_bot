@@ -480,6 +480,91 @@ class TelegramMenuTests(unittest.TestCase):
 # /scan menu tests
 # ------------------------------------------------------------------
 class ScanMenuTests(unittest.TestCase):
+    def test_scan_all_selection_includes_curated(self):
+        from main import SCAN_SELECTIONS
+        self.assertIn("curated", SCAN_SELECTIONS["7"])
+        self.assertEqual(SCAN_SELECTIONS["8"], ["curated"])
+
+    def test_run_all_scan_sends_curated_last_and_saves_combined_recent_scan(self):
+        import main
+        from datetime import date
+
+        sent_messages: list[str] = []
+        saved_records: list[tuple[str, date, str]] = []
+
+        async def fake_safe_send_reply(update, text, **kwargs):
+            sent_messages.append(text)
+
+        def fake_run_tw_market_scan(*args, **kwargs):
+            return "財報報告 1111"
+
+        def fake_build_chip_reports(*args, **kwargs):
+            return (
+                {
+                    "chip_1": "籌碼一 2222",
+                    "chip_2": "籌碼二 3333",
+                    "chip_3": "籌碼三 4444",
+                    "chip_4": "籌碼四 5555",
+                },
+                {},
+            )
+
+        def fake_build_technical_scan_report(*args, **kwargs):
+            return "技術報告 6666"
+
+        def fake_build_curated_scan_result(*args, **kwargs):
+            return SimpleNamespace(report_text="精選報告 7777", selected_codes=["7777"])
+
+        def fake_save_recent_scan_result(scan_type, report_date, report_text, selected_codes=None):
+            saved_records.append((scan_type, report_date, report_text))
+
+        original_safe_send_reply = main.safe_send_reply
+        original_load_config = main.load_config
+        original_run_tw_market_scan = main.run_tw_market_scan
+        original_build_chip_reports = main.build_chip_reports
+        original_build_technical_scan_report = main.ts.build_technical_scan_report
+        original_build_curated_scan_result = main.curated_scan_service.build_curated_scan_result
+        original_save_recent_scan_result = main.save_recent_scan_result
+        try:
+            main.safe_send_reply = fake_safe_send_reply
+            main.load_config = lambda: {"scan_settings": {}}
+            main.run_tw_market_scan = fake_run_tw_market_scan
+            main.build_chip_reports = fake_build_chip_reports
+            main.ts.build_technical_scan_report = fake_build_technical_scan_report
+            main.curated_scan_service.build_curated_scan_result = fake_build_curated_scan_result
+            main.save_recent_scan_result = fake_save_recent_scan_result
+
+            asyncio.run(main.run_selected_scan_reports(SimpleNamespace(), "7", date(2026, 5, 22)))
+        finally:
+            main.safe_send_reply = original_safe_send_reply
+            main.load_config = original_load_config
+            main.run_tw_market_scan = original_run_tw_market_scan
+            main.build_chip_reports = original_build_chip_reports
+            main.ts.build_technical_scan_report = original_build_technical_scan_report
+            main.curated_scan_service.build_curated_scan_result = original_build_curated_scan_result
+            main.save_recent_scan_result = original_save_recent_scan_result
+
+        expected_reports = {
+            "財報報告 1111",
+            "籌碼一 2222",
+            "籌碼二 3333",
+            "籌碼三 4444",
+            "籌碼四 5555",
+            "技術報告 6666",
+            "精選報告 7777",
+        }
+        report_messages = [msg for msg in sent_messages if msg in expected_reports]
+        self.assertEqual(
+            report_messages,
+            ["財報報告 1111", "籌碼一 2222", "籌碼二 3333", "籌碼三 4444", "籌碼四 5555", "技術報告 6666", "精選報告 7777"],
+        )
+        self.assertEqual(len(saved_records), 1)
+        scan_type, report_date, report_text = saved_records[0]
+        self.assertEqual(scan_type, "全部執行")
+        self.assertEqual(report_date.isoformat(), "2026-05-22")
+        for marker in ["財報報告 1111", "籌碼一 2222", "技術報告 6666", "精選報告 7777"]:
+            self.assertIn(marker, report_text)
+
     def test_scan_strategy_menu_has_8_options(self):
         from main import build_scan_strategy_keyboard
         keyboard = build_scan_strategy_keyboard()

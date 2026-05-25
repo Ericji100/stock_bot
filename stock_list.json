@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-17T23:50:25",
+  "generated_at": "2026-05-25T00:50:54",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -13059,6 +13059,20 @@
       "market": "TWSE",
       "name": "禾榮科",
       "industry": "生技醫療業"
+    },
+    {
+      "code": "7803",
+      "symbol": "7803.TW",
+      "market": "TWSE",
+      "name": "雲象科技-創",
+      "industry": "生技醫療業"
+    },
+    {
+      "code": "7818",
+      "symbol": "7818.TW",
+      "market": "TWSE",
+      "name": "溢泰實業",
+      "industry": "綠能環保"
     },
     {
       "code": "7821",

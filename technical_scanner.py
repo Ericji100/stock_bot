@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,9 @@ from stock_scanner import (
     load_recent_revenue_history,
     load_stock_universe,
 )
+from technical_strategy_engine import detect_technical_strategies
+
+from progress_logger import now_timestamp
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -75,10 +78,11 @@ class TechnicalScanResult:
     bullish: dict[str, dict[str, list[str]]]
     bearish: dict[str, dict[str, list[str]]]
     sources: set[str]
+    strategy_signals: dict[str, list[dict]] = field(default_factory=dict)
 
 
 def _print_progress(label: str, progress: float, message: str) -> None:
-    print(f"[選股進度][{label}] {progress:.2f}% {message}", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][{label}] {progress:.2f}% {message}", flush=True)
 
 
 def _ensure_cache_dir() -> None:
@@ -219,22 +223,41 @@ def build_hard_filter_candidates(scan_settings: dict[str, float] | None = None) 
     return candidates, len(universe)
 
 
+def _calc_atr(frame: pd.DataFrame, period: int = 14) -> pd.Series:
+    high_low = frame["high"] - frame["low"]
+    high_close = (frame["high"] - frame["close"].shift(1)).abs()
+    low_close = (frame["low"] - frame["close"].shift(1)).abs()
+    true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    return true_range.rolling(period).mean()
+
+
 def apply_indicators(history: pd.DataFrame) -> pd.DataFrame:
     frame = history.copy()
-    frame[f"MA{MA_SHORT}"] = frame["close"].rolling(MA_SHORT).mean()
-    frame[f"MA{MA_LONG}"] = frame["close"].rolling(MA_LONG).mean()
 
+    # --- Moving averages ---
+    for period in [5, 13, 21, 60, 105, 144]:
+        frame[f"MA{period}"] = frame["close"].rolling(period).mean()
+
+    # --- MACD (21,55,55) ---
     ema_fast = frame["close"].ewm(span=MACD_FAST, adjust=False).mean()
     ema_slow = frame["close"].ewm(span=MACD_SLOW, adjust=False).mean()
     frame["DIF"] = ema_fast - ema_slow
     frame["DEA"] = frame["DIF"].ewm(span=MACD_SIGNAL, adjust=False).mean()
     frame["MACD_HIST"] = frame["DIF"] - frame["DEA"]
 
+    # --- KD (9,9,55) ---
     low_min = frame["low"].rolling(KD_RSV_PERIOD).min()
     high_max = frame["high"].rolling(KD_RSV_PERIOD).max()
     frame["RSV"] = ((frame["close"] - low_min) / (high_max - low_min) * 100).clip(0, 100)
     frame["K"] = frame["RSV"].ewm(span=KD_K_PERIOD, adjust=False).mean()
     frame["D"] = frame["K"].ewm(span=KD_D_PERIOD, adjust=False).mean()
+
+    # --- ATR14 ---
+    frame["ATR14"] = _calc_atr(frame, 14)
+
+    # --- Volume MA20 ---
+    frame["volume_ma20"] = frame["volume"].rolling(20).mean()
+
     return frame
 
 
@@ -394,6 +417,7 @@ def run_technical_scan(scan_settings: dict[str, float] | None = None, report_dat
     bearish: dict[str, dict[str, list[str]]] = {}
     sources: set[str] = set()
     matched_codes: set[str] = set()
+    strategy_signals: dict[str, list[dict]] = {"A": [], "B": [], "C": [], "D": []}
 
     for index, candidate in enumerate(candidates, start=1):
         progress = 20.0 + index / max(1, len(candidates)) * 70.0
@@ -410,6 +434,23 @@ def run_technical_scan(scan_settings: dict[str, float] | None = None, report_dat
         for signal in bearish_signals:
             _add_signal(bearish, signal, candidate)
 
+        # --- Strategy detection (四大策略 A/B/C/D) ---
+        _print_progress(label, 80.0, f"偵測四大策略 {index}/{len(candidates)} {candidate.code}")
+        if history.empty or "close" not in history.columns:
+            continue
+        frame_with_indicators = apply_indicators(history).dropna(subset=["close"]).reset_index(drop=True)
+        if len(frame_with_indicators) < MIN_HISTORY_ROWS:
+            continue
+        strat_sigs = detect_technical_strategies(frame_with_indicators, candidate.code, candidate.name)
+        for sig in strat_sigs:
+            sig["industry"] = candidate.industry or UNCLASSIFIED_INDUSTRY
+            code = sig.get("strategy_code")
+            if code in strategy_signals:
+                strategy_signals[code].append(sig)
+        if strat_sigs:
+            matched_codes.add(candidate.code)
+
+    _print_progress(label, 95.0, "技術策略偵測完成")
     _print_progress(label, 100.0, f"完成，符合技術邏輯 {len(matched_codes)} 檔")
     return TechnicalScanResult(
         report_date=target_date,
@@ -419,6 +460,7 @@ def run_technical_scan(scan_settings: dict[str, float] | None = None, report_dat
         bullish=bullish,
         bearish=bearish,
         sources=sources or {"Yahoo Finance", "Fugle", "本機快取"},
+        strategy_signals=strategy_signals,
     )
 
 
@@ -439,6 +481,110 @@ def _render_signal_groups(lines: list[str], groups: dict[str, dict[str, list[str
         lines.append("")
 
 
+def _strategy_lines(code: str, label: str, signals: list[dict]) -> list[str]:
+    if not signals:
+        return ["", f"策略 {code}：無符合標的", ""]
+
+    # Group signals by sub_signal_type, preserving order
+    from collections import OrderedDict
+    groups: OrderedDict[str, list[dict]] = OrderedDict()
+    for sig in signals:
+        sub = sig.get("sub_signal_type", "")
+        if sub not in groups:
+            groups[sub] = []
+        groups[sub].append(sig)
+
+    lines = ["", f"策略 {code}：{label}", ""]
+    for sub, sigs in groups.items():
+        sub_label = STRATEGY_SUB_SIGNAL_LABELS.get(sub, sub)
+        lines.append(f"{sub_label}")
+        lines.append("")
+        # Group stocks by industry within this sub-signal group
+        industry_stocks: dict[str, list[str]] = {}
+        for sig in sigs:
+            industry = sig.get("industry") or UNCLASSIFIED_INDUSTRY
+            close = sig.get("close", 0)
+            note_summary = _format_strategy_signal_summary(sig)
+            stock_id = sig.get("stock_id", "")
+            stock_name = sig.get("stock_name", "")
+            if note_summary:
+                item = f"{stock_id} {stock_name} ({close:.1f})｜{note_summary}"
+            else:
+                item = f"{stock_id} {stock_name} ({close:.1f})"
+            industry_stocks.setdefault(industry, []).append(item)
+        for industry in sorted(industry_stocks):
+            stocks = " | ".join(industry_stocks[industry])
+            lines.append(f"【{industry}】 {stocks}")
+        lines.append("")
+
+    return lines
+
+
+STRATEGY_SUB_SIGNAL_LABELS: dict[str, str] = {
+    "A1_direct_ma21_breakout": "A1｜直接突破型",
+    "A2_pivot_low_reclaim_ma21": "A2｜轉折不破低再站上 21MA",
+    "A3_reclaim_ma21_and_long_ma": "A3｜同日收復 21MA 與長均線",
+    "B1_intraday_retest_reclaim_ma": "B1｜當日低點碰觸 MA13/MA21 後收復",
+    "B2_short_reclaim_after_break_ma": "B2｜1-3日前跌破 MA13/MA21 後今日收復",
+    "B3_breakout_after_retest": "B3｜回測 MA13/MA21 後突破前高",
+    "C1_macd_bullish_divergence_break_ma21": "C1｜MACD 低檔背離突破 21MA",
+    "C2_below_zero_red_histogram_breakout": "C2｜0軸下紅柱鈍化突破",
+    "D1_reclaim_ma_after_break": "D1｜跌破短均後快速收復",
+    "D2_macd_high_column_flip_green": "D2｜MACD 高檔紅柱翻綠後快速反轉",
+    "D3_kd_death_cross_quick_reversal": "D3｜KD 死叉後快速轉強",
+    "D4_hammer_candle_reclaim": "D4｜急跌或長下影後收復 MA5/MA13",
+}
+
+
+def _format_strategy_signal_summary(sig: dict) -> str:
+    """From sig features/notes, build Chinese summary without raw English."""
+    feat = sig.get("features", {})
+    notes = sig.get("notes", "")
+
+    parts = []
+
+    # wave_return -> 前波漲幅
+    if "wave_return" in notes:
+        import re
+        m = re.search(r"wave_return=([0-9.]+)%", notes)
+        if m:
+            parts.append(f"前波漲幅 {m.group(1)}%")
+
+    # retracement / retracement_ratio
+    rr = feat.get("retracement_ratio", None)
+    if rr is not None:
+        if rr < 0:
+            parts.append("回檔比例資料異常，需人工確認")
+        else:
+            parts.append(f"回檔比例 {rr:.0%}")
+
+    # pivot low
+    if "pivot_low" in feat:
+        parts.append(f"轉折低點 {feat['pivot_low']:.2f}")
+
+    # ma105/ma144 reclaimed
+    if feat.get("ma105_reclaimed"):
+        parts.append("收復 MA105")
+    if feat.get("ma144_reclaimed"):
+        parts.append("收復 MA144")
+
+    # ma105/ma144 broken in pullback
+    if feat.get("ma105_broken_in_pullback"):
+        parts.append("回檔中曾跌破 MA105")
+    if feat.get("ma144_broken_in_pullback"):
+        parts.append("回檔中曾跌破 MA144")
+
+    # ma5/13/21 broken
+    if feat.get("ma5_broken"):
+        parts.append("突破 MA5")
+    if feat.get("ma13_broken"):
+        parts.append("突破 MA13")
+    if feat.get("ma21_broken"):
+        parts.append("突破 MA21")
+
+    return "、".join(parts)
+
+
 def format_technical_report(result: TechnicalScanResult) -> str:
     lines = [
         "🔍 今日技術面選股掃描報告",
@@ -447,7 +593,7 @@ def format_technical_report(result: TechnicalScanResult) -> str:
         "📌 分類定義說明：",
         "* 正面訊號：包含均線突破及指標金叉，代表短中期趨勢轉強。",
         "* 負面訊號：包含 MACD / KD 指標死叉，代表多頭動能衰退，需留意風險。",
-        "* 暫停策略：MACD 回測突破、MACD / KD 高檔背離與低檔背離暫不執行。",
+        "* 四大技術策略：MACD 回測突破、低檔背離等指標，已整合至策略區塊。",
         "",
         "=========================",
         "🟢 【正面訊號標的】",
@@ -462,6 +608,26 @@ def format_technical_report(result: TechnicalScanResult) -> str:
         ]
     )
     _render_signal_groups(lines, result.bearish, BEARISH_SIGNAL_ORDER)
+
+    # --- 四大策略區塊 ---
+    strategy_blocks = [
+        ("A", "多頭延續回檔突破", result.strategy_signals.get("A", [])),
+        ("B", "強勢紅柱回測突破", result.strategy_signals.get("B", [])),
+        ("C", "低檔背離反轉突破", result.strategy_signals.get("C", [])),
+        ("D", "強勢股急跌收復", result.strategy_signals.get("D", [])),
+    ]
+    lines.extend(
+        [
+            "",
+            "=========================",
+            "📈 【四大技術策略】",
+            "=========================",
+        ]
+    )
+    for code, label, signals in strategy_blocks:
+        lines.extend(_strategy_lines(code, label, signals))
+        lines.append("")
+
     lines.extend(
         [
             "=========================",
@@ -469,6 +635,10 @@ def format_technical_report(result: TechnicalScanResult) -> str:
             f"* 總掃描範圍：{result.total_symbols} 檔",
             f"* 通過硬篩標的：{result.hard_filter_passed} 檔",
             f"* 符合技術選股邏輯：{result.matched_symbols} 檔",
+            f"* 策略 A：{len(result.strategy_signals.get('A', []))} 檔",
+            f"* 策略 B：{len(result.strategy_signals.get('B', []))} 檔",
+            f"* 策略 C：{len(result.strategy_signals.get('C', []))} 檔",
+            f"* 策略 D：{len(result.strategy_signals.get('D', []))} 檔",
             f"* 資料日期：{result.report_date.isoformat()}",
             f"* 資料來源：{' / '.join(sorted(result.sources))}",
         ]

@@ -35,6 +35,9 @@ def extract_structured_events(structured_data: dict[str, Any]) -> list[dict[str,
     for event in structured_data.get("source_events") or []:
         if isinstance(event, dict):
             events.append(event)
+    for event in structured_data.get("news_events") or []:
+        if isinstance(event, dict):
+            events.append(event)
     for candidate in [
         *(structured_data.get("ai_candidates") or []),
         *(structured_data.get("candidates") or []),

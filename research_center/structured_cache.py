@@ -59,3 +59,42 @@ def load_research_structured_cache(
             pass
 
     return payload.get("data") if isinstance(payload.get("data"), dict) else None
+
+
+def load_latest_research_structured_cache(
+    stock_code: str,
+    *,
+    before_or_on: date | None = None,
+    max_age_days: int = 7,
+) -> tuple[dict[str, Any], date] | None:
+    """Load the newest nearby structured cache for a stock.
+
+    This is a resilience fallback for interactive /research runs when live data
+    sources are temporarily unavailable. It deliberately searches only a short
+    window so stale data is not silently used as current evidence.
+    """
+    if not CACHE_DIR.exists():
+        return None
+    target = before_or_on or datetime.now().date()
+    candidates: list[tuple[date, Path]] = []
+    for folder in CACHE_DIR.iterdir():
+        if not folder.is_dir():
+            continue
+        try:
+            folder_date = datetime.strptime(folder.name, "%Y%m%d").date()
+        except ValueError:
+            continue
+        if folder_date > target or (target - folder_date).days > max_age_days:
+            continue
+        path = folder / f"{stock_code}.json"
+        if path.exists():
+            candidates.append((folder_date, path))
+    for cache_date, path in sorted(candidates, key=lambda item: item[0], reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        data = payload.get("data")
+        if isinstance(data, dict):
+            return data, cache_date
+    return None

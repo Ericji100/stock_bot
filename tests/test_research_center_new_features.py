@@ -105,7 +105,7 @@ class ResearchCenterNewFeatureTests(unittest.TestCase):
         sources = _extract_sources(payload)
         self.assertEqual(len(sources), 2)
         self.assertEqual(sources[0].title, 'Example A')
-        self.assertEqual(sources[1].source_level, 'Level 1')
+        self.assertIn('L1', sources[1].source_level)
 
 if __name__ == '__main__':
     unittest.main()

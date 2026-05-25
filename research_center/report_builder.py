@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from .models import CommandRequest, ReportArtifacts, SourceItem
 from .report_validator import append_qa_notes, validate_report
+from .company_knowledge_update_service import source_quality_score
+from .report_quality_service import build_report_quality_layer
 
 DISCLAIMER = "本報告為研究輔助資訊，不構成任何投資建議。投資決策仍需自行判斷並承擔風險。"
 
@@ -26,6 +28,8 @@ def build_report_json(
     report_variant: str | None = None,
 ) -> dict[str, Any]:
     data = structured_data or {}
+    shared_data_layer = _shared_data_layer_summary(data)
+    report_quality = build_report_quality_layer(request, data, sources)
     local_scoring = data.get("local_scoring") or {}
     scores = _normalize_scores(local_scoring.get("scores") or [])
     buy_rating = local_scoring.get("buy_rating")
@@ -50,6 +54,8 @@ def build_report_json(
             "analysis_model": data.get("analysis_model"),
             "analysis_model_choice": data.get("analysis_model_choice"),
             "analysis_provider": data.get("analysis_provider"),
+            "market_data_date": data.get("market_data_date"),
+            "report_generated_at": data.get("report_generated_at"),
             "comparison_reports": data.get("comparison_reports"),
             "fallback_reason": fallback_reason,
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -65,10 +71,124 @@ def build_report_json(
             "minimax_search_discovery": data.get("minimax_search_discovery"),
             "minimax_diagnostics": data.get("minimax_diagnostics"),
             "opencode_diagnostics": data.get("opencode_diagnostics"),
+            "shared_data_layer": shared_data_layer,
+            "news_context": shared_data_layer.get("news_context"),
+            "saved_news_context": shared_data_layer.get("saved_news_context"),
+            "news_persistence_status": shared_data_layer.get("news_persistence_status"),
+            "feature_pack": shared_data_layer.get("feature_pack"),
+            "data_coverage": shared_data_layer.get("data_coverage"),
             "value_scan_candidate_count": len(data.get("ai_candidates") or data.get("candidates") or []) if request.command == "value_scan" else None,
             "value_scan_candidates": _value_scan_candidate_refs(data) if request.command == "value_scan" else None,
+            "report_schema_version": report_quality["schema_version"],
+            "report_quality": report_quality,
+            "source_quality": report_quality["source_quality"],
+            "source_coverage_summary": report_quality["source_coverage_summary"],
+            "data_coverage_score": report_quality["data_coverage_score"],
         },
+        "structured_data": _structured_data_report_snapshot(request, data, report_quality),
     }
+
+
+def _compact_for_metadata(value: Any, *, depth: int = 4, max_list: int = 30, max_keys: int = 80, max_string: int = 1200) -> Any:
+    if depth <= 0:
+        if isinstance(value, (dict, list, tuple)):
+            return f"<{type(value).__name__} truncated>"
+        return value
+    if isinstance(value, dict):
+        compact: dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= max_keys:
+                compact["_truncated_keys"] = len(value) - max_keys
+                break
+            compact[str(key)] = _compact_for_metadata(item, depth=depth - 1, max_list=max_list, max_keys=max_keys, max_string=max_string)
+        return compact
+    if isinstance(value, (list, tuple)):
+        items = [
+            _compact_for_metadata(item, depth=depth - 1, max_list=max_list, max_keys=max_keys, max_string=max_string)
+            for item in list(value)[:max_list]
+        ]
+        if len(value) > max_list:
+            items.append({"_truncated_items": len(value) - max_list})
+        return items
+    if isinstance(value, str) and len(value) > max_string:
+        return value[:max_string].rstrip() + "...<truncated>"
+    return value
+
+
+def _shared_data_layer_summary(data: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "news_context",
+        "saved_news_context",
+        "news_persistence_status",
+        "feature_pack",
+        "data_coverage",
+        "data_gap_summary",
+        "unified_evidence_pack",
+        "news_events",
+        "news_event_summary",
+        "search_query_log",
+    )
+    summary = {
+        key: _compact_for_metadata(data.get(key))
+        for key in keys
+        if data.get(key) is not None
+    }
+    command_role = data.get("command_role")
+    if command_role == "sector_strength":
+        summary["sector_strength"] = _sector_strength_metadata_summary(data)
+    elif data.get("sector_strength"):
+        summary["sector_strength"] = _sector_strength_metadata_summary(data.get("sector_strength") or {})
+    if data.get("market_movers"):
+        summary["market_movers"] = _market_movers_metadata_summary(data.get("market_movers") or {})
+    return summary
+
+
+def _sector_strength_metadata_summary(data: dict[str, Any]) -> dict[str, Any]:
+    return _compact_for_metadata(
+        {
+            "command_role": data.get("command_role"),
+            "report_date": data.get("report_date"),
+            "market_data_date": data.get("market_data_date"),
+            "report_generated_at": data.get("report_generated_at"),
+            "source": data.get("source"),
+            "lookback_days": data.get("lookback_days"),
+            "sector_rankings": (data.get("sector_rankings") or [])[:10],
+            "data_quality": data.get("data_quality"),
+            "market_movers": _market_movers_metadata_summary(data.get("market_movers") or {}),
+        },
+        depth=5,
+        max_list=20,
+        max_keys=120,
+    )
+
+
+def _market_movers_metadata_summary(data: dict[str, Any]) -> dict[str, Any]:
+    return _compact_for_metadata(
+        {
+            "market_data_date": data.get("market_data_date"),
+            "report_generated_at": data.get("report_generated_at") or data.get("generated_at"),
+            "source_mode": data.get("source_mode"),
+            "hard_filter_policy": data.get("hard_filter_policy"),
+            "data_quality": data.get("data_quality"),
+            "top_gainers": (data.get("top_gainers") or [])[:10],
+            "top_losers": (data.get("top_losers") or [])[:10],
+            "top_volume_surge": (data.get("top_volume_surge") or [])[:10],
+            "top_turnover": (data.get("top_turnover") or [])[:10],
+            "new_highs": (data.get("new_highs") or [])[:10],
+            "new_lows": (data.get("new_lows") or [])[:10],
+            "sector_mover_rankings": (data.get("sector_mover_rankings") or [])[:10],
+        },
+        depth=4,
+        max_list=12,
+        max_keys=100,
+    )
+
+
+def _shared_data_layer_markdown(structured_data: dict[str, Any]) -> str:
+    summary = _shared_data_layer_summary(structured_data)
+    if not summary:
+        return "- 本次 structured_data 未包含 news_context / feature_pack / data_coverage。"
+    return "```json\n" + json.dumps(summary, ensure_ascii=False, indent=2, default=str) + "\n```"
 
 
 def write_report_artifacts(
@@ -87,7 +207,11 @@ def write_report_artifacts(
     output_dir = report_root / report_type / _safe_slug(request.target or request.market_scope or request.candidate_pool or "latest")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    markdown = sanitize_report_markdown(markdown)
+    summary = sanitize_report_markdown(summary)
     markdown = _append_value_scan_candidate_analysis(request, markdown, structured_data)
+    markdown = _append_report_quality_summary(request, markdown, structured_data, sources)
+    markdown = _append_source_reference_bridge(markdown, sources)
     markdown = _append_complete_source_appendix(markdown, sources)
     report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant)
     qa = validate_report(markdown, request, sources, report_json)
@@ -106,8 +230,8 @@ def write_report_artifacts(
     if "html" in request.output_formats:
         html_path.write_text(render_html(report_json, markdown), encoding="utf-8")
     if "json" in request.output_formats:
-        json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2), encoding="utf-8")
-    sources_path.write_text(json.dumps([asdict(item) for item in sources], ensure_ascii=False, indent=2), encoding="utf-8")
+        json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    sources_path.write_text(json.dumps([asdict(item) for item in sources], ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
     return (
         ReportArtifacts(
@@ -120,6 +244,74 @@ def write_report_artifacts(
         ),
         report_json,
     )
+
+
+def sanitize_report_markdown(markdown: str) -> str:
+    """Normalize model-produced report markdown before saving/rendering."""
+    text = str(markdown or "").strip()
+    text = _strip_outer_markdown_fence(text)
+    text = _strip_model_preface(text)
+    text = re.sub(r"\[S\s*\?\s*\]", "來源未對應", text)
+    return text.strip() + ("\n" if text else "")
+
+
+def _strip_outer_markdown_fence(markdown: str) -> str:
+    lines = markdown.strip().splitlines()
+    if len(lines) < 2:
+        return markdown
+    first = lines[0].strip().lower()
+    last = lines[-1].strip()
+    if first in {"```", "```markdown", "```md"} and last == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return markdown
+
+
+MODEL_PREFACE_PATTERNS = (
+    re.compile(r"^好的[，,].{0,80}(報告|產出|分析|根據).*$"),
+    re.compile(r"^我將.{0,80}(報告|產出|分析).*$"),
+    re.compile(r"^以下是.{0,80}(報告|分析).*$"),
+    re.compile(r"^根據您提供的.{0,80}(報告|分析).*$"),
+)
+
+
+def _strip_model_preface(markdown: str) -> str:
+    lines = markdown.splitlines()
+    first_heading = next((index for index, line in enumerate(lines) if line.lstrip().startswith("#")), None)
+    if first_heading is None:
+        return "\n".join(line for line in lines if not _is_model_preface_line(line))
+    prefix = [line for line in lines[:first_heading] if line.strip() and not _is_model_preface_line(line)]
+    if prefix:
+        return "\n".join([*prefix, *lines[first_heading:]]).strip()
+    return "\n".join(lines[first_heading:]).strip()
+
+
+def _is_model_preface_line(line: str) -> bool:
+    clean = line.strip().strip("*_- ")
+    if not clean:
+        return False
+    return any(pattern.match(clean) for pattern in MODEL_PREFACE_PATTERNS)
+
+
+def _append_source_reference_bridge(markdown: str, sources: list[SourceItem], max_refs: int = 5) -> str:
+    if not sources or re.search(r"\[S\d{3}\]", _qa_main_markdown(markdown)):
+        return markdown
+    refs = []
+    for source in sources[:max_refs]:
+        title = (source.title or source.url or "未命名來源").strip()
+        refs.append(f"[{source.source_id}] {title}")
+    if not refs:
+        return markdown
+    lines = [
+        markdown.rstrip(),
+        "",
+        "## 來源引用補充",
+        "- 模型正文未逐段標示來源；系統保留本次報告主要參考來源：" + "；".join(refs),
+    ]
+    return "\n".join(lines).strip() + "\n"
+
+
+def _qa_main_markdown(markdown: str) -> str:
+    return re.split(r"\n## (完整資料來源清單|規格檢查提醒)\b", markdown, maxsplit=1)[0]
 
 
 
@@ -136,6 +328,26 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
         return markdown
     lines = [markdown.rstrip(), "", "---", "", "## " + marker, ""]
     lines.append("\u4ee5\u4e0b\u7ae0\u7bc0\u7531\u7a0b\u5f0f\u4f9d\u672c\u6b21\u5be6\u969b\u9001\u5165 AI \u7684 ai_candidates \u81ea\u52d5\u9644\u52a0\uff0c\u78ba\u4fdd\u5be6\u969b\u5206\u6790\u5019\u9078\u80a1\u6709\u53ef\u8ffd\u6eaf\u7684\u9010\u6a94\u5206\u6790\u5e95\u7a3f\u3002")
+    matrix = _value_scan_data_completeness_matrix(data)
+    if matrix:
+        lines.extend(["", "### 資料完整度矩陣", ""])
+        lines.append("| 股票 | 財報細項 | 毛利率 | 籌碼 | 估值 | TDCC | MOPS | 來源事件 | 公司知識庫 | 缺漏 |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|")
+        for item in matrix:
+            lines.append(
+                "| {stock} | {financial_detail} | {gross_margin_cache} | {chip_backup_summary} | {valuation_data} | {tdcc_data} | {mops_documents} | {source_events} | {company_knowledge} | {missing} |".format(
+                    stock=item["stock"],
+                    financial_detail=item["financial_detail"],
+                    gross_margin_cache=item["gross_margin_cache"],
+                    chip_backup_summary=item["chip_backup_summary"],
+                    valuation_data=item["valuation_data"],
+                    tdcc_data=item["tdcc_data"],
+                    mops_documents=item["mops_documents"],
+                    source_events=item["source_events"],
+                    company_knowledge=item["company_knowledge"],
+                    missing=item["missing"],
+                )
+            )
     for index, row in enumerate(candidates, 1):
         code = str(row.get("code") or "").strip()
         name = str(row.get("name") or "").strip()
@@ -160,12 +372,136 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
     return "\n".join(lines).strip() + "\n"
 
 
+def _append_report_quality_summary(
+    request: CommandRequest,
+    markdown: str,
+    structured_data: dict[str, Any] | None,
+    sources: list[SourceItem],
+) -> str:
+    marker = "報告資料完整度與來源品質"
+    if marker in markdown:
+        return markdown
+    quality = build_report_quality_layer(request, structured_data or {}, sources)
+    lines = [markdown.rstrip(), "", "---", "", "## " + marker, ""]
+    lines.append(f"- Report Quality Schema：{quality.get('schema_version')}")
+    lines.append(f"- 資料覆蓋分數：{quality.get('data_coverage_score')}/100")
+    source_summary = (quality.get("source_coverage_summary") or {})
+    lines.append(f"- 來源總數：{source_summary.get('total_sources', 0)}；有日期來源：{source_summary.get('dated_sources', 0)}；無日期來源：{source_summary.get('undated_sources', 0)}")
+    warnings = quality.get("qa_warnings") or []
+    lines.append("- QA 提醒：" + ("；".join(str(item) for item in warnings) if warnings else "無"))
+    rows = quality.get("data_completeness_matrix") or []
+    if rows:
+        lines.extend(["", "| 欄位 | 狀態 | 數量 |", "|---|---:|---:|"])
+        for row in rows:
+            status = "有資料" if row.get("available") else "缺資料"
+            lines.append(f"| {row.get('field')} | {status} | {row.get('count', 0)} |")
+    lines.extend(["", "### Missing Data Policy", ""])
+    policy = quality.get("missing_data_policy") or {}
+    for key, rule in policy.items():
+        lines.append(f"- {key}：{rule}")
+    return "\n".join(lines).strip() + "\n"
+
+
 def _value_scan_candidate_refs(data: dict[str, Any]) -> list[dict[str, str]]:
     refs = []
     # 使用實際送 AI 的候選股（ai_candidates），不是本地 display 的 candidates
     for row in data.get("ai_candidates") or data.get("candidates") or []:
         refs.append({"code": str(row.get("code") or ""), "name": str(row.get("name") or "")})
     return refs
+
+
+def _structured_data_report_snapshot(request: CommandRequest, data: dict[str, Any], report_quality: dict[str, Any] | None = None) -> dict[str, Any]:
+    quality = report_quality or {}
+    common = {
+        "schema_version": quality.get("schema_version"),
+        "evidence_pack": quality.get("evidence_pack"),
+        "data_completeness_matrix": quality.get("data_completeness_matrix"),
+        "data_coverage_score": quality.get("data_coverage_score"),
+        "source_coverage_summary": quality.get("source_coverage_summary"),
+        "qa_warnings": quality.get("qa_warnings"),
+        "data_gap_summary": quality.get("data_gap_summary") or data.get("data_gap_summary"),
+        "unified_evidence_pack": quality.get("unified_evidence_pack") or data.get("unified_evidence_pack"),
+        "news_event_summary": quality.get("news_event_summary") or data.get("news_event_summary"),
+    }
+    if request.command == "value_scan":
+        return {
+            **common,
+            "ai_candidate_evidence_pack": _compact_for_metadata(
+                data.get("ai_candidate_evidence_pack") or [],
+                depth=7,
+                max_list=40,
+                max_keys=160,
+                max_string=2000,
+            ),
+            "data_completeness_matrix": _value_scan_data_completeness_matrix(data),
+            "company_knowledge_update_status": data.get("company_knowledge_update_status"),
+        }
+    if request.command in {"research", "theme"}:
+        return {
+            **common,
+            "company_knowledge": data.get("company_knowledge"),
+            "company_knowledge_summary": data.get("company_knowledge_summary"),
+            "company_knowledge_update_status": data.get("company_knowledge_update_status"),
+        }
+    return common
+
+
+def _value_scan_data_completeness_matrix(data: dict[str, Any]) -> list[dict[str, Any]]:
+    pack = data.get("ai_candidate_evidence_pack") or []
+    if not isinstance(pack, list):
+        return []
+    matrix = []
+    for row in pack:
+        if not isinstance(row, dict):
+            continue
+        missing = row.get("missing_data_status") or []
+        stock = " ".join(part for part in (str(row.get("code") or ""), str(row.get("name") or "")) if part).strip()
+        matrix.append({
+            "code": str(row.get("code") or ""),
+            "name": str(row.get("name") or ""),
+            "stock": stock or "unknown",
+            "financial_detail": _coverage_mark(row.get("financial_detail"), "financial_detail" in missing),
+            "gross_margin_cache": _coverage_mark(row.get("gross_margin_cache"), "gross_margin_cache" in missing),
+            "chip_backup_summary": _coverage_mark(row.get("chip_backup_summary"), "chip_backup_data" in missing),
+            "valuation_data": _coverage_mark(row.get("valuation_data"), False),
+            "tdcc_data": _coverage_mark(row.get("tdcc_data"), False),
+            "mops_documents": _coverage_mark(row.get("mops_documents"), "mops_documents" in missing),
+            "source_events": _coverage_mark(row.get("source_events"), "source_events" in missing),
+            "company_knowledge": _coverage_mark(row.get("company_knowledge"), "company_knowledge" in missing),
+            "missing": ", ".join(str(item) for item in missing) if missing else "無",
+        })
+    return matrix
+
+
+def _coverage_mark(value: Any, is_missing: bool) -> str:
+    if is_missing:
+        return "缺"
+    if isinstance(value, dict):
+        status = str(value.get("status") or "").lower()
+        if status in {"missing", "unavailable", "no data"}:
+            return "缺"
+        return "有" if value else "缺"
+    if isinstance(value, list):
+        return "有" if value else "缺"
+    return "有" if value not in (None, "") else "缺"
+
+
+def _source_quality_metadata(sources: list[SourceItem]) -> dict[str, Any]:
+    items = []
+    buckets = {"high": 0, "medium": 0, "low": 0, "rejected": 0}
+    for source in sources:
+        quality = source_quality_score(source)
+        buckets[quality["level"]] = buckets.get(quality["level"], 0) + 1
+        items.append({
+            "source_id": source.source_id,
+            "title": source.title,
+            "url": source.url,
+            "source_level": source.source_level,
+            "source_quality_score": quality["score"],
+            "source_quality_level": quality["level"],
+            "usable_for_company_knowledge": quality["usable_for_company_knowledge"],
+        })
+    return {"summary": buckets, "items": items}
 
 
 def _fmt_value(value: Any) -> str:
@@ -255,18 +591,38 @@ def _append_complete_source_appendix(markdown: str, sources: list[SourceItem]) -
         return markdown
     heading = "## " + marker
     lines = [markdown.rstrip(), "", "---", "", heading, ""]
-    lines.append("\u4ee5\u4e0b\u6e05\u55ae\u7531\u7a0b\u5f0f\u4f9d\u5be6\u969b\u4fdd\u5b58\u7684 sources.json \u4f86\u6e90\u81ea\u52d5\u9644\u52a0\uff1bAI \u6b63\u6587\u53ef\u80fd\u53ea\u5217\u51fa\u6709\u76f4\u63a5\u5f15\u7528\u7684\u90e8\u5206\u4f86\u6e90\u3002")
+    max_markdown_sources = 40
+    lines.append(
+        "\u4ee5\u4e0b\u70ba Markdown \u7cbe\u7c21\u4f86\u6e90\u8868\uff1b\u5b8c\u6574\u4f86\u6e90\u8207\u8f03\u9577\u6458\u8981\u4fdd\u7559\u5728 HTML \u300c\u5b8c\u6574\u8cc7\u6599\u4f86\u6e90\u300d\u5206\u9801\u8207 .sources.json\u3002"
+    )
     lines.append("")
-    for item in sources:
-        title = item.title or item.url
-        date_part = f"，date={item.published_date}" if item.published_date else ""
-        provider = item.provider or "unknown"
-        provider_detail = f"，provider_detail={item.provider_detail}" if item.provider_detail else ""
-        snippet_part = f"，{item.snippet}" if item.snippet else ""
-        lines.append(f"- [{item.source_id}] {item.source_level} / {provider} {title} - {item.url}{date_part}{provider_detail}{snippet_part}")
+    lines.append("| ID | 層級 | 來源 | 日期 | 標題 | URL |")
+    lines.append("|---|---|---|---|---|---|")
+    for item in sources[:max_markdown_sources]:
+        title = _truncate_source_text(item.title or item.url, 90)
+        provider = _truncate_source_text(item.provider or "unknown", 32)
+        date_part = item.published_date or "-"
+        lines.append(
+            f"| {item.source_id} | {item.source_level} | {provider} | {date_part} | {title} | {item.url} |"
+        )
+    if len(sources) > max_markdown_sources:
+        lines.append(
+            f"\n- Markdown 僅列前 {max_markdown_sources} 筆精簡來源；完整 {len(sources)} 筆請查看同名 `.sources.json` 或 HTML 報告的完整來源分頁。"
+        )
     return "\n".join(lines).strip() + "\n"
 
+
+def _truncate_source_text(value: Any, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
 def render_html(report_json: dict[str, Any], markdown: str) -> str:
+    from .report_html_renderer import render_report_html
+
+    return render_report_html(report_json, markdown, DISCLAIMER)
+
     title = html.escape(str(report_json.get("report_title", "AI 投資研究報告")))
     tabs = _build_html_tabs(report_json, markdown)
     return f"""<!doctype html>
@@ -468,11 +824,16 @@ def _metadata_summary(report_json: dict[str, Any]) -> dict[str, Any]:
         "gemini_search_diagnostics": metadata.get("gemini_search_diagnostics"),
         "gemini_search_discovery": metadata.get("gemini_search_discovery"),
         "minimax_search_discovery": metadata.get("minimax_search_discovery"),
+        "shared_data_layer": metadata.get("shared_data_layer"),
+        "news_context": metadata.get("news_context"),
+        "feature_pack": metadata.get("feature_pack"),
+        "data_coverage": metadata.get("data_coverage"),
         "qa_validation": metadata.get("qa_validation"),
     }
 
 
 def summarize_for_telegram(markdown: str, limit: int = 1200) -> str:
+    markdown = sanitize_report_markdown(markdown)
     title = _first_heading(markdown)
     cleaned = re.sub(r"[#*_`>]+", "", markdown)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
@@ -519,6 +880,9 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
 {data_block}
 ```
 
+## 共享資料層摘要
+{_shared_data_layer_markdown(structured_data)}
+
 ## 本地量化底稿（機械式資料檢查，非最終投研評分）
 {_score_markdown(structured_data)}
 
@@ -558,6 +922,12 @@ def _score_markdown(structured_data: dict[str, Any]) -> str:
 
 def _report_title(request: CommandRequest) -> str:
     target = request.target or request.market_scope or request.candidate_pool or "latest"
+    if request.command == "theme_radar":
+        return f"{target} 市場題材雷達報告"
+    if request.command == "theme_flow":
+        return f"{target} 題材擴散路徑報告"
+    if request.command == "sector_strength":
+        return f"{target} 傳統類股強弱報告"
     labels = {
         "research": "個股研究報告",
         "macro": "宏觀市場報告",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 import time
 from typing import Any
@@ -10,6 +11,7 @@ import httpx
 
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7"
+MAX_ERROR_PREVIEW_CHARS = 1200
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,14 @@ class MiniMaxResult:
     markdown: str
     raw: dict[str, Any]
     diagnostics: dict[str, Any]
+
+
+class MiniMaxRequestError(RuntimeError):
+    """MiniMax request failed with provider diagnostics safe for logs."""
+
+    def __init__(self, message: str, diagnostics: dict[str, Any]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
 
 
 class MiniMaxService:
@@ -47,6 +57,37 @@ class MiniMaxService:
                 {
                     "role": "system",
                     "content": "You are a cautious Taiwan stock investment research analyst. Return Markdown only. Do not expose hidden reasoning.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.25,
+        }
+        data = self._post_json(f"{self.base_url}/chat/completions", payload)
+        text = _extract_minimax_text(data)
+        return MiniMaxResult(
+            markdown=text,
+            raw=data,
+            diagnostics={
+                "model": data.get("model") or self.model,
+                "finish_reason": (((data.get("choices") or [{}])[0]).get("finish_reason")),
+                "usage": data.get("usage") or {},
+            },
+        )
+
+    def generate_json(self, prompt: str) -> MiniMaxResult:
+        """JSON-only variant for topic maintenance flows.
+
+        Uses a strict JSON-only system prompt instead of the report flow.
+        """
+        if not self.api_key:
+            raise RuntimeError("MiniMax API Key 尚未設定。")
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a Taiwan stock topic knowledge base analyst. Output only a valid JSON object. Do not output any code fences, explanatory text, or non-JSON content. The output must be parseable with json.loads().",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -105,7 +146,14 @@ class MiniMaxService:
                 last_error = exc
                 status = exc.response.status_code
                 if attempt >= self.max_retries or status not in {429, 500, 502, 503, 504}:
-                    raise
+                    diagnostics = _build_minimax_error_diagnostics(
+                        url=url,
+                        model=self.model,
+                        payload=payload,
+                        response=exc.response,
+                        attempt=attempt + 1,
+                    )
+                    raise MiniMaxRequestError(_format_minimax_error_message(diagnostics), diagnostics) from exc
                 time.sleep(2.0 * (attempt + 1))
         raise RuntimeError(f"MiniMax request failed without response: {last_error}")
 
@@ -119,4 +167,62 @@ def _extract_minimax_text(data: dict[str, Any]) -> str:
         raise RuntimeError("MiniMax 沒有回傳可用文字內容。")
     return text
 
+
+def _build_minimax_error_diagnostics(
+    *,
+    url: str,
+    model: str,
+    payload: dict[str, Any],
+    response: httpx.Response,
+    attempt: int,
+) -> dict[str, Any]:
+    prompt_chars = _payload_prompt_chars(payload)
+    payload_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    body_preview = _safe_response_preview(response)
+    return {
+        "provider": "minimax",
+        "url": url,
+        "status_code": response.status_code,
+        "reason_phrase": response.reason_phrase,
+        "model": model,
+        "attempt": attempt,
+        "prompt_chars": prompt_chars,
+        "payload_bytes": payload_bytes,
+        "response_preview": body_preview,
+    }
+
+
+def _payload_prompt_chars(payload: dict[str, Any]) -> int:
+    total = 0
+    for message in payload.get("messages") or []:
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str):
+            total += len(content)
+    return total
+
+
+def _safe_response_preview(response: httpx.Response) -> str:
+    try:
+        text = response.text
+    except Exception:
+        text = "<response body unavailable>"
+    text = re.sub(r"\s+", " ", str(text)).strip()
+    if len(text) > MAX_ERROR_PREVIEW_CHARS:
+        text = text[:MAX_ERROR_PREVIEW_CHARS] + "...<truncated>"
+    return text
+
+
+def _format_minimax_error_message(diagnostics: dict[str, Any]) -> str:
+    parts = [
+        "MiniMax API request failed",
+        f"status={diagnostics.get('status_code')}",
+        f"reason={diagnostics.get('reason_phrase')}",
+        f"model={diagnostics.get('model')}",
+        f"prompt_chars={diagnostics.get('prompt_chars')}",
+        f"payload_bytes={diagnostics.get('payload_bytes')}",
+    ]
+    preview = str(diagnostics.get("response_preview") or "").strip()
+    if preview:
+        parts.append(f"response={preview}")
+    return "; ".join(parts)
 

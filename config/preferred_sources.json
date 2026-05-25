@@ -1,0 +1,32 @@
+{
+  "official": [
+    {"domain": "mops.twse.com.tw", "name": "公開資訊觀測站", "level": "L1_official", "weight": 100},
+    {"domain": "twse.com.tw", "name": "證交所", "level": "L1_official", "weight": 100},
+    {"domain": "tpex.org.tw", "name": "櫃買中心", "level": "L1_official", "weight": 100},
+    {"domain": "tdcc.com.tw", "name": "集保結算所", "level": "L1_official", "weight": 95}
+  ],
+  "financial_media": [
+    {"domain": "cna.com.tw", "name": "中央社", "level": "L2_media", "weight": 85},
+    {"domain": "ctee.com.tw", "name": "工商時報", "level": "L2_media", "weight": 80},
+    {"domain": "money.udn.com", "name": "經濟日報", "level": "L2_media", "weight": 80},
+    {"domain": "cnyes.com", "name": "鉅亨網", "level": "L2_media", "weight": 78},
+    {"domain": "moneydj.com", "name": "MoneyDJ", "level": "L2_media", "weight": 78},
+    {"domain": "uanalyze.com.tw", "name": "優分析", "level": "L2_media", "weight": 76},
+    {"domain": "moneyweekly.com.tw", "name": "理財週刊", "level": "L2_media", "weight": 76},
+    {"domain": "blog.fugle.tw", "name": "富果直送", "level": "L2_media", "weight": 76},
+    {"domain": "sinotrade.com.tw", "name": "豐雲學堂", "level": "L2_media", "weight": 76},
+    {"domain": "tw.stock.yahoo.com", "name": "Yahoo股市", "level": "L2_media", "weight": 72}
+  ],
+  "industry_media": [
+    {"domain": "digitimes.com", "name": "DIGITIMES", "level": "L2_industry", "weight": 85},
+    {"domain": "technews.tw", "name": "科技新報", "level": "L2_industry", "weight": 78},
+    {"domain": "trendforce.com", "name": "TrendForce", "level": "L2_industry", "weight": 85},
+    {"domain": "eettaiwan.com", "name": "EE Times Taiwan", "level": "L2_industry", "weight": 78}
+  ],
+  "community": [
+    {"domain": "ptt.cc", "name": "PTT", "level": "L3_community", "weight": 35},
+    {"domain": "dcard.tw", "name": "Dcard", "level": "L3_community", "weight": 30},
+    {"domain": "cmoney.tw", "name": "CMoney", "level": "L3_community", "weight": 45},
+    {"domain": "stockfeel.com.tw", "name": "股感", "level": "L3_community", "weight": 45}
+  ]
+}

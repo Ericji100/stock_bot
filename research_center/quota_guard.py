@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+
+def provider_key_fingerprint(api_key: str | None) -> str | None:
+    """Return a short stable fingerprint for an API key without storing the key."""
+    clean = str(api_key or "").strip()
+    if not clean:
+        return None
+    return hashlib.sha256(clean.encode("utf-8")).hexdigest()[:12]
 
 
 class SearchProviderQuotaGuard:
     def __init__(self, state_path: Path):
         self.state_path = state_path
 
-    def is_available(self, provider: str, today: date | None = None) -> bool:
+    def is_available(
+        self,
+        provider: str,
+        today: date | None = None,
+        key_fingerprint: str | None = None,
+    ) -> bool:
         today = today or date.today()
         state = self._read()
         entry = state.get(provider) or {}
+        stored_fingerprint = entry.get("key_fingerprint")
+        if key_fingerprint and stored_fingerprint and stored_fingerprint != key_fingerprint:
+            self._clear(provider)
+            return True
         disabled_until_raw = entry.get("disabled_until")
         if not disabled_until_raw:
             return True
@@ -26,7 +44,13 @@ class SearchProviderQuotaGuard:
             return True
         return False
 
-    def mark_exhausted(self, provider: str, reason: str, today: date | None = None) -> None:
+    def mark_exhausted(
+        self,
+        provider: str,
+        reason: str,
+        today: date | None = None,
+        key_fingerprint: str | None = None,
+    ) -> None:
         today = today or date.today()
         if today.month == 12:
             next_month = date(today.year + 1, 1, 1)
@@ -39,6 +63,8 @@ class SearchProviderQuotaGuard:
             "last_error": reason[:500],
             "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
+        if key_fingerprint:
+            state[provider]["key_fingerprint"] = key_fingerprint
         self._write(state)
 
     def record_usage(self, provider: str, units: int = 1, today: date | None = None) -> None:

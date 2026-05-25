@@ -16,6 +16,8 @@ import yfinance as yf
 from data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
+from progress_logger import now_timestamp
+
 # Singletons for health and quota tracking
 _CHIP_HEALTH = SourceHealthManager()
 _FINMIND_QUOTA = FinMindQuotaManager()
@@ -73,7 +75,7 @@ SOURCE_LABELS = {
 
 
 def _print_chip_progress(label: str, progress: float, message: str) -> None:
-    print(f"[選股進度][{label}] {progress:.2f}% {message}", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][{label}] {progress:.2f}% {message}", flush=True)
 
 
 def _chip_progress_value(
@@ -211,7 +213,7 @@ def _mark_source_failure(source_key: str) -> None:
     backoff_seconds = SOURCE_BACKOFF_SECONDS[min(failures - 1, len(SOURCE_BACKOFF_SECONDS) - 1)]
     SOURCE_COOLDOWNS[source_key] = datetime.now(TIMEZONE) + timedelta(seconds=backoff_seconds)
     print(
-        f"[資料來源][{SOURCE_LABELS.get(source_key, source_key)}] 失敗 {failures} 次，暫停 {backoff_seconds // 60 if backoff_seconds >= 60 else backoff_seconds} {'分鐘' if backoff_seconds >= 60 else '秒'}",
+        f"[{now_timestamp()}] [資料來源][{SOURCE_LABELS.get(source_key, source_key)}] 失敗 {failures} 次，暫停 {backoff_seconds // 60 if backoff_seconds >= 60 else backoff_seconds} {'分鐘' if backoff_seconds >= 60 else '秒'}",
         flush=True,
     )
 
@@ -1171,9 +1173,28 @@ def build_market_context(
     progress_end: float = 100.0,
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
     scope: str = "default",
+    extra_candidates: list[dict[str, Any]] | None = None,
 ) -> ChipMarketContext:
     report_date = report_date or get_tw_today()
     candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh)
+    if extra_candidates:
+        extra_frame = pd.DataFrame(extra_candidates)
+        if not extra_frame.empty and "code" in extra_frame.columns:
+            for column in candidates.columns:
+                if column not in extra_frame.columns:
+                    if column in {"price", "avg_volume_20d", "monthly_revenue", "issued_shares"}:
+                        extra_frame[column] = 0.0
+                    elif column == "industry":
+                        extra_frame[column] = UNCLASSIFIED_INDUSTRY
+                    else:
+                        extra_frame[column] = ""
+            extra_frame = extra_frame[candidates.columns].copy()
+            extra_frame["code"] = extra_frame["code"].astype(str).str.strip()
+            merged = pd.concat([candidates, extra_frame], ignore_index=True)
+            merged = merged.sort_values("code").drop_duplicates("code", keep="first").reset_index(drop=True)
+            merged.attrs["total_symbols"] = candidates.attrs.get("total_symbols", len(candidates))
+            merged.attrs["scan_settings"] = dict(candidates.attrs.get("scan_settings", HARD_FILTERS))
+            candidates = merged
     if include_daily_data:
         daily_data, latest_trading_date = _fetch_recent_daily_chip_data(
             report_date,
@@ -1590,6 +1611,7 @@ def warmup_chip_data_cache(
     progress_label: str = "籌碼快取回補",
     strategy_keys: list[str] | None = None,
     scope: str = "default",
+    extra_candidates: list[dict[str, Any]] | None = None,
 ) -> ChipMarketContext:
     target_date = report_date or get_tw_today()
     target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1
@@ -1604,6 +1626,7 @@ def warmup_chip_data_cache(
         progress_end=95.0,
         target_trading_days=target_days,
         scope=scope,
+        extra_candidates=extra_candidates,
     )
     update_tdcc_snapshot_cache()
     _print_chip_progress(

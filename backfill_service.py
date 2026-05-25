@@ -27,6 +27,8 @@ from typing import Any, Callable
 
 DEFAULT_CORE_RESEARCH_LIMIT = 80
 DEFAULT_STRUCTURED_TIMEOUT_SECONDS = 30
+DEFAULT_BACKFILL_THROTTLE_BATCH_SIZE = 20
+DEFAULT_BACKFILL_THROTTLE_SLEEP_SECONDS = 0.02
 
 from chip_strategies import get_tw_today, warmup_chip_data_cache, TARGET_DAILY_TRADING_DAYS
 import pandas as pd
@@ -36,11 +38,13 @@ from research_center.data_services import collect_research_data
 # Marker root for backfill complete markers
 BACKFILL_MARKER_ROOT = Path(".cache/backfill")
 from research_center.models import CommandRequest
+from research_center.backfill_scheduler_service import build_backfill_priority_plan
 from research_center.recent_scans import load_recent_scan_results
 from research_center.structured_cache import load_research_structured_cache
 from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 from stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
 from technical_scanner import fetch_daily_history
+from backfill_gap_service import build_backfill_gap_report, write_gap_report
 
 
 @dataclass
@@ -50,6 +54,25 @@ class BackfillCandidate:
     symbol: str = ""
     market: str = ""
     sources: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class BackfillThrottle:
+    batch_size: int = DEFAULT_BACKFILL_THROTTLE_BATCH_SIZE
+    sleep_seconds: float = DEFAULT_BACKFILL_THROTTLE_SLEEP_SECONDS
+
+
+def _maybe_throttle(index: int, throttle: BackfillThrottle | None, stop_event: threading.Event | None = None) -> bool:
+    """Yield briefly during long backfill loops.  Return False when stopped."""
+    if stop_event and stop_event.is_set():
+        return False
+    if not throttle or throttle.batch_size <= 0 or throttle.sleep_seconds <= 0:
+        return True
+    if index > 0 and index % throttle.batch_size == 0:
+        time.sleep(throttle.sleep_seconds)
+    if stop_event and stop_event.is_set():
+        return False
+    return True
 
 
 @dataclass
@@ -89,6 +112,8 @@ class BackfillResult:
     curated_scan_ready: bool = False
     backfill_ready_for_scan: bool = False
     backfill_ready_for_research: str = "partial"
+    gap_report: dict[str, Any] = field(default_factory=dict)
+    gap_report_path: str = ""
 
 
 def _add_candidate(
@@ -361,6 +386,7 @@ def warmup_research_structured_data(
     progress: Callable[[str], None] | None = None,
     timeout_sec: float = DEFAULT_STRUCTURED_TIMEOUT_SECONDS,
     stop_event: threading.Event | None = None,
+    throttle: BackfillThrottle | None = None,
 ) -> tuple[int, list[str], list[str], int]:
     """Warm up structured data caches for the core research pool.
 
@@ -435,6 +461,10 @@ def warmup_research_structured_data(
             if warn_str:
                 warnings.append(warn_str)
 
+        if not _maybe_throttle(index, throttle, stop_event):
+            warnings.append("回補已收到停止指令。")
+            return count, used_cache, warnings, timeout_count
+
     if progress:
         progress(f"投研結構化資料完成：{count} 檔成功，{timeout_count} 檔逾時")
 
@@ -444,6 +474,8 @@ def warmup_research_structured_data(
 def warmup_gross_margin_cache(
     candidates: dict[str, BackfillCandidate],
     progress: Callable[[str], None] | None = None,
+    stop_event: threading.Event | None = None,
+    throttle: BackfillThrottle | None = None,
 ) -> tuple[int, list[str]]:
     """Warm up gross margin cache for candidate stocks.
 
@@ -458,6 +490,9 @@ def warmup_gross_margin_cache(
     total = len(candidates)
 
     for index, candidate in enumerate(candidates.values(), start=1):
+        if stop_event and stop_event.is_set():
+            warnings.append("??????????")
+            break
         if candidate.symbol and candidate.symbol not in metrics:
             try:
                 series = load_gross_margin_series(candidate.symbol, metrics)
@@ -468,6 +503,7 @@ def warmup_gross_margin_cache(
 
         if progress and index % 20 == 0:
             progress(f"毛利率快取進度 {index}/{total}")
+        _maybe_throttle(index, throttle, stop_event)
 
     _save_gross_margin_cache(metrics)
     if progress:
@@ -659,6 +695,7 @@ def backfill_candidate_data(
     progress: Callable[[str], None] | None = None,
     timeout_sec: float = DEFAULT_STRUCTURED_TIMEOUT_SECONDS,
     stop_event: threading.Event | None = None,
+    throttle: BackfillThrottle | None = None,
 ) -> BackfillResult:
     """Warm up all cached data for the candidate pool (medium) and core research pool (full).
 
@@ -672,6 +709,8 @@ def backfill_candidate_data(
     result.universe_count = len(universe)
     result.candidate_count = len(candidates)
     result.core_research_count = len(core_pool)
+    revenue_history: dict[str, Any] = {}
+    chip_context: Any | None = None
 
     # Check stop before revenue
     if stop_event and stop_event.is_set():
@@ -718,6 +757,7 @@ def backfill_candidate_data(
             result.warnings.append(f"技術面快取失敗 {candidate.code}: {exc}")
         if emit and index % 20 == 0:
             emit(f"技術面快取進度 {index}/{len(candidates)}")
+        _maybe_throttle(index, throttle, stop_event)
         # Check stop every 20 stocks
         if stop_event and stop_event.is_set():
             result.warnings.append("回補被使用者停止")
@@ -732,7 +772,7 @@ def backfill_candidate_data(
     # 4. Research structured data - only for core pool (full research)
     emit("回補投研結構化資料")
     research_count, used_cache, research_warnings, timeout_count = warmup_research_structured_data(
-        core_pool, report_date, force_refresh, emit, timeout_sec, stop_event,
+        core_pool, report_date, force_refresh, emit, timeout_sec, stop_event, throttle,
     )
     result.research_structured_count = research_count
     result.used_cache = used_cache
@@ -747,7 +787,7 @@ def backfill_candidate_data(
     # 5. Gross margin cache
     emit("回補毛利率快取")
     try:
-        gm_count, gm_warnings = warmup_gross_margin_cache(candidates, emit)
+        gm_count, gm_warnings = warmup_gross_margin_cache(candidates, emit, stop_event, throttle)
         result.gross_margin_count = gm_count
         result.warnings.extend(gm_warnings)
     except Exception as exc:
@@ -761,12 +801,22 @@ def backfill_candidate_data(
     # 6. Chip data cache
     emit("回補籌碼資料快取")
     try:
+        extra_chip_candidates = [
+            {
+                "code": candidate.code,
+                "symbol": candidate.symbol,
+                "market": candidate.market,
+                "name": candidate.name,
+            }
+            for candidate in candidates.values()
+        ]
         chip_context = warmup_chip_data_cache(
             report_date=report_date,
             full_backfill=True,
             force_refresh=force_refresh,
             progress_label="手動完整回補",
             scope="backfill",
+            extra_candidates=extra_chip_candidates,
         )
         result.chip_candidate_count = len(chip_context.candidates) if chip_context.candidates is not None else 0
         result.latest_trading_date = chip_context.latest_trading_date
@@ -804,6 +854,42 @@ def backfill_candidate_data(
         result.backfill_ready_for_scan = bool(screening_cache_ok and result.candidate_count > 0 and result.chip_coverage_ok and result.curated_scan_ready)
     except Exception as exc:
         result.warnings.append(f"精選選股快取回補失敗: {exc}")
+
+    # 8. Gap analysis / health report
+    emit("建立回補缺口健康度報告")
+    try:
+        gap_report = build_backfill_gap_report(
+            report_date=report_date,
+            candidates=candidates,
+            core_pool=core_pool,
+            revenue_history=revenue_history,
+            chip_context=chip_context,
+        )
+        result.gap_report = gap_report
+        result.gap_report_path = str(write_gap_report(report_date, gap_report, BACKFILL_MARKER_ROOT))
+
+        health = gap_report.get("health") or {}
+        chip_health = health.get("chip") or {}
+        technical_health = health.get("technical") or {}
+        revenue_health = health.get("revenue") or {}
+        financial_health = health.get("financial") or {}
+        if chip_health:
+            result.chip_candidate_coverage_pct = float(chip_health.get("coverage_pct") or result.chip_candidate_coverage_pct)
+            result.chip_coverage_ok = bool(
+                result.chip_coverage_days >= max(55, int(TARGET_DAILY_TRADING_DAYS * 0.9))
+                and result.chip_candidate_coverage_pct >= 0.8
+            )
+        result.backfill_ready_for_scan = bool(
+            result.backfill_ready_for_scan
+            and float(technical_health.get("coverage_pct") or 0.0) >= 0.9
+            and float(revenue_health.get("coverage_pct") or 0.0) >= 0.8
+            and float(financial_health.get("coverage_pct") or 0.0) >= 0.5
+            and result.chip_coverage_ok
+        )
+        result.backfill_ready_for_research = "ready" if result.research_structured_timeout_count == 0 else "partial"
+        emit(f"回補缺口健康度報告完成：{result.gap_report_path}")
+    except Exception as exc:
+        result.warnings.append(f"回補缺口健康度報告建立失敗: {exc}")
 
     return result
 
@@ -846,6 +932,10 @@ def run_full_backfill(
         pass
 
     timeout_sec = float(config.get("backfill_structured_timeout_seconds") or DEFAULT_STRUCTURED_TIMEOUT_SECONDS)
+    throttle = BackfillThrottle(
+        batch_size=int(config.get("backfill_throttle_batch_size") or DEFAULT_BACKFILL_THROTTLE_BATCH_SIZE),
+        sleep_seconds=float(config.get("backfill_throttle_sleep_seconds") or DEFAULT_BACKFILL_THROTTLE_SLEEP_SECONDS),
+    )
 
     # Phase 1: Market-wide screening data warmup (Tier 1: lightweight)
     emit("5% 載入股票宇宙")
@@ -888,7 +978,7 @@ def run_full_backfill(
     emit(f"  核心股完整投研回補：{len(core_pool)} 檔")
 
     result = backfill_candidate_data(
-        candidates, core_pool, universe, target_date, force_refresh, emit, timeout_sec, stop_event,
+        candidates, core_pool, universe, target_date, force_refresh, emit, timeout_sec, stop_event, throttle,
     )
     result.warnings.extend(pool_warnings)
 
@@ -1017,6 +1107,18 @@ def is_backfill_cache_complete(report_date: date) -> tuple[bool, str]:
     if candidate <= 0:
         return (False, "cache_candidate_invalid")
 
+    health = payload.get("health") if isinstance(payload.get("health"), dict) else {}
+    if health:
+        technical = health.get("technical") or {}
+        revenue = health.get("revenue") or {}
+        chip = health.get("chip") or {}
+        if float(technical.get("coverage_pct") or 0.0) < 0.9:
+            return (False, "cache_technical_gaps")
+        if float(revenue.get("coverage_pct") or 0.0) < 0.8:
+            return (False, "cache_revenue_gaps")
+        if float(chip.get("coverage_pct") or 0.0) < 0.8:
+            return (False, "cache_chip_gaps")
+
     if payload.get("backfill_ready_for_scan") is not True:
         return (False, "cache_not_ready_for_scan")
 
@@ -1045,6 +1147,8 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
     except Exception:
         pass
 
+    gap_report = getattr(result, "gap_report", {}) or {}
+    health = gap_report.get("health", {}) if isinstance(gap_report, dict) else {}
     payload = {
         "schema_version": 2,
         "report_date": report_date.isoformat(),
@@ -1064,6 +1168,9 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
         "curated_scan_ready": bool(getattr(result, "curated_scan_ready", False)),
         "backfill_ready_for_scan": bool(getattr(result, "backfill_ready_for_scan", False)),
         "backfill_ready_for_research": str(getattr(result, "backfill_ready_for_research", "partial")),
+        "health": health,
+        "backfill_priority_plan": build_backfill_priority_plan(report_date, health=health),
+        "gap_report_path": str(getattr(result, "gap_report_path", "")),
         # Source quota and health
         "finmind_quota_remaining": finmind_remaining,
         "fugle_historical_remaining": fugle_remaining,
@@ -1078,13 +1185,39 @@ def format_backfill_health_summary(result: "BackfillResult") -> str:
         lines = ["【快取健康度】"]
         ready = "是" if bool(getattr(result, "backfill_ready_for_scan", False)) else "否"
         lines.append(f"- 選股快取可用：{ready}")
-        days = int(getattr(result, "chip_coverage_days", 0))
-        target = int(getattr(result, "chip_target_days", TARGET_DAILY_TRADING_DAYS))
-        lines.append(f"- 籌碼覆蓋：{days}/{target} 交易日")
-        pct = float(getattr(result, "chip_candidate_coverage_pct", 0.0))
-        lines.append(f"- 候選股籌碼覆蓋率：{int(round(pct * 100))}%")
+        gap_report = getattr(result, "gap_report", {}) or {}
+        health = gap_report.get("health") if isinstance(gap_report, dict) else {}
+        if isinstance(health, dict) and health:
+            labels = {
+                "technical": "技術面",
+                "revenue": "月營收",
+                "financial": "財報/毛利率",
+                "chip": "籌碼法人",
+                "tdcc": "TDCC 大戶",
+                "research_structured": "投研結構化",
+            }
+            for key, label in labels.items():
+                section = health.get(key) or {}
+                pct = int(round(float(section.get("coverage_pct") or 0.0) * 100))
+                missing = int(section.get("missing_count") or 0)
+                ready_count = int(section.get("ready_count") or 0)
+                total = int(section.get("candidate_count") or 0)
+                lines.append(f"- {label}：{pct}%（可用 {ready_count}/{total}，缺 {missing} 檔）")
+                missing_codes = section.get("missing_codes") or []
+                if missing_codes:
+                    preview = ", ".join(str(code) for code in missing_codes[:20])
+                    lines.append(f"  缺口前 20 檔：{preview}")
+        else:
+            days = int(getattr(result, "chip_coverage_days", 0))
+            target = int(getattr(result, "chip_target_days", TARGET_DAILY_TRADING_DAYS))
+            lines.append(f"- 籌碼覆蓋：{days}/{target} 交易日")
+            pct = float(getattr(result, "chip_candidate_coverage_pct", 0.0))
+            lines.append(f"- 候選股籌碼覆蓋率：{int(round(pct * 100))}%")
         curated = "已建立" if bool(getattr(result, "curated_scan_ready", False)) else "未建立"
         lines.append(f"- 精選選股快取：{curated}")
+        gap_path = str(getattr(result, "gap_report_path", "") or "")
+        if gap_path:
+            lines.append(f"- 缺口明細：{gap_path}")
 
         # Add quota and health status
         try:

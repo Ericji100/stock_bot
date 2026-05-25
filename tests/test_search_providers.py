@@ -6,14 +6,16 @@ from pathlib import Path
 
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import (
+    _append_search_provider_log,
+    _build_search_query_log,
     _gemini_discovery_source_count,
     _merge_sources,
     _source_quality_summary,
     _should_run_gemini_search_fallback,
 )
 from research_center.config import ResearchCenterConfig
-from research_center.quota_guard import SearchProviderQuotaGuard
-from research_center.source_rank import make_source_items
+from research_center.quota_guard import SearchProviderQuotaGuard, provider_key_fingerprint
+from research_center.source_rank import make_source_items, select_theme_sources_for_prompt
 
 
 class SearchProviderTests(unittest.TestCase):
@@ -27,6 +29,28 @@ class SearchProviderTests(unittest.TestCase):
             self.assertTrue(guard.is_available("tavily", today=date(2026, 6, 1)))
         finally:
             safe_remove_test_cache("search_providers/test_quota_guard_disables")
+
+    def test_quota_guard_recovers_when_api_key_changes(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("search_providers/test_quota_guard_key_change")
+        try:
+            guard = SearchProviderQuotaGuard(tmp / "quota.json")
+            old_fp = provider_key_fingerprint("old_tavily_key")
+            new_fp = provider_key_fingerprint("new_tavily_key")
+            guard.mark_exhausted("tavily", "quota", today=date(2026, 5, 15), key_fingerprint=old_fp)
+
+            self.assertFalse(guard.is_available("tavily", today=date(2026, 5, 20), key_fingerprint=old_fp))
+            self.assertTrue(guard.is_available("tavily", today=date(2026, 5, 20), key_fingerprint=new_fp))
+            self.assertTrue(guard.is_available("tavily", today=date(2026, 5, 20), key_fingerprint=new_fp))
+        finally:
+            safe_remove_test_cache("search_providers/test_quota_guard_key_change")
+
+    def test_provider_key_fingerprint_does_not_store_raw_key(self):
+        raw_key = "tvly-dev-secret-value"
+        fingerprint = provider_key_fingerprint(raw_key)
+        self.assertIsNotNone(fingerprint)
+        self.assertNotIn(raw_key, fingerprint or "")
+        self.assertEqual(len(fingerprint or ""), 12)
 
     def test_quota_guard_monthly_limit_reserve(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
@@ -118,6 +142,45 @@ class SearchProviderTests(unittest.TestCase):
             sources.append(SourceItem(f"S{i:03d}", title, f"https://news.example/{i}", "Level 2", snippet=snippet, provider="tavily_extract"))
         self.assertFalse(_should_run_gemini_search_fallback(request, sources, config))
 
+    def test_theme_gemini_fallback_when_sources_many_but_not_relevant(self):
+        request = CommandRequest(command="theme", raw_text="/theme AI電源 --deep", theme_scope="AI電源", mode="deep")
+        config = ResearchCenterConfig(
+            api_key=None,
+            gemini_fallback_thresholds={
+                "theme_deep": {
+                    "min_total_sources": 20,
+                    "min_level2_or_3_sources": 7,
+                    "min_theme_relevant_sources": 12,
+                    "min_theme_high_quality_relevant_sources": 4,
+                }
+            },
+        )
+        sources = [
+            SourceItem(f"S{i:03d}", "general AI geopolitics news", f"https://example.com/{i}", "Level 3", provider="minimax_mcp_search")
+            for i in range(1, 40)
+        ]
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config))
+
+    def test_theme_source_selection_prefers_relevant_taiwan_sources(self):
+        sources = [
+            SourceItem("S001", "AI geopolitics weekly", "https://substack.example/a", "Level 3", snippet="general AI news", provider="minimax_mcp_search"),
+            SourceItem("S002", "台達電 AI伺服器電源 BBU", "https://money.udn.com/a", "L2_media", snippet="AI電源 800VDC 台股", provider="minimax_mcp_search"),
+            SourceItem("S003", "光寶科 伺服器電源 法說會", "https://mops.twse.com.tw/a", "L1_official", snippet="PSU power supply", provider="official_connector"),
+        ]
+        selected, diagnostics = select_theme_sources_for_prompt(
+            sources,
+            theme="AI電源",
+            keywords=["伺服器電源", "BBU"],
+            companies=[{"code": "2308", "name": "台達電"}, {"code": "2301", "name": "光寶科"}],
+            max_sources=2,
+        )
+        self.assertEqual(len(selected), 2)
+        titles = " ".join(item.title for item in selected)
+        self.assertIn("光寶科", titles)
+        self.assertIn("台達電", titles)
+        self.assertEqual(diagnostics["input_count"], 3)
+        self.assertEqual(diagnostics["selected_count"], 2)
+
     def test_gemini_discovery_source_count_handles_skipped_and_success(self):
         skipped = {
             "gemini_search_discovery": {
@@ -138,6 +201,28 @@ class SearchProviderTests(unittest.TestCase):
 
         empty = {}
         self.assertEqual(_gemini_discovery_source_count(empty), 0)
+
+    def test_search_query_log_records_tasks_and_provider_summary(self):
+        structured_data: dict = {}
+        tasks = [
+            {"label": "官方公告", "objective": "找官方資料", "queries": ["2330 公開資訊觀測站", "2330 法說會"]},
+            {"label": "風險反證", "objective": "找反證", "queries": ["2330 風險"]},
+        ]
+        structured_data["search_query_log"] = _build_search_query_log(tasks)
+        _append_search_provider_log(
+            structured_data,
+            provider="minimax_mcp_search",
+            source_count=5,
+            diagnostics={"runs": [{"query_count": 2}, {"query_count": 1}], "error_reasons": []},
+        )
+
+        log = structured_data["search_query_log"]
+        self.assertEqual(log["schema_version"], "search_tasks_v1")
+        self.assertEqual(log["task_count"], 2)
+        self.assertEqual(log["total_query_count"], 3)
+        self.assertEqual(log["providers"][0]["provider"], "minimax_mcp_search")
+        self.assertEqual(log["providers"][0]["source_count"], 5)
+        self.assertEqual(log["providers"][0]["query_count"], 3)
 
 
 class TavilySearchTests(unittest.TestCase):
@@ -227,10 +312,10 @@ class MiniMaxMCPFallbackTests(unittest.TestCase):
         mock_center.gemini = None
         mock_center.minimax = None
         mock_center.quota_guard = type('QuotaGuard', (), {
-            'is_available': lambda self, provider: True,
+            'is_available': lambda self, provider, **kwargs: True,
             'is_under_monthly_limit': lambda self, provider, limit, reserve=0, today=None: True,
             'record_usage': lambda self, provider, units: None,
-            'mark_exhausted': lambda self, provider, reason: None,
+            'mark_exhausted': lambda self, provider, reason, **kwargs: None,
         })()
 
         runner = _GeminiDiscoveryRunner(mock_center)

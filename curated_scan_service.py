@@ -43,6 +43,7 @@ class CuratedScanResult:
     report_date: date
     selected_codes: list[str]
     selected_by_signal: dict[str, list[str]]
+    early_single_signal_candidates: list[dict[str, Any]]
     stock_info: dict[str, dict[str, object]]
     hits: dict[str, list[str]]
     report_text: str
@@ -120,10 +121,18 @@ def build_curated_scan_result(
                     seen.add(code)
                     selected_codes.append(code)
 
+    early_single_signal_candidates = _build_early_single_signal_candidates(
+        selected_codes=selected_codes,
+        stock_info=stock_info,
+        hits=hits,
+        technical_signal_codes=technical_signal_codes,
+    )
+
     report_text = _format_curated_scan_report(
         target_date=target_date,
         selected_by_signal=selected_by_signal,
         selected_codes=selected_codes,
+        early_single_signal_candidates=early_single_signal_candidates,
         stock_info=stock_info,
         hits=hits,
         financial_candidate_count=len(financial_report.candidates),
@@ -137,6 +146,7 @@ def build_curated_scan_result(
         report_date=target_date,
         selected_codes=selected_codes,
         selected_by_signal=selected_by_signal,
+        early_single_signal_candidates=early_single_signal_candidates,
         stock_info=stock_info,
         hits=hits,
         report_text=report_text,
@@ -190,6 +200,7 @@ def _format_curated_scan_report(
     target_date: date,
     selected_by_signal: dict[str, list[str]],
     selected_codes: list[str],
+    early_single_signal_candidates: list[dict[str, Any]],
     stock_info: dict[str, dict[str, object]],
     hits: dict[str, list[str]],
     financial_candidate_count: int,
@@ -235,6 +246,26 @@ def _format_curated_scan_report(
                 )
                 lines.append("")
 
+    if early_single_signal_candidates:
+        lines.extend(
+            [
+                "",
+                "早期單點異動觀察（未交叉確認）",
+                "以下股票只代表劇本開端線索，尚未達成精選選股交叉命中；後續需觀察籌碼、營收、題材催化或反證。",
+                "",
+            ]
+        )
+        for item in early_single_signal_candidates[:20]:
+            info = stock_info.get(str(item.get("code") or ""), {})
+            lines.append(
+                (
+                    f"{item.get('code')} {info.get('name', '')} | "
+                    f"{item.get('early_type')} | "
+                    f"訊號：{', '.join(item.get('signals') or [])} | "
+                    f"待驗證：{', '.join(item.get('validation_needed') or [])}"
+                )
+            )
+
     lines.extend(
         [
             "",
@@ -249,6 +280,54 @@ def _format_curated_scan_report(
         ]
     )
     return "\n".join(lines).strip()
+
+
+def _build_early_single_signal_candidates(
+    *,
+    selected_codes: list[str],
+    stock_info: dict[str, dict[str, object]],
+    hits: dict[str, list[str]],
+    technical_signal_codes: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    selected = set(selected_codes)
+    by_code: dict[str, dict[str, Any]] = {}
+
+    def add(code: str, early_type: str, signal: str, validation_needed: list[str]) -> None:
+        if not code or code in selected:
+            return
+        item = by_code.setdefault(
+            code,
+            {
+                "code": code,
+                "early_type": early_type,
+                "signals": [],
+                "validation_needed": [],
+                "hit_count": len(hits.get(code, [])),
+            },
+        )
+        if signal and signal not in item["signals"]:
+            item["signals"].append(signal)
+        for need in validation_needed:
+            if need not in item["validation_needed"]:
+                item["validation_needed"].append(need)
+        item["hit_count"] = max(item["hit_count"], len(hits.get(code, [])))
+
+    for signal, codes in technical_signal_codes.items():
+        for code in codes:
+            if len(hits.get(code, [])) < 2:
+                add(code, "技術先動型", signal, ["營收斜率", "法人/大戶籌碼", "題材催化"])
+
+    for code, code_hits in hits.items():
+        if len(code_hits) == 1:
+            hit = code_hits[0]
+            early_type = "營收先動型" if "營收" in hit else "籌碼先動型"
+            add(code, early_type, hit, ["技術型態", "題材劇本", "反證/失效條件"])
+
+    def sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
+        info = stock_info.get(str(item.get("code") or ""), {})
+        return (-int(item.get("hit_count") or 0), str(info.get("industry") or ""), str(item.get("code") or ""))
+
+    return sorted(by_code.values(), key=sort_key)[:30]
 
 
 def _format_compact_number(value: object) -> str:

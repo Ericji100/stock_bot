@@ -16,6 +16,8 @@ import yfinance as yf
 
 from fugle_data import fetch_fugle_history
 
+from progress_logger import now_timestamp
+
 
 ROOT_DIR = Path(__file__).resolve().parent
 CACHE_DIR = ROOT_DIR / ".cache"
@@ -258,11 +260,54 @@ def _extract_price_metric(frame: pd.DataFrame) -> dict[str, float] | None:
     candidate = frame[["Close", "Volume"]].dropna()
     if len(candidate) < 20:
         return None
+    close = pd.to_numeric(candidate["Close"], errors="coerce").dropna()
+    volume = pd.to_numeric(candidate["Volume"], errors="coerce").dropna()
+    if len(close) < 20 or len(volume) < 20:
+        return None
 
-    return {
-        "price": float(candidate["Close"].iloc[-1]),
-        "avg_volume_20d": float(candidate["Volume"].tail(20).mean() / 1000.0),
+    latest_close = float(close.iloc[-1])
+    previous_close = float(close.iloc[-2]) if len(close) >= 2 else None
+    latest_volume_lots = float(volume.iloc[-1] / 1000.0)
+    avg_volume_20d = float(volume.tail(20).mean() / 1000.0)
+    latest_date = _latest_frame_date(candidate)
+    metric = {
+        "price": latest_close,
+        "price_date": latest_date,
+        "previous_close": previous_close,
+        "change_pct": round((latest_close / previous_close - 1) * 100, 2) if previous_close else None,
+        "volume": latest_volume_lots,
+        "avg_volume_20d": avg_volume_20d,
+        "volume_ratio": round(latest_volume_lots / avg_volume_20d, 2) if avg_volume_20d else None,
+        "turnover": round(latest_close * latest_volume_lots, 2),
+        "new_high_days": _latest_extreme_days(close, high=True),
+        "new_low_days": _latest_extreme_days(close, high=False),
     }
+    return {key: value for key, value in metric.items() if value is not None}
+
+
+def _latest_frame_date(frame: pd.DataFrame) -> str | None:
+    if frame.empty:
+        return None
+    try:
+        latest_index = frame.index[-1]
+        if hasattr(latest_index, "date"):
+            return latest_index.date().isoformat()
+        return pd.to_datetime(latest_index).date().isoformat()
+    except Exception:
+        return None
+
+
+def _latest_extreme_days(close: pd.Series, *, high: bool) -> int | None:
+    latest = float(close.iloc[-1])
+    matched = 0
+    for window in (20, 60, 120):
+        if len(close) < window:
+            continue
+        window_values = close.tail(window)
+        extreme = float(window_values.max() if high else window_values.min())
+        if (high and latest >= extreme) or (not high and latest <= extreme):
+            matched = window
+    return matched or None
 
 
 def _download_single_symbol_price_metric(symbol: str) -> dict[str, float] | None:
@@ -404,9 +449,13 @@ def _stock_universe_entry_from_mapping(item: dict[str, Any]) -> StockUniverseEnt
 
 def load_stock_universe(force_refresh: bool = False, ttl_seconds: int = 24 * 60 * 60) -> list[StockUniverseEntry]:
     cached_stocks: list[dict[str, Any]] = []
+    if not force_refresh and STOCK_LIST_PATH.exists():
+        try:
+            payload = _read_json(STOCK_LIST_PATH)
+            cached_stocks = payload.get("stocks", [])
+        except Exception:
+            cached_stocks = []
     if not force_refresh and _is_fresh(STOCK_LIST_PATH, ttl_seconds):
-        payload = _read_json(STOCK_LIST_PATH)
-        cached_stocks = payload.get("stocks", [])
         if cached_stocks and all("industry" in item for item in cached_stocks):
             return [_stock_universe_entry_from_mapping(item) for item in cached_stocks]
 
@@ -589,13 +638,15 @@ def load_price_metrics(
 ) -> dict[str, dict[str, float]]:
     requested_symbols = [entry.symbol for entry in universe]
     cached_metrics: dict[str, dict[str, float]] = {}
-    if not force_refresh and _is_fresh(PRICE_CACHE_PATH, ttl_seconds):
+    if PRICE_CACHE_PATH.exists():
         payload = _read_json(PRICE_CACHE_PATH)
         cached_metrics = payload.get("metrics", {})
-        if cached_metrics and all(symbol in cached_metrics for symbol in requested_symbols):
+    if not force_refresh and _is_fresh(PRICE_CACHE_PATH, ttl_seconds):
+        if cached_metrics and all(symbol in cached_metrics for symbol in requested_symbols) and _price_metric_schema_ready(cached_metrics, requested_symbols):
             return {symbol: cached_metrics[symbol] for symbol in requested_symbols}
 
-    metrics: dict[str, dict[str, float]] = {} if force_refresh else dict(cached_metrics)
+    schema_ready = _price_metric_schema_ready(cached_metrics, requested_symbols)
+    metrics: dict[str, dict[str, float]] = {} if force_refresh or not schema_ready else dict(cached_metrics)
     symbols_to_fetch = requested_symbols if force_refresh else [symbol for symbol in requested_symbols if symbol not in metrics]
 
     for index in range(0, len(symbols_to_fetch), chunk_size):
@@ -603,11 +654,36 @@ def load_price_metrics(
         metrics.update(_download_chunk_price_metrics(chunk))
         time.sleep(YF_PRICE_CHUNK_PAUSE_SECONDS)
 
+    if cached_metrics and (not metrics or len(metrics) < len(cached_metrics)):
+        merged_metrics = dict(cached_metrics)
+        merged_metrics.update(metrics)
+        metrics = merged_metrics
+
+    if not metrics and cached_metrics:
+        return {symbol: cached_metrics[symbol] for symbol in requested_symbols if symbol in cached_metrics}
+    if not metrics:
+        return {}
+
     _write_json(
         PRICE_CACHE_PATH,
         {"generated_at": datetime.now().isoformat(timespec="seconds"), "metrics": metrics},
     )
     return {symbol: metrics[symbol] for symbol in requested_symbols if symbol in metrics}
+
+
+def _price_metric_schema_ready(metrics: dict[str, dict[str, float]], requested_symbols: list[str]) -> bool:
+    if not metrics:
+        return False
+    checked = 0
+    ready = 0
+    for symbol in requested_symbols[:50]:
+        metric = metrics.get(symbol)
+        if not isinstance(metric, dict):
+            continue
+        checked += 1
+        if "change_pct" in metric and "volume_ratio" in metric:
+            ready += 1
+    return bool(checked) and ready / checked >= 0.8
 
 
 def _load_gross_margin_cache() -> dict[str, dict[str, Any]]:
@@ -711,7 +787,7 @@ def scan_tw_market(
     max_symbols: int | None = None,
     scan_settings: dict[str, float] | None = None,
 ) -> ScanReport:
-    print("[選股進度][財報營收] 0% 初始化掃描設定", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 0% 初始化掃描設定", flush=True)
     _ensure_cache_dirs()
     settings = dict(DEFAULT_SCAN_SETTINGS)
     if scan_settings:
@@ -722,16 +798,16 @@ def scan_tw_market(
                 except (TypeError, ValueError):
                     continue
 
-    print("[選股進度][財報營收] 10% 讀取上市櫃股票清單", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 10% 讀取上市櫃股票清單", flush=True)
     universe = load_stock_universe(force_refresh=force_refresh)
     if max_symbols is not None:
         universe = universe[:max_symbols]
 
-    print(f"[選股進度][財報營收] 25% 讀取近月營收資料，共 {len(universe)} 檔", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 25% 讀取近月營收資料，共 {len(universe)} 檔", flush=True)
     revenue_history_map = load_recent_revenue_history(universe)
-    print("[選股進度][財報營收] 45% 讀取股價與 20 日均量", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 45% 讀取股價與 20 日均量", flush=True)
     price_metrics = load_price_metrics(universe, force_refresh=force_refresh)
-    print("[選股進度][財報營收] 60% 套用股價、均量、營收硬篩", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 60% 套用股價、均量、營收硬篩", flush=True)
     gross_margin_cache = _load_gross_margin_cache()
 
     hard_filter_candidates: list[tuple[StockUniverseEntry, list[RevenuePoint], dict[str, float], str]] = []
@@ -786,13 +862,13 @@ def scan_tw_market(
         if len(candidates) % 25 == 0 or len(candidates) == total_hard_filter:
             progress = min(95, 65 + int(len(candidates) / total_hard_filter * 30))
             print(
-                f"[選股進度][財報營收] {progress}% 計算毛利率分級 {len(candidates)}/{len(hard_filter_candidates)}",
+                f"[{now_timestamp()}] [選股進度][財報營收] {progress}% 計算毛利率分級 {len(candidates)}/{len(hard_filter_candidates)}",
                 flush=True,
             )
 
     _save_gross_margin_cache(gross_margin_cache)
     candidates.sort(key=lambda item: (item.revenue_group, item.gross_margin_rating, item.industry, item.code))
-    print(f"[選股進度][財報營收] 100% 完成，符合 {len(candidates)} 檔", flush=True)
+    print(f"[{now_timestamp()}] [選股進度][財報營收] 100% 完成，符合 {len(candidates)} 檔", flush=True)
     return ScanReport(
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         total_symbols=len(universe),

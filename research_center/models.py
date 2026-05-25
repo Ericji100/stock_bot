@@ -16,6 +16,9 @@ class CommandRequest:
     theme_scope: str | None = None
     region_scope: str | None = None
     candidate_pool: str | None = None
+    existing_theme_id: str | None = None
+    source: str | None = None
+    lookback_days: int | None = None
     mode: str = "normal"
     source_only: bool = False
     score: bool = False

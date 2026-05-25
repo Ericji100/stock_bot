@@ -11,6 +11,8 @@ import yfinance as yf
 from chip_strategies import get_tw_today
 from fugle_data import fetch_fugle_history
 
+from progress_logger import now_timestamp
+
 
 OFFICIAL_NAME_CACHE: dict[str, str] = {}
 OFFICIAL_SYMBOL_CACHE: dict[str, str] = {}
@@ -59,7 +61,7 @@ def fetch_official_stock_name_cache() -> dict[str, str]:
 
         OFFICIAL_NAME_CACHE_EXPIRES_AT = now + OFFICIAL_NAME_CACHE_TTL
     except Exception as exc:
-        print(f"⚠️ 取得官方股票名稱清單失敗，改用既有快取或代號：{exc}")
+        print(f"[{now_timestamp()}] ⚠️ 取得官方股票名稱清單失敗，改用既有快取或代號：{exc}")
 
     return OFFICIAL_NAME_CACHE
 
@@ -225,7 +227,7 @@ def get_official_realtime_price(symbol: str) -> tuple[float | None, str | None, 
             response.raise_for_status()
             data = response.json()
     except Exception as exc:
-        print(f"⚠️ 取得官方即時報價失敗 {symbol}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ 取得官方即時報價失敗 {symbol}: {exc}")
         return None, None, None
 
     msg = (data.get("msgArray") or [{}])[0]
@@ -266,7 +268,7 @@ def get_current_market_price(symbol: str, fallback_price: float | None = None) -
         except Exception:
             pass
     except Exception as exc:
-        print(f"⚠️ 取得 Yahoo 即時報價失敗 {symbol}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ 取得 Yahoo 即時報價失敗 {symbol}: {exc}")
 
     if yahoo_price is not None and yahoo_quote_date == today_tw:
         return yahoo_price, "Yahoo Finance"
@@ -319,7 +321,7 @@ def _prepare_daily_frame(symbol: str, minimum_rows: int) -> pd.DataFrame:
 def check_signal(stock: dict[str, str]) -> str | None:
     symbol = stock["symbol"]
     stock_display = format_stock_display(stock)
-    print(f"🔎 檢查監控策略：21MA 突破 {stock_display}...")
+    print(f"[{now_timestamp()}] 🔎 檢查監控策略：21MA 突破 {stock_display}...")
     try:
         frame = _prepare_daily_frame(symbol, 30)
         if frame.empty:
@@ -342,14 +344,14 @@ def check_signal(stock: dict[str, str]) -> str | None:
                 f"參考停損：{stop_loss:,.2f} (近 3 日低點)"
             )
     except Exception as exc:
-        print(f"⚠️ 21MA 策略檢查失敗 {stock_display}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ 21MA 策略檢查失敗 {stock_display}: {exc}")
     return None
 
 
 def check_advanced_signal(stock: dict[str, str]) -> str | None:
     symbol = stock["symbol"]
     stock_display = format_stock_display(stock)
-    print(f"🔎 檢查監控策略：MACD 紅柱突破 {stock_display}...")
+    print(f"[{now_timestamp()}] 🔎 檢查監控策略：MACD 紅柱突破 {stock_display}...")
     try:
         frame = _prepare_daily_frame(symbol, 150)
         if frame.empty:
@@ -401,14 +403,14 @@ def check_advanced_signal(stock: dict[str, str]) -> str | None:
                 f"參考停損：{stop_loss:,.2f} (近 3 日低點)"
             )
     except Exception as exc:
-        print(f"⚠️ MACD 策略檢查失敗 {stock_display}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ MACD 策略檢查失敗 {stock_display}: {exc}")
     return None
 
 
 def check_ma105_signal(stock: dict[str, str]) -> str | None:
     symbol = stock["symbol"]
     stock_display = format_stock_display(stock)
-    print(f"🔎 檢查監控策略：105MA 突破 {stock_display}...")
+    print(f"[{now_timestamp()}] 🔎 檢查監控策略：105MA 突破 {stock_display}...")
     try:
         frame = _prepare_daily_frame(symbol, 110)
         if frame.empty:
@@ -431,7 +433,7 @@ def check_ma105_signal(stock: dict[str, str]) -> str | None:
                 f"參考停損：{stop_loss:,.2f} (近 3 日低點)"
             )
     except Exception as exc:
-        print(f"⚠️ 105MA 策略檢查失敗 {stock_display}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ 105MA 策略檢查失敗 {stock_display}: {exc}")
     return None
 
 

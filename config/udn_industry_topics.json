@@ -1,0 +1,354 @@
+{
+  "source": "udn_industry_topics",
+  "updated_at": "2026-05-24T14:09:06+08:00",
+  "source_url": "https://money.udn.com/industry/index",
+  "industries": [
+    {
+      "name": "金融",
+      "url": "https://money.udn.com/money/cate/12017?from=edn_navibar",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "金融",
+      "url": "https://money.udn.com/money/cate/12017?from=edn_ham",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "半導體",
+      "url": "https://money.udn.com/industry/category/01",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "記憶體",
+      "url": "https://money.udn.com/industry/category/42",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "被動元件",
+      "url": "https://money.udn.com/industry/category/10",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "太陽能",
+      "url": "https://money.udn.com/industry/category/06",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "LED",
+      "url": "https://money.udn.com/industry/category/05",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "光學產業",
+      "url": "https://money.udn.com/industry/category/35",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "平面顯示器",
+      "url": "https://money.udn.com/industry/category/03",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "觸控面板",
+      "url": "https://money.udn.com/industry/category/04",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "電腦及週邊",
+      "url": "https://money.udn.com/industry/category/02",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "連接器",
+      "url": "https://money.udn.com/industry/category/08",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "印刷電路板",
+      "url": "https://money.udn.com/industry/category/11",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "網通",
+      "url": "https://money.udn.com/industry/category/09",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "電商",
+      "url": "https://money.udn.com/industry/category/12",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "軟體",
+      "url": "https://money.udn.com/industry/category/13",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "人工智慧",
+      "url": "https://money.udn.com/industry/category/36",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "區塊鏈",
+      "url": "https://money.udn.com/industry/category/37",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "數位雲端",
+      "url": "https://money.udn.com/industry/category/38",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "資訊安全",
+      "url": "https://money.udn.com/industry/category/41",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "石化",
+      "url": "https://money.udn.com/industry/category/16",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "紡織",
+      "url": "https://money.udn.com/industry/category/17",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "水泥",
+      "url": "https://money.udn.com/industry/category/14",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "營建",
+      "url": "https://money.udn.com/industry/category/22",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "油電燃氣",
+      "url": "https://money.udn.com/industry/category/32",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "鋼鐵",
+      "url": "https://money.udn.com/industry/category/20",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "機電",
+      "url": "https://money.udn.com/industry/category/18",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "交通運輸",
+      "url": "https://money.udn.com/industry/category/23",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "汽車",
+      "url": "https://money.udn.com/industry/category/21",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "電動車",
+      "url": "https://money.udn.com/industry/category/24",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "製藥",
+      "url": "https://money.udn.com/industry/category/28",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "醫材",
+      "url": "https://money.udn.com/industry/category/30",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "保健食品",
+      "url": "https://money.udn.com/industry/category/29",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "再生醫療",
+      "url": "https://money.udn.com/industry/category/31",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "食品",
+      "url": "https://money.udn.com/industry/category/15",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "百貨零售",
+      "url": "https://money.udn.com/industry/category/27",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "休閒娛樂",
+      "url": "https://money.udn.com/industry/category/25",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "造紙",
+      "url": "https://money.udn.com/industry/category/19",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "文創",
+      "url": "https://money.udn.com/industry/category/33",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "居家生活",
+      "url": "https://money.udn.com/industry/category/39",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "氫能",
+      "url": "https://money.udn.com/industry/category/40",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "金融",
+      "url": "https://money.udn.com/industry/category/26",
+      "source_level": "L2_media"
+    },
+    {
+      "name": "其他",
+      "url": "https://money.udn.com/industry/category/34",
+      "source_level": "L2_media"
+    }
+  ],
+  "topics": [
+    {
+      "name": "重電產業",
+      "url": "https://money.udn.com/industry/category/145",
+      "source_level": "L2_media",
+      "category": "主題"
+    },
+    {
+      "name": "儲能產業",
+      "url": "https://money.udn.com/industry/category/143",
+      "source_level": "L2_media",
+      "category": "主題"
+    },
+    {
+      "name": "CoWoS",
+      "url": "https://money.udn.com/industry/category/147",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "CPO矽光子",
+      "url": "https://money.udn.com/industry/category/149",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "AI PC",
+      "url": "https://money.udn.com/industry/category/150",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "散熱",
+      "url": "https://money.udn.com/industry/category/146",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "BBU",
+      "url": "https://money.udn.com/industry/category/151",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "低軌衛星",
+      "url": "https://money.udn.com/industry/category/107",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "台積電供應鏈",
+      "url": "https://money.udn.com/industry/category/130",
+      "source_level": "L2_media",
+      "category": "主題"
+    },
+    {
+      "name": "通用伺服器",
+      "url": "https://money.udn.com/industry/category/125",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "AI伺服器",
+      "url": "https://money.udn.com/industry/category/154",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "車用半導體",
+      "url": "https://money.udn.com/industry/category/122",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "AI眼鏡",
+      "url": "https://money.udn.com/industry/category/153",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "功率半導體",
+      "url": "https://money.udn.com/industry/category/139",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "人形機器人",
+      "url": "https://money.udn.com/industry/category/113",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "無人機",
+      "url": "https://money.udn.com/industry/category/101",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "鋰電池",
+      "url": "https://money.udn.com/industry/category/129",
+      "source_level": "L2_media",
+      "category": "主題"
+    },
+    {
+      "name": "Nvidia供應鏈",
+      "url": "https://money.udn.com/industry/category/142",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "AI社會新挑戰",
+      "url": "https://money.udn.com/money/cate/5591?from=edn_sitemap#sub_124256",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "AI助攻普惠金融",
+      "url": "https://money.udn.com/money/cate/12017?from=edn_sitemap#sub_123884",
+      "source_level": "L2_media",
+      "category": "科技"
+    },
+    {
+      "name": "光電半導體",
+      "url": "https://money.udn.com/money/cate/5597?from=edn_sitemap#sub_5735",
+      "source_level": "L2_media",
+      "category": "科技"
+    }
+  ],
+  "metadata": {
+    "parser": "industry_index_links",
+    "note": "UDN cache stores only metadata/URLs and should be used as media-level topic activity reference."
+  }
+}

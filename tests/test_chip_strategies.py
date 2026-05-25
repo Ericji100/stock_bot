@@ -114,5 +114,40 @@ class TestFinMindScopePropagation(unittest.TestCase):
         mock_quota.record_use.assert_called_with(cost=1, scope="backfill")
 
 
+class TestExtraCandidatesForBackfill(unittest.TestCase):
+    def test_build_market_context_merges_extra_candidates(self):
+        import chip_strategies
+        import importlib
+        importlib.reload(chip_strategies)
+
+        base = pd.DataFrame(
+            [
+                {
+                    "code": "2330",
+                    "symbol": "2330.TW",
+                    "market": "TWSE",
+                    "name": "台積電",
+                    "industry": "半導體",
+                    "price": 100.0,
+                    "avg_volume_20d": 1000.0,
+                    "monthly_revenue": 1_000_000.0,
+                    "issued_shares": 1_000_000.0,
+                }
+            ]
+        )
+        base.attrs["total_symbols"] = 2
+        base.attrs["scan_settings"] = {"target_trading_days": 60}
+
+        with patch("chip_strategies._build_hard_filter_candidates", return_value=base), \
+             patch("chip_strategies._fetch_recent_daily_chip_data", return_value=(pd.DataFrame(), None)), \
+             patch("chip_strategies._build_weekly_distribution", return_value=pd.DataFrame()):
+            context = chip_strategies.build_market_context(
+                include_daily_data=True,
+                extra_candidates=[{"code": "5425", "symbol": "5425.TWO", "market": "TPEX", "name": "台半"}],
+            )
+
+        self.assertEqual(set(context.candidates["code"].astype(str)), {"2330", "5425"})
+
+
 if __name__ == "__main__":
     unittest.main()

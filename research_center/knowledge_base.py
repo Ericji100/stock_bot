@@ -23,6 +23,12 @@ def load_company_knowledge(path: Path | None = None) -> dict[str, Any]:
     }
 
 
+def save_company_knowledge(data: dict[str, Any], path: Path | None = None) -> None:
+    target = path or COMPANY_KNOWLEDGE_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
 def enrich_company_rows(rows: list[dict[str, Any]], knowledge: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     data = knowledge or load_company_knowledge()
     companies = data.get("companies") or {}
@@ -68,6 +74,8 @@ def _normalize_company_knowledge(info: dict[str, Any]) -> dict[str, Any]:
         "revenue_exposure": list(info.get("revenue_exposure") or []),
         "supply_chain_roles": list(info.get("supply_chain_roles") or []),
         "evidence_sources": list(info.get("evidence_sources") or []),
+        "missing_data": list(info.get("missing_data") or []),
+        "auto_update": dict(info.get("auto_update") or {}),
         "updated_at": info.get("updated_at"),
         "confidence": info.get("confidence", "manual_review_required"),
     }

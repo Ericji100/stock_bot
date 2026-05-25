@@ -1,4 +1,8 @@
 ﻿.cache/
+.runtime/
+data/
+memories/
+pytest-cache-files-*/
 __pycache__/
 *.py[cod]
 *.pyo

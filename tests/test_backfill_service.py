@@ -1137,6 +1137,62 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(reason, "today_data_available")
 
 
+class TestBackfillMarkerGapHealth(unittest.TestCase):
+    def test_write_marker_includes_health_and_gap_path(self):
+        from backfill_service import BackfillResult, write_backfill_complete_marker
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("backfill_service/marker_gap_health")
+        try:
+            result = BackfillResult(report_date=date(2026, 5, 15))
+            result.universe_count = 1500
+            result.candidate_count = 2
+            result.chip_candidate_count = 2
+            result.curated_scan_count = 1
+            result.backfill_ready_for_scan = True
+            result.gap_report_path = str(tmp / "2026-05-15" / "gaps.json")
+            result.gap_report = {
+                "health": {
+                    "technical": {"coverage_pct": 1.0},
+                    "revenue": {"coverage_pct": 1.0},
+                    "chip": {"coverage_pct": 1.0},
+                }
+            }
+            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+                write_backfill_complete_marker(date(2026, 5, 15), result)
+            payload = json.loads((tmp / "2026-05-15" / "complete.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["gap_report_path"], result.gap_report_path)
+            self.assertIn("health", payload)
+            self.assertEqual(payload["health"]["chip"]["coverage_pct"], 1.0)
+        finally:
+            safe_remove_test_cache("backfill_service/marker_gap_health")
+
+    def test_marker_with_low_chip_health_is_incomplete(self):
+        from backfill_service import is_backfill_cache_complete
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("backfill_service/marker_gap_low_chip")
+        try:
+            marker_dir = tmp / "2026-05-15"
+            marker_dir.mkdir(parents=True, exist_ok=True)
+            (marker_dir / "complete.json").write_text(json.dumps({
+                "universe_count": 1500,
+                "candidate_count": 100,
+                "chip_candidate_count": 100,
+                "curated_scan_count": 20,
+                "backfill_ready_for_scan": True,
+                "health": {
+                    "technical": {"coverage_pct": 1.0},
+                    "revenue": {"coverage_pct": 1.0},
+                    "chip": {"coverage_pct": 0.27},
+                },
+            }), encoding="utf-8")
+            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+                complete, reason = is_backfill_cache_complete(date(2026, 5, 15))
+            self.assertFalse(complete)
+            self.assertEqual(reason, "cache_chip_gaps")
+        finally:
+            safe_remove_test_cache("backfill_service/marker_gap_low_chip")
+
+
 class TestRunBackfillIfNeeded(unittest.TestCase):
     """Test run_backfill_if_needed: policy decisions."""
 

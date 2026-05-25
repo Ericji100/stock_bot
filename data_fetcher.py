@@ -1,11 +1,13 @@
 ﻿from __future__ import annotations
 
 import math
+import json
 import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -20,6 +22,7 @@ TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 MOPS_API_BASE_URL = "https://mops.twse.com.tw/mops/api/"
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
+STOCK_LIST_PATH = Path(__file__).with_name("stock_list.json")
 
 
 class StockExportError(Exception):
@@ -40,6 +43,10 @@ class StockMeta:
     @property
     def display_name(self) -> str:
         return f"{self.code} {self.name}".strip()
+
+
+def _normalize_stock_lookup(value: object) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
 
 
 def _month_starts_between(start_date: date, end_date: date) -> list[date]:
@@ -200,6 +207,7 @@ class StockDataFetcher:
         self._last_twse_request_at = 0.0
         self._twse_name_cache: dict[str, str] | None = None
         self._tpex_name_cache: dict[str, str] | None = None
+        self._local_stock_catalog: dict[str, StockMeta] | None = None
         self._tpex_institutional_cache: dict[tuple[str, str, str], dict[str, float] | None] = {}
         self.notes: list[str] = []
 
@@ -271,8 +279,36 @@ class StockDataFetcher:
             if code and name:
                 self._tpex_name_cache[code] = name
 
+    def _load_local_stock_catalog(self) -> dict[str, StockMeta]:
+        if self._local_stock_catalog is not None:
+            return self._local_stock_catalog
+
+        catalog: dict[str, StockMeta] = {}
+        if STOCK_LIST_PATH.exists():
+            try:
+                payload = json.loads(STOCK_LIST_PATH.read_text(encoding="utf-8-sig"))
+            except Exception:
+                payload = {}
+            for item in payload.get("stocks") or []:
+                code = str(item.get("code") or "").strip()
+                name = str(item.get("name") or "").strip()
+                market = str(item.get("market") or "").strip().upper()
+                symbol = str(item.get("symbol") or "").strip().upper()
+                if not code:
+                    continue
+                if not symbol:
+                    symbol = f"{code}.TWO" if market == "TPEX" else f"{code}.TW"
+                if market not in {"TWSE", "TPEX"}:
+                    market = "TPEX" if symbol.endswith(".TWO") else "TWSE"
+                meta = StockMeta(code=code, symbol=symbol, market=market, name=name)
+                catalog.setdefault(code.upper(), meta)
+                catalog.setdefault(symbol.upper(), meta)
+                if name:
+                    catalog.setdefault(_normalize_stock_lookup(name), meta)
+        self._local_stock_catalog = catalog
+        return catalog
+
     def resolve_stock(self, symbol_or_code: str) -> StockMeta:
-        self._load_name_cache()
         normalized = str(symbol_or_code).strip().upper()
         if not normalized:
             raise StockNotFoundError("請輸入股票代碼，例如 /export 2330")
@@ -285,6 +321,22 @@ class StockDataFetcher:
         elif normalized.endswith(".TWO"):
             suffix = ".TWO"
             code = normalized[:-4]
+
+        local_catalog = self._load_local_stock_catalog()
+        local_match = local_catalog.get(normalized) or local_catalog.get(code) or local_catalog.get(_normalize_stock_lookup(symbol_or_code))
+        if local_match is not None:
+            if suffix == ".TW" and local_match.market != "TWSE":
+                return StockMeta(code=code, symbol=f"{code}.TW", market="TWSE", name=local_match.name)
+            if suffix == ".TWO" and local_match.market != "TPEX":
+                return StockMeta(code=code, symbol=f"{code}.TWO", market="TPEX", name=local_match.name)
+            return local_match
+
+        if suffix == ".TW":
+            return StockMeta(code=code, symbol=f"{code}.TW", market="TWSE", name="")
+        if suffix == ".TWO":
+            return StockMeta(code=code, symbol=f"{code}.TWO", market="TPEX", name="")
+
+        self._load_name_cache()
 
         if suffix == ".TW" or (suffix is None and code in self._twse_name_cache):
             name = (self._twse_name_cache or {}).get(code, "")

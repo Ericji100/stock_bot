@@ -99,6 +99,20 @@ def _macro_scores(data: dict[str, Any]) -> list[Score]:
 
 
 def _theme_scores(data: dict[str, Any]) -> list[Score]:
+    quality = data.get("theme_quality_context") or {}
+    if quality:
+        coverage = _number(quality.get("coverage_pct"), 0)
+        total = _number(quality.get("effective_total_companies"), 0)
+        covered = _number(quality.get("effective_covered_companies"), 0)
+        nodes = _number(quality.get("related_supply_chain_node_count"), 0)
+        return [
+            _score(
+                "供應鏈資料覆蓋度",
+                coverage,
+                f"候選公司 {int(total)} 家，有公司知識或題材供應鏈節點覆蓋 {int(covered)} 家；相關供應鏈節點 {int(nodes)} 筆。",
+                "未覆蓋公司不得做高信心供應鏈結論；此分數只是本地量化底稿，AI 最終仍需重評。",
+            )
+        ]
     summary = data.get("company_knowledge_summary") or {}
     total = _number(summary.get("total_companies"), 0)
     covered = _number(summary.get("covered_companies"), 0)

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from research_center.structured_cache import (
     CACHE_DIR,
+    load_latest_research_structured_cache,
     load_research_structured_cache,
     save_research_structured_cache,
 )
@@ -88,6 +89,21 @@ class TestSaveAndLoadCache(unittest.TestCase):
 
             self.assertEqual(loaded1["stock"]["name"], "v1")
             self.assertEqual(loaded2["stock"]["name"], "v2")
+
+    def test_load_latest_research_structured_cache(self):
+        with patch("research_center.structured_cache.CACHE_DIR", self.cache_dir):
+            data1 = {"stock": {"code": "2330"}, "report_date": "2026-05-20"}
+            data2 = {"stock": {"code": "2330"}, "report_date": "2026-05-22"}
+
+            save_research_structured_cache("2330", date(2026, 5, 20), data1)
+            save_research_structured_cache("2330", date(2026, 5, 22), data2)
+
+            result = load_latest_research_structured_cache("2330", before_or_on=date(2026, 5, 25), max_age_days=7)
+
+            self.assertIsNotNone(result)
+            loaded, cache_date = result
+            self.assertEqual(cache_date, date(2026, 5, 22))
+            self.assertEqual(loaded["report_date"], "2026-05-22")
 
 
 if __name__ == "__main__":

@@ -41,12 +41,13 @@ AI_FINAL_SECTION_KEYWORDS = (
 
 
 def validate_report(markdown: str, request: CommandRequest, sources: list[SourceItem], report_json: dict[str, Any]) -> dict[str, Any]:
+    qa_markdown = _main_markdown_for_qa(markdown)
     headings = _headings(markdown)
-    source_refs = sorted(set(re.findall(r"\[S\d{3}\]", markdown)))
+    source_refs = sorted(set(re.findall(r"\[S\d{3}\]", qa_markdown)))
     expected = EXPECTED_SECTIONS.get(request.command, [])
     missing_sections = [section for section in expected if not _contains_heading(headings, section)]
     schema_errors = _schema_errors(report_json)
-    forbidden_hits = [pattern for pattern in FORBIDDEN_PATTERNS if pattern in markdown]
+    forbidden_hits = [pattern for pattern in FORBIDDEN_PATTERNS if pattern in qa_markdown]
     source_list_present = any("資料來源" in heading or "來源" in heading for heading in headings) or "[S001]" in markdown
     has_scores_when_required = True
     if ((request.command == "research" and request.mode in {"score", "deep"}) or request.command == "value_scan") and not report_json.get("scores"):
@@ -126,6 +127,10 @@ def _missing_value_scan_candidates(markdown: str, request: CommandRequest, repor
 
 def _headings(markdown: str) -> list[str]:
     return [line.lstrip("#").strip() for line in markdown.splitlines() if line.startswith("#")]
+
+
+def _main_markdown_for_qa(markdown: str) -> str:
+    return re.split(r"\n## (完整資料來源清單|規格檢查提醒)\b", markdown, maxsplit=1)[0]
 
 
 def _contains_heading(headings: list[str], keyword: str) -> bool:

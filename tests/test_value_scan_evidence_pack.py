@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import pandas as pd
 
@@ -23,6 +25,31 @@ def _mock_revenue_point(revenue=1000000.0, yoy=20.0):
 
 
 class ValueScanEvidencePackTests(unittest.TestCase):
+    def test_early_signal_priority_pool_sort_policy_helper(self):
+        from research_center.data_services import (
+            _value_scan_early_signal_priority,
+            _value_scan_should_preserve_early_candidates,
+        )
+
+        policy = {"source": "精選選股交叉命中快取"}
+        row = {
+            "revenue_yoy": 35,
+            "avg_volume_20d": 1000,
+            "score_components": {"theme_label_shift": 1},
+            "old_market_label": "old",
+            "new_market_label": "new",
+            "price": 50,
+            "rerating_evidence": ["營收轉強", "新市場標籤"],
+        }
+
+        self.assertTrue(_value_scan_should_preserve_early_candidates(policy))
+        self.assertGreater(_value_scan_early_signal_priority(row, policy), 0)
+
+    def test_early_signal_priority_preserves_radar_pool(self):
+        from research_center.data_services import _value_scan_should_preserve_early_candidates
+
+        self.assertTrue(_value_scan_should_preserve_early_candidates({"source": "選股雷達"}))
+
     """測試 ai_candidates 排序時機與 evidence pack 欄位完整性。
 
     使用「全市場初篩」避免精選選股流程需要真實 I/O。
@@ -450,6 +477,58 @@ class ValueScanEvidencePackTests(unittest.TestCase):
         composite_zero = pack_zero[0]["local_rerating_composite_score"]
 
         self.assertEqual(composite_zero, 0.0)
+
+    def test_value_scan_universe_uses_latest_radar_cache(self):
+        from research_center.command_parser import parse_command_text
+        from research_center.data_services import _value_scan_universe
+
+        universe = [
+            _mock_entry("2330", "台積電", "2330.TW", "半導體"),
+            _mock_entry("6282", "康舒", "6282.TW", "電源"),
+        ]
+        radar_result = SimpleNamespace(
+            report_date=date(2026, 5, 22),
+            request=SimpleNamespace(source="technical"),
+            candidates=[SimpleNamespace(code="6282"), SimpleNamespace(code="2330")],
+        )
+        request = parse_command_text("/value_scan 選股雷達 --date 2026-05-22")
+
+        with patch("research_center.data_services.load_stock_universe", return_value=universe), \
+             patch("radar_service.load_radar_result", return_value=radar_result):
+            selected, policy = _value_scan_universe(request)
+
+        self.assertEqual([item.code for item in selected], ["6282", "2330"])
+        self.assertEqual(policy["source"], "選股雷達")
+        self.assertEqual(policy["radar_source"], "technical")
+
+    def test_value_scan_universe_uses_monitor_pool(self):
+        from research_center.command_parser import parse_command_text
+        from research_center.data_services import _value_scan_universe
+
+        universe = [_mock_entry("6282", "康舒", "6282.TW", "電源")]
+        request = parse_command_text("/value_scan 監控清單")
+
+        with patch("research_center.data_services.load_stock_universe", return_value=universe), \
+             patch("research_center.data_services._load_monitor_codes", return_value=["6282"]):
+            selected, policy = _value_scan_universe(request)
+
+        self.assertEqual([item.code for item in selected], ["6282"])
+        self.assertEqual(policy["source"], "監控清單")
+
+    def test_value_scan_universe_resolves_single_stock_name_pool(self):
+        from research_center.command_parser import parse_command_text
+        from research_center.data_services import _value_scan_universe
+
+        universe = [_mock_entry("6282", "康舒", "6282.TW", "電源")]
+        request = parse_command_text("/value_scan 康舒")
+        resolved = SimpleNamespace(code="6282", name="康舒", symbol="6282.TW")
+
+        with patch("research_center.data_services.load_stock_universe", return_value=universe), \
+             patch("research_center.data_services.resolve_stock_reference", return_value=resolved):
+            selected, policy = _value_scan_universe(request)
+
+        self.assertEqual([item.code for item in selected], ["6282"])
+        self.assertEqual(policy["source"], "單一股票")
 
 
 if __name__ == "__main__":

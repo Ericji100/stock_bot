@@ -1,0 +1,494 @@
+{
+  "source": "tpex_industry_chain",
+  "updated_at": "2026-05-24T14:09:05+08:00",
+  "source_url": "https://ic.tpex.org.tw/",
+  "items": [
+    {
+      "name": "ç¢æ¥­å¹å¼éè³è¨å¹³å° ä¼æ¥­ç±è³æ´ä¾¿æ· å¤§ç¾æè³æ´ç©©ç¶",
+      "industry": "ç¢æ¥­å¹å¼éè³è¨å¹³å° ä¼æ¥­ç±è³æ´ä¾¿æ· å¤§ç¾æè³æ´ç©©ç¶",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/index.php",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "åå°é«",
+      "industry": "åå°é«",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=D000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "çæé«ç",
+      "industry": "çæé«ç",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "javascript:void(0);",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è£½è¥",
+      "industry": "è£½è¥",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=C100",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é«çå¨æ",
+      "industry": "é«çå¨æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=C200",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é£åçæ",
+      "industry": "é£åçæ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=C300",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "åçé«ç",
+      "industry": "åçé«ç",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=C400",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ç¶ è²è½æº",
+      "industry": "ç¶ è²è½æº",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "javascript:;",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "æ¸ä½ç§æ",
+      "industry": "æ¸ä½ç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "javascript:void(0);",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "åå¡é",
+      "industry": "åå¡é",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5100",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "éèç§æ",
+      "industry": "éèç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5200",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "äººå·¥æºæ §",
+      "industry": "äººå·¥æºæ §",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5300",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é²ç«¯éç®",
+      "industry": "é²ç«¯éç®",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5400",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è³éè¨å®å ¨",
+      "industry": "è³éè¨å®å ¨",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5500",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å¤§æ¸æ",
+      "industry": "å¤§æ¸æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5600",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é«é©ç§æ",
+      "industry": "é«é©ç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5700",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "éåç§æ",
+      "industry": "éåç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=5800",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "åç»ç§æ",
+      "industry": "åç»ç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "javascript:void(0);",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å¤ªç©ºè¡æç§æ",
+      "industry": "å¤ªç©ºè¡æç§æ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=4100",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "èªåå",
+      "industry": "èªåå",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=6000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é»å­åå",
+      "industry": "é»å­åå",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=R300",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è¢«åå ä»¶",
+      "industry": "è¢«åå ä»¶",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=J000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "éä¿¡ç¶²è·¯",
+      "industry": "éä¿¡ç¶²è·¯",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=I000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é£æ¥å¨",
+      "industry": "é£æ¥å¨",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=K000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é»è ¦é±é",
+      "industry": "é»è ¦é±é",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=F000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å¹³é¢é¡¯ç¤ºå¨",
+      "industry": "å¹³é¢é¡¯ç¤ºå¨",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=G000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è§¸æ§é¢æ¿",
+      "industry": "è§¸æ§é¢æ¿",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=H000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å°å·é»è·¯æ¿",
+      "industry": "å°å·é»è·¯æ¿",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=L000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ä¼éå¨æ¨",
+      "industry": "ä¼éå¨æ¨",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=B000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "æ°´æ³¥",
+      "industry": "æ°´æ³¥",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=1000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é£å",
+      "industry": "é£å",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=M000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ç³ååå¡æ©¡è",
+      "industry": "ç³ååå¡æ©¡è",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=N000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ç´¡ç¹",
+      "industry": "ç´¡ç¹",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=O000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é»æ©æ©æ¢°",
+      "industry": "é»æ©æ©æ¢°",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=P000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é ç´",
+      "industry": "é ç´",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=2000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é¼éµ",
+      "industry": "é¼éµ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=Q000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "æ±½è»",
+      "industry": "æ±½è»",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=3000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è»é«æå",
+      "industry": "è»é«æå",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=R000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å»ºæçé",
+      "industry": "å»ºæçé",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=S000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "äº¤ééè¼¸åèªé",
+      "industry": "äº¤ééè¼¸åèªé",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=T000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "éè",
+      "industry": "éè",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=U000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "è²¿æç¾è²¨",
+      "industry": "è²¿æç¾è²¨",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=V000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "æ²¹é»çæ°£",
+      "industry": "æ²¹é»çæ°£",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=W000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "æååµæ",
+      "industry": "æååµæ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=Y000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "å ¶ä»",
+      "industry": "å ¶ä»",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=X000",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ä½¿ç¨æ¢æ¬¾",
+      "industry": "ä½¿ç¨æ¢æ¬¾",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/disclaimer.php?stk_code=",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "é±ç§æ¬ä¿è­·èªªæ",
+      "industry": "é±ç§æ¬ä¿è­·èªªæ",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/privacy_rights.php?stk_code=",
+      "source_type": "tpex_link"
+    },
+    {
+      "name": "ç¶²ç«å°å",
+      "industry": "ç¶²ç«å°å",
+      "chain_stage": "",
+      "role": "",
+      "company_code": "",
+      "company_name": "",
+      "source_url": "https://ic.tpex.org.tw/sitemap.php",
+      "source_type": "tpex_link"
+    }
+  ],
+  "metadata": {
+    "parser": "html_links_and_tables",
+    "note": "TPEx cache is an industry-chain reference, not an investment conclusion.",
+    "ssl_verify": false,
+    "ssl_fallback": true,
+    "ssl_fallback_reason": "HTTPSConnectionPool(host='ic.tpex.org.tw', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Missing Subject Key Identifier (_ssl.c:1081)')))"
+  }
+}

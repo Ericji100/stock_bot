@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import httpx
 
 from research_center.command_parser import parse_command_text
 from research_center.config import ResearchCenterConfig, load_research_config
 from research_center.gemini_service import GeminiResult, GeminiService
 from research_center.minimax_search_service import MiniMaxSearchService
-from research_center.minimax_service import MiniMaxResult, MiniMaxService, _extract_minimax_text
+from research_center.minimax_service import MiniMaxRequestError, MiniMaxResult, MiniMaxService, _extract_minimax_text
 from research_center.models import ReportArtifacts, ResearchCenterResult, SourceItem
 from research_center.orchestrator import ResearchCenter
 from research_center.report_builder import write_report_artifacts
@@ -82,19 +85,55 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         text = _extract_minimax_text({"choices": [{"message": {"content": "<think>hidden</think>\n# Report"}}]})
         self.assertEqual(text, "# Report")
 
+    def test_minimax_http_400_error_keeps_provider_diagnostics(self):
+        request = httpx.Request("POST", "https://api.minimax.io/v1/chat/completions")
+        response = httpx.Response(
+            400,
+            request=request,
+            json={"error": {"message": "prompt is too long"}},
+        )
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def post(self, url, headers=None, json=None):
+                return response
+
+        service = MiniMaxService("key", model="MiniMax-M2.7", max_retries=0)
+        with patch("research_center.minimax_service.httpx.Client", FakeClient):
+            with self.assertRaises(MiniMaxRequestError) as ctx:
+                service.generate_report("x" * 25)
+
+        message = str(ctx.exception)
+        self.assertIn("MiniMax API request failed", message)
+        self.assertIn("status=400", message)
+        self.assertIn("model=MiniMax-M2.7", message)
+        self.assertIn("prompt_chars=", message)
+        self.assertIn("payload_bytes=", message)
+        self.assertIn("prompt is too long", message)
+        self.assertEqual(ctx.exception.diagnostics["status_code"], 400)
+        self.assertEqual(ctx.exception.diagnostics["provider"], "minimax")
+
     def test_minimax_search_discover_builds_sources_without_network(self):
         # Create a service with a mock MCP session
         service = MiniMaxSearchService("serper", "jina", minimax=None)
-        # Mock _search_many directly since new implementation uses async MCP without persistent session
-        def mock_search_many(queries, api_key=None):
+        # Mock _search_many: new signature returns (results, errors)
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
             return [
                 {"title": "TWSE", "url": "https://www.twse.com.tw/test", "snippet": "official", "published_date": None, "query": queries[0] if queries else ""}
-            ]
+            ], []
         service._search_many = mock_search_many  # type: ignore[method-assign]
         request = parse_command_text("/research 2330")
         result = service.discover(request, [{"label": "official", "queries": ["2330 TWSE"], "objective": "official data"}])
         self.assertGreaterEqual(len(result.sources), 1)
-        self.assertEqual(result.sources[0].source_level, "Level 1")
+        self.assertIn("L1", result.sources[0].source_level)
         self.assertIn("official", result.sources[0].snippet)
         self.assertGreaterEqual(result.diagnostics["source_count"], 1)
 
@@ -134,7 +173,7 @@ class MiniMaxIntegrationTests(unittest.TestCase):
 
     def test_minimax_discover_handles_mcp_failure_without_raise(self):
         service = MiniMaxSearchService("serper", "jina", minimax=None)
-        def mock_search_many(queries, api_key=None):
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
             raise RuntimeError("MCP subprocess failed")
         service._search_many = mock_search_many  # type: ignore[method-assign]
         request = parse_command_text("/research 2330")
@@ -144,8 +183,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
 
     def test_minimax_discover_builds_provider_fields(self):
         service = MiniMaxSearchService("serper", "jina", minimax=None)
-        def mock_search_many(queries, api_key=None):
-            return [{"title": "Test", "url": "https://test.com", "snippet": "test", "published_date": None, "query": "test"}]
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
+            return [{"title": "Test", "url": "https://test.com", "snippet": "test", "published_date": None, "query": "test"}], []
         service._search_many = mock_search_many  # type: ignore[method-assign]
         request = parse_command_text("/research 2330")
         result = service.discover(request, [{"label": "test", "queries": ["2330"], "objective": "test"}])
@@ -175,6 +214,276 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertEqual(report_json["metadata"]["analysis_model"], "MiniMax-M2.7")
 
 
+
+    def test_minimax_mcp_env_sets_uv_dirs(self):
+        """Verify _build_mcp_startup_params sets UV_CACHE_DIR and UV_TOOL_DIR."""
+        from research_center.minimax_search_service import _build_mcp_startup_params
+        import os
+
+        # Use project test cache dir instead of tempfile (avoids Windows permission issues)
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("minimax_integration/test_mcp_env_sets_uv_dirs")
+        try:
+            cache_dir = str(tmp / "cache")
+            tool_dir = str(tmp / "tools")
+            old_cache = os.environ.pop("UV_CACHE_DIR", None)
+            old_tool = os.environ.pop("UV_TOOL_DIR", None)
+            old_minimax_cmd = os.environ.pop("MINIMAX_MCP_COMMAND", None)
+            try:
+                os.environ["UV_CACHE_DIR"] = cache_dir
+                os.environ["UV_TOOL_DIR"] = tool_dir
+                cmd, args_list, env = _build_mcp_startup_params("fake-key")
+                self.assertEqual(env["UV_CACHE_DIR"], cache_dir)
+                self.assertEqual(env["UV_TOOL_DIR"], tool_dir)
+                # Dirs should be created
+                self.assertTrue(os.path.exists(cache_dir))
+                self.assertTrue(os.path.exists(tool_dir))
+            finally:
+                if old_cache:
+                    os.environ["UV_CACHE_DIR"] = old_cache
+                if old_tool:
+                    os.environ["UV_TOOL_DIR"] = old_tool
+                if old_minimax_cmd:
+                    os.environ["MINIMAX_MCP_COMMAND"] = old_minimax_cmd
+        finally:
+            safe_remove_test_cache("minimax_integration/test_mcp_env_sets_uv_dirs")
+
+    def test_minimax_mcp_command_override_skips_uv(self):
+        """Verify MINIMAX_MCP_COMMAND bypasses uvx/uv and uses the given command directly."""
+        from research_center.minimax_search_service import _build_mcp_startup_params
+        import os
+
+        old_cmd = os.environ.pop("MINIMAX_MCP_COMMAND", None)
+        old_args = os.environ.pop("MINIMAX_MCP_ARGS", None)
+        old_cache = os.environ.pop("UV_CACHE_DIR", None)
+        old_tool = os.environ.pop("UV_TOOL_DIR", None)
+        try:
+            os.environ["MINIMAX_MCP_COMMAND"] = "C:\\mock\\mcp.exe"
+            os.environ["MINIMAX_MCP_ARGS"] = "--stdio"
+            cmd, args_list, env = _build_mcp_startup_params("fake-key")
+            self.assertEqual(cmd, "C:\\mock\\mcp.exe")
+            self.assertEqual(args_list, ["--stdio"])
+            # Must not contain uvx or uv tool run
+            self.assertNotIn("uvx", cmd)
+            self.assertNotIn("uv.exe", cmd)
+            self.assertNotIn("tool run", " ".join(args_list))
+        finally:
+            if old_cmd:
+                os.environ["MINIMAX_MCP_COMMAND"] = old_cmd
+            if old_args:
+                os.environ["MINIMAX_MCP_ARGS"] = old_args
+            if old_cache:
+                os.environ["UV_CACHE_DIR"] = old_cache
+            if old_tool:
+                os.environ["UV_TOOL_DIR"] = old_tool
+
+    def test_minimax_mcp_prefers_env_command(self):
+        """Verify MINIMAX_MCP_COMMAND env override is used instead of uvx/uv."""
+        from research_center.minimax_search_service import _build_mcp_startup_params
+        import os
+        old_cmd = os.environ.pop("MINIMAX_MCP_COMMAND", None)
+        old_args = os.environ.pop("MINIMAX_MCP_ARGS", None)
+        old_cache = os.environ.pop("UV_CACHE_DIR", None)
+        old_tool = os.environ.pop("UV_TOOL_DIR", None)
+        try:
+            os.environ["MINIMAX_MCP_COMMAND"] = "C:\\custom\\mcp.exe"
+            os.environ["MINIMAX_MCP_ARGS"] = "--verbose"
+            cmd, args_list, env = _build_mcp_startup_params("fake-key")
+            self.assertEqual(cmd, "C:\\custom\\mcp.exe")
+            self.assertEqual(args_list, ["--verbose"])
+        finally:
+            if old_cmd:
+                os.environ["MINIMAX_MCP_COMMAND"] = old_cmd
+            if old_args:
+                os.environ["MINIMAX_MCP_ARGS"] = old_args
+            if old_cache:
+                os.environ["UV_CACHE_DIR"] = old_cache
+
+    def test_minimax_mcp_error_reason_permission_denied(self):
+        """Verify permission denied errors are classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["WinError 5: Access is denied", "Permission denied: C:\\Users\\..."]
+        reasons = _classify_errors(errors)
+        self.assertIn("uv_permission_denied", reasons)
+
+    def test_minimax_mcp_error_reason_pypi_failed(self):
+        """Verify PyPI connection failures are classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["Failed to fetch https://pypi.org/simple/minimax/", "Connection refused"]
+        reasons = _classify_errors(errors)
+        self.assertIn("pypi_connection_failed", reasons)
+
+    def test_minimax_mcp_error_reason_package_not_installed(self):
+        """Verify missing package errors are classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["ENOENT: no such file or directory, open 'C:\\Users\\...\\minimax-coding-plan-mcp'"]
+        reasons = _classify_errors(errors)
+        self.assertIn("mcp_package_not_installed", reasons)
+
+    def test_minimax_mcp_error_reason_api_key_missing(self):
+        """Verify MINIMAX_API_KEY missing is classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["MINIMAX_API_KEY environment variable is required"]
+        reasons = _classify_errors(errors)
+        self.assertIn("minimax_api_key_missing", reasons)
+
+    def test_minimax_mcp_error_reason_api_auth_failed(self):
+        """Verify 401 Unauthorized is classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["401 Unauthorized", "Authentication failed"]
+        for err in errors:
+            reasons = _classify_errors([err])
+            self.assertIn("minimax_api_auth_failed", reasons)
+
+    def test_minimax_mcp_error_reason_quota_failed(self):
+        """Verify quota/credit exceeded is classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["quota exceeded", "credit insufficient", "rate limit exceeded"]
+        for err in errors:
+            reasons = _classify_errors([err])
+            self.assertIn("minimax_quota_or_credit_failed", reasons)
+
+    def test_minimax_mcp_error_reason_empty_response(self):
+        """Verify empty response is classified correctly."""
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["empty response", "response is empty", "null response from server"]
+        for err in errors:
+            reasons = _classify_errors([err])
+            self.assertIn("mcp_empty_response", reasons)
+
+    def test_minimax_mcp_error_reason_protocol_errors_case_insensitive(self):
+        """Verify TypeError/AttributeError/JSONDecodeError are classified as mcp_protocol_error."""
+        from research_center.minimax_search_service import _classify_errors
+        for err in ["TypeError: bad", "AttributeError: x", "JSONDecodeError: bad"]:
+            reasons = _classify_errors([err])
+            self.assertIn("mcp_protocol_error", reasons)
+
+    def test_minimax_discover_partial_results_with_errors(self):
+        """Verify discover() keeps valid sources when some queries fail."""
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.command_parser import parse_command_text
+
+        service = MiniMaxSearchService("serper", "jina", minimax=None)
+
+        # Mock _search_many: returns 1 valid result + 1 error
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
+            results = [
+                {"title": "Valid Result", "url": "https://example.com/valid", "snippet": "found", "published_date": None, "query": "test query"}
+            ]
+            errors = ["some error for query2"]
+            return results, errors
+
+        service._search_many = mock_search_many  # type: ignore[method-assign]
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "test", "queries": ["test1", "test2"], "objective": "test"}])
+
+        self.assertEqual(len(result.sources), 1)
+        self.assertEqual(result.diagnostics["source_count"], 1)
+        self.assertEqual(result.diagnostics["runs"][0]["status"], "partial")
+        self.assertIn("error_reasons", result.diagnostics["runs"][0])
+        self.assertIn("error_count", result.diagnostics["runs"][0])
+        self.assertEqual(result.diagnostics["runs"][0]["error_count"], 1)
+        self.assertIn("error_samples", result.diagnostics["runs"][0])
+        # error_samples uses "error" field, not "query"
+        self.assertIn("error", result.diagnostics["runs"][0]["error_samples"][0])
+        self.assertEqual(result.diagnostics["runs"][0]["error_samples"][0]["error"], "some error for query2")
+
+    def test_minimax_discover_empty_results_sets_mcp_empty_results_flag(self):
+        """Verify discover() sets mcp_empty_results=True when queries succeed but return no results."""
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.command_parser import parse_command_text
+
+        service = MiniMaxSearchService("serper", "jina", minimax=None)
+
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
+            return [], []  # No results, no errors
+
+        service._search_many = mock_search_many  # type: ignore[method-assign]
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "empty", "queries": ["test"], "objective": "test"}])
+
+        self.assertEqual(len(result.sources), 0)
+        self.assertTrue(result.diagnostics["runs"][0].get("mcp_empty_results"))
+        self.assertEqual(result.diagnostics["runs"][0]["status"], "ok")
+
+    def test_minimax_raw_response_samples_include_new_fields(self):
+        """Verify raw_response_samples include status, raw_keys, preview."""
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.command_parser import parse_command_text
+
+        service = MiniMaxSearchService("serper", "jina", minimax=None)
+
+        class FakeRaw:
+            def __init__(self):
+                self.content = []
+                self.other = "val"
+
+            def __repr__(self):
+                return "FakeRaw(...)"
+
+        def mock_search_many(queries, api_key=None, raw_response_samples=None, max_samples=3):
+            fr = FakeRaw()
+            if raw_response_samples is not None:
+                raw_response_samples.append({
+                    "query": "test",
+                    "status": "success",
+                    "raw_type": "FakeRaw",
+                    "raw_keys": ["content", "other"],
+                    "item_count": 0,
+                    "preview": "FakeRaw(...)",
+                })
+            return [], []
+
+        service._search_many = mock_search_many  # type: ignore[method-assign]
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "test", "queries": ["test"], "objective": "test"}])
+
+        samples = result.diagnostics.get("raw_response_samples", [])
+        self.assertGreaterEqual(len(samples), 1)
+        s = samples[0]
+        self.assertIn("status", s)
+        self.assertIn("raw_keys", s)
+        self.assertIn("preview", s)
+        self.assertNotIn("raw_preview", s)
+
+    def test_flatten_task_queries_handles_list_of_dicts_with_items(self):
+        """Verify _flatten_task_queries handles dict items and excludes empty strings."""
+        from research_center.minimax_search_service import _flatten_task_queries
+        queries = [
+            {"items": ["query1", "query2"]},
+            "",
+            "direct_query",
+            {"items": []},
+            "  ",
+        ]
+        result = _flatten_task_queries(queries)
+        self.assertEqual(result, ["query1", "query2", "direct_query"])
+
+    def test_classify_errors_recognizes_mcp_parse_error(self):
+        """Verify parse errors from _McpParseError are classified as mcp_parse_error."""
+        from research_center.minimax_search_service import _classify_errors
+        for err in [
+            "McpParseError: Failed to extract search items",
+            "McpParseError: No recognized item keys in response: ['foo']",
+            "McpParseError: Unexpected content list item type: str",
+        ]:
+            reasons = _classify_errors([err])
+            self.assertIn("mcp_parse_error", reasons, f"Expected mcp_parse_error for: {err}")
+
+    def test_classify_errors_recognizes_mcp_error_response(self):
+        """Verify 'error response' style errors are classified as mcp_error_response."""
+        from research_center.minimax_search_service import _classify_errors
+        # Use error strings that don't match other categories
+        for err in ["mcp_error: something went wrong", "mcp_error: connection refused"]:
+            reasons = _classify_errors([err])
+            self.assertIn("mcp_error_response", reasons, f"Expected mcp_error_response for: {err}")
+
+    def test_classify_errors_recognizes_missing_mcp_module(self):
+        """Verify missing MCP Python module is reported as package/dependency missing."""
+        from research_center.minimax_search_service import _classify_errors
+        reasons = _classify_errors(["No module named 'mcp'"])
+        self.assertIn("mcp_package_not_installed", reasons)
+        self.assertNotIn("mcp_unknown_error", reasons)
 
     def test_parallel_model_jobs_use_same_prompt_and_write_reports(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
@@ -247,11 +556,287 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         finally:
             safe_remove_test_cache("minimax_integration/test_parallel_model_jobs")
 
+    def test_ensure_minimax_mcp_build_uv_env(self):
+        from tools.ensure_minimax_mcp import build_uv_env, project_runtime_mcp_exe
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        tmp = ensure_test_cache_dir("minimax_integration/test_ensure_minimax_mcp_build_uv_env")
+        try:
+            env = build_uv_env(tmp)
+            self.assertIn("UV_CACHE_DIR", env)
+            self.assertIn("UV_TOOL_DIR", env)
+            self.assertTrue(env["UV_CACHE_DIR"].replace("\\", "/").endswith(".runtime/uv_cache"))
+            self.assertTrue(env["UV_TOOL_DIR"].replace("\\", "/").endswith(".runtime/uv_tools"))
+            self.assertTrue(project_runtime_mcp_exe(tmp).replace("\\", "/").endswith(".runtime/uv_tools/minimax-coding-plan-mcp/Scripts/minimax-coding-plan-mcp.exe"))
+        finally:
+            safe_remove_test_cache("minimax_integration/test_ensure_minimax_mcp_build_uv_env")
+
+    def test_ensure_minimax_mcp_find_exe(self):
+        from tools.ensure_minimax_mcp import find_minimax_mcp_exe
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        # Test finding when it exists in project .runtime first.
+        tmp = ensure_test_cache_dir("minimax_integration/test_ensure_minimax_mcp_find_exe")
+        try:
+            exe_dir = tmp / ".runtime" / "uv_tools" / "minimax-coding-plan-mcp" / "Scripts"
+            exe_dir.mkdir(parents=True, exist_ok=True)
+            exe_file = exe_dir / "minimax-coding-plan-mcp.exe"
+            exe_file.write_text("dummy", encoding="utf-8")
+
+            found = find_minimax_mcp_exe(root=tmp, temp_dir="X:/does/not/exist")
+            self.assertIsNotNone(found)
+            self.assertTrue(found.replace("\\", "/").endswith("minimax-coding-plan-mcp.exe"))
+
+            # Test not found when temp_dir has no exe (use different base dir)
+            empty_tmp = ensure_test_cache_dir("minimax_integration/test_ensure_minimax_mcp_find_exe_empty")
+            try:
+                not_found = find_minimax_mcp_exe(root=empty_tmp, temp_dir="X:/does/not/exist", appdata_dir="X:/also/not", localappdata_dir="X:/local/not")
+                self.assertIsNone(not_found)
+            finally:
+                safe_remove_test_cache("minimax_integration/test_ensure_minimax_mcp_find_exe_empty")
+        finally:
+            safe_remove_test_cache("minimax_integration/test_ensure_minimax_mcp_find_exe")
+
+    def test_ensure_minimax_mcp_build_install_command(self):
+        from tools.ensure_minimax_mcp import build_install_command
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        tmp = ensure_test_cache_dir("minimax_integration/test_ensure_minimax_mcp_build_install_command")
+        try:
+            # When venv uv.exe exists - create file (no removal needed, safe_remove_test_cache cleans up)
+            venv_dir = tmp / ".venv"
+            uv_dir = venv_dir / "Scripts"
+            uv_dir.mkdir(parents=True, exist_ok=True)
+            uv_file = uv_dir / "uv.exe"
+            uv_file.write_text("dummy", encoding="utf-8")
+
+            cmd = build_install_command(str(venv_dir))
+            self.assertTrue(cmd[0].replace("\\", "/").endswith("uv.exe"))
+            self.assertEqual(cmd[1:], ["tool", "install", "--force", "minimax-coding-plan-mcp"])
+
+            # When venv uv.exe does not exist - use a different venv dir without the file
+            venv_no_uv = ensure_test_cache_dir("minimax_integration/test_ensure_minimax_mcp_build_install_command_no_uv")
+            try:
+                cmd_fallback = build_install_command(str(venv_no_uv))
+                self.assertEqual(cmd_fallback, ["uv", "tool", "install", "--force", "minimax-coding-plan-mcp"])
+            finally:
+                safe_remove_test_cache("minimax_integration/test_ensure_minimax_mcp_build_install_command_no_uv")
+        finally:
+            safe_remove_test_cache("minimax_integration/test_ensure_minimax_mcp_build_install_command")
+
+    def test_ensure_minimax_mcp_find_exe_from_appdata(self):
+        from tools.ensure_minimax_mcp import find_minimax_mcp_exe
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        # Create a mock APPDATA dir with the exe
+        mock_appdata = ensure_test_cache_dir("minimax_integration/test_ensure_mcp_appdata")
+        try:
+            exe_dir = mock_appdata / "uv" / "tools" / "minimax-coding-plan-mcp" / "Scripts"
+            exe_dir.mkdir(parents=True, exist_ok=True)
+            exe_file = exe_dir / "minimax-coding-plan-mcp.exe"
+            exe_file.write_text("dummy", encoding="utf-8")
+
+            # Pass empty temp_dir so it won't find in TEMP; should find in appdata_dir
+            found = find_minimax_mcp_exe(root="X:/root/not", temp_dir="X:/does/not/exist", appdata_dir=str(mock_appdata))
+            self.assertIsNotNone(found)
+            self.assertTrue("minimax-coding-plan-mcp.exe" in found)
+        finally:
+            safe_remove_test_cache("minimax_integration/test_ensure_mcp_appdata")
+
+    def test_ensure_minimax_mcp_find_exe_from_localappdata(self):
+        from tools.ensure_minimax_mcp import find_minimax_mcp_exe
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        # Create a mock LOCALAPPDATA dir with the exe
+        mock_localappdata = ensure_test_cache_dir("minimax_integration/test_ensure_mcp_localappdata")
+        try:
+            exe_dir = mock_localappdata / "uv" / "tools" / "minimax-coding-plan-mcp" / "Scripts"
+            exe_dir.mkdir(parents=True, exist_ok=True)
+            exe_file = exe_dir / "minimax-coding-plan-mcp.exe"
+            exe_file.write_text("dummy", encoding="utf-8")
+
+            # Pass empty temp_dir and appdata_dir so it falls through to localappdata_dir
+            found = find_minimax_mcp_exe(root="X:/root/not", temp_dir="X:/does/not/exist", appdata_dir="X:/also/not", localappdata_dir=str(mock_localappdata))
+            self.assertIsNotNone(found)
+            self.assertTrue("minimax-coding-plan-mcp.exe" in found)
+        finally:
+            safe_remove_test_cache("minimax_integration/test_ensure_mcp_localappdata")
+
+    def test_ensure_minimax_mcp_format_success_output(self):
+        from tools.ensure_minimax_mcp import format_success_output
+        lines = format_success_output("C:\\test\\minimax-coding-plan-mcp.exe")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("MINIMAX_MCP_READY=1", lines[0])
+        self.assertIn("MINIMAX_MCP_COMMAND=C:\\test\\minimax-coding-plan-mcp.exe", lines[1])
+
+    def test_ensure_minimax_mcp_format_failure_output(self):
+        from tools.ensure_minimax_mcp import format_failure_output
+        lines = format_failure_output("not installed")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("MINIMAX_MCP_READY=0", lines[0])
+        self.assertIn("MINIMAX_MCP_ERROR=not installed", lines[1])
+
+    def test_start_bat_minimax_block_has_single_main_entry(self):
+        """Verify 啟動機器人.bat has exactly one main.py, one pause, one ensure_minimax_mcp.py call."""
+        import os
+        from pathlib import Path
+
+        # Find the bat file at project root (not in tests/)
+        project_root = Path(__file__).resolve().parent.parent
+        bat_files = list(project_root.glob("啟動機器人.bat"))
+        self.assertEqual(len(bat_files), 1, "Expected exactly one 啟動機器人.bat in project root")
+        bat_path = bat_files[0]
+
+        text = bat_path.read_text(encoding="utf-8-sig")
+
+        # Verify single main.py and pause
+        self.assertEqual(text.count("main.py"), 1, "bat should contain exactly one main.py call")
+        self.assertEqual(text.lower().count("pause"), 1, "bat should contain exactly one pause")
+
+        # Verify ensure_minimax_mcp.py appears exactly once
+        self.assertEqual(
+            text.count("ensure_minimax_mcp.py"), 1,
+            "bat should contain exactly one ensure_minimax_mcp.py call"
+        )
+
+        # Verify for /f dynamic parsing exists
+        self.assertIn("for /f", text.lower(), "bat should contain for /f dynamic parsing")
+
+        # Verify MINIMAX_MCP_COMMAND environment variable is set
+        self.assertIn("MINIMAX_MCP_COMMAND", text, "bat should set MINIMAX_MCP_COMMAND")
+        self.assertIn("%CD%\\.runtime\\uv_cache", text, "bat should use project-local UV cache")
+        self.assertIn("%CD%\\.runtime\\uv_tools", text, "bat should use project-local UV tool dir")
+
+        # Verify no hardcoded username path
+        self.assertNotIn("紀成達", text, "bat should not contain hardcoded username")
+
+    def test_health_check_disabled_and_no_api_key(self):
+        # API key not present, search disabled
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.config import ResearchCenterConfig
+        from unittest.mock import patch
+        
+        config = ResearchCenterConfig(
+            api_key="gemini",
+            minimax_api_key="",
+            enable_minimax_search=False,
+        )
+        service = MiniMaxSearchService(minimax=None)
+        service._config = config
+        
+        with patch("research_center.minimax_search_service._get_api_key", return_value=""):
+            res = service.health_check(run_smoke=False)
+            self.assertFalse(res["enabled"])
+            self.assertFalse(res["configured"])
+            self.assertFalse(res["api_key_present"])
+            self.assertEqual(res["status"], "failed")
+            self.assertIn("disabled_by_config", res["error_reasons"])
+
+    def test_health_check_api_key_missing_but_enabled(self):
+        # API key not present, search enabled
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.config import ResearchCenterConfig
+        from unittest.mock import patch
+        
+        config = ResearchCenterConfig(
+            api_key="gemini",
+            minimax_api_key="",
+            enable_minimax_search=True,
+        )
+        service = MiniMaxSearchService(minimax=None)
+        service._config = config
+        
+        with patch("research_center.minimax_search_service._get_api_key", return_value=""):
+            res = service.health_check(run_smoke=False)
+            self.assertTrue(res["enabled"])
+            self.assertFalse(res["configured"])
+            self.assertFalse(res["api_key_present"])
+            self.assertEqual(res["status"], "failed")
+            self.assertIn("minimax_api_key_missing", res["error_reasons"])
+
+    def test_health_check_mcp_command_not_exists(self):
+        # API key present, search enabled, but command missing
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.config import ResearchCenterConfig
+        from unittest.mock import patch
+        
+        config = ResearchCenterConfig(
+            api_key="gemini",
+            minimax_api_key="key",
+            enable_minimax_search=True,
+        )
+        service = MiniMaxSearchService(minimax=None)
+        service._config = config
+        
+        with patch("research_center.minimax_search_service._get_api_key", return_value="key"):
+            with patch("research_center.minimax_search_service._build_mcp_startup_params", return_value=("/nonexistent/mcp.exe", [], {})):
+                res = service.health_check(run_smoke=False)
+                self.assertTrue(res["enabled"])
+                self.assertTrue(res["configured"])
+                self.assertFalse(res["mcp_command_exists"])
+                self.assertEqual(res["status"], "failed")
+                self.assertIn("mcp_package_not_installed", res["error_reasons"])
+
+    def test_health_check_smoke_success(self):
+        # All ok, run smoke test success
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.config import ResearchCenterConfig
+        from unittest.mock import patch
+        
+        config = ResearchCenterConfig(
+            api_key="gemini",
+            minimax_api_key="key",
+            enable_minimax_search=True,
+        )
+        service = MiniMaxSearchService(minimax=None)
+        service._config = config
+        
+        def mock_search_many(queries, api_key, raw_response_samples):
+            return [{"title": "t", "url": "http://u", "snippet": "s", "published_date": ""}], []
+            
+        service._search_many = mock_search_many
+        
+        with patch("research_center.minimax_search_service._get_api_key", return_value="key"):
+            with patch("research_center.minimax_search_service._build_mcp_startup_params", return_value=("python", [], {})):
+                with patch("shutil.which", return_value="python"):
+                    res = service.health_check(run_smoke=True)
+                    self.assertTrue(res["enabled"])
+                    self.assertTrue(res["configured"])
+                    self.assertTrue(res["mcp_command_exists"])
+                    self.assertEqual(res["status"], "ok")
+                    self.assertGreater(res["source_count"], 0)
+                    self.assertEqual(res["error_reasons"], [])
+
+    def test_health_check_smoke_failed(self):
+        # All ok, run smoke test failed due to empty response
+        from research_center.minimax_search_service import MiniMaxSearchService
+        from research_center.config import ResearchCenterConfig
+        from unittest.mock import patch
+        
+        config = ResearchCenterConfig(
+            api_key="gemini",
+            minimax_api_key="key",
+            enable_minimax_search=True,
+        )
+        service = MiniMaxSearchService(minimax=None)
+        service._config = config
+        
+        def mock_search_many(queries, api_key, raw_response_samples):
+            return [], ["Some error occurred"]
+            
+        service._search_many = mock_search_many
+        
+        with patch("research_center.minimax_search_service._get_api_key", return_value="key"):
+            with patch("research_center.minimax_search_service._build_mcp_startup_params", return_value=("python", [], {})):
+                with patch("shutil.which", return_value="python"):
+                    res = service.health_check(run_smoke=True)
+                    self.assertTrue(res["enabled"])
+                    self.assertTrue(res["configured"])
+                    self.assertTrue(res["mcp_command_exists"])
+                    self.assertEqual(res["status"], "failed")
+                    self.assertEqual(res["source_count"], 0)
+                    self.assertIn("mcp_unknown_error", res["error_reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
-
-

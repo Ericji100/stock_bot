@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
@@ -17,18 +18,35 @@ from chip_strategies import get_tw_today
 from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 
 from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot
+from .company_knowledge_update_service import attach_company_knowledge_autofill
+from .date_aware_context import attach_date_aware_context
+from .data_gap_service import attach_data_gap_summary
+from .data_inventory_service import attach_data_inventory
+from .evidence_pack_service import attach_unified_evidence_pack
 from .forum_service import fetch_forum_sources
 from .free_sources import build_free_macro_sources, build_free_research_sources
 from .knowledge_base import enrich_company_rows, theme_knowledge_summary
 from .macro_indicators import build_macro_indicators
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
 from .price_fallbacks import load_price_metrics_with_fallback
-from .recent_scans import find_recent_scan, save_recent_scan_result
+from .recent_scans import find_recent_scan, load_recent_scan_results, save_recent_scan_result
 from .value_validation import build_value_cross_validation
 from .rerating_snapshot_service import build_rerating_snapshot_for_stock
 from .models import CommandRequest
+from .news_context_service import attach_news_context
+from .news_event_service import attach_news_events
 from .source_rank import make_source_items
-from .structured_cache import load_research_structured_cache, save_research_structured_cache
+from .stock_feature_pack_service import attach_feature_pack
+from .structured_cache import load_latest_research_structured_cache, load_research_structured_cache, save_research_structured_cache
+from .topic_context import build_candidates_topic_context, build_stock_topic_context, build_theme_topic_context
+from .theme_report_context import load_recent_theme_report_context
+from .topic_legacy_references import build_legacy_theme_references
+from .topic_source_cache import load_topic_source_caches
+from .theme_radar_service import (
+    build_sector_strength_data,
+    build_theme_flow_data,
+    collect_theme_radar_data,
+)
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
@@ -40,12 +58,50 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
         data = collect_macro_data(request, progress=progress)
     elif request.command == "theme":
         data = collect_theme_data(request, progress=progress)
+    elif request.command == "theme_radar":
+        data = collect_theme_radar_data(
+            request.report_date,
+            lookback_days=request.lookback_days or 7,
+            source=request.source or "market",
+            progress=progress,
+        )
+    elif request.command == "theme_flow":
+        data = build_theme_flow_data(
+            request.theme_scope or request.target,
+            request.report_date,
+            lookback_days=request.lookback_days or 7,
+            progress=progress,
+        )
+    elif request.command == "sector_strength":
+        data = build_sector_strength_data(
+            request.report_date,
+            lookback_days=request.lookback_days or 7,
+            source=request.source or "market",
+            progress=progress,
+        )
     elif request.command == "value_scan":
         data = collect_value_scan_data(request, progress=progress)
+    elif request.command == "topic_maintain":
+        data = collect_topic_maintain_data(request, progress=progress)
     else:
         return {"message": "report lookup does not collect structured market data"}, []
 
+    attach_date_aware_context(request, data, progress=progress)
+    attach_news_context(request, data, progress=progress)
+    attach_news_events(request, data)
+    attach_company_knowledge_autofill(request, data, progress=progress)
+    attach_feature_pack(request, data)
+    attach_data_gap_summary(request, data)
+    attach_unified_evidence_pack(request, data)
+    attach_data_inventory(request, data)
+
     sources = _official_sources()
+    if request.command in {"theme_radar", "theme_flow", "sector_strength"}:
+        data["forum_data"] = {
+            "enabled": False,
+            "reason": "theme radar commands use local market data and local news database; forum search is skipped by default.",
+        }
+        return data, sources
     forum_query = _forum_query_for_request(request, data)
     if progress:
         progress(f"論壇來源搜尋開始：{forum_query}")
@@ -64,7 +120,470 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     return data, sources
 
 
+def collect_topic_maintain_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Collect structured data for /topic_maintain prompt injection.
+
+    Gathers:
+    - Stock universe summary
+    - Industry distribution
+    - Recent scan results
+    - Existing formal topic library (theme_profiles.json)
+    - Company-topic map
+    - Supply chain nodes
+    - Company knowledge summary (from knowledge_base)
+    - Recent AI candidate evidence if available
+    """
+    focus_theme = (request.target or request.theme_scope or "").strip()
+    if progress:
+        progress("題材知識庫維護：載入股票宇宙")
+    universe = load_stock_universe(False)
+
+    # Industry summary from universe
+    industry_count: dict[str, int] = {}
+    for entry in universe:
+        ind = str(entry.industry or "未知")
+        industry_count[ind] = industry_count.get(ind, 0) + 1
+
+    if progress:
+        progress("題材知識庫維護：讀取既有題材知識庫")
+    # Load existing formal library (reuses theme_profiles.json path)
+    existing_profiles: list[dict[str, Any]] = []
+    profiles_path = ROOT_DIR / "config" / "theme_profiles.json"
+    if profiles_path.exists():
+        try:
+            raw = json.loads(profiles_path.read_text(encoding="utf-8"))
+            existing_profiles = list(raw) if isinstance(raw, list) else []
+        except Exception:
+            pass
+
+    if progress:
+        progress("題材知識庫維護：讀取公司-題材對應")
+    company_topic_map: dict[str, Any] = {}
+    ctm_path = ROOT_DIR / "config" / "company_theme_map.json"
+    if ctm_path.exists():
+        try:
+            company_topic_map = json.loads(ctm_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    if progress:
+        progress("題材知識庫維護：讀取供應鏈節點")
+    supply_chain_nodes: list[dict[str, Any]] = []
+    sc_path = ROOT_DIR / "config" / "supply_chain_nodes.json"
+    if sc_path.exists():
+        try:
+            supply_chain_nodes = json.loads(sc_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    if progress:
+        progress("題材知識庫維護：讀取近期 /theme 題材研究紀錄")
+    recent_theme_reports = load_recent_theme_report_context(focus_theme, limit=5)
+
+    if progress:
+        progress("題材知識庫維護：讀取外部產業來源快取")
+    external_topic_source_caches = load_topic_source_caches()
+
+    # Recent scan detail - collect top 30 candidates per scan from cached data
+    if progress:
+        progress("題材知識庫維護：讀取近期掃描明細")
+    recent_scan_candidates: list[dict[str, Any]] = []
+    recent_scans: list[dict[str, Any]] = []
+    try:
+        scan_records = load_recent_scan_results(limit=5)  # Returns list
+        if scan_records:
+            for scan in scan_records[:5]:
+                codes = scan.get("codes", [])[:30]  # top 30 codes per scan
+                preview = []
+                code_to_name = {str(e.code): str(e.name) for e in universe}
+                code_to_industry = {str(e.code): str(e.industry or "") for e in universe}
+                for code in codes:
+                    preview.append({
+                        "code": code,
+                        "name": code_to_name.get(code, ""),
+                        "scan_id": scan.get("scan_id"),
+                        "scan_date": scan.get("scan_date"),
+                        "scan_type": scan.get("scan_type"),
+                        "industry": code_to_industry.get(code, ""),
+                        "score": None,
+                        "matched_strategies": [],
+                        "theme_keywords": [],
+                        "reason": None,
+                    })
+                recent_scan_candidates.append({
+                    "scan_id": scan.get("scan_id"),
+                    "scan_date": scan.get("scan_date"),
+                    "scan_type": scan.get("scan_type"),
+                    "candidate_count": len(codes),
+                    "candidates": preview,
+                })
+                recent_scans.append({
+                    "scan_id": scan.get("scan_id"),
+                    "scan_date": scan.get("scan_date"),
+                    "candidate_count": len(scan.get("candidates", scan.get("codes", []))),
+                })
+    except Exception:
+        pass
+
+    # Build legacy-style references from the formal topic library.
+    legacy_themes = build_legacy_theme_references(existing_profiles, supply_chain_nodes)
+
+    # Candidate companies for topic linking (top 50 by volume)
+    if progress:
+        progress("題材知識庫維護：整理候選公司清單")
+    price_metrics = load_price_metrics(universe)
+    candidates = []
+    for entry in universe:
+        code = str(entry.code)
+        if code in price_metrics:
+            pm = price_metrics[code]
+            vol = float(pm.get("avg_volume_20d") or 0)
+            candidates.append({
+                "code": code,
+                "name": str(entry.name),
+                "industry": str(entry.industry or ""),
+                "avg_volume_20d": vol,
+            })
+    candidates.sort(key=lambda x: x["avg_volume_20d"], reverse=True)
+    candidate_companies = candidates[:50]
+
+    # Build market signals from local caches only (no external API calls)
+    if progress:
+        progress("題材知識庫維護：整理市場訊號")
+    market_signals: dict[str, Any] = {
+        "high_volume_companies": [],
+        "industry_distribution": dict(sorted(industry_count.items(), key=lambda x: x[1], reverse=True)[:20]),
+        "recent_scan_top_industries": [],
+        "curated_scan_summary": [],
+        "revenue_growth_candidates": [],
+        "chip_hot_candidates": [],
+        "rerating_candidates": [],
+        "backfill_health": {"status": "unknown", "missing_reason": "backfill_health marker not found"},
+    }
+    # High volume companies from universe
+    try:
+        market_signals["high_volume_companies"] = [
+            {"code": c["code"], "name": c["name"], "industry": c["industry"], "avg_volume_20d": c["avg_volume_20d"]}
+            for c in candidates[:30]
+        ]
+    except Exception:
+        pass
+    # Recent scan top industries (aggregate industries from recent scan candidates)
+    try:
+        scan_industry_map: dict[str, int] = {}
+        for scan_detail in recent_scan_candidates:
+            for cand in scan_detail.get("candidates", []):
+                ind = cand.get("industry") or "未知"
+                scan_industry_map[ind] = scan_industry_map.get(ind, 0) + 1
+        market_signals["recent_scan_top_industries"] = [
+            {"industry": k, "count": v}
+            for k, v in sorted(scan_industry_map.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+    except Exception:
+        pass
+    # Try loading curated scan summary from structured cache
+    try:
+        curated_path = ROOT_DIR / ".cache" / "curated_scan_summary.json"
+        if curated_path.exists():
+            market_signals["curated_scan_summary"] = json.loads(curated_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    # Try loading revenue growth candidates
+    try:
+        rev_path = ROOT_DIR / ".cache" / "revenue_growth_candidates.json"
+        if rev_path.exists():
+            market_signals["revenue_growth_candidates"] = json.loads(rev_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    # Try loading chip hot candidates
+    try:
+        chip_path = ROOT_DIR / ".cache" / "chip_hot_candidates.json"
+        if chip_path.exists():
+            market_signals["chip_hot_candidates"] = json.loads(chip_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    # Try loading rerating candidates
+    try:
+        rerating_path = ROOT_DIR / ".cache" / "rerating_candidates.json"
+        if rerating_path.exists():
+            market_signals["rerating_candidates"] = json.loads(rerating_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    # Check backfill health
+    try:
+        backfill_marker = ROOT_DIR / ".cache" / "backfill_healthy.marker"
+        if backfill_marker.exists():
+            market_signals["backfill_health"] = {"status": "healthy"}
+        else:
+            market_signals["backfill_health"] = {"status": "unknown", "missing_reason": "backfill_healthy.marker not found"}
+    except Exception:
+        pass
+
+    if progress:
+        progress("題材知識庫維護：結構化資料收集完成")
+
+    maintenance_mode = _topic_maintain_mode(request, focus_theme, existing_profiles)
+    topic_gaps = _topic_library_gap_analysis(existing_profiles, company_topic_map, supply_chain_nodes)
+    discovery_plan = _topic_candidate_discovery_plan(
+        focus_theme,
+        maintenance_mode,
+        existing_profiles,
+        recent_scan_candidates,
+        market_signals,
+        topic_gaps,
+    )
+
+    return {
+        "topic_maintain_mode_hint": "initial" if not existing_profiles else "update",
+        "maintenance_mode": maintenance_mode,
+        "focus_theme": focus_theme,
+        "focus_policy": {
+            "enabled": bool(focus_theme),
+            "instruction": "若 focus_theme 不為空，優先補該題材代表公司、產品、客戶、營收曝險、供應鏈角色與證據。",
+        },
+        "topic_library_gap_analysis": topic_gaps,
+        "candidate_discovery_plan": discovery_plan,
+        "source_policy": _topic_source_policy(),
+        "ai_candidate_policy": {
+            "ai_knowledge_allowed": True,
+            "rule": "AI 可提出題材、候選股、供應鏈推論，但沒有可追溯 evidence/source_url/source_level 的項目只能標 candidate 或 missing；只有 verified/inferred 會在 /topic_confirm 自動寫入正式題材庫。",
+            "apply_statuses": ["verified", "inferred"],
+            "non_apply_statuses": ["candidate", "missing"],
+        },
+        "stock_universe_summary": {
+            "total_stocks": len(universe),
+            "industry_count": len(industry_count),
+            "top_industries": sorted(industry_count.items(), key=lambda x: x[1], reverse=True)[:10],
+        },
+        "industry_summary": dict(sorted(industry_count.items(), key=lambda x: x[1], reverse=True)[:20]),
+        "existing_topic_profiles": existing_profiles,
+        "company_topic_map": company_topic_map,
+        "supply_chain_nodes": supply_chain_nodes,
+        "external_topic_source_caches": external_topic_source_caches,
+        "recent_theme_reports": recent_theme_reports,
+        "recent_scans": recent_scans,
+        "recent_scan_candidates": recent_scan_candidates,
+        "market_signals": market_signals,
+        "legacy_theme_references": legacy_themes,
+        "candidate_companies": candidate_companies,
+        "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
+        "notes": [
+            "topic_maintain 先用本地快取與既有設定檔建立候選題材、候選股、缺口與搜尋計畫，再交由 discovery/WebFetch 取得最新公開來源。",
+            "正式寫入規則：verified 與 inferred 可套用；candidate 不寫入正式題材庫；missing 只記錄缺口。",
+        ],
+    }
+
+
+def _topic_maintain_mode(request: CommandRequest, focus_theme: str, existing_profiles: list[dict[str, Any]]) -> str:
+    raw = str(request.raw_text or "")
+    if "--bootstrap" in raw:
+        return "bootstrap_backfill"
+    if focus_theme.startswith("__from_radar__:"):
+        return "from_theme_radar"
+    if focus_theme:
+        return "focused_theme"
+    return "daily_discovery" if existing_profiles else "initial_seed"
+
+
+def _topic_library_gap_analysis(
+    profiles: list[dict[str, Any]],
+    company_map: dict[str, Any],
+    nodes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    company_gaps: list[dict[str, Any]] = []
+    for code, value in company_map.items():
+        if not isinstance(value, dict):
+            company_gaps.append({"company_code": code, "missing": ["structured relation object"], "priority": "high"})
+            continue
+        missing = [
+            field for field in ("role", "relation_type", "products", "customers", "revenue_exposure", "benefit_logic", "evidence")
+            if not value.get(field)
+        ]
+        if missing:
+            company_gaps.append({
+                "company_code": code,
+                "company_name": value.get("company_name", ""),
+                "themes": value.get("themes", []),
+                "missing": missing,
+                "priority": "high" if "evidence" in missing or "products" in missing else "medium",
+            })
+
+    node_gaps: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        missing = [
+            field for field in ("layer", "role", "product_keywords", "customers", "revenue_exposure", "benefit_logic", "evidence")
+            if not node.get(field)
+        ]
+        if missing:
+            node_gaps.append({
+                "node_id": node.get("node_id"),
+                "theme_id": node.get("theme_id"),
+                "company_code": node.get("company_code"),
+                "company_name": node.get("company_name"),
+                "missing": missing,
+                "priority": "high" if "evidence" in missing else "medium",
+            })
+
+    profile_gaps = []
+    for profile in profiles:
+        missing = [field for field in ("keywords", "industries", "risk_notes", "missing_data") if not profile.get(field)]
+        if missing:
+            profile_gaps.append({"theme_id": profile.get("theme_id"), "theme_name": profile.get("theme_name"), "missing": missing})
+
+    return {
+        "profile_gap_count": len(profile_gaps),
+        "company_gap_count": len(company_gaps),
+        "supply_chain_node_gap_count": len(node_gaps),
+        "priority_company_gaps": company_gaps[:40],
+        "priority_supply_chain_node_gaps": node_gaps[:40],
+        "profile_gaps": profile_gaps[:40],
+        "recommended_mode": "bootstrap_backfill" if company_gaps or node_gaps or profile_gaps else "daily_discovery",
+    }
+
+
+def _topic_candidate_discovery_plan(
+    focus_theme: str,
+    maintenance_mode: str,
+    profiles: list[dict[str, Any]],
+    recent_scan_candidates: list[dict[str, Any]],
+    market_signals: dict[str, Any],
+    gaps: dict[str, Any],
+) -> dict[str, Any]:
+    candidate_themes: list[dict[str, Any]] = []
+    if focus_theme and not focus_theme.startswith("__from_radar__:"):
+        candidate_themes.append({"theme": focus_theme, "source": "user_focus", "priority": "high"})
+    if focus_theme.startswith("__from_radar__:"):
+        candidate_themes.append({"theme": focus_theme.replace("__from_radar__:", "", 1), "source": "theme_radar", "priority": "high"})
+    for profile in profiles[:30]:
+        missing = [field for field in ("keywords", "industries", "risk_notes", "missing_data") if not profile.get(field)]
+        if missing:
+            candidate_themes.append({
+                "theme": profile.get("theme_name") or profile.get("theme_id"),
+                "theme_id": profile.get("theme_id"),
+                "source": "topic_library_gap",
+                "priority": "medium",
+                "missing": missing,
+            })
+    for item in market_signals.get("recent_scan_top_industries", [])[:10]:
+        candidate_themes.append({"theme": item.get("industry"), "source": "recent_scan_top_industries", "priority": "medium", "count": item.get("count")})
+
+    candidate_stocks: list[dict[str, Any]] = []
+    for scan in recent_scan_candidates[:5]:
+        for item in scan.get("candidates", [])[:12]:
+            candidate_stocks.append({
+                "code": item.get("code"),
+                "name": item.get("name"),
+                "industry": item.get("industry"),
+                "source": "recent_scan_candidate",
+                "scan_type": scan.get("scan_type"),
+                "scan_date": scan.get("scan_date"),
+            })
+    for item in market_signals.get("high_volume_companies", [])[:20]:
+        candidate_stocks.append({**item, "source": "high_volume_company"})
+
+    query_plan = _topic_search_query_plan(candidate_themes[:20], candidate_stocks[:40], gaps, maintenance_mode)
+    return {
+        "maintenance_mode": maintenance_mode,
+        "candidate_themes": candidate_themes[:40],
+        "candidate_stocks": candidate_stocks[:80],
+        "evidence_targets": [
+            "products",
+            "customers",
+            "revenue_exposure",
+            "benefit_logic",
+            "supply_chain_role",
+            "counter_evidence",
+        ],
+        "search_query_plan": query_plan,
+    }
+
+
+def _topic_search_query_plan(
+    themes: list[dict[str, Any]],
+    stocks: list[dict[str, Any]],
+    gaps: dict[str, Any],
+    maintenance_mode: str,
+) -> list[dict[str, Any]]:
+    queries: list[dict[str, Any]] = []
+    for theme in themes[:12]:
+        name = str(theme.get("theme") or "").strip()
+        if not name:
+            continue
+        queries.extend([
+            {"type": "theme_representative_stocks", "query": f"台股 {name} 代表股 供應鏈 受惠 公司"},
+            {"type": "theme_products_customers", "query": f"{name} 台股 產品 客戶 營收占比 法說會"},
+            {"type": "theme_counter_evidence", "query": f"{name} 台股 風險 庫存 砍單 毛利 財報"},
+            {"type": "topic_supply_chain_layers", "query": f"{name} 上游 中游 下游 關鍵零組件 供應鏈層級"},
+            {"type": "theme_catalysts", "query": f"{name} 訂單 政策 國際大廠 資本支出 近期新聞"},
+            {"type": "theme_alternative_risks", "query": f"{name} 替代技術 競爭者 題材退燒 營收連結不足"},
+        ])
+    for stock in stocks[:20]:
+        code = str(stock.get("code") or "")
+        name = str(stock.get("name") or "")
+        label = " ".join(part for part in (code, name) if part).strip()
+        if not label:
+            continue
+        queries.extend([
+            {"type": "company_product_evidence", "query": f"{label} 產品 客戶 法說會 營收占比"},
+            {"type": "company_theme_evidence", "query": f"{label} 題材 受惠 供應鏈 AI 伺服器 電源 記憶體"},
+            {"type": "company_official_evidence", "query": f"{label} 公開資訊觀測站 月營收 年報 法說會 投資人關係"},
+            {"type": "company_counter_evidence", "query": f"{label} 風險 庫存 毛利率 下滑 砍單 客戶集中"},
+        ])
+    for gap in gaps.get("priority_company_gaps", [])[:12]:
+        label = " ".join(part for part in (str(gap.get("company_code") or ""), str(gap.get("company_name") or "")) if part).strip()
+        if label:
+            queries.append({"type": "backfill_company_gap", "query": f"{label} {' '.join(gap.get('themes') or [])} {' '.join(gap.get('missing') or [])}"})
+            queries.append({"type": "backfill_official_gap", "query": f"{label} {' '.join(gap.get('missing') or [])} 官方 法說會 年報 月營收"})
+    return [{"mode": maintenance_mode, **item} for item in queries[:80]]
+
+
+def _topic_source_policy() -> dict[str, Any]:
+    return {
+        "L1_official": ["MOPS/公開資訊觀測站", "年報", "法說會", "公司新聞稿", "月營收公告", "財報"],
+        "L2_media": ["可信財經媒體", "券商報告摘要", "交易所/產業新聞轉載"],
+        "L3_community": ["社群討論", "論壇", "未具名市場傳聞"],
+        "rules": [
+            "products/customers/revenue_exposure 若有 L1 證據可標 verified。",
+            "benefit_logic、供應鏈延伸若有 L1/L2 來源或多項證據可標 inferred。",
+            "只有 AI 記憶、社群、關鍵字命中或產業分類命中時只能標 candidate。",
+            "找不到資料時標 missing，寫入 missing_data，不要補成事實。",
+        ],
+    }
+
+
 def collect_research_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    try:
+        return _collect_research_data_live(request, progress=progress)
+    except Exception as exc:
+        target = request.target or ""
+        resolved = resolve_stock_reference(target)
+        code = resolved.code if resolved else str(target).upper().split(".", 1)[0]
+        cache_date = request.report_date or datetime.now().date()
+        fallback = load_latest_research_structured_cache(code, before_or_on=cache_date)
+        if fallback is None:
+            raise
+        cached_data, fallback_date = fallback
+        data = deepcopy(cached_data)
+        notes = list(data.get("notes") or [])
+        notes.append(
+            f"即時投研結構化資料收集失敗，改用 {fallback_date.isoformat()} 最近快取；"
+            f"原始錯誤：{type(exc).__name__}: {exc}"
+        )
+        data["notes"] = notes
+        data["structured_cache_fallback"] = {
+            "enabled": True,
+            "fallback_date": fallback_date.isoformat(),
+            "target_date": cache_date.isoformat(),
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+        if progress:
+            progress(f"個股研究：即時資料失敗，改用最近投研結構化快取 {code} {fallback_date.isoformat()}")
+        return data
+
+
+def _collect_research_data_live(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     target = request.target or ""
     if progress:
         progress(f"個股研究：解析股票代號/名稱 {target}")
@@ -78,6 +597,7 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
     if cached is not None:
         if progress:
             progress(f"個股研究：使用投研結構化快取 {code} {cache_date.isoformat()}")
+        _ensure_research_rerating_snapshot(cached, request, code, progress=progress)
         return cached
 
     with StockDataFetcher() as fetcher:
@@ -150,12 +670,13 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
     }
 
     # /research --deep 或 --score 時寫入價值重估底稿
-    if request.mode in ("deep", "score"):
-        if progress:
-            progress(f"個股研究（{request.mode}）：建立價值重估底稿")
-        result["local_rerating_snapshot"] = build_rerating_snapshot_for_stock(
-            meta.code, report_date, progress=progress
-        )
+    _ensure_research_rerating_snapshot(result, request, meta.code, progress=progress)
+
+    # Inject topic context as background reference
+    try:
+        result["topic_context"] = build_stock_topic_context(meta.code, meta.name)
+    except Exception as exc:
+        result["topic_context_error"] = str(exc)
 
     try:
         save_research_structured_cache(meta.code, cache_date, result)
@@ -163,6 +684,32 @@ def collect_research_data(request: CommandRequest, progress: Callable[[str], Non
         pass
 
     return result
+
+
+def _ensure_research_rerating_snapshot(
+    data: dict[str, Any],
+    request: CommandRequest,
+    stock_code: str,
+    progress: Callable[[str], None] | None = None,
+) -> None:
+    """Ensure deep/score research always carries the shared rerating draft."""
+    if request.mode not in ("deep", "score"):
+        return
+    if data.get("local_rerating_snapshot"):
+        return
+    if progress:
+        progress(f"個股研究（{request.mode}）：建立價值重估底稿")
+    try:
+        data["local_rerating_snapshot"] = build_rerating_snapshot_for_stock(
+            stock_code,
+            request.report_date,
+            progress=progress,
+        )
+    except Exception as exc:
+        notes = list(data.get("notes") or [])
+        notes.append(f"價值重估底稿建立失敗，AI 需保守解讀：{type(exc).__name__}: {exc}")
+        data["notes"] = notes
+        data["local_rerating_snapshot_error"] = f"{type(exc).__name__}: {exc}"
 
 
 def collect_macro_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
@@ -226,7 +773,7 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
     if progress:
         progress(f"題材研究：命中整理完成，候選 {len(matched)} 檔，補公司知識庫")
     matched = enrich_company_rows(matched)
-    return {
+    result = {
         "theme": theme,
         "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
         "supply_chain_profile": profile,
@@ -235,6 +782,44 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
         "matched_companies": matched,  # alias for backward compatibility with prompt/discovery
         "notes": ["Theme 第三版加入 config/company_knowledge.json 公司產品、客戶、營收占比與供應鏈角色資料庫；未覆蓋公司會標示待驗證。"],
     }
+    try:
+        result["topic_context"] = build_theme_topic_context(theme)
+    except Exception as exc:
+        result["topic_context_error"] = str(exc)
+    result["theme_quality_context"] = _build_theme_quality_context(result)
+    return result
+
+
+def _build_theme_quality_context(data: dict[str, Any]) -> dict[str, Any]:
+    matched = data.get("matched_companies") or data.get("matched_universe") or []
+    summary = data.get("company_knowledge_summary") or {}
+    topic_context = data.get("topic_context") if isinstance(data.get("topic_context"), dict) else {}
+    related_nodes = topic_context.get("related_supply_chain_nodes") or []
+    matched_topics = topic_context.get("matched_topics") or []
+
+    matched_count = len(matched) if isinstance(matched, list) else 0
+    knowledge_total = int(summary.get("total_companies") or matched_count or 0)
+    knowledge_covered = int(summary.get("covered_companies") or 0)
+    node_company_codes = {
+        str(node.get("company_code") or "").strip()
+        for node in related_nodes
+        if isinstance(node, dict) and str(node.get("company_code") or "").strip()
+    }
+    effective_total = max(knowledge_total, matched_count, len(node_company_codes))
+    effective_covered = max(knowledge_covered, len(node_company_codes))
+    coverage_pct = round((effective_covered / effective_total) * 100, 1) if effective_total else 0
+    return {
+        "matched_company_count": matched_count,
+        "knowledge_total_companies": knowledge_total,
+        "knowledge_covered_companies": knowledge_covered,
+        "topic_matched_count": len(matched_topics) if isinstance(matched_topics, list) else 0,
+        "related_supply_chain_node_count": len(related_nodes) if isinstance(related_nodes, list) else 0,
+        "related_supply_chain_company_count": len(node_company_codes),
+        "effective_total_companies": effective_total,
+        "effective_covered_companies": effective_covered,
+        "coverage_pct": coverage_pct,
+        "coverage_source": "topic_context" if len(node_company_codes) > knowledge_covered else "company_knowledge_summary",
+    }
 
 def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     # 單檔模式（/value_scan 6217）
@@ -242,7 +827,7 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
         if progress:
             progress(f"價值重估：單檔模式 {request.target}")
         snapshot = build_rerating_snapshot_for_stock(request.target, request.report_date, progress=progress)
-        return {
+        result = {
             "candidate_pool": request.target,
             "candidate_source_policy": {"source": "單一股票", "status": "single_stock"},
             "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
@@ -273,6 +858,13 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
             "verification_policy": "單一股票價值重估模式",
             "notes": ["單檔模式直接使用價值重估底稿服務，不走候選池掃描。"],
         }
+        try:
+            result["topic_context"] = build_stock_topic_context(
+                str(snapshot.get("stock_id", "")), str(snapshot.get("stock_name", ""))
+            )
+        except Exception as exc:
+            result["topic_context_error"] = str(exc)
+        return result
 
     if progress:
         progress("價值重估：載入候選股票池")
@@ -359,7 +951,13 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
         events = row.get("source_events") or []
         row["cross_validation"] = build_value_cross_validation(row, events)
         row["verification_score"] = row["cross_validation"]["verification_score"]
-    rows.sort(key=lambda row: (row["rerating_score"], row["verification_score"]), reverse=True)
+        row["early_signal_priority"] = _value_scan_early_signal_priority(row, universe_policy)
+    if _value_scan_should_preserve_early_candidates(universe_policy):
+        rows.sort(key=lambda row: (row["early_signal_priority"], row["rerating_score"], row["verification_score"]), reverse=True)
+        sort_policy = "early_signal_priority_then_rerating_for_curated_or_recent_pool"
+    else:
+        rows.sort(key=lambda row: (row["rerating_score"], row["verification_score"]), reverse=True)
+        sort_policy = "rerating_score_then_verification_score"
     if progress:
         progress(f"價值重估：交叉驗證完成，準備輸出 AI 候選股 {min(ai_candidate_limit, len(rows))} 檔")
 
@@ -377,7 +975,7 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
     # 建立 AI 候選股完整證據包（每檔固定欄位，避免 JSON 截斷导致資料漏送）
     ai_candidate_evidence_pack = _build_ai_candidate_evidence_pack(ai_candidates if ai_candidates else rows[:evidence_scope])
 
-    return {
+    result = {
         "candidate_pool": request.candidate_pool or "精選選股",
         "candidate_source_policy": universe_policy,
         "price_data_policy": price_policy,
@@ -385,9 +983,19 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
         "top_n": request.top or ai_candidate_limit or 10,
         "total_candidate_count": len(rows),
         "ai_candidate_limit": ai_candidate_limit,
+        "value_scan_sort_policy": sort_policy,
         "ai_candidates": ai_candidates,
         "ai_candidate_evidence_pack": ai_candidate_evidence_pack,
-        "local_ranking": [{"code": r["code"], "name": r["name"], "rerating_score": r["rerating_score"]} for r in rows],
+        "local_ranking": [
+            {
+                "code": r["code"],
+                "name": r["name"],
+                "rerating_score": r["rerating_score"],
+                "verification_score": r.get("verification_score"),
+                "early_signal_priority": r.get("early_signal_priority", 0),
+            }
+            for r in rows
+        ],
         "local_ranking_truncated": len(rows) > ai_candidate_limit if ai_candidate_limit else False,
         "candidates": rows[: min(request.top or 10, 10)],
         "source_events": source_events,
@@ -398,6 +1006,14 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
             "法人報告摘要仍需使用者提供合法來源或付費資料源，系統目前只保留 broker_report_reference 事件型別。",
         ],
     }
+
+    # Inject topic context for candidate pool
+    try:
+        result["topic_context"] = build_candidates_topic_context(ai_candidates)
+    except Exception as exc:
+        result["topic_context_error"] = str(exc)
+
+    return result
 
 def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None] | None = None) -> tuple[list[Any], dict[str, Any]]:
     all_universe = load_stock_universe(False)
@@ -463,6 +1079,34 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
         missing = [code for code in codes if code not in by_code]
         return selected, {"source": "我的持股", "status": "covered", "candidate_count": len(selected), "requested_codes": codes, "missing_codes": missing}
 
+    if pool in {"監控清單", "monitor", "監控"}:
+        codes = _load_monitor_codes()
+        selected = [by_code[code] for code in codes if code in by_code]
+        missing = [code for code in codes if code not in by_code]
+        return selected, {"source": "監控清單", "status": "covered", "candidate_count": len(selected), "requested_codes": codes, "missing_codes": missing}
+
+    if pool in {"選股雷達", "雷達選股", "radar"}:
+        try:
+            from radar_service import load_radar_result
+            radar_result = load_radar_result(request.report_date)
+        except Exception as exc:
+            return [], {"source": "選股雷達", "status": "failed", "candidate_count": 0, "error": str(exc), "note": "讀取 Radar 快取失敗，請先執行 /radar。"}
+        if not radar_result or not radar_result.candidates:
+            return [], {"source": "選股雷達", "status": "missing", "candidate_count": 0, "note": "目前尚未找到已保存的 Radar 結果，請先執行 /radar。"}
+        codes = [str(item.code) for item in radar_result.candidates if str(item.code or "").strip()]
+        selected = [by_code[code] for code in codes if code in by_code]
+        missing = [code for code in codes if code not in by_code]
+        return selected, {
+            "source": "選股雷達",
+            "status": "covered",
+            "candidate_count": len(selected),
+            "report_date": radar_result.report_date.isoformat(),
+            "radar_source": radar_result.request.source,
+            "requested_codes": codes,
+            "missing_codes": missing,
+            "note": "使用最近一次或指定日期的 /radar 快取候選名單，不重新執行 Radar。",
+        }
+
     if pool.startswith("自訂:") or "," in pool:
         raw = pool.replace("自訂:", "")
         codes = [part.strip().split()[0] for part in raw.replace("，", ",").split(",") if part.strip()]
@@ -485,7 +1129,79 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
         selected = [by_code[code] for code in codes if code in by_code]
         return selected, {"source": "最近掃描結果", "status": "covered", "candidate_count": len(selected), "scan_id": record.get("scan_id"), "scan_type": record.get("scan_type"), "requested_codes": codes}
 
+    resolved = resolve_stock_reference(pool)
+    if resolved:
+        selected = [by_code[resolved.code]] if resolved.code in by_code else []
+        return selected, {
+            "source": "單一股票",
+            "status": "covered" if selected else "missing",
+            "candidate_count": len(selected),
+            "requested_codes": [resolved.code],
+            "missing_codes": [] if selected else [resolved.code],
+            "note": "依股票代號或名稱解析為單一股票後進行價值重估。",
+        }
+
     return all_universe, {"source": pool, "status": "fallback_all_universe", "note": "未知候選池，暫以全市場初篩處理。"}
+
+
+def _load_monitor_codes() -> list[str]:
+    path = Path(__file__).resolve().parents[1] / "config.json"
+    try:
+        config = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return []
+    codes: list[str] = []
+    seen: set[str] = set()
+    for item in config.get("monitor_stocks", []) or []:
+        raw = item.get("symbol") if isinstance(item, dict) else item
+        code = str(raw or "").strip().split(".", 1)[0]
+        if len(code) == 4 and code.isdigit() and code not in seen:
+            seen.add(code)
+            codes.append(code)
+    return codes
+
+
+def _value_scan_should_preserve_early_candidates(universe_policy: dict[str, Any]) -> bool:
+    source = str(universe_policy.get("source") or "")
+    scan_type = str(universe_policy.get("scan_type") or "")
+    return any(token in source for token in ("精選選股", "最近掃描", "選股雷達", "雷達")) or any(
+        token in scan_type for token in ("精選", "curated", "Radar", "雷達")
+    )
+
+
+def _value_scan_early_signal_priority(row: dict[str, Any], universe_policy: dict[str, Any]) -> float:
+    if not _value_scan_should_preserve_early_candidates(universe_policy):
+        return 0.0
+    score = 0.0
+    components = row.get("score_components") or {}
+    yoy = row.get("revenue_yoy")
+    volume = row.get("avg_volume_20d")
+
+    if isinstance(yoy, (int, float)):
+        if yoy >= 30:
+            score += 30
+        elif yoy >= 10:
+            score += 22
+        elif yoy > 0:
+            score += 14
+    if isinstance(volume, (int, float)):
+        if 300 <= volume <= 8000:
+            score += 20
+        elif volume > 0:
+            score += 10
+    if float(components.get("theme_label_shift") or 0) > 0:
+        score += 20
+    if row.get("new_market_label") and row.get("new_market_label") != row.get("old_market_label"):
+        score += 10
+    if row.get("price") is not None:
+        score += 5
+
+    evidence_text = " ".join(str(item) for item in (row.get("rerating_evidence") or []))
+    if any(token in evidence_text for token in ("營收", "價量", "重估", "新市場")):
+        score += 10
+    return round(max(0.0, min(100.0, score)), 2)
+
+
 def _attach_value_scan_evidence(rows: list[dict[str, Any]], report_date: date | None, progress: Callable[[str], None] | None = None) -> None:
     total = len(rows)
     with StockDataFetcher() as fetcher:
@@ -547,7 +1263,8 @@ def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[
             missing.append("mops_documents")
         if not row.get("source_events"):
             missing.append("source_events")
-        if not row.get("company_knowledge"):
+        company_knowledge = row.get("company_knowledge") or {}
+        if not company_knowledge or company_knowledge.get("status") == "missing":
             missing.append("company_knowledge")
 
         # 籌碼摘要（取最重要欄位，避免完整晶片資料過大）
@@ -590,6 +1307,7 @@ def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[
             # 分數
             "rerating_score": rerating_s,
             "verification_score": verification_s,
+            "early_signal_priority": row.get("early_signal_priority", 0),
             "local_rerating_composite_score": composite,
             "tdcc_score": tdcc_score,
             "valuation_score": valuation_score,
@@ -749,17 +1467,47 @@ def _market_score(context: dict[str, Any]) -> dict[str, Any]:
 
 
 def _theme_profile(theme: str) -> dict[str, Any]:
-    path = ROOT_DIR / "config" / "theme_supply_chain.json"
+    # Build the old profile shape from the formal topic library.
+    new_path = ROOT_DIR / "config" / "theme_profiles.json"
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if new_path.exists():
+            profiles = json.loads(new_path.read_text(encoding="utf-8"))
+            for p in profiles:
+                if p.get("theme_name") == theme or p.get("theme_id") == theme:
+                    return {
+                        "keywords": p.get("keywords", [theme]),
+                        "industries": p.get("industries", []),
+                        "supply_chain": [p.get("supply_chain_role", "")],
+                        "rerating_labels": ["已分類", theme],
+                    }
+            for p in profiles:
+                name = str(p.get("theme_name") or "")
+                theme_id = str(p.get("theme_id") or "")
+                if (name and (name in theme or theme in name)) or (theme_id and (theme_id in theme or theme in theme_id)):
+                    return {
+                        "keywords": p.get("keywords", [theme]),
+                        "industries": p.get("industries", []),
+                        "supply_chain": [p.get("supply_chain_role", "")],
+                        "rerating_labels": ["已分類", theme],
+                    }
     except Exception:
-        data = {}
-    if theme in data:
-        return data[theme]
-    for key, profile in data.items():
-        if key in theme or theme in key:
-            return profile
+        pass
+
     return {"keywords": [theme], "industries": [], "supply_chain": [], "rerating_labels": ["未分類", theme]}
+
+
+def load_company_theme_map_data() -> list[dict[str, Any]]:
+    """Load company-theme mappings from config/company_theme_map.json."""
+    path = ROOT_DIR / "config" / "company_theme_map.json"
+    try:
+        if path.exists():
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return [{"company_code": code, **mapping} for code, mapping in raw.items()]
+    except Exception:
+        pass
+    return []
 
 
 def _theme_match_reason(industry: str, keyword_hit: bool, industry_hit: bool) -> str:
@@ -834,21 +1582,3 @@ def _value_scan_rules() -> dict[str, Any]:
         },
         "risk_control": "若缺少產品、客戶、公告、法人報告或財報細項證據，AI 報告不得只因分數高就給強結論。",
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

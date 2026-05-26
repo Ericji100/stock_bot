@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T00:50:54",
+  "generated_at": "2026-05-26T08:00:39",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -5114,6 +5114,13 @@
       "market": "TPEX",
       "name": "大井泵浦",
       "industry": "電機機械"
+    },
+    {
+      "code": "6983",
+      "symbol": "6983.TWO",
+      "market": "TPEX",
+      "name": "華洋精機",
+      "industry": "其他電子業"
     },
     {
       "code": "6996",
@@ -11036,6 +11043,13 @@
       "market": "TWSE",
       "name": "光隆精密-KY",
       "industry": "汽車工業"
+    },
+    {
+      "code": "4582",
+      "symbol": "4582.TW",
+      "market": "TWSE",
+      "name": "聚恆-創",
+      "industry": "綠能環保"
     },
     {
       "code": "4583",

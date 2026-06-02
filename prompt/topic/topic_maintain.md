@@ -320,3 +320,8 @@ AI 模型記憶只能用來產生候選方向。若要寫成 `verified` 或 `inf
 candidate 公司只會成為觀察線索池，供 `/theme_radar`、`/research`、`/value_scan` 參考；不得作為正式代表股。candidate `supply_chain_nodes` 仍不可套用成正式節點。
 
 ---
+## 搜尋詞與市場族群規則
+- `candidate_discovery_plan.search_query_plan` 已由系統依近期候選股、官方產業、子族群關聯表與題材缺口動態產生；請優先使用這些 query 的 WebFetch 結果，不要只用固定 AI/半導體記憶補資料。
+- AI 可以提出自身知識中的候選題材與候選股，但每個 products、customers、revenue_exposure、benefit_logic、supply_chain_role 都必須標 `verified` 或 `inferred` 才能匯入；只有模型記憶、產業分類、股價強勢、社群傳聞時請標 `candidate`。
+- 若搜尋結果指向傳產、金融、汽車、電器電纜、被動元件、航運、鋼鐵、塑化等非 AI 題材，必須照證據補進題材庫，不可把它們硬歸到 AI/半導體。
+- 子族群別名需合併：電線電纜/電纜線材/電力線纜合併為電器電纜子族群；汽車材料/汽車零組件/車用電子歸入汽車工業關聯；被動元件/MLCC/電容/電阻/電感歸入電子零組件的被動元件子族群。

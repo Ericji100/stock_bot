@@ -5,6 +5,15 @@ import json
 import re
 from typing import Any
 
+from .report_display_normalizer import (
+    display_field_label,
+    display_provider,
+    display_provider_detail,
+    display_source_level,
+    display_value,
+    normalize_report_text,
+)
+
 
 def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: str = "") -> str:
     title = html.escape(str(report_json.get("report_title") or "AI 投研報告"))
@@ -95,7 +104,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     quality_html = _quality_html(report_json)
     sources_html = _sources_html(report_json)
     local_scoring_html = _local_scoring_html(report_json)
-    metadata_html = f"<pre>{html.escape(json.dumps(_metadata_summary(report_json), ensure_ascii=False, indent=2, default=str))}</pre>"
+    metadata_html = _metadata_html(report_json)
     qa_html = _markdown_to_html(sections.get("qa") or _qa_markdown(report_json))
     return f"""
 <div class="report-shell">
@@ -112,7 +121,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     <label class="tab-label" for="tab-quality">資料品質</label>
     <label class="tab-label" for="tab-sources">完整來源</label>
     <label class="tab-label" for="tab-local-scoring">本地底稿</label>
-    <label class="tab-label" for="tab-metadata">Metadata</label>
+    <label class="tab-label" for="tab-metadata">技術附錄</label>
     <label class="tab-label" for="tab-qa">QA</label>
   </nav>
   <div class="panels">
@@ -215,6 +224,7 @@ def _markdown_table_to_html(lines: list[str]) -> str:
     else:
         headers = [f"欄位 {index + 1}" for index in range(max(len(row) for row in rows))]
         body = rows
+    headers = [normalize_report_text(cell) for cell in headers]
     thead = "<thead><tr>" + "".join(f"<th>{html.escape(cell)}</th>" for cell in headers) + "</tr></thead>"
     body_rows = []
     for row in body:
@@ -223,7 +233,7 @@ def _markdown_table_to_html(lines: list[str]) -> str:
         for index, cell in enumerate(padded[: len(headers)]):
             label = html.escape(headers[index])
             cls = ' class="num"' if _looks_numeric(cell) else ""
-            cells.append(f'<td data-label="{label}"{cls}>{_inline_markup(cell)}</td>')
+            cells.append(f'<td data-label="{label}"{cls}>{_inline_markup(normalize_report_text(cell))}</td>')
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
     return '<div class="table-wrap"><table class="responsive-table">' + thead + "<tbody>" + "".join(body_rows) + "</tbody></table></div>"
 
@@ -319,12 +329,16 @@ def _quality_html(report_json: dict[str, Any]) -> str:
     if rows:
         table = ["| 欄位 | 狀態 | 數量 |", "|---|---|---|"]
         for row in rows:
-            table.append(f"| {row.get('field')} | {'有資料' if row.get('available') else '缺資料'} | {row.get('count', 0)} |")
+            field = display_field_label(str(row.get("field") or ""))
+            table.append(f"| {field} | {'有資料' if row.get('available') else '缺資料'} | {row.get('count', 0)} |")
         parts.append(_markdown_table_to_html(table))
     policy = quality.get("missing_data_policy") or {}
     if policy:
-        parts.append("<h3>Missing Data Policy</h3><ul>")
-        parts.extend(f"<li><strong>{html.escape(str(key))}</strong>：{html.escape(str(value))}</li>" for key, value in policy.items())
+        parts.append("<h3>缺資料解讀規則</h3><ul>")
+        parts.extend(
+            f"<li><strong>{html.escape(display_field_label(str(key)))}</strong>：{html.escape(display_value(value))}</li>"
+            for key, value in policy.items()
+        )
         parts.append("</ul>")
     return "\n".join(parts)
 
@@ -343,14 +357,23 @@ def _sources_html(report_json: dict[str, Any]) -> str:
         q = quality_items.get(str(item.get("source_id"))) or {}
         title = html.escape(str(item.get("title") or item.get("url") or ""))
         url = html.escape(str(item.get("url") or ""))
-        level = html.escape(str(item.get("source_level") or ""))
-        provider = html.escape(str(item.get("provider") or item.get("fetch_provider") or "unknown"))
-        provider_detail = html.escape(str(item.get("provider_detail") or ""))
+        level = html.escape(display_source_level(str(item.get("source_level") or "")))
+        provider = html.escape(display_provider(str(item.get("provider") or item.get("fetch_provider") or "unknown")))
+        provider_detail = html.escape(display_provider_detail(str(item.get("provider_detail") or "")))
         date = html.escape(str(item.get("published_date") or ""))
         score = html.escape(str(q.get("source_quality_score") or ""))
-        snippet = html.escape(str(item.get("snippet") or ""))
+        quality_level = html.escape(display_value(q.get("source_quality_level") or ""))
+        snippet = html.escape(normalize_report_text(str(item.get("snippet") or "")))
         link = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>' if url.startswith(("http://", "https://")) else url
-        meta = " / ".join(part for part in [level, provider, provider_detail, date, f"quality={score}" if score else ""] if part)
+        meta_parts = [
+            f"來源層級：{level}",
+            f"資料工具：{provider}",
+            provider_detail,
+            f"發布日期：{date}" if date else "",
+            f"品質分數：{score}" if score else "",
+            f"品質等級：{quality_level}" if quality_level else "",
+        ]
+        meta = "；".join(part for part in meta_parts if part)
         cards.append(f'<article class="source-card"><div class="source-title">[{sid}] {title}</div><div class="source-meta">{meta}</div><div>{link}</div>{f"<p>{snippet}</p>" if snippet else ""}</article>')
     return "\n".join(cards)
 
@@ -367,8 +390,8 @@ def _local_scoring_html(report_json: dict[str, Any]) -> str:
                 name=item.get("score_name") or "",
                 score=item.get("score_value") or "",
                 max_score=item.get("score_max") or "",
-                reason=item.get("score_reason") or "",
-                deduction=item.get("deduction_reason") or "",
+                reason=display_value(item.get("score_reason") or ""),
+                deduction=display_value(item.get("deduction_reason") or ""),
             )
         )
     return "<h2>本地量化底稿</h2><p>本地底稿只供 AI 參考，不是最終投研評分。</p>" + _markdown_table_to_html(rows)
@@ -379,13 +402,41 @@ def _qa_markdown(report_json: dict[str, Any]) -> str:
     warnings = qa.get("warnings") or []
     if not qa and not warnings:
         return "## QA\n\n- 無 QA 提醒。"
-    lines = ["## QA", "", f"- passed: {qa.get('passed')}"]
+    lines = ["## QA", "", f"- 檢查通過：{display_value(qa.get('passed'))}"]
     lines.extend(f"- {item}" for item in warnings)
     for item in qa.get("missing_sections") or []:
-        lines.append(f"- missing_section: {item}")
+        lines.append(f"- 缺少章節：{item}")
     for item in qa.get("schema_errors") or []:
-        lines.append(f"- schema_error: {item}")
+        lines.append(f"- 格式檢查錯誤：{item}")
     return "\n".join(lines)
+
+
+def _metadata_html(report_json: dict[str, Any]) -> str:
+    summary = _metadata_summary(report_json)
+    rows = ["| 項目 | 內容 |", "|---|---|"]
+    for key, value in summary.items():
+        rows.append(f"| {display_field_label(key)} | {_metadata_value_summary(value)} |")
+    note = (
+        "<p>這裡只顯示方便閱讀的技術摘要；完整原始欄位仍保存在同名 JSON 與來源 JSON，供系統回查與後續資料共用。</p>"
+    )
+    return "<h2>技術附錄</h2>" + note + _markdown_table_to_html(rows)
+
+
+def _metadata_value_summary(value: Any) -> str:
+    if isinstance(value, dict):
+        if not value:
+            return "無"
+        parts = []
+        for key, item in list(value.items())[:8]:
+            parts.append(f"{display_field_label(str(key))}：{_metadata_value_summary(item)}")
+        if len(value) > 8:
+            parts.append(f"另有 {len(value) - 8} 項")
+        return "；".join(parts)
+    if isinstance(value, list):
+        if not value:
+            return "無"
+        return f"{len(value)} 筆"
+    return display_value(value)
 
 
 def _metadata_summary(report_json: dict[str, Any]) -> dict[str, Any]:
@@ -422,7 +473,7 @@ def _split_markdown(markdown: str) -> dict[str, str]:
 
 
 def _inline_markup(text: str) -> str:
-    escaped = html.escape(str(text or ""))
+    escaped = html.escape(normalize_report_text(str(text or "")))
     escaped = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>', escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
     return escaped

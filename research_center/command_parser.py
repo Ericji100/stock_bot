@@ -334,8 +334,8 @@ def _parse_ai_model(value: str | bool | None) -> str:
         "opencode-go": "deepseek",
         "deepseek-v4-pro": "deepseek",
         "minimax": "minimax",
-        "minimax-m2.7": "minimax",
-        "m2.7": "minimax",
+        "minimax-m3": "minimax",
+        "m3": "minimax",
     }
     if normalized not in aliases:
         raise CommandParseError("--model 僅支援 gemini、deepseek 或 minimax")
@@ -365,7 +365,7 @@ def _validate_request(request: CommandRequest, flags: dict[str, str | bool]) -> 
         "sector_strength": {"source_only", "deep", "date", "top", "model", "days", "source", "html", "no_html", "no_md", "no_json"},
         "value_scan": {"source_only", "deep", "date", "top", "model", "html", "no_html", "no_md", "no_json"},
         "report": {"date", "html", "no_html", "no_md", "no_json"},
-        "topic_maintain": {"deep", "bootstrap", "from_radar", "model", "html", "no_html", "no_md", "no_json"},
+        "topic_maintain": {"deep", "from_radar", "model", "html", "no_html", "no_md", "no_json"},
         "topic_review": set(),
         "topic_confirm": set(),
         "topic_reject": set(),

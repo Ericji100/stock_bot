@@ -5,8 +5,10 @@ Format: [YYYY-MM-DD HH:MM:SS] [category] task | message
 from __future__ import annotations
 
 import re
+import threading
+import time
 from datetime import datetime
-from typing import Literal
+from typing import Callable, Literal
 
 _TIMESTAMP_RE = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]")
 
@@ -147,3 +149,71 @@ def print_backfill_progress(message: str, task: str | None = None) -> None:
 def print_chip_progress(label: str, progress: float, message: str) -> None:
     """Print progress for chip strategies with percentage."""
     print_progress(label, message, percent=progress)
+
+
+class ProgressHeartbeat:
+    """Emit periodic progress heartbeats for long-running tasks."""
+
+    def __init__(
+        self,
+        label: str,
+        *,
+        sink: Callable[[str], None] | None = None,
+        interval_seconds: float = 30.0,
+    ) -> None:
+        self.label = label
+        self.sink = sink or (lambda message: print_cmd(message, label))
+        self.interval_seconds = max(1.0, float(interval_seconds))
+        self._started_at = time.monotonic()
+        self._last_stage = "準備中"
+        self._last_detail = "尚未收到進度"
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def update(self, message: str, *, stage: str | None = None) -> None:
+        clean = str(message or "").strip()
+        if not clean:
+            return
+        with self._lock:
+            self._last_detail = clean
+            self._last_stage = stage or _infer_progress_stage(clean)
+
+    def start(self) -> "ProgressHeartbeat":
+        if self._thread and self._thread.is_alive():
+            return self
+        self._thread = threading.Thread(target=self._run, name=f"{self.label} heartbeat", daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self, final_message: str | None = None) -> None:
+        self._stop_event.set()
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(timeout=1.0)
+        if final_message:
+            self.sink(final_message)
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self._started_at
+
+    def _run(self) -> None:
+        while not self._stop_event.wait(self.interval_seconds):
+            with self._lock:
+                stage = self._last_stage
+                detail = self._last_detail
+            self.sink(
+                f"{self.label} 仍在執行，已耗時 {format_duration(self.elapsed_seconds)}，"
+                f"目前階段：{stage}，最近進度：{detail}"
+            )
+
+
+def _infer_progress_stage(message: str) -> str:
+    text = str(message or "")
+    for marker in ("：", ":", "|"):
+        if marker in text:
+            tail = text.rsplit(marker, 1)[-1].strip()
+            if tail:
+                return tail[:60]
+    return text[:60] or "執行中"

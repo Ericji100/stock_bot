@@ -230,3 +230,16 @@ Layer 4：
 新聞熱度必須拆成兩種：少量高品質新聞是題材線索；新聞爆量是過熱/出貨風險。
 
 ---
+## 市場優先與子族群規則
+- 先讀 `market_movers`、`sector_strength.sector_rankings`、`subsector_rankings`，再判斷題材；不得預設 AI、半導體、伺服器一定是主線。
+- 若 `sector_rankings` 或 `subsector_rankings` 顯示傳產、金融、汽車、電器電纜、被動元件、航運、鋼鐵、塑化等族群明顯強勢，必須如實列入報告，不可因題材庫較少就省略。
+- 大分類強勢時必須檢查子族群：例如電子零組件要拆被動元件、PCB/CCL、連接器/線束、散熱、電源零組件；汽車工業要拆汽車零組件、汽車材料、車用電子；電器電纜要合併電線電纜、電纜線材、電力線纜。
+- `industry` 或 `subsector_matches` 只能作為市場分群訊號，不等於 verified 公司題材證據；公司是否為題材代表股仍以 `verification_status=verified/inferred` 與 evidence 為準。
+- 報告必須分開說明「今日市場強弱族群」與「題材庫映射結果」。若市場很強但題材庫不足，要明確標示為「市場強勢、題材證據待補」。
+
+## 趨勢強弱判讀補充
+- 不得只因單日 `change_pct` 下跌，就把族群或題材寫成弱勢。
+- 必須同時檢查 `trend_state`、`trend_score`、`change_pct_5d`、`change_pct_10d`、`change_pct_20d`、`near_high_20d`、`days_since_high`、`pullback_from_high_pct`、`above_ma5/10/20`。
+- 若 `trend_state=trend_pullback`，請寫成「近期強勢後整理 / 短線回檔 / 高位震盪觀察」，不得寫成「弱勢」。
+- 只有在今日弱、5/10/20 日趨勢也弱、且族群廣度退潮時，才可判定為「弱勢」或「趨勢轉弱」。
+- 新聞很熱但價格短線回檔時，請區分「新聞熱、盤面仍在高位整理」與「新聞熱但價格沒有跟上」。

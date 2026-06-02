@@ -114,7 +114,7 @@ def format_topic_profiles() -> str:
         if p.keywords:
             lines.append(f"  關鍵詞：{', '.join(p.keywords[:5])}")
     lines.append("")
-    lines.append("使用 /topic_maintain [--deep] [--model deepseek] 更新題材庫")
+    lines.append("使用 /topic_maintain [--model gemini|deepseek|minimax] 大範圍更新題材庫")
     return "\n".join(lines)
 
 

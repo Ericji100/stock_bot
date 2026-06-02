@@ -183,7 +183,7 @@ class TestTopicApplyService(unittest.TestCase):
                                                 saved_profiles = mock_save.call_args[0][0]
                                                 self.assertEqual(len(saved_profiles), 1)
                                                 self.assertEqual(saved_profiles[0].risk_notes, ["供應鏈集中風險"])
-                                                self.assertEqual(saved_profiles[0].missing_data, ["無營收占比資料"])
+                                                self.assertEqual(saved_profiles[0].missing_data, ["無營收佔比資料"])
 
     def test_confirm_writes_affected_companies_and_supply_chain_nodes(self):
         """affected_companies and supply_chain_nodes should be written to formal files."""
@@ -626,6 +626,59 @@ class TestTopicApplyService(unittest.TestCase):
         saved = mock_save_knowledge.call_args[0][0]
         self.assertEqual(saved["companies"]["2330"]["product_lines"], ["CoWoS"])
         self.assertEqual(saved["companies"]["2330"]["customers"], ["AI chip customers"])
+
+    def test_confirm_normalizes_company_knowledge_list_wrappers_and_traditional_text(self):
+        from research_center.topic_models import TopicChangeAction, TopicConfidence
+
+        action = TopicChangeAction(
+            action_type=TopicActionType.CREATE_THEME,
+            theme_id="high_speed_networking_switch",
+            theme_name="高速网络交换器",
+            confidence=TopicConfidence.HIGH,
+            reason="test",
+        )
+        pack = TopicChangePack(
+            change_id="change_company_knowledge_normalize",
+            parent_change_id=None,
+            mode=TopicChangeMode.INITIAL,
+            status=TopicChangeStatus.PENDING,
+            model="minimax",
+            created_at="2026-01-01T10:00:00+0800",
+            updated_at="2026-01-01T10:00:00+0800",
+            summary="test",
+            confidence="high",
+            actions=[action],
+            company_knowledge_updates={
+                "companies": {
+                    "2345": {
+                        "company_name": "智邦",
+                        "product_lines": [{"value": ["网络交换器", "资料中心网通设备"], "status": "candidate"}],
+                        "customers": [{"value": "云服务客户", "status": "candidate"}],
+                        "risk_notes": ["客户验证不足"],
+                    }
+                }
+            },
+        )
+        with patch("research_center.topic_apply_service.load_change_pack", return_value=pack):
+            with patch("research_center.topic_apply_service.backup_topic_files", return_value={"backup_root": "/tmp/bak"}):
+                with patch("research_center.topic_apply_service.load_topic_profiles", return_value=[]):
+                    with patch("research_center.topic_apply_service.load_company_topic_map", return_value={}):
+                        with patch("research_center.topic_apply_service.load_supply_chain_nodes", return_value=[]):
+                            with patch("research_center.topic_apply_service.load_company_knowledge_data", return_value={"metadata": {}, "companies": {}}):
+                                with patch("research_center.topic_apply_service.save_topic_profiles"):
+                                    with patch("research_center.topic_apply_service.save_company_topic_map"):
+                                        with patch("research_center.topic_apply_service.save_supply_chain_nodes"):
+                                            with patch("research_center.topic_apply_service.save_company_knowledge_data") as mock_save_knowledge:
+                                                with patch("research_center.topic_apply_service.update_change_pack_status"):
+                                                    with patch("research_center.topic_apply_service.write_topic_audit_log"):
+                                                        result = apply_service.confirm_change_pack("change_company_knowledge_normalize")
+
+        self.assertTrue(result.success)
+        saved = mock_save_knowledge.call_args[0][0]
+        entry = saved["companies"]["2345"]
+        self.assertEqual(entry["product_lines"], ["網路交換器", "資料中心網通設備"])
+        self.assertEqual(entry["customers"], ["雲服務客戶"])
+        self.assertEqual(entry["risk_notes"], ["客戶驗證不足"])
 
     def test_reject_non_pending_returns_error(self):
         pack = TopicChangePack(

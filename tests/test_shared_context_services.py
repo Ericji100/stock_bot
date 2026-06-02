@@ -60,6 +60,25 @@ class SharedContextServiceTests(unittest.TestCase):
         news_status = build_news_status("2330", repository=repo)
         self.assertEqual(news_status["item_count"], 1)
         self.assertEqual(news_status["items"][0]["title"], "TSMC news")
+        self.assertEqual(repo.items[0].news_origin, "research")
+
+    def test_topic_maintain_sources_are_saved_to_news_repository(self):
+        repo = _FakeNewsRepository()
+        request = CommandRequest(command="topic_maintain", raw_text="/topic_maintain", target="topics")
+        source = SourceItem(
+            source_id="S001",
+            title="Taiwan AI server supply chain news",
+            url="https://example.com/topic-news",
+            source_level="Level 2",
+            published_date="2026-05-20",
+            snippet="Taiwan AI server supply chain summary",
+            provider="gemini_search",
+        )
+
+        status = persist_search_sources_to_news(request, {}, [source], repository=repo)
+
+        self.assertEqual(status["saved"], 1)
+        self.assertEqual(repo.items[0].news_origin, "research")
 
     def test_theme_radar_ignores_irrelevant_market_event_sources(self):
         repo = _FakeNewsRepository()

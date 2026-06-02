@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 from typing import Callable
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -31,6 +31,59 @@ TPEX_URL = "https://ic.tpex.org.tw/"
 UDN_INDUSTRY_URL = "https://money.udn.com/industry/index"
 
 HtmlFetcher = Callable[[str], str]
+
+_MOJIBAKE_MARKERS = ("ç", "æ", "å", "è", "é", "ä", "¶", "\x80", "\x81", "\x82", "\x83", "\x84")
+
+_TPEX_CODE_NAME_MAP = {
+    "D000": "半導體",
+    "C100": "製藥",
+    "C200": "醫療器材",
+    "C300": "食品生技",
+    "C400": "再生醫療",
+    "5100": "區塊鏈",
+    "5200": "金融科技",
+    "5300": "人工智慧",
+    "5400": "雲端運算",
+    "5500": "資通訊安全",
+    "5600": "大數據",
+    "5700": "體驗科技",
+    "5800": "運動科技",
+    "4100": "太空衛星科技",
+    "6000": "自動化",
+    "R300": "電子商務",
+    "J000": "被動元件",
+    "I000": "通信網路",
+    "K000": "連接器",
+    "F000": "電腦週邊",
+    "G000": "平面顯示器",
+    "H000": "觸控面板",
+    "L000": "印刷電路板",
+    "B000": "休閒娛樂",
+    "1000": "水泥",
+    "M000": "食品",
+    "N000": "石化及塑橡膠",
+    "O000": "紡織",
+    "P000": "電機機械",
+    "2000": "造紙",
+    "Q000": "鋼鐵",
+    "3000": "汽車",
+    "R000": "軟體服務",
+    "S000": "建材營造",
+    "T000": "交通運輸及航運",
+    "U000": "金融",
+    "V000": "貿易百貨",
+    "W000": "油電燃氣",
+    "Y000": "文化創意",
+    "X000": "其他",
+}
+
+_TPEX_NON_TOPIC_NAMES = {
+    "產業價值鏈資訊平台 企業籌資更便捷 大眾投資更穩當",
+    "使用條款",
+    "隱私權保護說明",
+    "網站地圖",
+    "其他",
+}
 
 
 @dataclass
@@ -66,7 +119,10 @@ def _requests_get_text(url: str, *, verify: bool) -> str:
         },
     )
     response.raise_for_status()
-    response.encoding = response.encoding or "utf-8"
+    if url.startswith(TPEX_URL) or not response.encoding or response.encoding.lower() == "iso-8859-1":
+        response.encoding = "utf-8"
+    else:
+        response.encoding = response.encoding or "utf-8"
     return response.text
 
 
@@ -95,8 +151,65 @@ def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def _clean_text(text: str) -> str:
+def _normalize_spaces(text: str) -> str:
     return " ".join((text or "").split())
+
+
+def _repair_mojibake_text(text: str) -> str:
+    normalized = _normalize_spaces(str(text or ""))
+    if not normalized or not any(marker in normalized for marker in _MOJIBAKE_MARKERS):
+        return normalized
+    try:
+        repaired = normalized.encode("latin1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return normalized
+    return _normalize_spaces(repaired)
+
+
+def _clean_text(text: str) -> str:
+    return _repair_mojibake_text(text)
+
+
+def _tpex_code_from_url(url: str) -> str:
+    parsed = urlparse(str(url or ""))
+    return (parse_qs(parsed.query).get("ic") or [""])[0]
+
+
+def _clean_tpex_name(name: str, href_or_url: str = "") -> str:
+    code = _tpex_code_from_url(href_or_url)
+    if code in _TPEX_CODE_NAME_MAP:
+        return _TPEX_CODE_NAME_MAP[code]
+    cleaned = _clean_text(name)
+    if "è\x83½æº\x90" in str(name or ""):
+        return "綠色能源"
+    return cleaned
+
+
+def _is_valid_tpex_topic_name(name: str, href_or_url: str = "") -> bool:
+    cleaned = _clean_tpex_name(name, href_or_url)
+    url = str(href_or_url or "")
+    if not cleaned or cleaned in _TPEX_NON_TOPIC_NAMES:
+        return False
+    if any(part in url for part in ("disclaimer", "privacy_rights", "sitemap", "index.php")):
+        return False
+    return True
+
+
+def _clean_tpex_item(item: dict) -> dict | None:
+    source_url = str(item.get("source_url") or TPEX_URL)
+    name = _clean_tpex_name(str(item.get("name") or item.get("industry") or ""), source_url)
+    industry = _clean_tpex_name(str(item.get("industry") or name), source_url)
+    if not _is_valid_tpex_topic_name(industry or name, source_url):
+        return None
+    cleaned = dict(item)
+    cleaned["name"] = name or industry
+    cleaned["industry"] = industry or name
+    cleaned["chain_stage"] = _clean_text(str(item.get("chain_stage") or ""))
+    cleaned["role"] = _clean_text(str(item.get("role") or ""))
+    cleaned["company_code"] = _clean_text(str(item.get("company_code") or ""))
+    cleaned["company_name"] = _clean_text(str(item.get("company_name") or ""))
+    cleaned["source_url"] = source_url
+    return cleaned
 
 
 def _dedupe_records(records: list[dict], keys: tuple[str, ...]) -> list[dict]:
@@ -261,7 +374,10 @@ def apply_topic_source_caches_to_formal_library(
                 profile_upserted(created)
 
     if tpex_data:
-        for item in tpex_data.get("items") or []:
+        for raw_item in tpex_data.get("items") or []:
+            item = _clean_tpex_item(raw_item)
+            if not item:
+                continue
             industry = item.get("industry") or item.get("name") or ""
             source_url = item.get("source_url") or TPEX_URL
             theme_id, created = _upsert_profile(
@@ -335,9 +451,12 @@ def parse_tpex_industry_chain(html: str, base_url: str = TPEX_URL) -> dict:
     items: list[dict] = []
 
     for link in soup.find_all("a"):
-        name = _clean_text(link.get_text(" "))
+        raw_name = link.get_text(" ")
         href = str(link.get("href") or "").strip()
+        name = _clean_tpex_name(raw_name, href)
         if not name or not href or href.startswith("#"):
+            continue
+        if not _is_valid_tpex_topic_name(name, href):
             continue
         items.append({
             "name": name,
@@ -359,7 +478,7 @@ def parse_tpex_industry_chain(html: str, base_url: str = TPEX_URL) -> dict:
         if not code:
             continue
         company_name = cells[cells.index(code) + 1] if cells.index(code) + 1 < len(cells) else ""
-        items.append({
+        item = {
             "name": company_name or code,
             "industry": cells[0] if cells else "",
             "chain_stage": cells[1] if len(cells) > 1 else "",
@@ -369,7 +488,10 @@ def parse_tpex_industry_chain(html: str, base_url: str = TPEX_URL) -> dict:
             "source_url": base_url,
             "source_type": "tpex_table_row",
             "raw_cells": cells,
-        })
+        }
+        cleaned_item = _clean_tpex_item(item)
+        if cleaned_item:
+            items.append(cleaned_item)
 
     return {
         "source": "tpex_industry_chain",

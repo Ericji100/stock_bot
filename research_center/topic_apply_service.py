@@ -16,6 +16,7 @@ from .topic_models import (
     TopicProfile,
     TopicSupplyChainNode,
 )
+from .topic_data_normalizer import normalize_string_list, normalize_text_tree
 from .topic_repository import (
     backup_topic_files,
     load_change_pack,
@@ -172,17 +173,17 @@ def reject_change_pack(change_id: str, user_id: str = "system", reason: str = ""
 def _profile_from_action(action: TopicChangeAction, pack: TopicChangePack) -> TopicProfile:
     return TopicProfile(
         theme_id=action.theme_id,
-        theme_name=action.theme_name,
-        keywords=action.keywords,
-        industries=action.industries,
-        supply_chain_role=action.supply_chain_role,
+        theme_name=normalize_text_tree(action.theme_name),
+        keywords=normalize_string_list(action.keywords),
+        industries=normalize_string_list(action.industries),
+        supply_chain_role=normalize_text_tree(action.supply_chain_role),
         confidence=action.confidence.value,
         source_level=action.evidence[0].source_level.value if action.evidence else "L2_media",
         status="active",
         created_at=pack.created_at[:19],
         updated_at=pack.created_at[:19],
-        risk_notes=action.risk_notes,
-        missing_data=action.missing_data,
+        risk_notes=normalize_string_list(action.risk_notes),
+        missing_data=normalize_string_list(action.missing_data),
     )
 
 
@@ -305,12 +306,15 @@ def _merge_company_knowledge_entry(existing: dict[str, Any], update: dict[str, A
         if field in {"company_code", "code"}:
             continue
         if field in _COMPANY_KNOWLEDGE_LIST_FIELDS:
-            merged[field] = _merge_list_values(_knowledge_as_list(merged.get(field)), _knowledge_as_list(value))
+            merged[field] = _merge_list_values(
+                normalize_string_list(merged.get(field)),
+                normalize_string_list(value),
+            )
         elif isinstance(value, dict):
             current = merged.get(field) if isinstance(merged.get(field), dict) else {}
-            merged[field] = {**current, **value}
+            merged[field] = normalize_text_tree({**current, **value})
         elif value not in (None, "", []):
-            merged[field] = value
+            merged[field] = normalize_text_tree(value)
     merged["updated_at"] = str(update.get("updated_at") or updated_at)
     if "company_name" not in merged and update.get("name"):
         merged["company_name"] = update.get("name")
@@ -354,20 +358,20 @@ def _parse_company_entry(entry: Any) -> dict[str, Any]:
         )
         return {
             "company_code": str(entry.get("company_code") or entry.get("code") or "").strip(),
-            "company_name": str(entry.get("company_name") or entry.get("name") or "").strip(),
-            "role": str(entry.get("role") or entry.get("supply_chain_role") or "").strip(),
+            "company_name": normalize_text_tree(str(entry.get("company_name") or entry.get("name") or "").strip()),
+            "role": normalize_text_tree(str(entry.get("role") or entry.get("supply_chain_role") or "").strip()),
             "evidence": merged_evidence,
             "relation_strength": str(entry.get("relation_strength") or entry.get("confidence") or "").strip(),
             "relation_type": str(entry.get("relation_type") or "").strip(),
             "verification_status": infer_status(entry),
             "usage_policy": str(entry.get("usage_policy") or "").strip(),
             "not_representative": bool(entry.get("not_representative") or False),
-            "products": _as_list(products),
-            "customers": _as_list(customers),
-            "revenue_exposure": revenue_exposure if isinstance(revenue_exposure, dict) else {},
-            "benefit_logic": str(benefit_logic or "").strip(),
+            "products": normalize_string_list(products),
+            "customers": normalize_string_list(customers),
+            "revenue_exposure": normalize_text_tree(revenue_exposure) if isinstance(revenue_exposure, dict) else {},
+            "benefit_logic": normalize_text_tree(str(benefit_logic or "").strip()),
             "counter_evidence": entry.get("counter_evidence") if isinstance(entry.get("counter_evidence"), list) else [],
-            "missing_data": missing_data,
+            "missing_data": normalize_string_list(missing_data),
         }
 
     text = str(entry or "").strip()
@@ -381,7 +385,7 @@ def _parse_company_entry(entry: Any) -> dict[str, Any]:
         if delimiter in rest:
             name, role = [part.strip() for part in rest.split(delimiter, 1)]
             break
-    return {"company_code": match.group("code"), "company_name": name, "role": role, "evidence": []}
+    return {"company_code": match.group("code"), "company_name": normalize_text_tree(name), "role": normalize_text_tree(role), "evidence": []}
 
 
 def _company_entries_for_action(action: TopicChangeAction) -> list[dict[str, Any]]:
@@ -439,7 +443,7 @@ def _merge_company_relation(
     if rel is None:
         rel = TopicCompanyRelation(
             company_code=code,
-            company_name=str(company.get("company_name") or ""),
+            company_name=normalize_text_tree(str(company.get("company_name") or "")),
             themes=[],
             primary_theme="" if normalize_status(company.get("verification_status")) == "candidate" else action.theme_id,
         )
@@ -454,9 +458,9 @@ def _merge_company_relation(
         if not rel.primary_theme:
             rel.primary_theme = action.theme_id
     if company.get("company_name") and not rel.company_name:
-        rel.company_name = str(company.get("company_name"))
+        rel.company_name = normalize_text_tree(str(company.get("company_name")))
     if company.get("role"):
-        rel.role = str(company.get("role"))
+        rel.role = normalize_text_tree(str(company.get("role")))
     if company.get("relation_strength"):
         rel.relation_strength = str(company.get("relation_strength"))
     elif not rel.relation_strength:
@@ -464,14 +468,14 @@ def _merge_company_relation(
     if company.get("relation_type"):
         rel.relation_type = str(company.get("relation_type"))
     if company.get("benefit_logic"):
-        rel.benefit_logic = str(company.get("benefit_logic"))
-    rel.products = _merge_list_values(rel.products, company.get("products", []))
-    rel.customers = _merge_list_values(rel.customers, company.get("customers", []))
+        rel.benefit_logic = normalize_text_tree(str(company.get("benefit_logic")))
+    rel.products = _merge_list_values(normalize_string_list(rel.products), normalize_string_list(company.get("products", [])))
+    rel.customers = _merge_list_values(normalize_string_list(rel.customers), normalize_string_list(company.get("customers", [])))
     rel.evidence = _merge_list_values(rel.evidence, company.get("evidence") or action_evidence)
     rel.counter_evidence = _merge_list_values(rel.counter_evidence, company.get("counter_evidence", []))
-    rel.missing_data = _merge_list_values(rel.missing_data, company.get("missing_data", []))
+    rel.missing_data = _merge_list_values(normalize_string_list(rel.missing_data), normalize_string_list(company.get("missing_data", [])))
     if company.get("revenue_exposure"):
-        rel.revenue_exposure = company["revenue_exposure"]
+        rel.revenue_exposure = normalize_text_tree(company["revenue_exposure"])
     rel.updated_at = updated_at
 
 
@@ -486,13 +490,13 @@ def _merge_candidate_theme_relation(
         candidates = []
     entry = {
         "theme_id": action.theme_id,
-        "theme_name": action.theme_name,
+        "theme_name": normalize_text_tree(action.theme_name),
         "verification_status": "candidate",
         "usage_policy": company.get("usage_policy") or "hypothesis_only",
         "not_representative": True,
-        "role": company.get("role") or "",
-        "evidence": company.get("evidence") or [],
-        "missing_data": company.get("missing_data") or [],
+        "role": normalize_text_tree(company.get("role") or ""),
+        "evidence": normalize_text_tree(company.get("evidence") or []),
+        "missing_data": normalize_string_list(company.get("missing_data") or []),
         "updated_at": updated_at,
     }
     existing = next((item for item in candidates if isinstance(item, dict) and item.get("theme_id") == action.theme_id), None)
@@ -549,23 +553,23 @@ def _node_from_action(
     return TopicSupplyChainNode(
         node_id=_node_id_for(action, node_data, index),
         company_code=str(node_data.get("company_code") or node_data.get("code") or ""),
-        company_name=str(node_data.get("company_name") or node_data.get("name") or ""),
-        role=str(node_data.get("role") or ""),
-        upstream=_as_list(node_data.get("upstream")),
-        downstream=_as_list(node_data.get("downstream")),
-        product_keywords=_as_list(product_keywords),
+        company_name=normalize_text_tree(str(node_data.get("company_name") or node_data.get("name") or "")),
+        role=normalize_text_tree(str(node_data.get("role") or "")),
+        upstream=normalize_string_list(node_data.get("upstream")),
+        downstream=normalize_string_list(node_data.get("downstream")),
+        product_keywords=normalize_string_list(product_keywords),
         theme_id=str(node_data.get("theme_id") or action.theme_id),
         confidence=str(node_data.get("confidence") or action.confidence.value),
         source_level=str(node_data.get("source_level") or (action.evidence[0].source_level.value if action.evidence else "L2_media")),
-        evidence=merged_evidence,
-        risk_notes=_as_list(node_data.get("risk_notes")) or action.risk_notes,
-        missing_data=missing_data,
+        evidence=normalize_text_tree(merged_evidence),
+        risk_notes=normalize_string_list(node_data.get("risk_notes")) or normalize_string_list(action.risk_notes),
+        missing_data=normalize_string_list(missing_data),
         layer=node_data.get("layer"),
-        customers=_as_list(customers),
-        revenue_exposure=revenue_exposure if isinstance(revenue_exposure, dict) else {},
-        benefit_logic=str(benefit_logic or ""),
+        customers=normalize_string_list(customers),
+        revenue_exposure=normalize_text_tree(revenue_exposure) if isinstance(revenue_exposure, dict) else {},
+        benefit_logic=normalize_text_tree(str(benefit_logic or "")),
         updated_at=str(node_data.get("updated_at") or updated_at),
-        extra={k: v for k, v in node_data.items() if k not in known},
+        extra=normalize_text_tree({k: v for k, v in node_data.items() if k not in known}),
     )
 
 
@@ -584,14 +588,14 @@ def _upsert_supply_node(supply_nodes: list[TopicSupplyChainNode], incoming: Topi
 
 def _merge_supply_node(existing: TopicSupplyChainNode, incoming: TopicSupplyChainNode) -> None:
     if incoming.company_name and not existing.company_name:
-        existing.company_name = incoming.company_name
-    existing.upstream = _merge_list_values(existing.upstream, incoming.upstream)
-    existing.downstream = _merge_list_values(existing.downstream, incoming.downstream)
-    existing.product_keywords = _merge_list_values(existing.product_keywords, incoming.product_keywords)
+        existing.company_name = normalize_text_tree(incoming.company_name)
+    existing.upstream = _merge_list_values(normalize_string_list(existing.upstream), normalize_string_list(incoming.upstream))
+    existing.downstream = _merge_list_values(normalize_string_list(existing.downstream), normalize_string_list(incoming.downstream))
+    existing.product_keywords = _merge_list_values(normalize_string_list(existing.product_keywords), normalize_string_list(incoming.product_keywords))
     existing.evidence = _merge_list_values(existing.evidence, incoming.evidence)
-    existing.risk_notes = _merge_list_values(existing.risk_notes, incoming.risk_notes)
-    existing.missing_data = _merge_list_values(existing.missing_data, incoming.missing_data)
-    existing.customers = _merge_list_values(existing.customers, incoming.customers)
+    existing.risk_notes = _merge_list_values(normalize_string_list(existing.risk_notes), normalize_string_list(incoming.risk_notes))
+    existing.missing_data = _merge_list_values(normalize_string_list(existing.missing_data), normalize_string_list(incoming.missing_data))
+    existing.customers = _merge_list_values(normalize_string_list(existing.customers), normalize_string_list(incoming.customers))
     if incoming.confidence:
         existing.confidence = incoming.confidence
     if incoming.source_level:
@@ -599,9 +603,9 @@ def _merge_supply_node(existing: TopicSupplyChainNode, incoming: TopicSupplyChai
     if incoming.layer is not None:
         existing.layer = incoming.layer
     if incoming.revenue_exposure:
-        existing.revenue_exposure = incoming.revenue_exposure
+        existing.revenue_exposure = normalize_text_tree(incoming.revenue_exposure)
     if incoming.benefit_logic:
-        existing.benefit_logic = incoming.benefit_logic
+        existing.benefit_logic = normalize_text_tree(incoming.benefit_logic)
     if incoming.updated_at:
         existing.updated_at = incoming.updated_at
-    existing.extra.update(incoming.extra)
+    existing.extra.update(normalize_text_tree(incoming.extra))

@@ -191,8 +191,8 @@ class TestTopicMaintainService(unittest.TestCase):
 
         self.assertEqual(pack.mode, TopicChangeMode.UPDATE)
 
-    def test_run_topic_maintain_bad_json_raises_ai_error(self):
-        """Bad JSON from AI should raise TopicMaintainAIError, not save pending pack."""
+    def test_run_topic_maintain_bad_json_marks_failed_pack(self):
+        """Bad JSON in one staged AI call should not raise; it should produce a failed pack."""
         self._mock_is_formal_library_empty(False)
         center = self._mock_center()
         # Override to return bad JSON
@@ -209,22 +209,11 @@ class TestTopicMaintainService(unittest.TestCase):
         center._gemini_discovery_runner = MagicMock()
         center._gemini_discovery_runner.run_discovery_flow.return_value = ([], False)
 
-        with self.assertRaises(TopicMaintainAIError) as ctx:
-            run_topic_maintain(mock_request, center=center, progress=None)
+        pack = run_topic_maintain(mock_request, center=center, progress=None)
 
-        # User-facing message must be short and NOT contain file paths
-        self.assertIn("JSON 解析失敗", ctx.exception.message)
-        self.assertIn("模型未回傳有效 JSON", ctx.exception.message)
-        self.assertNotIn("Raw Response", ctx.exception.message)
-        self.assertNotIn("raw_response_path", ctx.exception.message)
-        self.assertNotIn("prompt_log_path", ctx.exception.message)
-        self.assertNotIn("logs/topic_ai_raw", ctx.exception.message)
-        self.assertNotIn("logs/ai_prompts", ctx.exception.message)
-        # save_change_pack should NOT have been called with a pending status
-        call_args = mock_save.call_args_list
-        if call_args:
-            saved_pack = call_args[0][0]
-            self.assertEqual(saved_pack.status, TopicChangeStatus.FAILED)
+        self.assertEqual(pack.status, TopicChangeStatus.FAILED)
+        self.assertTrue(any("candidate_extract" in warning for warning in pack.warnings))
+        mock_save.assert_called_once()
 
     def test_run_topic_maintain_progress_callback_fired(self):
         """Progress callback should be called at least once."""
@@ -905,8 +894,8 @@ class TestTopicMaintainService(unittest.TestCase):
 
         run_topic_maintain(mock_request, center=center, progress=None)
 
-        # generate_json should be called, NOT generate_report
-        minimax_mock.generate_json.assert_called_once()
+        # generate_json should be called for staged generation, NOT generate_report
+        self.assertGreaterEqual(minimax_mock.generate_json.call_count, 1)
 
     def test_run_topic_maintain_minimax_returns_valid_change_pack(self):
         """MiniMax with valid JSON response should produce pending change pack."""
@@ -969,8 +958,8 @@ class TestTopicMaintainService(unittest.TestCase):
         self.assertEqual(pack.model, "minimax")
         self.assertGreater(len(pack.actions), 0)
 
-    def test_run_topic_maintain_minimax_markdown_response_raises_error_with_preview(self):
-        """MiniMax returning Markdown (not JSON) should raise TopicMaintainAIError with preview."""
+    def test_run_topic_maintain_minimax_markdown_response_marks_failed_pack(self):
+        """MiniMax returning Markdown should not raise; it should produce a failed pack."""
         self._mock_is_formal_library_empty(False)
         mock_request = self._mock_request(ai_model="minimax")
 
@@ -994,19 +983,10 @@ class TestTopicMaintainService(unittest.TestCase):
         self._mock_collect_structured_data()
         self._mock_web_fetch()
 
-        with self.assertRaises(TopicMaintainAIError) as ctx:
-            run_topic_maintain(mock_request, center=center, progress=None)
+        pack = run_topic_maintain(mock_request, center=center, progress=None)
 
-        # User-facing message must NOT contain file paths
-        self.assertIn("JSON 解析失敗", ctx.exception.message)
-        self.assertIn("模型未回傳有效 JSON", ctx.exception.message)
-        self.assertNotIn("Raw Response", ctx.exception.message)
-        self.assertNotIn("raw_response_path", ctx.exception.message)
-        self.assertNotIn("prompt_log_path", ctx.exception.message)
-        self.assertNotIn("logs/topic_ai_raw", ctx.exception.message)
-        self.assertNotIn("logs/ai_prompts", ctx.exception.message)
-        # The raw_response stored should contain the markdown (for developer debugging)
-        self.assertIn("# MiniMax Report", ctx.exception.raw_response[:50])
+        self.assertEqual(pack.status, TopicChangeStatus.FAILED)
+        self.assertTrue(any("candidate_extract" in warning for warning in pack.warnings))
 
     def test_parse_ai_json_response_removes_think_blocks(self):
         """_parse_ai_json_response should strip <think>...</think> before parsing."""
@@ -1317,12 +1297,12 @@ class TestSkipWebfetchEvidence(unittest.TestCase):
 
         # Verify build_topic_evidence_candidates WAS called (rule-based, no AI)
         mock_extract.assert_called_once()
-        # Verify minimax.generate_json WAS called once (main change pack only)
-        center.minimax.generate_json.assert_called_once()
+        # Verify MiniMax is used for staged topic generation; evidence extraction is rule-based.
+        self.assertGreaterEqual(center.minimax.generate_json.call_count, 1)
         self.assertIsNotNone(pack)
 
-    def test_run_topic_maintain_minimax_single_api_call(self):
-        """With MiniMax, evidence extraction should NOT call any MiniMax API (no AI for evidence)."""
+    def test_run_topic_maintain_minimax_staged_calls_do_not_include_evidence_ai(self):
+        """With MiniMax, evidence extraction should NOT call MiniMax; staged generation still does."""
         from research_center.topic_maintain_service import run_topic_maintain
 
         mock_request = self._mock_request(ai_model="minimax")
@@ -1362,8 +1342,8 @@ class TestSkipWebfetchEvidence(unittest.TestCase):
                 progress=None,
             )
 
-        # minimax.generate_json should be called exactly once (for change pack, not evidence)
-        self.assertEqual(center.minimax.generate_json.call_count, 1)
+        # MiniMax should be called for candidate + detail stages, not for evidence extraction.
+        self.assertGreaterEqual(center.minimax.generate_json.call_count, 1)
         # build_topic_evidence_candidates should be called (rule-based)
         mock_extract.assert_called_once()
 

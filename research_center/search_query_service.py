@@ -47,6 +47,27 @@ def build_search_discovery_tasks(request: CommandRequest, structured_data: dict[
             ])]),
         ]
     if command == "topic_maintain":
+        plan_items = (
+            (structured_data.get("candidate_discovery_plan") or {}).get("search_query_plan")
+            if isinstance(structured_data.get("candidate_discovery_plan"), dict)
+            else None
+        )
+        if plan_items:
+            tasks: list[dict[str, Any]] = []
+            for item in plan_items[:40]:
+                if not isinstance(item, dict):
+                    continue
+                query = str(item.get("query") or "").strip()
+                if not query:
+                    continue
+                bucket = str(item.get("bucket") or item.get("type") or "topic_market")
+                tasks.append(_task(
+                    bucket,
+                    "搜尋台股近期題材、代表公司、供應鏈、風險與反證；題材庫維護需保持跨產業廣度，不可只集中在 AI 或半導體。",
+                    [_group(bucket, [query])],
+                    ["只列股票名稱但無題材原因", "無來源的社群傳聞", "過度重複的 AI 題材"],
+                ))
+            return _append_site_queries(tasks, max_base_queries=2, max_site_per_task=3)
         return _append_site_queries([
             _task("題材庫更新候選", "搜尋可寫入題材庫的題材、供應鏈節點、公司關聯與來源。", [_group("題材維護", [
                 "台股 新題材 供應鏈 產業趨勢",

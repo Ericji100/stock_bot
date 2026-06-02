@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     news_heat_risk_score INTEGER DEFAULT 0,
     news_signal_reason TEXT,
     news_heat_risk_reason TEXT,
+    news_origin TEXT DEFAULT 'refresh',
     created_at TEXT NOT NULL
 );
 
@@ -80,8 +81,8 @@ class NewsRepository:
                     (url, title, source, published_at, category, related_symbols,
                      related_topics, summary, full_text, importance_score, impact_direction,
                      tags, news_signal_score, news_heat_risk_score, news_signal_reason, news_heat_risk_reason,
-                     created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     news_origin, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         apply_news_signal_tags(item).url,
@@ -100,6 +101,7 @@ class NewsRepository:
                         item.news_heat_risk_score,
                         item.news_signal_reason,
                         item.news_heat_risk_reason,
+                        item.news_origin or "refresh",
                         item.created_at or datetime.now().isoformat(),
                     ),
                 )
@@ -121,8 +123,8 @@ class NewsRepository:
                         (url, title, source, published_at, category, related_symbols,
                          related_topics, summary, full_text, importance_score, impact_direction,
                          tags, news_signal_score, news_heat_risk_score, news_signal_reason, news_heat_risk_reason,
-                         created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         news_origin, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             apply_news_signal_tags(item).url,
@@ -141,6 +143,7 @@ class NewsRepository:
                             item.news_heat_risk_score,
                             item.news_signal_reason,
                             item.news_heat_risk_reason,
+                            item.news_origin or "refresh",
                             item.created_at or datetime.now().isoformat(),
                         ),
                     )
@@ -164,9 +167,14 @@ class NewsRepository:
             conn.commit()
             return int(cur.rowcount or 0)
 
-    def query_recent(self, hours: int = 24) -> list[NewsItem]:
+    def query_recent(self, hours: int = 24, news_origin: str | None = None) -> list[NewsItem]:
         """Query news from the last N hours."""
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
+        if news_origin:
+            return self._query(
+                "SELECT * FROM news_articles WHERE created_at >= ? AND news_origin = ? ORDER BY created_at DESC",
+                (cutoff, news_origin),
+            )
         return self._query("SELECT * FROM news_articles WHERE created_at >= ? ORDER BY created_at DESC", (cutoff,))
 
     def query_by_symbol(self, symbol: str, hours: int = 168) -> list[NewsItem]:
@@ -216,10 +224,16 @@ class NewsRepository:
         rows = self._query("SELECT * FROM news_articles WHERE url = ? LIMIT 1", (clean_url,))
         return rows[0] if rows else None
 
-    def count_recent(self, hours: int = 24) -> int:
+    def count_recent(self, hours: int = 24, news_origin: str | None = None) -> int:
         """Count news items from last N hours."""
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
         with sqlite3.connect(self.db_path) as conn:
+            if news_origin:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM news_articles WHERE created_at >= ? AND news_origin = ?",
+                    (cutoff, news_origin),
+                ).fetchone()
+                return row[0] if row else 0
             row = conn.execute(
                 "SELECT COUNT(*) FROM news_articles WHERE created_at >= ?", (cutoff,)
             ).fetchone()
@@ -311,6 +325,7 @@ def _row_to_item(row: dict[str, Any]) -> NewsItem:
         news_heat_risk_score=int(row.get("news_heat_risk_score", 0) or 0),
         news_signal_reason=str(row.get("news_signal_reason", "")),
         news_heat_risk_reason=str(row.get("news_heat_risk_reason", "")),
+        news_origin=str(row.get("news_origin", "unknown") or "unknown"),
         created_at=str(row.get("created_at", "")),
     ))
 
@@ -333,10 +348,12 @@ def _ensure_news_signal_columns(conn: sqlite3.Connection) -> None:
         "news_heat_risk_score": "INTEGER DEFAULT 0",
         "news_signal_reason": "TEXT",
         "news_heat_risk_reason": "TEXT",
+        "news_origin": "TEXT DEFAULT 'unknown'",
     }
     for name, ddl in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE news_articles ADD COLUMN {name} {ddl}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_origin ON news_articles(news_origin)")
 
 
 def _row_to_preference(row: dict[str, Any]) -> NewsPreference:

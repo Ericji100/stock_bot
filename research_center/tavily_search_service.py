@@ -12,6 +12,7 @@ ProgressCallback = Callable[[str], None] | None
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
+TAVILY_USAGE_URL = "https://api.tavily.com/usage"
 
 
 class TavilyQuotaError(RuntimeError):
@@ -47,6 +48,55 @@ class TavilySearchService:
 
     def is_configured(self) -> bool:
         return bool(self.api_key) and self.enable_search
+
+    def get_usage(self) -> dict[str, Any]:
+        """Return Tavily official usage details for the configured API key."""
+        if not self.api_key:
+            return {"available": False, "reason": "not_configured"}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        with httpx.Client(timeout=min(self.timeout_seconds, 15.0), follow_redirects=True) as client:
+            response = client.get(TAVILY_USAGE_URL, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        if not isinstance(data, dict):
+            return {"available": False, "reason": "invalid_usage_response", "raw_type": type(data).__name__}
+        key = data.get("key") if isinstance(data.get("key"), dict) else {}
+        account = data.get("account") if isinstance(data.get("account"), dict) else {}
+        usage = _usage_int(key.get("usage"))
+        limit = _usage_int(key.get("limit"))
+        key_remaining = _remaining(limit, usage)
+        plan_remaining = _remaining(_usage_int(account.get("plan_limit")), _usage_int(account.get("plan_usage")))
+        paygo_remaining = _remaining(_usage_int(account.get("paygo_limit")), _usage_int(account.get("paygo_usage")))
+        account_remaining = None
+        if plan_remaining is not None or paygo_remaining is not None:
+            account_remaining = max(plan_remaining or 0, 0) + max(paygo_remaining or 0, 0)
+        effective_remaining = key_remaining if key_remaining is not None else account_remaining
+        return {
+            "available": True,
+            "key_usage": usage,
+            "key_limit": limit,
+            "key_remaining": key_remaining,
+            "account_plan": account.get("current_plan"),
+            "account_remaining": account_remaining,
+            "remaining": effective_remaining,
+            "raw": data,
+        }
+
+    def has_available_usage(self, reserve: int = 0) -> tuple[bool | None, dict[str, Any]]:
+        """Return official Tavily availability when usage endpoint is reachable.
+
+        Returns (None, diagnostics) when usage cannot determine availability.
+        """
+        try:
+            usage = self.get_usage()
+        except Exception as exc:
+            return None, {"available": False, "reason": "usage_check_failed", "error": str(exc)}
+        if not usage.get("available"):
+            return None, usage
+        remaining = usage.get("remaining")
+        if remaining is None:
+            return None, {**usage, "reason": "usage_remaining_unknown"}
+        return int(remaining) > max(0, int(reserve or 0)), usage
 
     def discover(
         self,
@@ -252,3 +302,18 @@ def _looks_like_quota_error(text: str) -> bool:
     lower = text.lower()
     indicators = ["quota", "credit", "limit", "insufficient", "exceeded", "upgrade", "payment"]
     return any(indicator in lower for indicator in indicators)
+
+
+def _usage_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _remaining(limit: int | None, usage: int | None) -> int | None:
+    if limit is None or usage is None:
+        return None
+    return max(0, limit - usage)

@@ -10,6 +10,70 @@ class DummyContext:
         self.candidates = candidates_df
 
 
+class TestDailyChipFrameNormalization(unittest.TestCase):
+    def test_duplicate_numeric_columns_do_not_crash(self):
+        import chip_strategies
+
+        frame = pd.DataFrame(
+            [
+                [
+                    date(2026, 5, 29),
+                    "2330",
+                    "TWSE",
+                    10,
+                    99,
+                    2,
+                    88,
+                    3.5,
+                    77,
+                    "cache",
+                ]
+            ],
+            columns=[
+                "date",
+                "code",
+                "market",
+                "foreign_net_lots",
+                "foreign_net_lots",
+                "trust_net_lots",
+                "trust_net_lots",
+                "foreign_ratio_pct",
+                "foreign_ratio_pct",
+                "source",
+            ],
+        )
+
+        result = chip_strategies._normalize_daily_chip_frame(frame)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["code"], "2330")
+        self.assertEqual(result.iloc[0]["foreign_net_lots"], 10)
+        self.assertEqual(result.iloc[0]["trust_net_lots"], 2)
+        self.assertEqual(result.iloc[0]["foreign_ratio_pct"], 3.5)
+
+    def test_duplicate_date_column_does_not_crash(self):
+        import chip_strategies
+
+        frame = pd.DataFrame(
+            [[date(2026, 5, 29), date(2026, 5, 28), "2330", "TWSE", 10, 2, 3.5, "cache"]],
+            columns=[
+                "date",
+                "date",
+                "code",
+                "market",
+                "foreign_net_lots",
+                "trust_net_lots",
+                "foreign_ratio_pct",
+                "source",
+            ],
+        )
+
+        result = chip_strategies._normalize_daily_chip_frame(frame)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["date"], date(2026, 5, 29))
+
+
 class TestChipCoverageComputation(unittest.TestCase):
     def test_coverage_ok(self):
         # 57 unique dates, 100 candidate codes, 86 codes present -> ok

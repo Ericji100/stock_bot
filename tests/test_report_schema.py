@@ -203,11 +203,13 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
             )
             written_md = artifacts.markdown_path.read_text(encoding='utf-8')
             html = artifacts.html_path.read_text(encoding='utf-8')
-            self.assertIn('tavily_extract', written_md)
+            self.assertIn('Tavily 網頁擷取', written_md)
             self.assertNotIn('extract_depth=basic', written_md)
             self.assertNotIn('content', written_md)
-            self.assertIn('tavily_extract', html)
-            self.assertIn('extract_depth=basic', html)
+            self.assertIn('Tavily 網頁擷取', html)
+            self.assertIn('extract depth：basic', html)
+            self.assertNotIn('tavily_extract', html)
+            self.assertNotIn('extract_depth=basic', html)
         finally:
             safe_remove_test_cache("report_schema/test_report_sources_render")
 

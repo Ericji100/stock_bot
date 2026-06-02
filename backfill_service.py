@@ -1244,6 +1244,11 @@ def format_backfill_health_summary(result: "BackfillResult") -> str:
 BACKFILL_RUNNING = threading.Lock()
 
 
+def is_backfill_running() -> bool:
+    """Return whether the full backfill lock is currently held."""
+    return BACKFILL_RUNNING.locked()
+
+
 @dataclass
 class BackfillRunDecision:
     """Result of a backfill policy decision."""

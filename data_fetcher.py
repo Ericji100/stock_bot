@@ -33,6 +33,17 @@ class StockNotFoundError(StockExportError):
     pass
 
 
+def _frame_column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    value = frame[column]
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            return pd.Series(pd.NA, index=frame.index)
+        value = value.iloc[:, 0]
+    if isinstance(value, pd.Series):
+        return value
+    return pd.Series(value, index=frame.index)
+
+
 @dataclass(frozen=True)
 class StockMeta:
     code: str
@@ -425,9 +436,14 @@ class StockDataFetcher:
 
         self.notes.append("上櫃個股歷史價量改用 Yahoo Finance 補齊 6 個月日線，因 TPEx 可直接存取的官方 API 在此環境僅提供當日快照。")
 
-        price_df = history.reset_index()[["Date", "Close", "Volume"]].rename(columns={"Volume": "Volume_Lots"})
+        reset = history.reset_index()
+        price_df = pd.DataFrame(index=reset.index)
+        price_df["Date"] = _frame_column_as_series(reset, "Date")
+        price_df["Close"] = _frame_column_as_series(reset, "Close")
+        price_df["Volume_Lots"] = _frame_column_as_series(reset, "Volume")
         price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.date
-        price_df["Volume_Lots"] = price_df["Volume_Lots"].astype(float) / 1000.0
+        price_df["Volume_Lots"] = pd.to_numeric(price_df["Volume_Lots"], errors="coerce") / 1000.0
+        price_df["Close"] = pd.to_numeric(price_df["Close"], errors="coerce")
         return price_df
 
     def _fetch_yahoo_price_history(self, meta: StockMeta, start_date: date, end_date: date) -> pd.DataFrame:
@@ -451,7 +467,10 @@ class StockDataFetcher:
         reset = history.reset_index()
         if not required.issubset(set(reset.columns)):
             return pd.DataFrame()
-        price_df = reset[["Date", "Close", "Volume"]].rename(columns={"Volume": "Volume_Lots"})
+        price_df = pd.DataFrame(index=reset.index)
+        price_df["Date"] = _frame_column_as_series(reset, "Date")
+        price_df["Close"] = _frame_column_as_series(reset, "Close")
+        price_df["Volume_Lots"] = _frame_column_as_series(reset, "Volume")
         price_df["Date"] = pd.to_datetime(price_df["Date"], errors="coerce").dt.date
         price_df["Volume_Lots"] = pd.to_numeric(price_df["Volume_Lots"], errors="coerce") / 1000.0
         price_df["Close"] = pd.to_numeric(price_df["Close"], errors="coerce")
@@ -460,15 +479,22 @@ class StockDataFetcher:
         history = fetch_fugle_history(meta.symbol, start_date, end_date, "1d")
         if history.empty:
             return pd.DataFrame()
-        price_df = history.rename(
+        renamed = history.rename(
             columns={
                 "datetime": "Date",
                 "close": "Close",
                 "volume": "Volume_Lots",
             }
-        )[["Date", "Close", "Volume_Lots"]].copy()
+        )
+        if not {"Date", "Close", "Volume_Lots"}.issubset(set(renamed.columns)):
+            return pd.DataFrame()
+        price_df = pd.DataFrame(index=renamed.index)
+        price_df["Date"] = _frame_column_as_series(renamed, "Date")
+        price_df["Close"] = _frame_column_as_series(renamed, "Close")
+        price_df["Volume_Lots"] = _frame_column_as_series(renamed, "Volume_Lots")
         price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.date
         price_df["Volume_Lots"] = pd.to_numeric(price_df["Volume_Lots"], errors="coerce") / 1000.0
+        price_df["Close"] = pd.to_numeric(price_df["Close"], errors="coerce")
         return price_df.dropna(subset=["Date", "Close"]).reset_index(drop=True)
 
     def fetch_institutional_daily(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:

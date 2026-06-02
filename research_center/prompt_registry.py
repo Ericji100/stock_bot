@@ -178,6 +178,7 @@ def _theme_radar_structured_prompt_data(structured_data: dict[str, Any]) -> dict
         "lookback_days": structured_data.get("lookback_days"),
         "source": structured_data.get("source"),
         "theme_rankings": _compact_theme_rankings(structured_data.get("theme_rankings") or []),
+        "subsector_rankings": _compact_subsector_rankings(structured_data.get("subsector_rankings") or []),
         "theme_flow_summaries": _compact_theme_flows(structured_data.get("theme_flow_summaries") or []),
         "sector_strength": _compact_sector_strength(structured_data.get("sector_strength") or {}),
         "news_theme_stats": structured_data.get("news_theme_stats"),
@@ -233,12 +234,15 @@ def _sector_strength_structured_prompt_data(structured_data: dict[str, Any]) -> 
         "sector_rankings": [
             {
                 **{k: row.get(k) for k in ("sector", "sector_score", "strong_stock_count", "avg_change_pct", "volume_surge_count", "new_high_count", "limit_up_count", "avg_volume_20d", "theme_hit_count", "theme_relation_status_counts", "interpretation_hint")},
+                "sector_display_name": row.get("sector_display_name"),
+                "top_subsectors": _compact_subsector_rankings(row.get("top_subsectors") or [], limit=5),
                 "sector_strong_samples": [_compact_stock(s) for s in (row.get("sector_strong_samples") or [])[:5]],
                 "representative_stocks": [_compact_stock(s) for s in (row.get("representative_stocks") or [])[:3]],
                 "candidate_stocks": [_compact_stock(s) for s in (row.get("candidate_stocks") or [])[:3]],
             }
             for row in (structured_data.get("sector_rankings") or [])[:20]
         ],
+        "subsector_rankings": _compact_subsector_rankings(structured_data.get("subsector_rankings") or []),
         "data_quality": structured_data.get("data_quality"),
         "analysis_policy": structured_data.get("analysis_policy"),
         "local_scoring": structured_data.get("local_scoring"),
@@ -264,13 +268,29 @@ def _compact_stock(row: dict[str, Any]) -> dict[str, Any]:
         "code": row.get("code"),
         "name": row.get("name"),
         "industry": row.get("industry"),
+        "sector": row.get("sector"),
+        "sector_display_name": row.get("sector_display_name"),
+        "primary_subsector": row.get("primary_subsector"),
+        "subsector_matches": (row.get("subsector_matches") or [])[:2],
         "price": row.get("price"),
         "change_pct": row.get("change_pct"),
+        "change_pct_5d": row.get("change_pct_5d"),
+        "change_pct_10d": row.get("change_pct_10d"),
+        "change_pct_20d": row.get("change_pct_20d"),
         "volume": row.get("volume"),
         "volume_ratio": row.get("volume_ratio"),
         "turnover": row.get("turnover"),
         "new_high_days": row.get("new_high_days"),
         "new_low_days": row.get("new_low_days"),
+        "days_since_high": row.get("days_since_high"),
+        "near_high_20d": row.get("near_high_20d"),
+        "pullback_from_high_pct": row.get("pullback_from_high_pct"),
+        "above_ma5": row.get("above_ma5"),
+        "above_ma10": row.get("above_ma10"),
+        "above_ma20": row.get("above_ma20"),
+        "trend_score": row.get("trend_score"),
+        "trend_state": row.get("trend_state"),
+        "trend_summary": row.get("trend_summary"),
         "price_date": row.get("price_date"),
         "avg_volume_20d": row.get("avg_volume_20d"),
         "primary_theme_id": row.get("primary_theme_id"),
@@ -287,6 +307,10 @@ def _compact_theme_rankings(rankings: list[dict[str, Any]]) -> list[dict[str, An
             "theme_name": row.get("theme_name"),
             "theme_strength_score": row.get("theme_strength_score"),
             "lifecycle": row.get("lifecycle"),
+            "theme_state": row.get("theme_state"),
+            "avg_trend_score": row.get("avg_trend_score"),
+            "trend_pullback_count": row.get("trend_pullback_count"),
+            "active_breakout_count": row.get("active_breakout_count"),
             "score_breakdown": row.get("score_breakdown"),
             "strong_stock_count": row.get("strong_stock_count"),
             "direct_relation_count": row.get("direct_relation_count"),
@@ -303,6 +327,7 @@ def _compact_theme_flows(flows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {
             "theme_query": flow.get("theme_query"),
             "theme": flow.get("theme"),
+            "market_data_date": flow.get("market_data_date"),
             "related_stock_count": flow.get("related_stock_count"),
             "layers": _compact_layers(flow.get("layers") or []),
             "next_layer_candidates": flow.get("next_layer_candidates"),
@@ -311,6 +336,26 @@ def _compact_theme_flows(flows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for flow in flows[:3]
     ]
+
+
+def _compact_subsector_rankings(rankings: list[dict[str, Any]], limit: int = 20) -> list[dict[str, Any]]:
+    result = []
+    for row in rankings[:limit]:
+        result.append({
+            "sector": row.get("sector"),
+            "sector_display_name": row.get("sector_display_name"),
+            "subsector": row.get("subsector"),
+            "subsector_score": row.get("subsector_score"),
+            "strong_stock_count": row.get("strong_stock_count"),
+            "avg_change_pct": row.get("avg_change_pct"),
+            "volume_surge_count": row.get("volume_surge_count"),
+            "new_high_count": row.get("new_high_count"),
+            "limit_up_count": row.get("limit_up_count"),
+            "theme_hit_count": row.get("theme_hit_count"),
+            "strong_samples": [_compact_stock(s) for s in (row.get("strong_samples") or [])[:5]],
+            "interpretation_hint": row.get("interpretation_hint"),
+        })
+    return result
 
 
 def _compact_layers(layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -341,12 +386,15 @@ def _compact_sector_strength(data: dict[str, Any]) -> dict[str, Any]:
         "sector_rankings": [
             {
                 **{k: row.get(k) for k in ("sector", "sector_score", "strong_stock_count", "avg_change_pct", "volume_surge_count", "new_high_count", "limit_up_count", "avg_volume_20d", "theme_hit_count", "theme_relation_status_counts", "interpretation_hint")},
+                "sector_display_name": row.get("sector_display_name"),
+                "top_subsectors": _compact_subsector_rankings(row.get("top_subsectors") or [], limit=5),
                 "sector_strong_samples": [_compact_stock(s) for s in (row.get("sector_strong_samples") or [])[:5]],
                 "representative_stocks": [_compact_stock(s) for s in (row.get("representative_stocks") or [])[:3]],
                 "candidate_stocks": [_compact_stock(s) for s in (row.get("candidate_stocks") or [])[:3]],
             }
-            for row in (data.get("sector_rankings") or [])[:8]
+            for row in (data.get("sector_rankings") or [])[:20]
         ],
+        "subsector_rankings": _compact_subsector_rankings(data.get("subsector_rankings") or []),
         "data_quality": data.get("data_quality"),
     }
 
@@ -360,13 +408,14 @@ def _compact_market_movers(data: dict[str, Any]) -> dict[str, Any]:
         "source_mode": data.get("source_mode"),
         "hard_filter_policy": data.get("hard_filter_policy"),
         "data_quality": data.get("data_quality"),
-        "top_gainers": [_compact_stock(row) for row in (data.get("top_gainers") or [])[:10]],
-        "top_losers": [_compact_stock(row) for row in (data.get("top_losers") or [])[:10]],
-        "top_volume_surge": [_compact_stock(row) for row in (data.get("top_volume_surge") or [])[:10]],
-        "top_turnover": [_compact_stock(row) for row in (data.get("top_turnover") or [])[:10]],
-        "new_highs": [_compact_stock(row) for row in (data.get("new_highs") or [])[:10]],
-        "new_lows": [_compact_stock(row) for row in (data.get("new_lows") or [])[:10]],
-        "sector_mover_rankings": (data.get("sector_mover_rankings") or [])[:10],
+        "top_gainers": [_compact_stock(row) for row in (data.get("top_gainers") or [])[:20]],
+        "top_losers": [_compact_stock(row) for row in (data.get("top_losers") or [])[:20]],
+        "top_volume_surge": [_compact_stock(row) for row in (data.get("top_volume_surge") or [])[:20]],
+        "top_turnover": [_compact_stock(row) for row in (data.get("top_turnover") or [])[:20]],
+        "top_trend_strength": [_compact_stock(row) for row in (data.get("top_trend_strength") or [])[:20]],
+        "new_highs": [_compact_stock(row) for row in (data.get("new_highs") or [])[:20]],
+        "new_lows": [_compact_stock(row) for row in (data.get("new_lows") or [])[:20]],
+        "sector_mover_rankings": (data.get("sector_mover_rankings") or [])[:20],
     }
 
 
@@ -1545,9 +1594,3 @@ def json_dumps(value: Any) -> str:
     import json
 
     return json.dumps(value, ensure_ascii=False, indent=2, default=str)
-
-
-
-
-
-

@@ -253,11 +253,25 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
+def _column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    value = frame[column]
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            return pd.Series(pd.NA, index=frame.index)
+        value = value.iloc[:, 0]
+    if isinstance(value, pd.Series):
+        return value
+    return pd.Series(value, index=frame.index)
+
+
 def _extract_price_metric(frame: pd.DataFrame) -> dict[str, float] | None:
     if frame.empty or "Close" not in frame.columns or "Volume" not in frame.columns:
         return None
 
-    candidate = frame[["Close", "Volume"]].dropna()
+    candidate = pd.DataFrame(index=frame.index)
+    candidate["Close"] = _column_as_series(frame, "Close")
+    candidate["Volume"] = _column_as_series(frame, "Volume")
+    candidate = candidate.dropna()
     if len(candidate) < 20:
         return None
     close = pd.to_numeric(candidate["Close"], errors="coerce").dropna()
@@ -270,17 +284,28 @@ def _extract_price_metric(frame: pd.DataFrame) -> dict[str, float] | None:
     latest_volume_lots = float(volume.iloc[-1] / 1000.0)
     avg_volume_20d = float(volume.tail(20).mean() / 1000.0)
     latest_date = _latest_frame_date(candidate)
+    high_20d = float(close.tail(20).max()) if len(close) >= 20 else None
+    pullback_from_high_pct = round((latest_close / high_20d - 1) * 100, 2) if high_20d else None
     metric = {
         "price": latest_close,
         "price_date": latest_date,
         "previous_close": previous_close,
         "change_pct": round((latest_close / previous_close - 1) * 100, 2) if previous_close else None,
+        "change_pct_5d": _window_return_pct(close, 5),
+        "change_pct_10d": _window_return_pct(close, 10),
+        "change_pct_20d": _window_return_pct(close, 20),
         "volume": latest_volume_lots,
         "avg_volume_20d": avg_volume_20d,
         "volume_ratio": round(latest_volume_lots / avg_volume_20d, 2) if avg_volume_20d else None,
         "turnover": round(latest_close * latest_volume_lots, 2),
         "new_high_days": _latest_extreme_days(close, high=True),
         "new_low_days": _latest_extreme_days(close, high=False),
+        "days_since_high": _days_since_extreme(close, high=True),
+        "near_high_20d": bool(high_20d and latest_close >= high_20d * 0.95),
+        "pullback_from_high_pct": pullback_from_high_pct,
+        "above_ma5": _above_ma(close, 5),
+        "above_ma10": _above_ma(close, 10),
+        "above_ma20": _above_ma(close, 20),
     }
     return {key: value for key, value in metric.items() if value is not None}
 
@@ -308,6 +333,34 @@ def _latest_extreme_days(close: pd.Series, *, high: bool) -> int | None:
         if (high and latest >= extreme) or (not high and latest <= extreme):
             matched = window
     return matched or None
+
+
+def _window_return_pct(close: pd.Series, window: int) -> float | None:
+    if len(close) <= window:
+        return None
+    base = float(close.iloc[-window - 1])
+    latest = float(close.iloc[-1])
+    if not base:
+        return None
+    return round((latest / base - 1) * 100, 2)
+
+
+def _above_ma(close: pd.Series, window: int) -> bool | None:
+    if len(close) < window:
+        return None
+    ma = float(close.tail(window).mean())
+    return bool(float(close.iloc[-1]) >= ma) if ma else None
+
+
+def _days_since_extreme(close: pd.Series, *, high: bool) -> int | None:
+    if close.empty:
+        return None
+    window = close.tail(min(60, len(close)))
+    extreme = window.max() if high else window.min()
+    matches = window[window == extreme]
+    if matches.empty:
+        return None
+    return int(len(window) - 1 - window.index.get_loc(matches.index[-1]))
 
 
 def _download_single_symbol_price_metric(symbol: str) -> dict[str, float] | None:
@@ -641,20 +694,31 @@ def load_price_metrics(
     if PRICE_CACHE_PATH.exists():
         payload = _read_json(PRICE_CACHE_PATH)
         cached_metrics = payload.get("metrics", {})
-    if not force_refresh and _is_fresh(PRICE_CACHE_PATH, ttl_seconds):
+    cache_fresh = _is_fresh(PRICE_CACHE_PATH, ttl_seconds)
+    if not force_refresh and cache_fresh:
         if cached_metrics and all(symbol in cached_metrics for symbol in requested_symbols) and _price_metric_schema_ready(cached_metrics, requested_symbols):
             return {symbol: cached_metrics[symbol] for symbol in requested_symbols}
 
     schema_ready = _price_metric_schema_ready(cached_metrics, requested_symbols)
-    metrics: dict[str, dict[str, float]] = {} if force_refresh or not schema_ready else dict(cached_metrics)
-    symbols_to_fetch = requested_symbols if force_refresh else [symbol for symbol in requested_symbols if symbol not in metrics]
+    refresh_all = force_refresh or not cache_fresh
+    metrics: dict[str, dict[str, float]] = {} if refresh_all or not schema_ready else dict(cached_metrics)
+    symbols_to_fetch = requested_symbols if refresh_all else [symbol for symbol in requested_symbols if symbol not in metrics]
+    downloaded_metrics: dict[str, dict[str, float]] = {}
 
     for index in range(0, len(symbols_to_fetch), chunk_size):
         chunk = symbols_to_fetch[index : index + chunk_size]
-        metrics.update(_download_chunk_price_metrics(chunk))
+        chunk_metrics = _download_chunk_price_metrics(chunk)
+        downloaded_metrics.update(chunk_metrics)
+        metrics.update(chunk_metrics)
         time.sleep(YF_PRICE_CHUNK_PAUSE_SECONDS)
 
-    if cached_metrics and (not metrics or len(metrics) < len(cached_metrics)):
+    if refresh_all and not downloaded_metrics and cached_metrics:
+        return {symbol: cached_metrics[symbol] for symbol in requested_symbols if symbol in cached_metrics}
+
+    if refresh_all and cached_metrics and len(downloaded_metrics) < max(1, int(len(requested_symbols) * 0.8)):
+        return {symbol: cached_metrics[symbol] for symbol in requested_symbols if symbol in cached_metrics}
+
+    if cached_metrics and (not refresh_all and (not metrics or len(metrics) < len(cached_metrics))):
         merged_metrics = dict(cached_metrics)
         merged_metrics.update(metrics)
         metrics = merged_metrics
@@ -681,7 +745,7 @@ def _price_metric_schema_ready(metrics: dict[str, dict[str, float]], requested_s
         if not isinstance(metric, dict):
             continue
         checked += 1
-        if "change_pct" in metric and "volume_ratio" in metric:
+        if "change_pct" in metric and "volume_ratio" in metric and "price_date" in metric:
             ready += 1
     return bool(checked) and ready / checked >= 0.8
 

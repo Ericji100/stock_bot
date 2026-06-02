@@ -80,7 +80,7 @@ class AIModelDispatchTests(unittest.TestCase):
         config = ResearchCenterConfig(
             api_key=None,
             minimax_api_key="test-key",
-            minimax_model="MiniMax-M2.7",
+            minimax_model="MiniMax-M3",
             minimax_base_url="https://api.minimax.io",
             opencode_api_key="test-key",
             opencode_model="deepseek-chat",
@@ -107,7 +107,7 @@ class AIModelDispatchTests(unittest.TestCase):
 
         self.assertEqual(selected_ai_model, "minimax")
         self.assertEqual(expected_provider, "minimax")
-        self.assertEqual(expected_model, "MiniMax-M2.7")
+        self.assertEqual(expected_model, "MiniMax-M3")
 
         # Verify gemini default case
         request_gemini = center.parse("/research 2330 --deep --model gemini")
@@ -127,7 +127,7 @@ class AIModelDispatchTests(unittest.TestCase):
         config = ResearchCenterConfig(
             api_key=None,
             minimax_api_key="fake-minimax-key",
-            minimax_model="MiniMax-M2.7",
+            minimax_model="MiniMax-M3",
             minimax_base_url="https://api.minimax.io",
             opencode_api_key=None,
             serper_api_key=None,
@@ -153,7 +153,7 @@ class AIModelDispatchTests(unittest.TestCase):
             expected_provider = "gemini"
 
         self.assertEqual(expected_provider, "minimax")
-        self.assertEqual(expected_model, "MiniMax-M2.7")
+        self.assertEqual(expected_model, "MiniMax-M3")
 
     def test_gemini_model_sets_correct_provider_in_structured_data(self):
         """Verify gemini request is correctly parsed and structured_data gets the right provider."""
@@ -164,7 +164,7 @@ class AIModelDispatchTests(unittest.TestCase):
             api_key="fake-gemini-key",
             model="gemini-2.0-flash",
             minimax_api_key="fake-minimax-key",
-            minimax_model="MiniMax-M2.7",
+            minimax_model="MiniMax-M3",
             minimax_base_url="https://api.minimax.io",
             opencode_api_key=None,
             serper_api_key=None,
@@ -193,7 +193,7 @@ class AIModelDispatchTests(unittest.TestCase):
         config = ResearchCenterConfig(
             api_key=None,
             minimax_api_key="fake-minimax-key",
-            minimax_model="MiniMax-M2.7",
+            minimax_model="MiniMax-M3",
             minimax_base_url="https://api.minimax.io",
             opencode_api_key="fake-opencode-key",
             opencode_model="deepseek-chat",

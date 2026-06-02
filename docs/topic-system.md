@@ -71,4 +71,18 @@
 | `/news_detail` | 查看新聞細節 |
 | `/news_status 2330` | 查詢個股新聞保存狀態 |
 
+`/news latest` 與 `/news 7d` 的時間判斷規則：
+
+- 優先使用來源提供的 `published_at`。
+- 若 `published_at` 有值但不在時間窗內，該新聞不顯示。
+- 若 `published_at` 空白，才使用新聞庫 `created_at` 作為 fallback。
+- `latest` 時間窗為最近 24 小時；`7d` 時間窗為最近 7 天。
+
 新聞庫與題材雷達互相支援：新聞提供催化與風險，題材庫提供結構化分類與代表股邏輯。
+## 新聞來源與推送規則
+
+- 新聞庫以 `news_origin` 區分來源：`refresh` 為 `/news refresh` 與排程新聞整理；`manual` 為使用者貼上的新聞；`research` 為調研指令保存的搜尋來源。
+- `/news latest`、`/news 7d` 與每日推送只顯示 `refresh` 來源。`manual` 與 `research` 仍會保存並供調研脈絡使用，但不主動推送。
+- 顯示日期優先使用 `published_at`。只有 `refresh` 來源且 `published_at` 空白時，才可用 `created_at` 輔助判斷；其他來源不能只因今天入庫就變成今日新聞。
+- 使用者偏好只在通過來源、日期、台股財經與非文章頁過濾後，對合格新聞做小幅排序加權。
+- AI 分類逾時時會縮短 payload 重試；若仍逾時，剩餘新聞改用本地分類，避免整輪新聞整理卡住。

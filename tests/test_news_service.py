@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from research_center.news_service import (
     _classify_text_limit,
     _classify_timeout_seconds,
     _filter_taiwan_finance_news,
+    _is_non_article_page,
     _is_taiwan_finance_news,
     _normalize_news_title,
     _call_news_classifier,
@@ -58,6 +60,15 @@ class NewsRepositoryTests(unittest.TestCase):
             self.assertEqual(repo.get_by_id("N123").url, item.url)
         self.assertEqual(query.call_count, 2)
 
+    def test_save_and_query_recent_by_origin(self):
+        with patch.object(NewsRepository, "_init_schema", return_value=None):
+            repo = NewsRepository("dummy.db")
+        with patch.object(repo, "_query", return_value=[]) as query:
+            repo.query_recent(hours=24, news_origin="refresh")
+        sql, params = query.call_args.args
+        self.assertIn("news_origin = ?", sql)
+        self.assertEqual(params[1], "refresh")
+
     def test_news_signal_tags_split_signal_and_heat(self):
         from research_center.news_models import apply_news_signal_tags
 
@@ -88,6 +99,105 @@ class NewsQueriesTests(unittest.TestCase):
         self.assertGreater(len(flat), 0)
         self.assertTrue(any("Taiwan" in query or "台股" in query for query in flat))
         self.assertFalse(any(query.strip().lower() in {"latest news", "breaking news"} for query in flat))
+        self.assertFalse(any("??" in query for query in flat))
+
+    def test_news_queries_cover_display_categories(self):
+        tasks = build_news_discovery_queries("latest")
+        labels = {str(task.get("label", "")) for task in tasks}
+        self.assertIn("台股與大盤", labels)
+        self.assertIn("題材與族群輪動", labels)
+        self.assertIn("AI / 半導體", labels)
+        self.assertIn("供應鏈與產業", labels)
+        self.assertIn("個股利多利空", labels)
+
+    def test_news_queries_do_not_use_generic_english_news_queries(self):
+        tasks = build_news_discovery_queries("latest")
+        flat: list[str] = []
+        for task in tasks:
+            for query in task.get("queries", []):
+                if isinstance(query, dict):
+                    flat.extend(str(item) for item in query.get("items", []))
+                else:
+                    flat.append(str(query))
+        joined = "\n".join(flat).lower()
+        self.assertNotIn("latest news", joined)
+        self.assertNotIn("breaking news", joined)
+        self.assertNotIn("world news", joined)
+
+
+class NonArticlePageFilterTests(unittest.TestCase):
+    def _item(self, url: str, title: str = "Taiwan stock market news") -> NewsItem:
+        return NewsItem(
+            id="x",
+            title=title,
+            url=url,
+            source="test",
+            published_at="1 hours ago",
+            summary="Taiwan stock market and industry news.",
+        )
+
+    def test_rejects_stock_quote_and_detail_pages(self):
+        urls = [
+            "https://tw.stock.yahoo.com/quote/2419.TW/news",
+            "https://tw.stock.yahoo.com/quote/1785.TWO",
+            "https://www.msn.com/zh-tw/money/markets?id=anb7lh&tab=TopGainers",
+            "https://hk.finance.yahoo.com/quote/1785.TWO/news",
+            "https://tw.stock.yahoo.com/rank/change-up",
+            "https://tw.stock.yahoo.com/tw-market",
+            "https://histock.tw/stock/2353",
+            "https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=2419",
+            "https://www.nstock.tw/2419",
+            "https://www.nstock.tw/stock_info?stock_id=5425&status=4",
+            "https://finance.biggo.com.tw/quote/2353.TW/news",
+            "https://www.cnyes.com/twstock/idx_cashflow.aspx?code=0000O",
+            "https://www.cnyes.com/twstock/1785",
+            "https://www.cnyes.com/twstock/1785/financials/income",
+            "https://goodinfo.tw/tw/StockBzPerformance.asp?STOCK_ID=1785&RPT_CAT=M%5FYEAR",
+            "https://statementdog.com/analysis/1785/e-report",
+            "https://treelazy.com/stock/1785",
+            "https://www.wantgoo.com/stock/calendar/shareholders-meeting-souvenirs/1785/detail",
+            "https://www.fugle.tw/ai/1785/EPS",
+            "https://pchome.megatime.com.tw/m/stockinfo/sid1785_4_5.html",
+            "https://ww2.money-link.com.tw/TWStock/StockNews.aspx?SymId=6182",
+            "https://www.ctee.com.tw/market-stock/1785",
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertTrue(_is_non_article_page(self._item(url)))
+
+    def test_rejects_news_list_and_video_pages(self):
+        cases = [
+            ("https://www.moneydj.com/KMDJ/News/NewsRealList.aspx?a=MB010000", "即時新聞 - MoneyDJ理財網"),
+            ("https://www.ctee.com.tw/stock/matchplay", "台股逐洞賽 - 證券 - 工商時報"),
+            ("https://tw.stock.yahoo.com/rank/change-up", "台股漲幅排行 - Yahoo股市"),
+            ("https://tw.stock.yahoo.com/tw-market", "台股盤勢 - Yahoo股市"),
+            ("https://www.cnyes.com/twstock/idx_cashflow.aspx?code=0000O", "台股台灣店頭市場指數資金流向 - 鉅亨網新聞"),
+            ("https://www.sinotrade.com.tw/richclub/Daily_livestream/video/foo", "營收亮眼法人買"),
+            ("https://www.youtube.com/watch?v=abc", "台股影音新聞"),
+        ]
+        for url, title in cases:
+            with self.subTest(url=url):
+                self.assertTrue(_is_non_article_page(self._item(url, title)))
+
+    def test_rejects_financial_media_root_pages(self):
+        cases = [
+            "https://money.udn.com/",
+            "https://news.cnyes.com/",
+            "https://www.moneydj.com/",
+        ]
+        for url in cases:
+            with self.subTest(url=url):
+                self.assertTrue(_is_non_article_page(self._item(url, "台灣財經新聞首頁")))
+
+    def test_keeps_real_financial_article_urls(self):
+        urls = [
+            "https://news.cnyes.com/news/id/6472559",
+            "https://tw.stock.yahoo.com/news/taiwan-semiconductor-ai-server-news-114556922.html",
+            "https://www.ctee.com.tw/news/20260531700000-430503",
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertFalse(_is_non_article_page(self._item(url)))
 
 
 class TaiwanFinanceNewsFilterTests(unittest.TestCase):
@@ -243,6 +353,35 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         self.assertEqual(titles, ["Taiwan semiconductor AI stocks rise"])
         self.assertEqual(repo.deleted_urls, [])
 
+    def test_run_news_latest_hides_english_only_display_sources(self):
+        english_item = NewsItem(
+            id="en1",
+            title="AI demand and chip investment lift Taiwan exports and business investment",
+            url="https://www.digitimes.com/news/a20260529PD203/taiwan-outlook-demand-business-investment.html",
+            source="DIGITIMES",
+            published_at="1 hours ago",
+            category="macro_policy",
+            summary="Taiwan stock market and semiconductor industry news.",
+            importance_score=95,
+        )
+        chinese_item = NewsItem(
+            id="tw2",
+            title="台股AI供應鏈資金輪動 法人看好半導體族群",
+            url="https://www.cna.com.tw/news/afe/202605210002.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="ai_semiconductor",
+            summary="台股、AI、半導體、供應鏈與法人買盤新聞。",
+            importance_score=90,
+        )
+        self.assertTrue(_is_taiwan_finance_news(english_item))
+        repo = self.FakeRepository([english_item, chinese_item])
+
+        titles = [item.title for digest in run_news_latest(repo) for item in digest.items]
+
+        self.assertNotIn(english_item.title, titles)
+        self.assertIn(chinese_item.title, titles)
+
     def test_run_news_latest_includes_empty_display_categories(self):
         repo = self.FakeRepository([self._valid_item()])
         digests = run_news_latest(repo)
@@ -300,6 +439,63 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
 
         holding_digest = digests[-1]
         self.assertEqual([news.id for news in holding_digest.items], ["acer"])
+
+    def test_run_news_latest_moves_related_symbol_holdings_out_of_general_categories(self):
+        item = NewsItem(
+            id="acer_symbol",
+            title="Taiwan PC sector rallies as notebook brands attract fund flow",
+            url="https://www.cna.com.tw/news/afe/202605210033.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="market_focus",
+            related_symbols=["2353"],
+            summary="Taiwan stock market sector rotation and PC supply chain news.",
+            importance_score=85,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo, {"2353": "Acer"})
+
+        market_ids = [news.id for digest in digests[:-1] for news in digest.items]
+        holding_ids = [news.id for news in digests[-1].items]
+        self.assertIn("acer_symbol", market_ids)
+        self.assertEqual(holding_ids, [])
+
+    def test_run_news_latest_moves_company_related_symbol_holdings_out_of_general_categories(self):
+        item = NewsItem(
+            id="acer_symbol_company",
+            title="Taiwan notebook brand revenue beats estimates",
+            url="https://www.cna.com.tw/news/afe/202605210133.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="company_news",
+            related_symbols=["2353"],
+            summary="Taiwan stock market company revenue and foreign broker target price news.",
+            importance_score=85,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo, {"2353": "Acer"})
+
+        market_ids = [news.id for digest in digests[:-1] for news in digest.items]
+        holding_ids = [news.id for news in digests[-1].items]
+        self.assertNotIn("acer_symbol_company", market_ids)
+        self.assertEqual(holding_ids, ["acer_symbol_company"])
+
+    def test_run_news_latest_matches_holdings_from_related_topics(self):
+        item = NewsItem(
+            id="acer_topic",
+            title="Taiwan PC supply chain company revenue beats estimates",
+            url="https://www.cna.com.tw/news/afe/202605210034.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="company_news",
+            related_topics=["Acer"],
+            summary="Taiwan stock market company revenue and target price news.",
+            importance_score=85,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo, {"2353": "Acer"})
+
+        self.assertEqual([news.id for news in digests[-1].items], ["acer_topic"])
 
     def test_run_news_latest_prefers_saved_news_type_after_filtering(self):
         regular_supply = NewsItem(
@@ -438,6 +634,219 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
         self.assertEqual(titles, [item.title])
 
+    def test_run_news_latest_uses_created_at_when_published_at_is_blank(self):
+        item = NewsItem(
+            id="blank_published",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210071.aspx",
+            source="CNA",
+            published_at="",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [item.title])
+
+    def test_run_news_latest_ranks_explicit_date_above_blank_published_at(self):
+        explicit = NewsItem(
+            id="explicit",
+            title="Taiwan semiconductor AI stocks rise on new orders",
+            url="https://www.cna.com.tw/news/afe/202605210081.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="ai_semiconductor",
+            summary="Taiwan stock market AI semiconductor companies news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=80,
+        )
+        blank = NewsItem(
+            id="blank",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210082.aspx",
+            source="CNA",
+            published_at="",
+            category="ai_semiconductor",
+            summary="Taiwan stock market AI semiconductor companies news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=200,
+        )
+        repo = self.FakeRepository([blank, explicit])
+        ai_digest = [digest for digest in run_news_latest(repo) if digest.category == "ai_semiconductor"][0]
+        self.assertEqual([news.id for news in ai_digest.items], ["explicit", "blank"])
+
+    def test_run_news_latest_does_not_use_old_created_at_for_blank_published_at(self):
+        item = NewsItem(
+            id="old_blank_published",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210072.aspx",
+            source="CNA",
+            published_at="",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            created_at=(datetime.now() - timedelta(days=3)).isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_uses_48_hour_fallback(self):
+        item = NewsItem(
+            id="fallback_48h",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210076.aspx",
+            source="CNA",
+            published_at="36 hours ago",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [item.title])
+
+    def test_run_news_latest_prefers_24h_explicit_when_enough_items(self):
+        recent_items = [
+            NewsItem(
+                id=f"recent_{idx}",
+                title=f"Taiwan semiconductor AI stock news {idx}",
+                url=f"https://www.cna.com.tw/news/afe/20260521{idx:04d}.aspx",
+                source="CNA",
+                published_at="1 hours ago",
+                category="ai_semiconductor",
+                summary="Taiwan stock market AI semiconductor companies news.",
+                news_origin="refresh",
+                importance_score=50,
+            )
+            for idx in range(20)
+        ]
+        older = NewsItem(
+            id="fallback_high_score",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605219999.aspx",
+            source="CNA",
+            published_at="36 hours ago",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="refresh",
+            importance_score=999,
+        )
+        repo = self.FakeRepository([older, *recent_items])
+        ids = [news.id for digest in run_news_latest(repo) for news in digest.items]
+        self.assertNotIn("fallback_high_score", ids)
+        self.assertEqual(len(ids), 20)
+
+    def test_run_news_latest_excludes_two_days_ago_from_latest(self):
+        item = NewsItem(
+            id="two_days",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210176.aspx",
+            source="CNA",
+            published_at="2 days ago",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_excludes_blank_published_with_old_embedded_date(self):
+        item = NewsItem(
+            id="old_embedded_date",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210077.aspx",
+            source="CNA",
+            published_at="",
+            category="sector_rotation",
+            summary="MoneyDJ新聞 2026-04-28 11:03:42 發佈 Taiwan stock market passive components news.",
+            full_text="MoneyDJ新聞 2026-04-28 11:03:42 發佈 Taiwan AI server supply chain news.",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_excludes_blank_published_with_old_chinese_date(self):
+        item = NewsItem(
+            id="old_chinese_date",
+            title="台股半導體供應鏈新聞",
+            url="https://www.cna.com.tw/news/afe/202605210078.aspx",
+            source="CNA",
+            published_at="",
+            category="ai_semiconductor",
+            summary="本文發布於 2026年4月28日，說明 Taiwan stock market AI semiconductor companies news.",
+            full_text="2026年4月28日 台股半導體與AI供應鏈新聞。",
+            news_origin="refresh",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_excludes_manual_news_even_when_recent(self):
+        item = NewsItem(
+            id="manual",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210074.aspx",
+            source="CNA",
+            published_at="1 hours ago",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="manual",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_excludes_research_news_with_blank_published_at(self):
+        item = NewsItem(
+            id="research",
+            title="Taiwan passive components stocks rally on AI server demand",
+            url="https://www.cna.com.tw/news/afe/202605210075.aspx",
+            source="CNA",
+            published_at="",
+            category="sector_rotation",
+            summary="Taiwan stock market passive components and AI server supply chain news.",
+            news_origin="research",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
+    def test_run_news_latest_parses_english_month_dates_as_published_dates(self):
+        item = NewsItem(
+            id="english_month_old",
+            title="Taiwan semiconductor AI stocks rise",
+            url="https://www.cna.com.tw/news/afe/202605210073.aspx",
+            source="CNA",
+            published_at="Nov 19, 2025",
+            category="ai_semiconductor",
+            summary="Taiwan stock market AI semiconductor companies news.",
+            created_at=datetime.now().isoformat(timespec="seconds"),
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
+        self.assertEqual(titles, [])
+
     def test_run_news_latest_dedupes_same_title_for_display(self):
         item1 = NewsItem(
             id="dup1",
@@ -479,6 +888,22 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         digests = run_news_latest(repo)
         digest = [d for d in digests if d.category == "market_focus"][0]
         self.assertEqual(digest.items[0].id, "market")
+
+    def test_run_news_latest_keeps_market_focus_ahead_of_supply_terms(self):
+        item = NewsItem(
+            id="market_supply",
+            title="台股再創高法人：短線過熱整理更有助後市",
+            url="https://money.udn.com/money/story/5607/9536629",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="supply_chain",
+            summary="台股大盤再創高，法人認為短線過熱整理有助後市，AI與供應鏈仍是盤面焦點。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo)
+        digest = [d for d in digests if d.category == "market_focus"][0]
+        self.assertEqual([news.id for news in digest.items], ["market_supply"])
 
     def test_run_news_latest_keeps_true_macro_policy_news(self):
         item = NewsItem(
@@ -528,6 +953,139 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         digests = run_news_latest(repo)
         digest = [d for d in digests if d.category == "sector_rotation"][0]
         self.assertEqual([news.id for news in digest.items], ["sector_event"])
+
+    def test_run_news_latest_recategorizes_supply_chain_news(self):
+        item = NewsItem(
+            id="supply",
+            title="台股PCB與散熱供應鏈訂單升溫 伺服器電源族群受惠",
+            url="https://money.udn.com/money/story/5612/9539001",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="market_focus",
+            summary="台股供應鏈新聞，PCB、散熱、電源與伺服器零組件出貨增加。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo)
+        digest = [d for d in digests if d.category == "supply_chain"][0]
+        self.assertEqual([news.id for news in digest.items], ["supply"])
+
+    def test_run_news_latest_recategorizes_sector_basket_headline(self):
+        item = NewsItem(
+            id="sector_basket",
+            title="頻率元件廠股價5月大噴發 Q2業績走旺還有AI及光通訊續加持",
+            url="https://news.cnyes.com/news/id/6477884",
+            source="鉅亨網",
+            published_at="11 hours ago",
+            category="market_focus",
+            summary="台股族群輪動，頻率元件與光通訊多檔受惠。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digest = [d for d in run_news_latest(repo) if d.category == "sector_rotation"][0]
+        self.assertEqual([news.id for news in digest.items], ["sector_basket"])
+
+    def test_run_news_latest_recategorizes_company_headline_even_with_ai_terms(self):
+        item = NewsItem(
+            id="company_ai",
+            title="Taiwan AI server supplier target price raised on stronger earnings",
+            url="https://www.cna.com.tw/news/afe/202605210099.aspx",
+            source="CNA",
+            published_at="6 hours ago",
+            category="ai_semiconductor",
+            summary="Taiwan stock market company earnings and broker target price upgrade news.",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digest = [d for d in run_news_latest(repo) if d.category == "company_news"][0]
+        self.assertEqual([news.id for news in digest.items], ["company_ai"])
+
+    def test_run_news_latest_recategorizes_macro_policy_news(self):
+        item = NewsItem(
+            id="policy",
+            title="央行說明新台幣匯率與利率政策 通膨仍是觀察重點",
+            url="https://money.udn.com/money/story/5613/9539002",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="other",
+            summary="政策、匯率、利率、通膨與貨幣政策影響台灣財經市場。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo)
+        digest = [d for d in digests if d.category == "macro_policy"][0]
+        self.assertEqual([news.id for news in digest.items], ["policy"])
+
+    def test_run_news_latest_keeps_global_risk_headline_in_macro_policy(self):
+        item = NewsItem(
+            id="global_risk",
+            title="美股財報季結束恐回調 分析師：注意力轉向Fed與中東",
+            url="https://news.cnyes.com/news/id/6477833",
+            source="鉅亨網",
+            published_at="4 hours ago",
+            category="company_news",
+            summary="台股投資人關注美股財報、Fed與中東風險對市場影響。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digests = run_news_latest(repo)
+        digest = [d for d in digests if d.category == "macro_policy"][0]
+        self.assertEqual([news.id for news in digest.items], ["global_risk"])
+
+    def test_run_news_latest_recategorizes_clean_market_terms(self):
+        item = NewsItem(
+            id="clean_market",
+            title="6月1日五件財經大事搶先看 台股盤後法人買超",
+            url="https://money.udn.com/money/story/5607/9539991",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="company_news",
+            summary="台股 大盤 三大法人 市場焦點。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digest = [d for d in run_news_latest(repo) if d.category == "market_focus"][0]
+        self.assertEqual([news.id for news in digest.items], ["clean_market"])
+
+    def test_run_news_latest_recategorizes_clean_supply_chain_terms(self):
+        item = NewsItem(
+            id="clean_supply",
+            title="合約價快速上漲 TrendForce：首季 DRAM 產業營收季增",
+            url="https://money.udn.com/money/story/5612/9539992",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="company_news",
+            summary="記憶體 DRAM 供應鏈 材料 價格。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([item])
+        digest = [d for d in run_news_latest(repo) if d.category == "supply_chain"][0]
+        self.assertEqual([news.id for news in digest.items], ["clean_supply"])
+
+    def test_run_news_latest_demotes_low_priority_cmoney_sources(self):
+        cmoney_item = NewsItem(
+            id="cmoney_low",
+            title="台股資金結構健康 內外資合力攻擊",
+            url="https://readmo.cmoney.tw/article/abc",
+            source="readmo.cmoney.tw",
+            published_at="1 hours ago",
+            category="market_focus",
+            summary="台股 大盤 法人 買超。",
+            importance_score=180,
+        )
+        mainstream = NewsItem(
+            id="mainstream",
+            title="台股再創高 法人提醒短線過熱",
+            url="https://money.udn.com/money/story/5607/9539993",
+            source="經濟日報",
+            published_at="1 hours ago",
+            category="market_focus",
+            summary="台股 大盤 法人 市場焦點。",
+            importance_score=90,
+        )
+        repo = self.FakeRepository([cmoney_item, mainstream])
+        digest = [d for d in run_news_latest(repo) if d.category == "market_focus"][0]
+        self.assertEqual([news.id for news in digest.items[:2]], ["mainstream", "cmoney_low"])
 
 
 class NewsFormatterTests(unittest.TestCase):
@@ -634,9 +1192,9 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
     def test_classification_defaults_are_conservative(self):
         with patch.dict("os.environ", {}, clear=False):
             self.assertEqual(_classify_limit(), 50)
-            self.assertEqual(_classify_batch_size(), 5)
-            self.assertEqual(_classify_timeout_seconds(), 90.0)
-            self.assertEqual(_classify_text_limit(), 800)
+            self.assertEqual(_classify_batch_size(), 3)
+            self.assertEqual(_classify_timeout_seconds(), 45.0)
+            self.assertEqual(_classify_text_limit(), 500)
 
     def test_classification_payload_truncates_full_text(self):
         item = self._items(1)[0]
@@ -674,6 +1232,22 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         self.assertEqual(len(classified), 1)
         self.assertEqual(len(gemini.calls), 2)
         self.assertTrue(any("fallback to local rules" in msg for msg in messages))
+
+    def test_timeout_retry_failure_fallbacks_remaining_items_without_more_ai_calls(self):
+        class AlwaysFailGemini(self.FakeGemini):
+            def generate_report(self, prompt, enable_grounding=False):
+                self.calls.append(prompt)
+                raise TimeoutError("simulated timeout")
+
+        gemini = AlwaysFailGemini()
+        center = SimpleNamespace(gemini=gemini)
+        messages: list[str] = []
+        with patch.dict("os.environ", {"NEWS_AI_CLASSIFY_BATCH_SIZE": "1"}):
+            classified = _batch_classify_news(self._items(3), center, messages.append, ai_model="gemini")
+
+        self.assertEqual(len(classified), 3)
+        self.assertEqual(len(gemini.calls), 2)
+        self.assertTrue(any("fallback remaining 2 items" in msg for msg in messages))
 
     def test_call_news_classifier_restores_temporary_timeout(self):
         gemini = self.FakeGemini()
@@ -750,6 +1324,7 @@ class UserSubmittedNewsUrlTests(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.summary, "台股半導體新聞摘要")
         self.assertEqual(repo.count_recent(hours=24), 1)
+        self.assertEqual(item.news_origin, "manual")
         self.assertEqual(repo.count_preferences(), 1)
         self.assertEqual(repo.preferences[0].normalized_category, "ai_semiconductor")
         self.assertIn(repo.preferences[0].news_type, {"supply_chain_benefit", "macro_market", "other"})

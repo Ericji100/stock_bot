@@ -1,15 +1,203 @@
 from __future__ import annotations
 
 import json
+import unittest
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
 import radar_service as radar
 from research_center.models import SourceItem
+
+
+class RadarDataMaximizationTests(unittest.TestCase):
+    def test_normalise_ai_sources_preserves_all_sources_and_fetch_details_unittest(self):
+        sources = [
+            SourceItem(
+                source_id=f"S{i:03d}",
+                title=f"title {i}",
+                url=f"https://example.com/{i}",
+                source_level="Level 3",
+                provider="minimax",
+                provider_detail="web_search",
+                fetch_provider="requests",
+                fetch_status="ok",
+                snippet=f"snippet {i}",
+            )
+            for i in range(12)
+        ]
+        structured_data = {
+            "web_fetched_sources": [
+                {
+                    "title": "full text",
+                    "url": "https://example.com/full",
+                    "provider": "web_fetch",
+                    "fetch_provider": "beautifulsoup",
+                    "fetch_status": "ok",
+                    "content": "complete article body",
+                }
+            ]
+        }
+
+        items = radar._normalise_ai_sources(sources, structured_data)
+
+        self.assertEqual(len(items), 13)
+        self.assertEqual(items[0]["provider_detail"], "web_search")
+        self.assertEqual(items[0]["fetch_provider"], "requests")
+        self.assertEqual(items[-1]["content"], "complete article body")
+
+    def test_radar_evidence_pack_has_three_layer_context_and_sufficiency(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="TSMC",
+            ai_sources=[
+                {"title": f"source {i}", "url": f"https://example.com/{i}", "provider": "minimax"}
+                for i in range(3)
+            ],
+            score_components={"technical": 20},
+            total_score=20,
+        )
+        candidate.data_coverage = radar._build_radar_data_coverage(candidate)
+
+        pack = radar._build_radar_evidence_pack(candidate, date(2026, 5, 22))
+
+        self.assertIn("raw_sources", pack)
+        self.assertIn("final_context", pack)
+        self.assertIn("three_layer_context", pack)
+        self.assertEqual(pack["three_layer_context"]["schema_version"], "three_layer_context_v1")
+        self.assertEqual(pack["three_layer_context"]["source_sufficiency"]["source_count"], 3)
+        self.assertFalse(pack["three_layer_context"]["source_sufficiency"]["sufficient"])
+        self.assertEqual(candidate.data_coverage["checks"]["source_sufficiency"], "insufficient")
+
+    def test_ensure_radar_source_sufficiency_appends_without_dropping_existing_sources(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="TSMC",
+            ai_sources=[{"title": "existing", "url": "https://example.com/existing"}],
+        )
+
+        def fake_attach(candidates, ai_codes, analysis_date, progress):
+            self.assertEqual(ai_codes, ["2330"])
+            candidates[0].web_sources.extend(
+                [
+                    {"title": f"extra {i}", "url": f"https://example.com/extra-{i}"}
+                    for i in range(8)
+                ]
+            )
+
+        with patch.object(radar, "_attach_web_sources", side_effect=fake_attach):
+            radar._ensure_radar_source_sufficiency([candidate], ["2330"], date(2026, 5, 22), None)
+
+        self.assertEqual(candidate.ai_sources[0]["title"], "existing")
+        self.assertEqual(radar._candidate_external_source_count(candidate), 9)
+
+    def test_attach_ai_comments_splits_to_single_stock_jobs_when_prompt_is_large_unittest(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="TSMC",
+            score_components={"technical": 20, "revenue": 10, "chip": 5, "theme": 5, "market": 5},
+            total_score=45,
+            ai_sources=[
+                {"title": f"source {i}", "url": f"https://example.com/{i}", "snippet": "x" * 400}
+                for i in range(8)
+            ],
+            evidence_pack={
+                "research_structured_data": {
+                    "financial_data": [{"Quarter": "2026Q1", "note": "y" * 800}],
+                    "topic_context": {"summary": "z" * 800},
+                },
+                "research_sources": [
+                    {"title": f"research {i}", "url": f"https://research.example.com/{i}", "snippet": "r" * 300}
+                    for i in range(5)
+                ],
+            },
+        )
+        calls = []
+
+        def fake_call(model, prompt):
+            calls.append(prompt)
+            return json.dumps(
+                {
+                    "comments": [
+                        {
+                            "code": "2330",
+                            "priority": "high",
+                            "confidence": "medium",
+                            "reason": "compact evidence reviewed",
+                            "risk": "data quality",
+                            "watch": "revenue",
+                        }
+                    ]
+                }
+            )
+
+        with patch.object(radar, "RADAR_AI_PROMPT_MAX_CHARS", 5000), \
+             patch.object(radar, "_call_ai_comment_model", side_effect=fake_call):
+            meta = radar._attach_ai_comments([candidate], ["2330"], "deepseek", date(2026, 5, 22), None)
+
+        self.assertEqual(candidate.ai_comment["status"], "ok")
+        self.assertEqual(candidate.ai_comment["reason"], "compact evidence reviewed")
+        self.assertEqual(meta["chunks"][0]["status"], "ok")
+        self.assertEqual(meta["chunks"][0]["jobs"][0]["profile"], "minimal")
+        self.assertEqual(len(calls), 1)
+
+    def test_ai_comment_payload_uses_compact_pack_not_full_evidence_unittest(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="台積電",
+            ai_sources=[
+                {"title": f"source {i}", "url": f"https://example.com/{i}", "snippet": "x" * 500}
+                for i in range(20)
+            ],
+            evidence_pack={
+                "research_structured_data": {
+                    "financial_data": [{"Quarter": f"2026Q{i}", "note": "y" * 800} for i in range(8)],
+                },
+                "research_sources": [
+                    {"title": f"research {i}", "url": f"https://research.example.com/{i}", "snippet": "r" * 500}
+                    for i in range(20)
+                ],
+            },
+        )
+
+        payload = radar._build_ai_comment_payload(candidate, date(2026, 5, 22))
+
+        self.assertNotIn("evidence_pack", payload)
+        self.assertIn("ai_compact_pack", payload)
+        compact_payload = payload["ai_compact_pack"]["payload"]
+        self.assertLessEqual(len(compact_payload["news"]["ai_sources"]), radar.RADAR_AI_COMPACT_SOURCE_LIMIT)
+        self.assertLessEqual(len(compact_payload["research_summary"]["financial_data"]), 4)
+
+    def test_ai_prompt_requires_traditional_chinese_unittest(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電")
+
+        prompt = radar._build_ai_comment_prompt([candidate], date(2026, 5, 22))
+
+        self.assertIn("繁體中文", prompt)
+        self.assertIn("ai_compact_pack", prompt)
+        self.assertIn("禁止整段英文分析", prompt)
+
+    def test_radar_report_truncates_ai_comment_lines_unittest(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="台積電",
+            ai_comment={
+                "status": "ok",
+                "reason": "理由" * 120,
+                "risk": "風險" * 120,
+                "watch": "觀察" * 120,
+            },
+        )
+
+        lines = radar._ai_comment_lines(candidate)
+
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(all(len(line) < 190 for line in lines))
+        self.assertTrue(all(line.endswith("...") for line in lines))
 
 
 def test_parse_radar_args_defaults_to_technical_top5():
@@ -78,6 +266,64 @@ def test_run_radar_without_date_passes_latest_trading_day(monkeypatch):
     assert "不是交易日" in result.diagnostics["date_note"]
 
 
+def test_research_evidence_pack_timeout_marks_candidate_and_continues(monkeypatch):
+    candidate = radar.RadarCandidate(code="2330", name="台積電")
+    messages = []
+
+    def fake_collect(*args, **kwargs):
+        raise TimeoutError("單檔 Evidence Pack 超過 1 秒")
+
+    monkeypatch.setattr(radar, "_collect_structured_data_with_timeout", fake_collect)
+
+    radar._attach_research_evidence_packs(
+        [candidate],
+        ["2330"],
+        date(2026, 5, 22),
+        messages.append,
+    )
+
+    assert candidate.evidence_pack["research_structured_timeout"] is True
+    assert "超過 1 秒" in candidate.evidence_pack["research_structured_error"]
+    assert any("逾時跳過" in message for message in messages)
+
+
+def test_research_evidence_pack_timeout_marks_candidate_and_continues(monkeypatch):
+    candidate = radar.RadarCandidate(code="2330", name="Test")
+    messages = []
+    called = False
+
+    def fake_collect(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("Radar should not run full research collection")
+
+    monkeypatch.setattr(radar, "_collect_structured_data_with_timeout", fake_collect)
+    monkeypatch.setattr(radar, "load_research_structured_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "load_latest_research_structured_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_load_radar_light_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_save_radar_light_cache", lambda *args, **kwargs: None)
+
+    radar._attach_research_evidence_packs([candidate], ["2330"], date(2026, 5, 22), messages.append)
+
+    assert called is False
+    assert candidate.evidence_pack["research_pack_mode"] == "light_generated"
+    assert candidate.evidence_pack["research_structured_data"]["radar_research_mode"] == "light_generated"
+    assert any("輕量" in message for message in messages)
+
+
+def test_research_evidence_pack_uses_recent_full_cache(monkeypatch):
+    candidate = radar.RadarCandidate(code="2330", name="Test")
+    cached = {"stock": {"code": "2330"}, "financial_data": [{"eps": 1.2}]}
+
+    monkeypatch.setattr(radar, "load_research_structured_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "load_latest_research_structured_cache", lambda *args, **kwargs: (cached, date(2026, 5, 20)))
+
+    radar._attach_research_evidence_packs([candidate], ["2330"], date(2026, 5, 22), None)
+
+    assert candidate.evidence_pack["research_pack_mode"] == "recent_cache"
+    assert candidate.evidence_pack["research_structured_data"]["radar_research_data_date"] == "2026-05-20"
+
+
 def test_ai_enrichment_selects_top_per_strategy():
     a1 = radar.RadarCandidate(code="1111", strategy_codes={"A"}, total_score=80)
     a2 = radar.RadarCandidate(code="2222", strategy_codes={"A"}, total_score=70)
@@ -105,6 +351,128 @@ def test_attach_ai_comments_writes_comment(monkeypatch):
     assert candidate.ai_comment["reason"] == "題材與技術同向。"
 
 
+def test_attach_ai_comments_runs_in_chunks(monkeypatch):
+    candidates = [radar.RadarCandidate(code=f"23{i:02d}", name=f"Stock{i}") for i in range(12)]
+    calls = []
+
+    def fake_call(model, prompt):
+        calls.append(prompt)
+        payload = json.loads(prompt.split("候選股資料：\n", 1)[1])
+        return json.dumps(
+            {
+                "comments": [
+                    {
+                        "code": item["code"],
+                        "priority": "中",
+                        "confidence": "中",
+                        "reason": "資料可用。",
+                        "risk": "觀察風險。",
+                        "watch": "觀察量能。",
+                    }
+                    for item in payload
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(radar, "_call_ai_comment_model", fake_call)
+
+    meta = radar._attach_ai_comments(candidates, [item.code for item in candidates], "deepseek", date(2026, 5, 22), None)
+
+    assert len(calls) == 3
+    assert meta["chunk_count"] == 3
+    assert meta["comment_count"] == 12
+    assert all(item.ai_comment["status"] == "ok" for item in candidates)
+
+
+def test_normalise_ai_sources_preserves_all_sources_and_fetch_details():
+    sources = [
+        SourceItem(
+            source_id=f"S{i:03d}",
+            title=f"title {i}",
+            url=f"https://example.com/{i}",
+            source_level="Level 3",
+            provider="minimax",
+            provider_detail="web_search",
+            fetch_provider="requests",
+            fetch_status="ok",
+            snippet=f"snippet {i}",
+        )
+        for i in range(12)
+    ]
+    structured_data = {
+        "web_fetched_sources": [
+            {
+                "title": "full text",
+                "url": "https://example.com/full",
+                "provider": "web_fetch",
+                "fetch_provider": "beautifulsoup",
+                "fetch_status": "ok",
+                "content": "complete article body",
+            }
+        ]
+    }
+
+    items = radar._normalise_ai_sources(sources, structured_data)
+
+    assert len(items) == 13
+    assert items[0]["provider_detail"] == "web_search"
+    assert items[0]["fetch_provider"] == "requests"
+    assert items[-1]["content"] == "complete article body"
+
+
+def test_attach_ai_comments_uses_compact_single_stock_job_when_prompt_is_large(monkeypatch):
+    candidate = radar.RadarCandidate(
+        code="2330",
+        name="TSMC",
+        score_components={"technical": 20, "revenue": 10, "chip": 5, "theme": 5, "market": 5},
+        total_score=45,
+        ai_sources=[
+            {"title": f"source {i}", "url": f"https://example.com/{i}", "snippet": "x" * 400}
+            for i in range(8)
+        ],
+        evidence_pack={
+            "research_structured_data": {
+                "financial_data": [{"Quarter": "2026Q1", "note": "y" * 800}],
+                "topic_context": {"summary": "z" * 800},
+            },
+            "research_sources": [
+                {"title": f"research {i}", "url": f"https://research.example.com/{i}", "snippet": "r" * 300}
+                for i in range(5)
+            ],
+        },
+    )
+    calls = []
+
+    def fake_call(model, prompt):
+        calls.append(prompt)
+        return json.dumps(
+            {
+                "comments": [
+                    {
+                        "code": "2330",
+                        "priority": "high",
+                        "confidence": "medium",
+                        "reason": "compact evidence reviewed",
+                        "risk": "data quality",
+                        "watch": "revenue",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(radar, "RADAR_AI_PROMPT_MAX_CHARS", 5000)
+    monkeypatch.setattr(radar, "_call_ai_comment_model", fake_call)
+
+    meta = radar._attach_ai_comments([candidate], ["2330"], "deepseek", date(2026, 5, 22), None)
+
+    assert candidate.ai_comment["status"] == "ok"
+    assert candidate.ai_comment["reason"] == "compact evidence reviewed"
+    assert meta["chunks"][0]["status"] == "ok"
+    assert meta["chunks"][0]["jobs"][0]["profile"] == "minimal"
+    assert len(calls) == 1
+
+
 def test_attach_ai_comments_failure_keeps_local_result(monkeypatch):
     candidate = radar.RadarCandidate(code="2330", name="台積電")
     monkeypatch.setattr(radar, "_call_ai_comment_model", lambda model, prompt: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -113,6 +481,69 @@ def test_attach_ai_comments_failure_keeps_local_result(monkeypatch):
 
     assert candidate.ai_comment["status"] == "failed"
     assert "boom" in candidate.ai_comment["error"]
+
+
+def test_build_radar_evidence_pack_includes_full_layers():
+    candidate = radar.RadarCandidate(
+        code="2330",
+        name="台積電",
+        industry="半導體",
+        strategy_codes={"A"},
+        technical_signals=[{"strategy_code": "A", "technical_setup_score": 8}],
+        revenue_history=[{"month": "2026-04-01", "revenue": 100, "yoy": 20}],
+        chip_grades={"chip_1": "A"},
+        news_items=[{"title": "news"}],
+        ai_sources=[{"title": "source"}],
+        score_components={"technical": 24, "revenue": 10, "chip": 5, "theme": 3, "market": 2},
+        total_score=44,
+    )
+    structured = {
+        "financial_data": [{"Quarter": "2026Q1"}],
+        "margin_data": [{"date": "2026-05-22"}],
+        "institutional_data": [{"date": "2026-05-22"}],
+        "feature_pack": {"scope": "single_stock"},
+        "unified_evidence_pack": {"items": []},
+    }
+
+    candidate.data_coverage = radar._build_radar_data_coverage(candidate, structured)
+    pack = radar._build_radar_evidence_pack(candidate, date(2026, 5, 22), structured)
+
+    assert pack["schema_version"] == "radar_evidence_pack_v1"
+    assert pack["technical"]["signals"]
+    assert pack["revenue"]["history"][0]["yoy"] == 20
+    assert pack["research_structured_data"]["feature_pack"]["scope"] == "single_stock"
+    assert candidate.data_coverage["checks"]["financial"] == "ok"
+
+    candidate.evidence_pack = {"research_structured_data": structured, "research_sources": [{"title": "source"}]}
+    radar._attach_base_evidence_packs([candidate], date(2026, 5, 22))
+    assert candidate.evidence_pack["data_coverage"]["checks"]["financial"] == "ok"
+    assert candidate.evidence_pack["research_sources"][0]["title"] == "source"
+
+
+def test_save_radar_artifacts_writes_evidence_pack(monkeypatch):
+    output_dir = Path("reports") / "_test_radar_artifacts"
+    monkeypatch.setattr(radar, "RADAR_REPORT_DIR", output_dir)
+    candidate = radar.RadarCandidate(
+        code="2330",
+        name="台積電",
+        evidence_pack={"schema_version": "radar_evidence_pack_v1", "candidate": {"code": "2330"}},
+        data_coverage={"checks": {"technical": "ok"}},
+        score_components={"technical": 1},
+        total_score=1,
+    )
+    result = radar.RadarResult(
+        request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 22), ai_top=5),
+        report_date=date(2026, 5, 22),
+        candidates=[candidate],
+        ai_enriched_codes=["2330"],
+        diagnostics={"ai_analysis": {"chunk_count": 1}},
+    )
+
+    paths = radar._save_radar_artifacts(result, {"radar_id": "radar_test"})
+
+    assert Path(paths["summary"]).exists()
+    evidence = json.loads(Path(paths["evidence_pack"]).read_text(encoding="utf-8"))
+    assert evidence[0]["candidate"]["code"] == "2330"
 
 
 def test_format_radar_report_uses_chinese_signal_and_chip_labels():

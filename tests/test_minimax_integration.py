@@ -29,7 +29,7 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                     {
                         "enable_minimax_search": True,
                         "enable_minimax_comparison": True,
-                        "minimax_model": "MiniMax-M2.7",
+                        "minimax_model": "MiniMax-M3",
                     }
                 ),
                 encoding="utf-8",
@@ -48,7 +48,7 @@ class MiniMaxIntegrationTests(unittest.TestCase):
             config = load_research_config(root)
         finally:
             safe_remove_test_cache("minimax_integration/test_config_loads_minimax_and_search_keys")
-        self.assertEqual(config.minimax_model, "MiniMax-M2.7")
+        self.assertEqual(config.minimax_model, "MiniMax-M3")
         self.assertEqual(config.minimax_api_key, "mini")
         self.assertEqual(config.serper_api_key, "serper")
         self.assertTrue(config.enable_minimax_search)
@@ -106,7 +106,7 @@ class MiniMaxIntegrationTests(unittest.TestCase):
             def post(self, url, headers=None, json=None):
                 return response
 
-        service = MiniMaxService("key", model="MiniMax-M2.7", max_retries=0)
+        service = MiniMaxService("key", model="MiniMax-M3", max_retries=0)
         with patch("research_center.minimax_service.httpx.Client", FakeClient):
             with self.assertRaises(MiniMaxRequestError) as ctx:
                 service.generate_report("x" * 25)
@@ -114,7 +114,7 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("MiniMax API request failed", message)
         self.assertIn("status=400", message)
-        self.assertIn("model=MiniMax-M2.7", message)
+        self.assertIn("model=MiniMax-M3", message)
         self.assertIn("prompt_chars=", message)
         self.assertIn("payload_bytes=", message)
         self.assertIn("prompt is too long", message)
@@ -204,14 +204,14 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                 [],
                 True,
                 None,
-                {"analysis_model": "MiniMax-M2.7"},
+                {"analysis_model": "MiniMax-M3"},
                 report_variant="minimax",
             )
         finally:
             safe_remove_test_cache("minimax_integration/test_comparison_report_filename_uses_minimax_variant")
         self.assertIn("_minimax_", artifacts.report_id)
         self.assertEqual(report_json["report_variant"], "minimax")
-        self.assertEqual(report_json["metadata"]["analysis_model"], "MiniMax-M2.7")
+        self.assertEqual(report_json["metadata"]["analysis_model"], "MiniMax-M3")
 
 
 

@@ -663,6 +663,29 @@ class DiscoveryPromptTests(unittest.TestCase):
         # Query count should not explode
         self.assertLessEqual(len(all_queries), 120, f"Too many queries: {len(all_queries)}")
 
+    def test_topic_maintain_discovery_uses_structured_full_market_plan(self):
+        """/topic_maintain discovery should prefer the structured broad market query plan."""
+        from research_center.prompt_registry import _grounding_discovery_tasks
+
+        request = parse_command_text("/topic_maintain --model minimax")
+        tasks = _grounding_discovery_tasks(
+            request,
+            {
+                "candidate_discovery_plan": {
+                    "search_query_plan": [
+                        {"type": "full_market_bucket", "bucket": "financial_dividend", "query": "台股 金融 高股息 題材"},
+                        {"type": "full_market_bucket", "bucket": "biotech_healthcare", "query": "台股 生技 醫療 題材"},
+                    ]
+                }
+            },
+        )
+        text = " ".join(str(task) for task in tasks)
+
+        self.assertIn("financial_dividend", text)
+        self.assertIn("biotech_healthcare", text)
+        self.assertIn("台股 金融 高股息 題材", text)
+        self.assertIn("台股 生技 醫療 題材", text)
+
     def test_topic_maintain_site_queries_per_task_capped_at_four(self):
         """Each /topic_maintain discovery task should have at most 4 site: queries."""
         from research_center.prompt_registry import _grounding_discovery_tasks
@@ -701,4 +724,3 @@ class DiscoveryPromptTests(unittest.TestCase):
         self.assertIn("external_topic_source_caches_json", prompt_text)
         self.assertIn("TPEx", prompt_text)
         self.assertIn("UDN", prompt_text)
-

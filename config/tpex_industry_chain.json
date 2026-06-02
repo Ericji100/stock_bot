@@ -4,18 +4,8 @@
   "source_url": "https://ic.tpex.org.tw/",
   "items": [
     {
-      "name": "ç¢æ¥­å¹å¼éè³è¨å¹³å° ä¼æ¥­ç±è³æ´ä¾¿æ· å¤§ç¾æè³æ´ç©©ç¶",
-      "industry": "ç¢æ¥­å¹å¼éè³è¨å¹³å° ä¼æ¥­ç±è³æ´ä¾¿æ· å¤§ç¾æè³æ´ç©©ç¶",
-      "chain_stage": "",
-      "role": "",
-      "company_code": "",
-      "company_name": "",
-      "source_url": "https://ic.tpex.org.tw/index.php",
-      "source_type": "tpex_link"
-    },
-    {
-      "name": "åå°é«",
-      "industry": "åå°é«",
+      "name": "半導體",
+      "industry": "半導體",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -24,8 +14,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "çæé«ç",
-      "industry": "çæé«ç",
+      "name": "生技醫療",
+      "industry": "生技醫療",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -34,8 +24,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è£½è¥",
-      "industry": "è£½è¥",
+      "name": "製藥",
+      "industry": "製藥",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -44,8 +34,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é«çå¨æ",
-      "industry": "é«çå¨æ",
+      "name": "醫療器材",
+      "industry": "醫療器材",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -54,8 +44,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é£åçæ",
-      "industry": "é£åçæ",
+      "name": "食品生技",
+      "industry": "食品生技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -64,8 +54,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "åçé«ç",
-      "industry": "åçé«ç",
+      "name": "再生醫療",
+      "industry": "再生醫療",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -74,8 +64,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "ç¶ è²è½æº",
-      "industry": "ç¶ è²è½æº",
+      "name": "綠色能源",
+      "industry": "綠色能源",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -84,8 +74,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "æ¸ä½ç§æ",
-      "industry": "æ¸ä½ç§æ",
+      "name": "數位科技",
+      "industry": "數位科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -94,8 +84,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "åå¡é",
-      "industry": "åå¡é",
+      "name": "區塊鏈",
+      "industry": "區塊鏈",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -104,8 +94,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "éèç§æ",
-      "industry": "éèç§æ",
+      "name": "金融科技",
+      "industry": "金融科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -114,8 +104,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "äººå·¥æºæ §",
-      "industry": "äººå·¥æºæ §",
+      "name": "人工智慧",
+      "industry": "人工智慧",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -124,8 +114,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é²ç«¯éç®",
-      "industry": "é²ç«¯éç®",
+      "name": "雲端運算",
+      "industry": "雲端運算",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -134,8 +124,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è³éè¨å®å ¨",
-      "industry": "è³éè¨å®å ¨",
+      "name": "資通訊安全",
+      "industry": "資通訊安全",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -144,8 +134,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "å¤§æ¸æ",
-      "industry": "å¤§æ¸æ",
+      "name": "大數據",
+      "industry": "大數據",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -154,8 +144,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é«é©ç§æ",
-      "industry": "é«é©ç§æ",
+      "name": "體驗科技",
+      "industry": "體驗科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -164,8 +154,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "éåç§æ",
-      "industry": "éåç§æ",
+      "name": "運動科技",
+      "industry": "運動科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -174,8 +164,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "åç»ç§æ",
-      "industry": "åç»ç§æ",
+      "name": "前瞻科技",
+      "industry": "前瞻科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -184,8 +174,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "å¤ªç©ºè¡æç§æ",
-      "industry": "å¤ªç©ºè¡æç§æ",
+      "name": "太空衛星科技",
+      "industry": "太空衛星科技",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -194,8 +184,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "èªåå",
-      "industry": "èªåå",
+      "name": "自動化",
+      "industry": "自動化",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -204,8 +194,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é»å­åå",
-      "industry": "é»å­åå",
+      "name": "電子商務",
+      "industry": "電子商務",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -214,8 +204,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è¢«åå ä»¶",
-      "industry": "è¢«åå ä»¶",
+      "name": "被動元件",
+      "industry": "被動元件",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -224,8 +214,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "éä¿¡ç¶²è·¯",
-      "industry": "éä¿¡ç¶²è·¯",
+      "name": "通信網路",
+      "industry": "通信網路",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -234,8 +224,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é£æ¥å¨",
-      "industry": "é£æ¥å¨",
+      "name": "連接器",
+      "industry": "連接器",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -244,8 +234,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é»è ¦é±é",
-      "industry": "é»è ¦é±é",
+      "name": "電腦週邊",
+      "industry": "電腦週邊",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -254,8 +244,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "å¹³é¢é¡¯ç¤ºå¨",
-      "industry": "å¹³é¢é¡¯ç¤ºå¨",
+      "name": "平面顯示器",
+      "industry": "平面顯示器",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -264,8 +254,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è§¸æ§é¢æ¿",
-      "industry": "è§¸æ§é¢æ¿",
+      "name": "觸控面板",
+      "industry": "觸控面板",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -274,8 +264,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "å°å·é»è·¯æ¿",
-      "industry": "å°å·é»è·¯æ¿",
+      "name": "印刷電路板",
+      "industry": "印刷電路板",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -284,8 +274,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "ä¼éå¨æ¨",
-      "industry": "ä¼éå¨æ¨",
+      "name": "休閒娛樂",
+      "industry": "休閒娛樂",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -294,8 +284,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "æ°´æ³¥",
-      "industry": "æ°´æ³¥",
+      "name": "水泥",
+      "industry": "水泥",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -304,8 +294,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é£å",
-      "industry": "é£å",
+      "name": "食品",
+      "industry": "食品",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -314,8 +304,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "ç³ååå¡æ©¡è",
-      "industry": "ç³ååå¡æ©¡è",
+      "name": "石化及塑橡膠",
+      "industry": "石化及塑橡膠",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -324,8 +314,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "ç´¡ç¹",
-      "industry": "ç´¡ç¹",
+      "name": "紡織",
+      "industry": "紡織",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -334,8 +324,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é»æ©æ©æ¢°",
-      "industry": "é»æ©æ©æ¢°",
+      "name": "電機機械",
+      "industry": "電機機械",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -344,8 +334,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é ç´",
-      "industry": "é ç´",
+      "name": "造紙",
+      "industry": "造紙",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -354,8 +344,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "é¼éµ",
-      "industry": "é¼éµ",
+      "name": "鋼鐵",
+      "industry": "鋼鐵",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -364,8 +354,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "æ±½è»",
-      "industry": "æ±½è»",
+      "name": "汽車",
+      "industry": "汽車",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -374,8 +364,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è»é«æå",
-      "industry": "è»é«æå",
+      "name": "軟體服務",
+      "industry": "軟體服務",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -384,8 +374,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "å»ºæçé",
-      "industry": "å»ºæçé",
+      "name": "建材營造",
+      "industry": "建材營造",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -394,8 +384,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "äº¤ééè¼¸åèªé",
-      "industry": "äº¤ééè¼¸åèªé",
+      "name": "交通運輸及航運",
+      "industry": "交通運輸及航運",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -404,8 +394,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "éè",
-      "industry": "éè",
+      "name": "金融",
+      "industry": "金融",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -414,8 +404,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "è²¿æç¾è²¨",
-      "industry": "è²¿æç¾è²¨",
+      "name": "貿易百貨",
+      "industry": "貿易百貨",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -424,8 +414,8 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "æ²¹é»çæ°£",
-      "industry": "æ²¹é»çæ°£",
+      "name": "油電燃氣",
+      "industry": "油電燃氣",
       "chain_stage": "",
       "role": "",
       "company_code": "",
@@ -434,53 +424,13 @@
       "source_type": "tpex_link"
     },
     {
-      "name": "æååµæ",
-      "industry": "æååµæ",
+      "name": "文化創意",
+      "industry": "文化創意",
       "chain_stage": "",
       "role": "",
       "company_code": "",
       "company_name": "",
       "source_url": "https://ic.tpex.org.tw/introduce.php?ic=Y000",
-      "source_type": "tpex_link"
-    },
-    {
-      "name": "å ¶ä»",
-      "industry": "å ¶ä»",
-      "chain_stage": "",
-      "role": "",
-      "company_code": "",
-      "company_name": "",
-      "source_url": "https://ic.tpex.org.tw/introduce.php?ic=X000",
-      "source_type": "tpex_link"
-    },
-    {
-      "name": "ä½¿ç¨æ¢æ¬¾",
-      "industry": "ä½¿ç¨æ¢æ¬¾",
-      "chain_stage": "",
-      "role": "",
-      "company_code": "",
-      "company_name": "",
-      "source_url": "https://ic.tpex.org.tw/disclaimer.php?stk_code=",
-      "source_type": "tpex_link"
-    },
-    {
-      "name": "é±ç§æ¬ä¿è­·èªªæ",
-      "industry": "é±ç§æ¬ä¿è­·èªªæ",
-      "chain_stage": "",
-      "role": "",
-      "company_code": "",
-      "company_name": "",
-      "source_url": "https://ic.tpex.org.tw/privacy_rights.php?stk_code=",
-      "source_type": "tpex_link"
-    },
-    {
-      "name": "ç¶²ç«å°å",
-      "industry": "ç¶²ç«å°å",
-      "chain_stage": "",
-      "role": "",
-      "company_code": "",
-      "company_name": "",
-      "source_url": "https://ic.tpex.org.tw/sitemap.php",
       "source_type": "tpex_link"
     }
   ],
@@ -489,6 +439,7 @@
     "note": "TPEx cache is an industry-chain reference, not an investment conclusion.",
     "ssl_verify": false,
     "ssl_fallback": true,
-    "ssl_fallback_reason": "HTTPSConnectionPool(host='ic.tpex.org.tw', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Missing Subject Key Identifier (_ssl.c:1081)')))"
+    "ssl_fallback_reason": "HTTPSConnectionPool(host='ic.tpex.org.tw', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Missing Subject Key Identifier (_ssl.c:1081)')))",
+    "mojibake_repaired": true
   }
 }

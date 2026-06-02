@@ -15,7 +15,7 @@ from .recent_scans import load_recent_scan_results
 
 RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 
-模型參數: --model gemini|deepseek|minimax；MiniMax M2.7 適合長文搜尋整理，DeepSeek V4 Pro 適合推理與摘要。
+模型參數: --model gemini|deepseek|minimax；MiniMax M3 適合長文搜尋整理，DeepSeek V4 Pro 適合推理與摘要。
 
 選股與雷達
 /scan - 開啟選股掃描選單
@@ -59,9 +59,7 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 /sector_strength [--date 2026-05-22] [--model deepseek] - 族群強弱排行
 
 題材庫維護
-/topic_maintain - 完整維護題材庫，互動選模型
-/topic_maintain --bootstrap - 補足既有題材庫缺欄位，互動選模型
-/topic_maintain --bootstrap --model minimax - 指定模型補題材庫
+/topic_maintain - 大範圍完整維護題材庫，互動選模型
 /topic_seed_prompt - 產生外部高階 AI 題材庫提示詞
 /topic_import - 匯入外部 AI JSON（本地轉成變更包，不呼叫 AI）
 /topic_source_sync - 同步 TPEx/UDN 外部來源並套用正式題材庫
@@ -109,6 +107,16 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 AI_CALLBACK_PREFIX = "ai_menu:"
 TOPIC_IMPORT_MAX_FILE_SIZE_BYTES = 10_000_000
 TOPIC_IMPORT_MAX_FILE_SIZE_MB = TOPIC_IMPORT_MAX_FILE_SIZE_BYTES // 1_000_000
+LONG_RUNNING_COMMANDS = {
+    "research",
+    "macro",
+    "theme",
+    "theme_radar",
+    "theme_flow",
+    "sector_strength",
+    "value_scan",
+    "topic_maintain",
+}
 
 
 def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_command, make_stoppable_handler):
@@ -537,12 +545,11 @@ async def _maybe_start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.user_data["ai_menu"] = {"command": "sector_strength"}
         await safe_send_reply(update, "請選擇族群強弱資料日期：", reply_markup=_date_keyboard("sector_strength"))
         return True
-    # /topic_maintain with no args → show model selection menu directly (default full maintenance)
+    # /topic_maintain with no args -> show model selection menu directly (default full maintenance)
     if command == "topic_maintain" and (
         len(parts) == 1
-        or (len(parts) == 2 and parts[1] == "--bootstrap")
     ):
-        context.user_data["ai_menu"] = {"command": "topic_maintain", "bootstrap": "--bootstrap" in parts[1:]}
+        context.user_data["ai_menu"] = {"command": "topic_maintain"}
         await safe_send_reply(update, "請選擇 AI 模型：", reply_markup=_topic_model_keyboard())
         return True
     if command == "topic_import" and len(parts) == 1:
@@ -562,7 +569,27 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
     _print_progress(raw_text, "收到 Telegram AI 投研指令")
     await safe_send_reply(update, "AI 投研任務已收到，正在整理資料與產生報告，請稍候...")
 
+    heartbeat = None
+    if _should_use_progress_heartbeat(raw_text):
+        from progress_logger import ProgressHeartbeat
+
+        heartbeat = ProgressHeartbeat(
+            _heartbeat_label(raw_text),
+            sink=lambda message: _print_progress(raw_text, message),
+        ).start()
+        try:
+            from backfill_service import is_backfill_running
+
+            if is_backfill_running():
+                notice = "偵測到完整資料回補正在執行，本次任務會優先使用既有快取與逾時降級，避免長時間等待資料源。"
+                heartbeat.update(notice, stage="回補狀態檢查")
+                _print_progress(raw_text, notice)
+        except Exception:
+            pass
+
     def progress(message: str) -> None:
+        if heartbeat:
+            heartbeat.update(message)
         _print_progress(raw_text, message)
 
     try:
@@ -570,14 +597,25 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
             result = await asyncio.to_thread(center.prepare_parallel_model_run, raw_text, user_id, progress)
         else:
             result = await asyncio.to_thread(center.run_text_command, raw_text, user_id, progress)
+    except asyncio.CancelledError:
+        if heartbeat:
+            heartbeat.stop()
+        raise
     except CommandParseError as exc:
         progress(f"指令解析失敗：{exc}")
+        if heartbeat:
+            heartbeat.stop()
         await safe_send_reply(update, f"❌ {exc}")
         return
     except Exception as exc:
         progress(f"AI 投研任務失敗：{exc}")
+        if heartbeat:
+            heartbeat.stop()
         await safe_send_reply(update, f"❌ AI 投研任務失敗：{exc}")
         return
+
+    if heartbeat:
+        heartbeat.stop()
 
     parallel_jobs = ((result.runtime_context or {}).get("parallel_model_jobs") or {}).get("model_jobs") or []
     if parallel_jobs:
@@ -594,7 +632,7 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await _send_runtime_document(update, result, safe_reply_document)
     await _send_report_files(update, result, safe_send_reply, safe_reply_document)
     if (result.runtime_context or {}).get("minimax_comparison"):
-        await safe_send_reply(update, "MiniMax-M2.7 比較報告已在背景開始產生；完成後會補傳，失敗也會另行通知。")
+        await safe_send_reply(update, "MiniMax-M3 比較報告已在背景開始產生；完成後會補傳，失敗也會另行通知。")
         asyncio.create_task(_run_minimax_comparison_background(update, center, result, raw_text, safe_send_reply, safe_reply_document))
 
 
@@ -663,7 +701,7 @@ def _analysis_model_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:gemini")],
         [InlineKeyboardButton("DeepSeek V4 Pro (OpenCode Go)", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:deepseek")],
-        [InlineKeyboardButton("MiniMax M2.7", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:minimax")],
+        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:minimax")],
     ])
 
 
@@ -677,7 +715,7 @@ def _news_model_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}news_model:gemini")],
         [InlineKeyboardButton("DeepSeek V4 Pro (OpenCode Go)", callback_data=f"{AI_CALLBACK_PREFIX}news_model:deepseek")],
-        [InlineKeyboardButton("MiniMax M2.7", callback_data=f"{AI_CALLBACK_PREFIX}news_model:minimax")],
+        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}news_model:minimax")],
     ])
 
 
@@ -715,7 +753,7 @@ def _extract_first_url(text: str) -> str | None:
 def _topic_model_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:gemini"), InlineKeyboardButton("DeepSeek V4 Pro（OpenCode Go）", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:deepseek")],
-        [InlineKeyboardButton("MiniMax M2.7", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:minimax")],
+        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:minimax")],
     ])
 
 
@@ -768,8 +806,6 @@ def _compose_topic_maintain_command(state: dict) -> str:
     model = state.get("model") or "gemini"
 
     parts = ["/topic_maintain"]
-    if state.get("bootstrap"):
-        parts.append("--bootstrap")
     if model != "gemini":
         parts.extend(["--model", model])
 
@@ -876,9 +912,9 @@ async def _run_minimax_comparison_background(update: Update, center: ResearchCen
         entry = await asyncio.to_thread(center.run_minimax_comparison_for_result, result, progress)
     except Exception as exc:
         progress(f"MiniMax comparison background task crashed: {exc}")
-        await safe_send_reply(update, f"⚠️ MiniMax-M2.7 比較報告產出失敗。\n原因：{exc}")
+        await safe_send_reply(update, f"⚠️ MiniMax-M3 比較報告產出失敗。\n原因：{exc}")
         return
-    model = entry.get("model") or "MiniMax-M2.7"
+    model = entry.get("model") or "MiniMax-M3"
     status = entry.get("status")
     if status == "success":
         await safe_send_reply(update, f"✅ {model} 比較報告已產生，正在傳送附件。")
@@ -947,6 +983,23 @@ def _print_progress(raw_text: str, message: str) -> None:
         print(f"{message}", flush=True)
     else:
         print(f"[{timestamp}] [AI投研] {command} | {message}", flush=True)
+
+
+def _command_name(raw_text: str) -> str:
+    first = (raw_text or "").strip().split(maxsplit=1)[0] if (raw_text or "").strip() else ""
+    return first.lstrip("/").split("@", 1)[0]
+
+
+def _should_use_progress_heartbeat(raw_text: str) -> bool:
+    return _command_name(raw_text) in LONG_RUNNING_COMMANDS
+
+
+def _heartbeat_label(raw_text: str) -> str:
+    command = _command_name(raw_text) or "ai"
+    first_line = (raw_text or "").splitlines()[0].strip()
+    if len(first_line) > 80:
+        first_line = first_line[:77] + "..."
+    return f"/{command} {first_line}".strip()
 
 
 

@@ -35,6 +35,11 @@ from .rerating_snapshot_service import build_rerating_snapshot_for_stock
 from .models import CommandRequest
 from .news_context_service import attach_news_context
 from .news_event_service import attach_news_events
+from .sector_alias_service import (
+    build_topic_maintain_sector_queries,
+    rerating_label_for_industry,
+    topic_search_terms_for_stock,
+)
 from .source_rank import make_source_items
 from .stock_feature_pack_service import attach_feature_pack
 from .structured_cache import load_latest_research_structured_cache, load_research_structured_cache, save_research_structured_cache
@@ -375,14 +380,11 @@ def collect_topic_maintain_data(request: CommandRequest, progress: Callable[[str
 
 
 def _topic_maintain_mode(request: CommandRequest, focus_theme: str, existing_profiles: list[dict[str, Any]]) -> str:
-    raw = str(request.raw_text or "")
-    if "--bootstrap" in raw:
-        return "bootstrap_backfill"
     if focus_theme.startswith("__from_radar__:"):
         return "from_theme_radar"
     if focus_theme:
         return "focused_theme"
-    return "daily_discovery" if existing_profiles else "initial_seed"
+    return "full_market_maintenance" if existing_profiles else "full_market_initial"
 
 
 def _topic_library_gap_analysis(
@@ -439,7 +441,7 @@ def _topic_library_gap_analysis(
         "priority_company_gaps": company_gaps[:40],
         "priority_supply_chain_node_gaps": node_gaps[:40],
         "profile_gaps": profile_gaps[:40],
-        "recommended_mode": "bootstrap_backfill" if company_gaps or node_gaps or profile_gaps else "daily_discovery",
+        "recommended_mode": "full_market_maintenance",
     }
 
 
@@ -507,6 +509,8 @@ def _topic_search_query_plan(
     maintenance_mode: str,
 ) -> list[dict[str, Any]]:
     queries: list[dict[str, Any]] = []
+    queries.extend(_topic_full_market_query_plan())
+    queries.extend(build_topic_maintain_sector_queries(stocks[:40], limit=20))
     for theme in themes[:12]:
         name = str(theme.get("theme") or "").strip()
         if not name:
@@ -525,9 +529,10 @@ def _topic_search_query_plan(
         label = " ".join(part for part in (code, name) if part).strip()
         if not label:
             continue
+        context_terms = " ".join(topic_search_terms_for_stock(stock, max_terms=8))
         queries.extend([
             {"type": "company_product_evidence", "query": f"{label} 產品 客戶 法說會 營收占比"},
-            {"type": "company_theme_evidence", "query": f"{label} 題材 受惠 供應鏈 AI 伺服器 電源 記憶體"},
+            {"type": "company_theme_evidence", "query": f"{label} 題材 受惠 供應鏈 {context_terms}".strip()},
             {"type": "company_official_evidence", "query": f"{label} 公開資訊觀測站 月營收 年報 法說會 投資人關係"},
             {"type": "company_counter_evidence", "query": f"{label} 風險 庫存 毛利率 下滑 砍單 客戶集中"},
         ])
@@ -536,7 +541,66 @@ def _topic_search_query_plan(
         if label:
             queries.append({"type": "backfill_company_gap", "query": f"{label} {' '.join(gap.get('themes') or [])} {' '.join(gap.get('missing') or [])}"})
             queries.append({"type": "backfill_official_gap", "query": f"{label} {' '.join(gap.get('missing') or [])} 官方 法說會 年報 月營收"})
-    return [{"mode": maintenance_mode, **item} for item in queries[:80]]
+    return [{"mode": maintenance_mode, **item} for item in queries[:120]]
+
+
+def _topic_full_market_query_plan() -> list[dict[str, Any]]:
+    """Broad default topic-maintenance searches across major Taiwan market buckets."""
+    buckets = [
+        ("ai_semiconductor", [
+            "台股 AI 半導體 伺服器 ASIC HBM CoWoS 先進封裝 最新題材",
+            "台股 AI 供應鏈 散熱 電源 PCB CCL 伺服器代工 近期新聞",
+        ]),
+        ("power_energy_grid", [
+            "台股 重電 電力設備 電網 儲能 變壓器 AI資料中心 用電 近期新聞",
+            "台股 能源 綠電 儲能 電線電纜 電力基建 政策 受惠股",
+        ]),
+        ("pcb_components", [
+            "台股 PCB CCL IC載板 被動元件 連接器 高速傳輸 近期題材",
+            "台股 電子零組件 MLCC 散熱 模組 材料 報價 訂單 新聞",
+        ]),
+        ("financial_dividend", [
+            "台股 金融股 壽險 金控 高股息 ETF 資金輪動 近期新聞",
+            "台股 高股息 價值股 金融 補漲 低波動 題材",
+        ]),
+        ("biotech_healthcare", [
+            "台股 生技 醫療 新藥 CDMO 醫材 長照 政策 近期新聞",
+            "台股 生技股 臨床 授權 營收 醫療科技 題材",
+        ]),
+        ("shipping_commodities_cycle", [
+            "台股 航運 散裝 原物料 鋼鐵 水泥 塑化 景氣循環 近期題材",
+            "BDI 運價 原物料 台股 航運 鋼鐵 塑化 受惠股",
+        ]),
+        ("defense_security", [
+            "台股 軍工 無人機 安控 資安 國防預算 政策 近期新聞",
+            "台股 國防 無人機 通訊 安控 供應鏈 受惠公司",
+        ]),
+        ("domestic_consumption", [
+            "台股 內需 觀光 餐飲 食品 通路 百貨 消費復甦 近期新聞",
+            "台股 觀光 旅遊 食品 通路 內需 題材 受惠股",
+        ]),
+        ("ev_automotive", [
+            "台股 車用電子 電動車 充電樁 車聯網 ADAS 近期題材",
+            "台股 EV 車用 充電樁 電池 車用零組件 供應鏈 新聞",
+        ]),
+        ("robotics_automation", [
+            "台股 機器人 自動化 工具機 工業電腦 物理AI 近期新聞",
+            "台股 自動化 機器人 工具機 感測器 工控 受惠股",
+        ]),
+        ("telecom_satellite", [
+            "台股 低軌衛星 網通 光通訊 CPO 交換器 通訊 近期題材",
+            "台股 衛星 網通 光通訊 高速傳輸 供應鏈 受惠公司",
+        ]),
+        ("policy_macro_rotation", [
+            "台股 政策受惠 產業輪動 法人看好 近期熱門族群",
+            "台股 近一個月 熱門題材 族群輪動 法人 媒體 產業新聞",
+        ]),
+    ]
+    result: list[dict[str, Any]] = []
+    for bucket, bucket_queries in buckets:
+        for query in bucket_queries:
+            result.append({"type": "full_market_bucket", "bucket": bucket, "query": query})
+    return result
 
 
 def _topic_source_policy() -> dict[str, Any]:
@@ -899,6 +963,7 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
         progress(f"價值重估：價量資料完成，涵蓋 {len(price_metrics)} 檔")
 
     rows: list[dict[str, Any]] = []
+    radar_candidates_by_code = universe_policy.get("radar_candidates_by_code") if isinstance(universe_policy, dict) else None
     total = len(universe)
     for index, entry in enumerate(universe, 1):
         metric = price_metrics.get(entry.symbol) or {}
@@ -911,8 +976,7 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
         revenue_value = latest_revenue.revenue if latest_revenue else None
         revenue_yoy = latest_revenue.yoy if latest_revenue else None
         score_detail = _value_rerating_score(entry.industry, price, avg_volume, revenue_yoy)
-        rows.append(
-            {
+        row = {
                 "code": entry.code,
                 "name": entry.name,
                 "symbol": entry.symbol,
@@ -927,7 +991,16 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
                 "score_components": score_detail["components"],
                 "rerating_score": score_detail["score"],
             }
-        )
+        if isinstance(radar_candidates_by_code, dict):
+            radar_payload = radar_candidates_by_code.get(entry.code)
+            if isinstance(radar_payload, dict):
+                row["radar_score"] = radar_payload.get("total_score")
+                row["radar_score_components"] = radar_payload.get("score_components")
+                row["radar_strategy_codes"] = radar_payload.get("strategy_codes")
+                row["radar_data_coverage"] = radar_payload.get("data_coverage")
+                row["radar_evidence_pack"] = radar_payload.get("evidence_pack")
+                row["radar_ai_sources"] = radar_payload.get("ai_sources")
+        rows.append(row)
 
     rows.sort(key=lambda row: row["rerating_score"], reverse=True)
     rows = enrich_company_rows(rows)
@@ -1096,6 +1169,21 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
         codes = [str(item.code) for item in radar_result.candidates if str(item.code or "").strip()]
         selected = [by_code[code] for code in codes if code in by_code]
         missing = [code for code in codes if code not in by_code]
+        radar_candidates_by_code = {
+            str(item.code): {
+                "code": str(item.code),
+                "name": str(getattr(item, "name", "") or ""),
+                "total_score": int(getattr(item, "total_score", 0) or 0),
+                "score_components": dict(getattr(item, "score_components", {}) or {}),
+                "strategy_codes": sorted(getattr(item, "strategy_codes", set()) or []),
+                "data_coverage": dict(getattr(item, "data_coverage", {}) or {}),
+                "evidence_pack": dict(getattr(item, "evidence_pack", {}) or {}),
+                "ai_sources": list(getattr(item, "ai_sources", []) or []),
+                "web_sources": list(getattr(item, "web_sources", []) or []),
+            }
+            for item in radar_result.candidates
+            if str(item.code or "").strip()
+        }
         return selected, {
             "source": "選股雷達",
             "status": "covered",
@@ -1104,6 +1192,8 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
             "radar_source": radar_result.request.source,
             "requested_codes": codes,
             "missing_codes": missing,
+            "radar_candidate_count": len(radar_candidates_by_code),
+            "radar_candidates_by_code": radar_candidates_by_code,
             "note": "使用最近一次或指定日期的 /radar 快取候選名單，不重新執行 Radar。",
         }
 
@@ -1370,11 +1460,27 @@ def _tail_records(frame: pd.DataFrame, count: int) -> list[dict[str, Any]]:
     return clean.to_dict(orient="records")
 
 
+def _column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    value = frame[column]
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            return pd.Series(pd.NA, index=frame.index)
+        value = value.iloc[:, 0]
+    if isinstance(value, pd.Series):
+        return value
+    return pd.Series(value, index=frame.index)
+
+
 def _technical_snapshot(price_df: pd.DataFrame) -> dict[str, Any]:
     if price_df.empty or "Close" not in price_df.columns:
         return {"status": "no price data"}
-    frame = price_df.copy()
-    frame["Close"] = pd.to_numeric(frame["Close"], errors="coerce")
+    source_frame = price_df.copy()
+    frame = pd.DataFrame(index=source_frame.index)
+    if "Date" in source_frame.columns:
+        frame["Date"] = _column_as_series(source_frame, "Date")
+    frame["Close"] = pd.to_numeric(_column_as_series(source_frame, "Close"), errors="coerce")
+    if "Volume_Lots" in source_frame.columns:
+        frame["Volume_Lots"] = _column_as_series(source_frame, "Volume_Lots")
     latest = frame.iloc[-1]
     snapshot = {"latest_close": latest.get("Close"), "latest_date": str(latest.get("Date"))}
     for window in (5, 10, 21, 60):
@@ -1382,7 +1488,7 @@ def _technical_snapshot(price_df: pd.DataFrame) -> dict[str, Any]:
             snapshot[f"ma{window}"] = float(frame["Close"].tail(window).mean())
             snapshot[f"above_ma{window}"] = bool(float(latest.get("Close")) >= snapshot[f"ma{window}"])
     if "Volume_Lots" in frame.columns and len(frame) >= 20:
-        snapshot["avg_volume_20d"] = float(pd.to_numeric(frame["Volume_Lots"], errors="coerce").tail(20).mean())
+        snapshot["avg_volume_20d"] = float(pd.to_numeric(_column_as_series(frame, "Volume_Lots"), errors="coerce").tail(20).mean())
     return snapshot
 
 
@@ -1429,7 +1535,7 @@ def _macro_quantitative_context() -> dict[str, Any]:
 def _index_metrics(history: pd.DataFrame) -> dict[str, Any]:
     if history.empty:
         return {"status": "no data"}
-    close = pd.to_numeric(history["Close"], errors="coerce")
+    close = pd.to_numeric(_column_as_series(history, "Close"), errors="coerce")
     latest = float(close.iloc[-1])
     result: dict[str, Any] = {"latest_close": latest, "latest_date": str(history.index[-1].date())}
     for window in (5, 10, 21, 60):
@@ -1556,18 +1662,7 @@ def _value_rerating_score(industry: str, price: Any, avg_volume: Any, yoy: Any) 
 
 
 def _industry_rerating_label(industry: str) -> tuple[float, str]:
-    mapping = {
-        "半導體": (18, "AI/HPC/先進封裝供應鏈"),
-        "電子零組件": (16, "AI 伺服器零組件/高速傳輸"),
-        "電腦及週邊設備": (14, "AI 伺服器/邊緣運算設備"),
-        "電機機械": (14, "重電/自動化/機器人供應鏈"),
-        "電器電纜": (12, "電網升級/能源基建"),
-        "通信網路": (12, "高速網通/資料中心網路"),
-    }
-    for key, value in mapping.items():
-        if key in industry:
-            return value
-    return 6, f"{industry or '未分類'} / 待驗證新題材"
+    return rerating_label_for_industry(industry)
 
 
 def _value_scan_rules() -> dict[str, Any]:

@@ -370,25 +370,38 @@ def _daily_chip_cache_path(target_date: date) -> Path:
     return DAILY_CHIP_CACHE_DIR / f"{target_date.strftime('%Y%m%d')}.csv"
 
 
+def _chip_column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    value = frame[column]
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            return pd.Series(pd.NA, index=frame.index)
+        value = value.iloc[:, 0]
+    if isinstance(value, pd.Series):
+        return value
+    return pd.Series(value, index=frame.index)
+
+
 def _normalize_daily_chip_frame(frame: pd.DataFrame, target_date: date | None = None) -> pd.DataFrame:
     columns = ["date", "code", "market", "foreign_net_lots", "trust_net_lots", "foreign_ratio_pct", "source"]
     if frame.empty:
         return pd.DataFrame(columns=columns)
 
-    normalized = frame.copy()
+    source_frame = frame.copy()
     for column in columns:
-        if column not in normalized.columns:
-            normalized[column] = pd.NA
+        if column not in source_frame.columns:
+            source_frame[column] = pd.NA
 
     if target_date is not None:
-        normalized["date"] = target_date
-    normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce").dt.date
-    normalized["code"] = normalized["code"].astype(str).str.strip()
-    normalized["market"] = normalized["market"].astype(str).replace({"nan": ""})
-    normalized["source"] = normalized["source"].fillna("cache").astype(str).str.strip()
+        source_frame["date"] = target_date
+
+    normalized = pd.DataFrame(index=source_frame.index)
+    normalized["date"] = pd.to_datetime(_chip_column_as_series(source_frame, "date"), errors="coerce").dt.date
+    normalized["code"] = _chip_column_as_series(source_frame, "code").astype(str).str.strip()
+    normalized["market"] = _chip_column_as_series(source_frame, "market").astype(str).replace({"nan": ""})
+    normalized["source"] = _chip_column_as_series(source_frame, "source").fillna("cache").astype(str).str.strip()
     normalized.loc[normalized["source"].isin(["", "nan", "None"]), "source"] = "cache"
     for column in ("foreign_net_lots", "trust_net_lots", "foreign_ratio_pct"):
-        normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
+        normalized[column] = pd.to_numeric(_chip_column_as_series(source_frame, column), errors="coerce")
 
     normalized = normalized[normalized["code"] != ""]
     normalized = normalized.dropna(subset=["date", "code"])

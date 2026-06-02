@@ -15,6 +15,7 @@ portfolio.json
 *.log
 config/secrets.json
 database/*.db
+database/
 reports/
 backup/
 logs/
@@ -24,6 +25,11 @@ research_center/__pycache__/
 tests/__pycache__/
 tools/__pycache__/
 .pytest_cache/
+.pytest-tmp/
+.pytest-tmp-local/
+pytest_tmp*/
+codex_pytest_tmp*/
+codex_tmp*/
 .tmp*/
 .tmp_*.py
 tmp_*/

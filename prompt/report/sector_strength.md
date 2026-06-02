@@ -65,3 +65,13 @@
 - `representative_stocks` 只能放 verified / inferred 題材關聯；`candidate_stocks` 可列入觀察，但必須標成候選或待驗證。
 - 新聞與公開來源只能用來補充解釋盤面原因；若本地 `market_movers` 沒有直接驗證，不可宣稱「盤面已驗證」。
 - 若外部來源出現農夫市集、活動市集、加密貨幣 market update、非台股商品市場影片等，必須視為不相關來源，不得引用為台股族群強弱證據。
+## 市場優先與子族群規則
+- 先讀 `market_movers`、`sector_rankings`、`subsector_rankings`；不得預設 AI、半導體、伺服器為主線。
+- 報告要同時列出官方族群與子族群。大分類強勢時必須拆解，例如電子零組件拆被動元件、PCB/CCL、連接器/線束、散熱、電源零組件；汽車工業拆汽車零組件、汽車材料、車用電子；電器電纜合併電線電纜、電纜線材、電力線纜。
+- 若 `subsector_rankings` 出現高分子族群，即使題材庫證據不足，也要列為「市場強勢、題材證據待補」，不可省略。
+- `sector_strong_samples` 是市場強勢樣本；`representative_stocks` 才是 verified/inferred 題材代表；`candidate_stocks` 只能稱為觀察名單。
+- 說明擴散題材時，必須由當天強勢族群與子族群推導，不可只列固定 AI/半導體範例。
+## 趨勢強弱判讀補充
+- 不得只用單日漲跌判斷族群強弱；必須同時讀 `sector_state`、`subsector_state`、`trend_state`、`trend_score`、`change_pct_5d/10d/20d`、`near_high_20d` 與 `pullback_from_high_pct`。
+- 若族群或子族群為 `trend_pullback`，請寫成「近期強勢後整理 / 高位震盪 / 短線回檔」，不得寫成「弱勢」。
+- 只有今日弱、近期趨勢弱、且強勢家數與新高家數同步退潮時，才可寫「弱勢」或「趨勢轉弱」。

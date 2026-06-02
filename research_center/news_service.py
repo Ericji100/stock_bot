@@ -5,6 +5,7 @@ import json
 import os
 import re
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -29,102 +30,79 @@ NEWS_CATEGORIES = ordered_news_category_keys()
 
 
 def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]:
-    """Build Taiwan-finance-focused discovery search queries.
-
-    All queries must be relevant to Taiwan stock market, Taiwan finance,
-    or Taiwan industry news. General English news (latest news, breaking news,
-    world news, CNN, etc.) are excluded.
-    """
+    """Build category-balanced Taiwan finance discovery search queries."""
     today = datetime.now()
     today_dash = today.strftime("%Y-%m-%d")
     today_slash = today.strftime("%Y/%m/%d")
-    date_hint = f"{today_dash} {today_slash}" if period != "7d" else ""
-    recency_terms = "今日 盤中 收盤 近24小時 本週" if period != "7d" else "近7天 本週"
+    date_hint = f"{today_dash} {today_slash}" if period != "7d" else "最近7天"
+    recency_terms = "今日 最新 近24小時" if period != "7d" else "最近7天"
     base_queries = [
-        {"title": "台股重點新聞", "items": [
-            f"台股 今日 重點 新聞 {date_hint}".strip(),
-            f"台股 今日 財經新聞 {today_slash}".strip(),
-            f"台股 {recency_terms} 重點新聞 盤勢 焦點股".strip(),
-            f"Taiwan stock market news today {today_dash}".strip(),
+        {"title": "台股與大盤", "items": [
+            f"台股 今日 大盤 盤勢 法人 買賣超 成交量 {date_hint}".strip(),
+            f"台股 加權指數 櫃買指數 盤中 盤後 焦點 {today_slash}".strip(),
+            f"台股 {recency_terms} 大盤 族群 資金 流向".strip(),
+            f"Taiwan stock market TWSE TPEX fund flow {today_dash}".strip(),
         ]},
-        {"title": "資金與輪動", "items": [
-            f"台股 資金 輪動 三大法人 {date_hint}".strip(),
-            f"台股 三大法人 資金輪動 今日 {today_slash}".strip(),
-            f"台股 類股輪動 外資 投信 買超 資金行情 {recency_terms}".strip(),
-            f"Taiwan stock institutional fund flow sector rotation {today_dash}".strip(),
+        {"title": "題材與族群輪動", "items": [
+            f"台股 題材 族群 輪動 強勢股 概念股 {date_hint}".strip(),
+            f"台股 資金輪動 熱門族群 電子 傳產 金融 {today_slash}".strip(),
+            f"台股 {recency_terms} 題材股 概念股 法人 點名".strip(),
+            f"Taiwan stocks sector rotation theme stocks concept stocks {today_dash}".strip(),
         ]},
-        {"title": "AI與半導體", "items": [
-            f"AI 半導體 台股 新聞 {date_hint}".strip(),
-            f"AI 半導體 台股 今日新聞 {today_slash}".strip(),
-            f"AI伺服器 HBM CoWoS 先進封裝 半導體 台股 {recency_terms}".strip(),
+        {"title": "AI / 半導體", "items": [
+            f"台股 AI 半導體 先進封裝 ASIC CoWoS HBM {date_hint}".strip(),
+            f"AI伺服器 半導體 台積電 供應鏈 台股 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} AI晶片 GPU ASIC CPO 半導體設備".strip(),
             f"Taiwan AI semiconductor stock news {today_dash}".strip(),
         ]},
-        {"title": "電子供應鏈", "items": [
-            f"電子 供應鏈 台股 新聞 {date_hint}".strip(),
-            f"電子 供應鏈 台股 今日新聞 {today_slash}".strip(),
-            f"PCB CCL 散熱 電源 連接器 電子供應鏈 台股 {recency_terms}".strip(),
+        {"title": "供應鏈與產業", "items": [
+            f"台股 供應鏈 產業新聞 PCB CCL 散熱 電源 {date_hint}".strip(),
+            f"台灣 電子零組件 供應鏈 訂單 漲價 缺貨 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} 產業鏈 受惠股 供應商 出貨".strip(),
             f"Taiwan electronics supply chain stock news {today_dash}".strip(),
         ]},
         {"title": "金融與高股息", "items": [
-            f"金融 高股息 台股 新聞 {date_hint}".strip(),
-            f"金融 高股息 台股 今日新聞 {today_slash}".strip(),
+            f"台股 金融股 高股息 ETF 配息 殖利率 {date_hint}".strip(),
+            f"金控 銀行 保險 證券 台股 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} 金融 0056 00878 高股息 ETF".strip(),
             f"Taiwan financial high dividend stock news {today_dash}".strip(),
         ]},
-        {"title": "政策與總經", "items": [
-            f"台灣 政策 總經 利率 匯率 {date_hint}".strip(),
-            f"台灣 財經 政策 匯率 今日 {today_slash}".strip(),
-            f"央行 匯率 台幣 利率 關稅 原物料 油價 台股 {recency_terms}".strip(),
+        {"title": "政策 / 匯率 / 總經", "items": [
+            f"台灣 財經 政策 匯率 利率 央行 台股 影響 {date_hint}".strip(),
+            f"台幣 匯率 出口 景氣 通膨 台股 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} 政策 法規 總經 產業影響".strip(),
             f"Taiwan macro policy interest rate exchange rate stock {today_dash}".strip(),
         ]},
-        {"title": "風險事件", "items": [
-            f"台股 風險 利空 新聞 {date_hint}".strip(),
-            f"台股 利空 風險 今日新聞 {today_slash}".strip(),
-            f"Taiwan stock risk bearish news {today_dash}".strip(),
-        ]},
-        {"title": "題材與概念股", "items": [
-            f"台股 題材 概念股 新聞 {date_hint}".strip(),
-            f"台股 題材 概念股 今日新聞 {today_slash}".strip(),
-            f"Taiwan stock theme concept news {today_dash}".strip(),
+        {"title": "個股利多利空", "items": [
+            f"台股 個股 利多 利空 營收 法說會 股價 目標價 {date_hint}".strip(),
+            f"台股 公司 營收 EPS 外資 投信 調升 調降 {today_slash}".strip(),
+            f"台股 {recency_terms} 公司訂單 展望 財報 漲停 跌停".strip(),
+            f"Taiwan stock company earnings revenue target price upgrade downgrade {today_dash}".strip(),
         ]},
         {"title": "營收與法人", "items": [
-            f"台股 營收 法人 投信 外資 新聞 {date_hint}".strip(),
-            f"台股 營收 法人 外資 今日 {today_slash}".strip(),
-            f"台股 月營收 法說會 財報 外資 投信 {recency_terms}".strip(),
+            f"台股 月營收 法人 買超 賣超 投信 外資 {date_hint}".strip(),
+            f"台股 營收成長 法人同步加碼 個股 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} 營收創高 法人報告 財測 展望".strip(),
             f"Taiwan stock revenue foreign investor institutional {today_dash}".strip(),
         ]},
         {"title": "科技與AI供應鏈", "items": [
-            f"台股 科技 AI 供應鏈 訂單 新聞 {date_hint}".strip(),
-            f"台股 科技 AI 供應鏈 今日新聞 {today_slash}".strip(),
-            f"台股 科技 法說會 接單 出貨 資本支出 AI供應鏈 {recency_terms}".strip(),
+            f"台股 科技 AI 供應鏈 訂單 伺服器 網通 {date_hint}".strip(),
+            f"台股 科技股 AI供應鏈 新產品 新客戶 新訂單 {today_slash}".strip(),
+            f"台股 {recency_terms} 科技 產業鏈 半導體 電子零組件".strip(),
             f"Taiwan tech AI supply chain order news {today_dash}".strip(),
         ]},
     ]
-
-    base_queries.extend([
-        {"title": "題材與族群輪動", "items": [
-            f"台股 題材 族群 輪動 概念股 多檔齊漲 {date_hint}".strip(),
-            f"台股 資金轉進 族群 受惠股 被動元件 PCB 散熱 重電 {today_slash}".strip(),
-            f"台股 AI伺服器 記憶體 ASIC CPO 題材 概念股 {recency_terms}".strip(),
-            f"Taiwan stocks sector rotation theme stocks concept stocks {today_dash}".strip(),
-        ]},
-        {"title": "個股利多利空", "items": [
-            f"台股 個股 利多 利空 漲停 跌停 處置股 注意股 {date_hint}".strip(),
-            f"台股 公司 營收 法說 財報 EPS 目標價 外資調升 外資調降 {today_slash}".strip(),
-            f"台股 接單 出貨 訂單 客戶 獲利 虧損 個股新聞 {recency_terms}".strip(),
-            f"Taiwan stock company earnings revenue target price upgrade downgrade {today_dash}".strip(),
-        ]},
-    ])
 
     tasks = []
     for group in base_queries:
         tasks.append({
             "label": group.get("title", ""),
-            "objective": f"請尋找 {group.get('title', '相關')} 的最新台股新聞。",
-            "exclude": ["個股買賣建議", "無來源傳聞"],
+            "objective": f"搜尋台股財經新聞：{group.get('title', '新聞')}",
+            "exclude": ["行情頁", "報價頁", "個股列表頁", "首頁", "泛國際新聞"],
             "queries": [group],
         })
 
-    # Add limited site: queries per task
+    # Add limited site: queries per task.
     MAX_SITE_PER_TASK = 4
     for task in tasks:
         existing_items: list[str] = []
@@ -152,7 +130,6 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
         if task_limit > 0:
             tasks = tasks[:task_limit]
     return tasks
-
 
 def build_holding_news_discovery_queries(portfolio: dict[str, str]) -> list[dict[str, Any]]:
     """Build focused news queries for portfolio holdings."""
@@ -285,6 +262,7 @@ def _sources_to_news_items(sources: list[SourceItem]) -> list[NewsItem]:
             published_at=src.published_date or "",
             summary=summary,
             full_text=summary,
+            news_origin="refresh",
         )))
     return items
 
@@ -342,7 +320,6 @@ def _collect_holding_news_sources(
                         except Exception:
                             continue
         except Exception as exc:
-            emit(f"AI classification batch {batch_no}/{total_batches} failed: {exc}; fallback to local classification")
             emit(f"Holding MiniMax search failed: {exc}")
 
     if not sources and hasattr(center, "tavily_search") and center.tavily_search is not None:
@@ -396,30 +373,30 @@ def _classify_limit() -> int:
 
 def _classify_batch_size() -> int:
     try:
-        return max(1, int(os.environ.get("NEWS_AI_CLASSIFY_BATCH_SIZE", "5")))
+        return max(1, int(os.environ.get("NEWS_AI_CLASSIFY_BATCH_SIZE", "3")))
     except ValueError:
-        return 5
+        return 3
 
 
 def _classify_timeout_seconds() -> float:
     try:
-        return max(1.0, float(os.environ.get("NEWS_AI_CLASSIFY_TIMEOUT_SECONDS", "90")))
+        return max(1.0, float(os.environ.get("NEWS_AI_CLASSIFY_TIMEOUT_SECONDS", "45")))
     except ValueError:
-        return 90.0
+        return 45.0
 
 
 def _classify_text_limit() -> int:
     try:
-        return max(0, int(os.environ.get("NEWS_AI_CLASSIFY_TEXT_LIMIT", "800")))
+        return max(0, int(os.environ.get("NEWS_AI_CLASSIFY_TEXT_LIMIT", "500")))
     except ValueError:
-        return 800
+        return 500
 
 
 def _classify_retry_text_limit() -> int:
     try:
-        return max(0, int(os.environ.get("NEWS_AI_CLASSIFY_RETRY_TEXT_LIMIT", "200")))
+        return max(0, int(os.environ.get("NEWS_AI_CLASSIFY_RETRY_TEXT_LIMIT", "120")))
     except ValueError:
-        return 200
+        return 120
 
 
 def _tag_portfolio_news_items(items: list[NewsItem], portfolio: dict[str, str]) -> list[NewsItem]:
@@ -461,7 +438,15 @@ def _parse_news_datetime(value: str) -> datetime | None:
         if digits:
             return now - timedelta(days=int(digits))
     normalized = text.replace("Z", "+00:00")
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%Y.%m.%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    ):
         try:
             return datetime.strptime(normalized[:len(fmt)], fmt)
         except ValueError:
@@ -473,11 +458,74 @@ def _parse_news_datetime(value: str) -> datetime | None:
         return None
 
 
+_EMBEDDED_DATE_PATTERNS = (
+    re.compile(r"(?P<year>20\d{2})[./-](?P<month>\d{1,2})[./-](?P<day>\d{1,2})"),
+    re.compile(r"(?P<year>20\d{2})\s*年\s*(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日?"),
+)
+
+
+def _extract_embedded_news_datetime(item: NewsItem) -> datetime | None:
+    """Extract explicit publish-like dates from fetched article text."""
+    text = " ".join(
+        part
+        for part in (item.title, item.summary, item.full_text)
+        if part
+    )
+    for pattern in _EMBEDDED_DATE_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        try:
+            return datetime(
+                int(match.group("year")),
+                int(match.group("month")),
+                int(match.group("day")),
+            )
+        except ValueError:
+            continue
+    return None
+
+
+def _effective_news_datetime(item: NewsItem) -> datetime | None:
+    """Return the display recency timestamp for a news item.
+
+    Prefer the source-provided published_at. Only /news refresh items may
+    fall back to created_at when the source omitted publish time and no
+    explicit date can be extracted from the fetched content.
+    """
+    published_text = (item.published_at or "").strip()
+    published = _parse_news_datetime(published_text)
+    if published is not None:
+        return published
+    if published_text:
+        return None
+    if getattr(item, "news_origin", "refresh") == "refresh":
+        embedded = _extract_embedded_news_datetime(item)
+        if embedded is not None:
+            return embedded
+        return _parse_news_datetime(item.created_at)
+    return None
+
+
+def _query_refresh_news(repository: NewsRepository, hours: int) -> list[NewsItem]:
+    """Query news generated by /news refresh only, with fake-repository fallback."""
+    try:
+        return repository.query_recent(hours=hours, news_origin="refresh")
+    except TypeError:
+        items = repository.query_recent(hours=hours)
+        return [item for item in items if getattr(item, "news_origin", "refresh") == "refresh"]
+
+
 def _filter_by_published_window(items: list[NewsItem], hours: int, keep_unknown_date: bool = True) -> list[NewsItem]:
     cutoff = datetime.now() - timedelta(hours=hours)
     result: list[NewsItem] = []
     for item in items:
-        published = _parse_news_datetime(item.published_at)
+        published_text = (item.published_at or "").strip().lower()
+        if hours <= 48 and re.search(r"\b(?:2|[3-9]|\d{2,})\s*days?\b", published_text):
+            continue
+        if hours <= 48 and re.search(r"(?:2|[3-9]|\d{2,})\s*天前", published_text):
+            continue
+        published = _effective_news_datetime(item)
         if published is None:
             if keep_unknown_date:
                 result.append(item)
@@ -485,6 +533,32 @@ def _filter_by_published_window(items: list[NewsItem], hours: int, keep_unknown_
         if published >= cutoff:
             result.append(item)
     return result
+
+
+def _boost_latest_recency(items: list[NewsItem], primary_hours: int = 24) -> list[NewsItem]:
+    """Prefer primary-window news while still allowing recent fallback items."""
+    cutoff = datetime.now() - timedelta(hours=primary_hours)
+    for item in items:
+        published = _effective_news_datetime(item)
+        if published is not None and published >= cutoff:
+            item.importance_score = int(item.importance_score or 0) + 1000
+    return items
+
+
+def _has_explicit_news_datetime(item: NewsItem) -> bool:
+    """Return True when source content provides a publish-like timestamp."""
+    published_text = (item.published_at or "").strip()
+    if published_text and _parse_news_datetime(published_text) is not None:
+        return True
+    return _extract_embedded_news_datetime(item) is not None
+
+
+def _penalize_implicit_news_dates(items: list[NewsItem], penalty: int = 250) -> list[NewsItem]:
+    """Keep no-published-date articles visible but rank them below explicit-date news."""
+    for item in items:
+        if not _has_explicit_news_datetime(item):
+            item.importance_score = int(item.importance_score or 0) - penalty
+    return items
 
 
 def run_news_refresh(
@@ -656,6 +730,26 @@ def run_news_refresh(
         classified = _batch_classify_news(items, center, emit, ai_model=ai_model)
         classified = _tag_portfolio_news_items(classified, portfolio)
 
+        for item in classified:
+            item.news_origin = "refresh"
+            item.category = _correct_news_category(item)
+
+        category_counts = Counter(normalize_news_category(item.category) for item in classified)
+        holding_count = sum(1 for item in classified if _matches_portfolio(item, portfolio))
+        if category_counts:
+            ordered = [
+                f"{cat}:{category_counts[cat]}"
+                for cat in ordered_news_category_keys()
+                if category_counts.get(cat)
+            ]
+            extras = [
+                f"{cat}:{count}"
+                for cat, count in category_counts.items()
+                if cat not in set(ordered_news_category_keys())
+            ]
+            emit(f"分類統計：{', '.join(ordered + extras)}")
+        emit(f"持股新聞候選：{holding_count}")
+
         # Save to repository
         saved, skipped = repository.save_many(classified)
         emit(f"儲存完成：新增 {saved}，略過 {skipped}")
@@ -668,6 +762,8 @@ def run_news_refresh(
             "smoke_sources_used": len(sorted_sources),
             "webfetch_success": webfetch_success,
             "filtered_count": filtered_count,
+            "category_counts": dict(category_counts),
+            "holding_count": holding_count,
             "minimax_diagnostics": minimax_diag,
             "web_fetch_diagnostics": web_fetch_diag,
         }
@@ -743,8 +839,19 @@ def _batch_classify_news(
             except Exception as retry_exc:
                 emit(f"AI classification batch {batch_no}/{total_batches} fallback to local rules: {retry_exc}")
                 result_items.extend(_fallback_classification(batch))
+                if _is_timeout_exception(exc) or _is_timeout_exception(retry_exc):
+                    remaining = items[i + batch_size :]
+                    if remaining:
+                        emit(f"AI classification timeout; fallback remaining {len(remaining)} items to local rules")
+                        result_items.extend(_fallback_classification(remaining))
+                    break
 
     return result_items
+
+
+def _is_timeout_exception(exc: Exception) -> bool:
+    text = f"{type(exc).__name__} {exc}".lower()
+    return "timeout" in text or "timed out" in text or "read operation timed out" in text
 
 
 def _truncate_for_ai(text: str, limit: int) -> str:
@@ -1089,11 +1196,322 @@ def _looks_like_sector_rotation_news(item: NewsItem) -> bool:
     return any(term.lower() in text for term in _SECTOR_ROTATION_TERMS)
 
 
+_HEADLINE_COMPANY_EVENT_TERMS = [
+    "漲停",
+    "跌停",
+    "亮燈",
+    "法說",
+    "財報",
+    "營收",
+    "獲利",
+    "目標價",
+    "升評",
+    "降評",
+    "調升",
+    "調降",
+    "接單",
+    "出貨",
+    "股東會",
+    "合約價",
+    "再創佳績",
+    "創佳績",
+    "看好",
+    "target price",
+    "upgrade",
+    "downgrade",
+    "revenue",
+    "earnings",
+    "shipment",
+]
+
+_HEADLINE_SECTOR_ROTATION_TERMS = [
+    "族群",
+    "概念股",
+    "受惠股",
+    "多檔",
+    "齊漲",
+    "齊揚",
+    "輪動",
+    "補漲",
+    "集體",
+    "爆發",
+    "噴發",
+    "資金轉進",
+    "concept stock",
+    "concept stocks",
+    "passive components",
+    "stocks rally",
+    "stock rally",
+    "beneficiary stocks",
+]
+
+_HEADLINE_SUPPLY_CHAIN_TERMS = [
+    "pcb",
+    "ccl",
+    "載板",
+    "散熱",
+    "電源",
+    "電源管理",
+    "mlcc",
+    "被動元件",
+    "記憶體",
+    "dram",
+    "供應鏈",
+    "產業鏈",
+    "光通訊",
+    "cpo",
+    "伺服器",
+    "材料",
+    "報價",
+    "產能",
+]
+
+_HEADLINE_AI_SEMICONDUCTOR_TERMS = [
+    "ai",
+    "半導體",
+    "台積電",
+    "聯發科",
+    "輝達",
+    "gpu",
+    "asic",
+    "hbm",
+    "cowos",
+    "先進封裝",
+    "晶片",
+]
+
+_HEADLINE_MARKET_FOCUS_TERMS = [
+    "台股再創高",
+    "台股創高",
+    "台股站上",
+    "台股攻上",
+    "加權指數",
+    "三大法人",
+    "法人買超",
+    "法人賣超",
+    "盤中速報",
+    "盤後分析",
+    "盤前要聞",
+    "五件財經大事",
+]
+
+_HEADLINE_MACRO_POLICY_TERMS = [
+    "美股",
+    "fed",
+    "fomc",
+    "中東",
+    "匯率",
+    "利率",
+    "央行",
+    "通膨",
+    "政策",
+    "美元",
+    "新台幣",
+    "關稅",
+]
+
+
+def _title_has_any(item: NewsItem, terms: list[str]) -> bool:
+    title = (item.title or "").lower()
+    for term in terms:
+        lowered = term.lower()
+        if lowered == "ai":
+            if re.search(r"(?<![a-z0-9])ai(?![a-z0-9])", title):
+                return True
+            continue
+        if lowered in title:
+            return True
+    return False
+
+
+def _has_broad_market_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_MARKET_FOCUS_TERMS)
+
+
+def _has_macro_policy_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_MACRO_POLICY_TERMS)
+
+
+def _has_company_event_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_COMPANY_EVENT_TERMS)
+
+
+def _has_sector_rotation_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_SECTOR_ROTATION_TERMS)
+
+
+def _has_supply_chain_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_SUPPLY_CHAIN_TERMS)
+
+
+def _has_ai_semiconductor_headline(item: NewsItem) -> bool:
+    return _title_has_any(item, _HEADLINE_AI_SEMICONDUCTOR_TERMS)
+
+
+def _has_explicit_sector_basket_headline(item: NewsItem) -> bool:
+    return _title_has_any(
+        item,
+        [
+            "概念股",
+            "多檔",
+            "齊漲",
+            "齊揚",
+            "集體",
+            "爆發",
+            "噴發",
+            "concept stock",
+            "concept stocks",
+            "stocks rally",
+            "stock rally",
+            "beneficiary stocks",
+        ],
+    )
+
+
+_CLEAN_SUPPLY_CHAIN_TERMS = [
+    "供應鏈", "產業鏈", "pcb", "ccl", "散熱", "水冷", "電源", "電源管理",
+    "伺服器", "組裝", "代工", "封測", "載板", "零組件", "被動元件",
+    "mlcc", "電容", "電感", "光通訊", "cpo", "材料", "出貨", "訂單",
+    "缺貨", "漲價", "報價", "產能", "供應商",
+]
+
+_CLEAN_AI_SEMICONDUCTOR_TERMS = [
+    "ai", "半導體", "台積電", "聯發科", "聯電", "ic", "晶片", "gpu",
+    "asic", "hbm", "cowos", "先進封裝", "封裝", "nvidia", "輝達",
+]
+
+_CLEAN_MACRO_POLICY_TERMS = [
+    "央行", "利率", "升息", "降息", "匯率", "新台幣", "台幣",
+    "關稅", "政策", "金管會", "財政部", "通膨", "cpi", "gdp", "pmi",
+    "fed", "fomc", "出口", "景氣", "貨幣政策", "總經",
+]
+
+_CLEAN_MARKET_FOCUS_TERMS = [
+    "台股", "大盤", "加權指數", "櫃買", "盤中", "盤後", "三大法人",
+    "外資", "投信", "自營商", "買超", "賣超", "成交量", "爆量",
+    "指數", "開高", "收漲", "收黑",
+]
+
+_CLEAN_STRONG_MARKET_FOCUS_TERMS = [
+    "大盤", "加權指數", "櫃買指數", "櫃買", "三大法人", "外資",
+    "投信", "自營商", "買超", "賣超", "成交量", "指數創高",
+    "台股再創高", "台股創高", "短線過熱", "盤勢", "收盤",
+    "盤中", "盤後",
+]
+
+_CLEAN_COMPANY_EVENT_TERMS = [
+    "營收", "獲利", "eps", "法說", "訂單", "目標價", "升評", "降評",
+    "漲停", "跌停", "利多", "利空", "財報", "配息", "除息", "公告",
+    "併購", "增資", "減資", "出貨",
+]
+
+_CLEAN_SECTOR_ROTATION_TERMS = [
+    "族群", "題材", "概念股", "輪動", "補漲", "強勢股", "資金流向",
+    "熱門", "受惠股", "類股", "點名", "集體", "噴出", "爆發",
+    "sector rotation", "concept stock", "concept stocks", "theme stock",
+    "theme stocks", "stock rally", "stocks rally", "beneficiary stocks",
+]
+
+_CLEAN_STRONG_SECTOR_ROTATION_TERMS = [
+    "題材", "概念股", "輪動", "補漲", "強勢股", "資金流向", "類股輪動",
+    "sector rotation", "concept stock", "concept stocks", "theme stock",
+    "theme stocks", "stock rally", "stocks rally", "beneficiary stocks",
+]
+
+
+def _contains_any_clean_term(item: NewsItem, terms: list[str]) -> bool:
+    text = _news_text(item, include_related=True)
+    return any(term.lower() in text for term in terms)
+
+
 def _correct_news_category(item: NewsItem) -> str:
     """Apply category corrections shared by AI classification, fallback, and display."""
     category = normalize_news_category(item.category)
+    text = _news_text(item, include_related=True)
+    title_text = (item.title or "").lower()
     if category == "holdings":
         return category
+
+    if _has_broad_market_headline(item) and not (
+        _has_company_event_headline(item) or _has_sector_rotation_headline(item) or _has_supply_chain_headline(item)
+    ):
+        return "market_focus"
+    if _has_macro_policy_headline(item) and not _has_broad_market_headline(item):
+        return "macro_policy"
+    if _has_supply_chain_headline(item) and not _has_explicit_sector_basket_headline(item):
+        return "supply_chain"
+    if _has_company_event_headline(item) and not _has_sector_rotation_headline(item):
+        return "company_news"
+    if category == "ai_semiconductor" and _has_ai_semiconductor_headline(item):
+        return "ai_semiconductor"
+    if _has_sector_rotation_headline(item):
+        return "sector_rotation"
+    if _has_supply_chain_headline(item):
+        if _has_sector_rotation_headline(item):
+            return "sector_rotation"
+        return "supply_chain"
+    if _has_ai_semiconductor_headline(item) and not _has_broad_market_headline(item):
+        return "ai_semiconductor"
+
+    if category == "ai_semiconductor":
+        return category
+    if any(term in text for term in [
+        "題材", "概念股", "受惠股", "多檔", "輪動", "漲價題材",
+        "sector rotation", "concept stock", "concept stocks", "stocks rally",
+        "stock rally", "beneficiary stocks",
+    ]):
+        return "sector_rotation"
+    if any(term in text for term in [
+        "pcb", "ccl", "載板", "mlcc", "被動元件", "記憶體", "dram", "封裝",
+        "供應鏈", "材料", "伺服器", "光通訊",
+    ]):
+        return "supply_chain"
+    if _contains_any_clean_term(item, _CLEAN_SUPPLY_CHAIN_TERMS):
+        return "supply_chain"
+    if re.search(r"(?<![a-z0-9])ai(?![a-z0-9])", text) or any(term in text for term in [
+        "gpu", "asic", "hbm", "cowos", "nvidia",
+    ]):
+        return "ai_semiconductor"
+    if any(term in text for term in [
+        "財經大事", "五件財經大事", "台股再創高", "台股站上", "台股攻", "大盤", "加權指數",
+        "三大法人", "法人買超", "法人賣超", "盤中速報", "盤後分析", "市場焦點",
+    ]):
+        return "market_focus"
+    if any(term in title_text for term in [
+        "美股", "fed", "fomc", "中東", "匯率", "利率", "央行", "通膨", "政策",
+        "美元", "新台幣", "關稅",
+    ]) and not any(term in title_text for term in ["台股", "大盤", "加權指數", "三大法人"]):
+        return "macro_policy"
+    if any(term in text for term in [
+        "美股", "fed", "fomc", "中東", "匯率", "利率", "央行", "通膨", "政策",
+        "美元", "新台幣", "關稅",
+    ]) and not any(term in text for term in ["台股", "大盤", "加權指數", "三大法人"]):
+        return "macro_policy"
+    if any(term in text for term in [
+        "pcb", "ccl", "載板", "散熱", "電源", "mlcc", "被動元件", "記憶體",
+        "dram", "封裝", "供應鏈", "材料", "伺服器", "光通訊",
+    ]):
+        return "supply_chain"
+    if any(term in text for term in [
+        "營收", "漲停", "亮燈", "法說", "目標價", "財報", "接單", "訂單",
+        "獲利", "eps", "股東會", "除息", "合約價",
+    ]):
+        return "company_news"
+    if category == "ai_semiconductor" and _contains_any_clean_term(item, _CLEAN_AI_SEMICONDUCTOR_TERMS):
+        return "ai_semiconductor"
+    if _contains_any_clean_term(item, _CLEAN_STRONG_MARKET_FOCUS_TERMS):
+        return "market_focus"
+    if _contains_any_clean_term(item, _CLEAN_MACRO_POLICY_TERMS):
+        if not _contains_any_clean_term(item, _CLEAN_MARKET_FOCUS_TERMS):
+            return "macro_policy"
+    if _contains_any_clean_term(item, _CLEAN_STRONG_SECTOR_ROTATION_TERMS):
+        return "sector_rotation"
+    if _contains_any_clean_term(item, _CLEAN_SUPPLY_CHAIN_TERMS):
+        return "supply_chain"
+    if _contains_any_clean_term(item, _CLEAN_COMPANY_EVENT_TERMS):
+        return "company_news"
+    if _contains_any_clean_term(item, _CLEAN_SECTOR_ROTATION_TERMS):
+        return "sector_rotation"
     if _looks_like_company_event_news(item):
         return "company_news"
     if category in {"market_focus", "macro_policy", "other", "sector_rotation"} and _looks_like_sector_rotation_news(item):
@@ -1130,25 +1548,50 @@ def build_news_digests(items: list[NewsItem], *, include_empty_categories: bool 
     for cat in ordered_news_category_keys():
         if cat in by_category or include_empty_categories:
             # Sort by importance score descending
-            sorted_items = sorted(by_category.get(cat, []), key=lambda x: x.importance_score, reverse=True)
+            sorted_items = sorted(by_category.get(cat, []), key=_news_display_sort_key, reverse=True)
             digests.append(NewsDigest(category=cat, items=sorted_items))
     # Append any uncategorized
     for cat, cat_items in by_category.items():
         if cat not in NEWS_CATEGORIES:
-            sorted_items = sorted(cat_items, key=lambda x: x.importance_score, reverse=True)
+            sorted_items = sorted(cat_items, key=_news_display_sort_key, reverse=True)
             digests.append(NewsDigest(category=cat, items=sorted_items))
     return digests
+
+
+def _news_display_sort_key(item: NewsItem) -> tuple[int, int, str]:
+    published = _effective_news_datetime(item)
+    published_ts = int(published.timestamp()) if published else 0
+    return (int(item.importance_score or 0), published_ts, item.title or "")
+
+
+def _matches_portfolio_in_title(item: NewsItem, code_s: str, name_s: str) -> bool:
+    title = (item.title or "").lower()
+    if code_s and re.search(rf"(?<!\d){re.escape(code_s)}(?!\d)", title):
+        return True
+    return bool(name_s and name_s in title)
 
 
 def _matches_portfolio(item: NewsItem, portfolio: dict[str, str]) -> bool:
     if not portfolio:
         return False
-    text = f"{item.title} {item.summary}".lower()
+    category = normalize_news_category(_correct_news_category(item))
+    symbols = {str(value).strip().lower() for value in (item.related_symbols or []) if str(value).strip()}
+    topics = {str(value).strip().lower() for value in (item.related_topics or []) if str(value).strip()}
+    use_symbol_metadata = 0 < len(symbols) <= 5
+    use_topic_metadata = 0 < len(topics) <= 8
+    lead_text = f"{item.summary} {item.full_text or ''}"[:500].lower()
     for code, name in portfolio.items():
         code_s = str(code).strip().lower()
         name_s = str(name).strip().lower()
-        if (code_s and re.search(rf"(?<!\d){re.escape(code_s)}(?!\d)", text)) or (name_s and name_s in text):
+        if _matches_portfolio_in_title(item, code_s, name_s):
             return True
+        if category == "company_news":
+            if use_symbol_metadata and code_s and code_s in symbols:
+                return True
+            if use_topic_metadata and name_s and name_s in topics:
+                return True
+            if (code_s and re.search(rf"(?<!\d){re.escape(code_s)}(?!\d)", lead_text)) or (name_s and name_s in lead_text):
+                return True
     return False
 
 
@@ -1203,7 +1646,7 @@ def _preference_boost(item: NewsItem, stats: dict[str, dict[str, int]]) -> int:
     type_hits = stats.get("news_type", {}).get(news_type, 0)
     category_hits = stats.get("category", {}).get(category, 0)
     source_hits = stats.get("source", {}).get(source, 0)
-    return min(type_hits * 8, 40) + min(category_hits * 2, 12) + min(source_hits, 5)
+    return min(type_hits * 6, 30) + min(category_hits, 5) + min(source_hits, 3)
 
 
 def _apply_user_news_preferences(items: list[NewsItem], repository: NewsRepository) -> list[NewsItem]:
@@ -1220,21 +1663,65 @@ def _apply_user_news_preferences(items: list[NewsItem], repository: NewsReposito
     return boosted
 
 
+_LATEST_PRIMARY_MIN_ITEMS = 20
+
+_LOW_PRIORITY_DISPLAY_SOURCE_MARKERS = (
+    "cmoney.tw/notes",
+    "cmnews.com.tw",
+    "readmo.cmoney.tw",
+)
+
+
+def _is_low_priority_display_source(item: NewsItem) -> bool:
+    combined = f"{item.url or ''} {item.source or ''}".lower()
+    return any(marker in combined for marker in _LOW_PRIORITY_DISPLAY_SOURCE_MARKERS)
+
+
+def _apply_display_source_penalties(items: list[NewsItem]) -> list[NewsItem]:
+    """Demote lightweight investment-blog sources without removing them."""
+    for item in items:
+        if _is_low_priority_display_source(item):
+            item.importance_score = int(item.importance_score or 0) - 120
+    return items
+
+
+def _merge_unique_news_items(primary: list[NewsItem], fallback: list[NewsItem]) -> list[NewsItem]:
+    seen: set[str] = set()
+    merged: list[NewsItem] = []
+    for item in [*primary, *fallback]:
+        key = item.url or item.id or item.title
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
+
+
 def run_news_latest(repository: NewsRepository, portfolio: dict[str, str] | None = None) -> list[NewsDigest]:
-    """Return news from last 24 hours."""
-    items = repository.query_recent(hours=24)
+    """Return latest news, preferring 24h items and falling back to 48h."""
+    items = _query_refresh_news(repository, hours=48)
     items = _filter_and_prune_news_items(items, repository)
-    items = _filter_by_published_window(items, hours=24, keep_unknown_date=False)
+    primary_items = _filter_by_published_window(items, hours=24, keep_unknown_date=False)
+    primary_explicit = [item for item in primary_items if _has_explicit_news_datetime(item)]
+    if len(primary_explicit) >= _LATEST_PRIMARY_MIN_ITEMS:
+        items = primary_explicit
+    else:
+        fallback_items = _filter_by_published_window(items, hours=48, keep_unknown_date=False)
+        items = _merge_unique_news_items(primary_explicit, fallback_items)
+    items = _penalize_implicit_news_dates(items)
+    items = _boost_latest_recency(items, primary_hours=24)
     items = _apply_user_news_preferences(items, repository)
+    items = _apply_display_source_penalties(items)
     market_items, holding_digest = _split_holding_digest(items, portfolio or {})
     return build_news_digests(market_items, include_empty_categories=True) + [holding_digest]
 
 
 def run_news_7d(repository: NewsRepository, portfolio: dict[str, str] | None = None) -> list[NewsDigest]:
     """Return news from last 7 days."""
-    items = repository.query_recent(hours=168)
+    items = _query_refresh_news(repository, hours=168)
     items = _filter_and_prune_news_items(items, repository)
     items = _filter_by_published_window(items, hours=168, keep_unknown_date=False)
+    items = _penalize_implicit_news_dates(items, penalty=100)
     items = _apply_user_news_preferences(items, repository)
     market_items, holding_digest = _split_holding_digest(items, portfolio or {})
     return build_news_digests(market_items, include_empty_categories=True) + [holding_digest]
@@ -1244,16 +1731,47 @@ def _filter_and_prune_news_items(items: list[NewsItem], repository: NewsReposito
     """Filter displayed news and normalize categories without deleting stored rows."""
     items = _apply_news_title_cleanup(items)
     filtered = _filter_taiwan_finance_news(items)
+    filtered = [item for item in filtered if _is_display_language_allowed(item)]
     for item in filtered:
         item.category = normalize_news_category(item.category)
         item.category = _correct_news_category(item)
     return _dedupe_display_news_items(filtered)
 
 
+_DISPLAY_EXCLUDED_ENGLISH_DOMAINS = {
+    "digitimes.com",
+    "www.digitimes.com",
+    "trendforce.com",
+    "www.trendforce.com",
+}
+
+
+def _has_cjk_text(text: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in str(text or ""))
+
+
+def _is_display_language_allowed(item: NewsItem) -> bool:
+    """Hide English-only sources from Telegram display while keeping DB rows."""
+    if _has_cjk_text(item.title or ""):
+        return True
+    parsed = urlparse(item.url or "")
+    netloc = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if netloc in _DISPLAY_EXCLUDED_ENGLISH_DOMAINS:
+        return False
+    if netloc.endswith(".digitimes.com"):
+        return False
+    if netloc.endswith("twse.com.tw") and ("/en/" in path or path.startswith("/en")):
+        return False
+    if netloc.endswith("tpex.org.tw") and ("/en/" in path or path.startswith("/en")):
+        return False
+    return True
+
+
 def _display_dedupe_key(item: NewsItem) -> str:
     """Return a stable display-only key for near-duplicate news."""
     title = (item.title or "").strip().lower()
-    title = title.split(" | ")[0].split("｜")[0]
+    title = title.split(" | ")[0].split("｜")[0].split("|")[0]
     title = re.sub(r"\s+", "", title)
     title = re.sub(r"[^\w\u4e00-\u9fff]+", "", title)
     if len(title) >= 8:
@@ -1708,6 +2226,7 @@ def save_user_submitted_news_url(
         published_at=datetime.now().isoformat(timespec="seconds"),
         summary=summary,
         full_text=full_text,
+        news_origin="manual",
         created_at=datetime.now().isoformat(timespec="seconds"),
     )
 
@@ -1769,6 +2288,34 @@ _NON_ARTICLE_URL_PATTERNS = [
     "/TIB/zh",
 ]
 
+_NON_ARTICLE_URL_SUBSTRINGS = [
+    "ctee.com.tw/market-stock/",
+    "tw.stock.yahoo.com/quote/",
+    "tw.stock.yahoo.com/rank/",
+    "tw.stock.yahoo.com/tw-market",
+    "hk.finance.yahoo.com/quote/",
+    "msn.com/zh-tw/money/markets",
+    "histock.tw/stock/",
+    "goodinfo.tw/tw/stock",
+    "nstock.tw/",
+    "nstock.tw/stock_info",
+    "finance.biggo.com.tw/quote/",
+    "pchome.megatime.com.tw/m/stockinfo/",
+    "statementdog.com/analysis/",
+    "treelazy.com/stock/",
+    "wantgoo.com/stock/calendar/",
+    "fugle.tw/ai/",
+    "ytdf.yuanta.com.tw/prod/yesidmz/stockpreview/",
+    "www.cnyes.com/twstock/",
+    "cnyes.com/twstock/idx_cashflow.aspx",
+    "money-link.com.tw/twstock/stocknews.aspx",
+    "moneydj.com/kmdj/news/newsreallist.aspx",
+    "ctee.com.tw/stock/matchplay",
+    "sinotrade.com.tw/richclub/daily_livestream/",
+    "sinotrade.com.tw/richclub/hotopic/",
+    "youtube.com/watch",
+]
+
 # URL query param keys that indicate a query/list page
 _NON_ARTICLE_QUERY_KEYS = {
     "query", "search", "broker_trading", "warrant", "opendata",
@@ -1813,12 +2360,43 @@ _NON_ARTICLE_TITLE_PATTERNS = [
     "簡報",
     "年報",
     "財務報告",
+    "即時新聞 -",
+    "最新股價",
+    "即時股價",
+    "走勢圖",
+    "K線走勢",
+    "MSN 財經",
+    "逐洞賽",
+    "股價與走勢",
+    "股價- 技術分析",
+    "市場加權指數上漲",
+    "漲幅排行",
+    "台股盤勢",
+    "資金流向",
+    "新聞日誌",
     # Institutional names that are landing pages
     "壯大臺灣資本市場高峰會",
     "公司治理評鑑",
     "產業價值鏈資訊平台",
     "打造亞洲那斯達克",
 ]
+
+_NON_ARTICLE_TITLE_PATTERNS.extend([
+    "股價、新聞、報價",
+    "最新股票消息和頭條新聞",
+    "股價行情概況",
+    "股價走勢",
+    "K線走勢",
+    "技術分析",
+    "基本資料",
+    "財報分析",
+    "每股盈餘",
+    "EPS 即時股價",
+    "行事曆",
+    "市場公告",
+    "年報電子書",
+    "估值方法和財務統計數據",
+])
 
 # Official source domains whose root pages should be excluded
 # Include both bare domain and www-prefixed variants
@@ -1850,7 +2428,7 @@ _KEEP_MEDIA_URL_PATTERNS = [
     "money.udn.com/money/story/",
     "cna.com.tw/news/",
     "cnyes.com/news/id/",
-    "moneydj.com/",
+    "moneydj.com/kmdj/news/newsviewer",
     "chinatimes.com/article/",
     "ltn.com.tw/news/",
     "pts.org.tw/",
@@ -1882,6 +2460,9 @@ def _is_non_article_page(item: NewsItem) -> bool:
         return True
 
     if netloc == "tw.stock.yahoo.com" and path_stripped.lower() in ("/news", "/news/"):
+        return True
+
+    if any(pattern in url for pattern in _NON_ARTICLE_URL_SUBSTRINGS):
         return True
 
     # First: check known financial media article patterns — KEEP these
@@ -1945,7 +2526,7 @@ def _is_non_article_page(item: NewsItem) -> bool:
                 is_trusted_media = True
                 break
         if is_trusted_media:
-            return False  # Media root is an article page, don't reject
+            return True  # Media root is a portal/list page, not a single article
         if netloc in _OFFICIAL_ROOT_DOMAINS:
             return True  # Official domains root should be rejected
         return True

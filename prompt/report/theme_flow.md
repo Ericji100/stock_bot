@@ -89,3 +89,11 @@ Layer 固定使用：
 ## 限制
 
 不得輸出買進、賣出、加碼、追價、停損、停利、目標價、保證獲利、必漲、一定輪動。
+## 市場分群與證據規則
+- `/theme_flow` 是針對指定題材或族群做延伸分析；若輸入是族群名稱，必須參考 `market_movers`、`sector_rankings`、`subsector_rankings` 的市場強弱，而不是只用既有 AI/半導體題材模板。
+- 產業分類、子族群命中、股價強勢只能作為 layer 市場驗證或 candidate 線索；公司是否受惠仍要依 verified/inferred evidence 判斷。
+- 若題材庫不足，請明確寫「市場強勢但題材庫待補」，並列出需要 `/topic_maintain` 補的產品、客戶、營收占比、供應鏈證據。
+## 趨勢強弱判讀補充
+- 延伸擴散時不得只看單日漲跌，必須參考 `trend_state`、`trend_score`、`change_pct_5d/10d/20d`、`near_high_20d` 與 `pullback_from_high_pct`。
+- 若原題材或下一層候選為 `trend_pullback`，請描述為「近期強勢後整理」或「高位震盪待確認」，不得直接判弱。
+- 若新聞很熱但價格趨勢不足，請標示「新聞熱但盤面未確認」；若近期趨勢仍強，請標示「新聞熱且高位整理」，不要混為退潮。

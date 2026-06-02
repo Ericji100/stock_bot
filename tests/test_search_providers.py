@@ -226,6 +226,50 @@ class SearchProviderTests(unittest.TestCase):
 
 
 class TavilySearchTests(unittest.TestCase):
+    def test_tavily_usage_parses_key_remaining(self):
+        from unittest.mock import patch
+        from research_center.tavily_search_service import TavilySearchService
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {
+                    "key": {"usage": 450, "limit": 1000, "search_usage": 300},
+                    "account": {"current_plan": "Researcher", "plan_usage": 450, "plan_limit": 1000},
+                }
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                self.headers = None
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+            def get(self, url, headers=None):
+                self.headers = headers
+                return FakeResponse()
+
+        service = TavilySearchService(api_key="fake_key")
+        with patch("research_center.tavily_search_service.httpx.Client", FakeClient):
+            usage = service.get_usage()
+
+        self.assertTrue(usage["available"])
+        self.assertEqual(usage["key_usage"], 450)
+        self.assertEqual(usage["key_limit"], 1000)
+        self.assertEqual(usage["remaining"], 550)
+
+    def test_tavily_usage_availability_respects_reserve(self):
+        from research_center.tavily_search_service import TavilySearchService
+
+        service = TavilySearchService(api_key="fake_key")
+        service.get_usage = lambda: {"available": True, "remaining": 15}
+
+        available, diagnostics = service.has_available_usage(reserve=20)
+
+        self.assertFalse(available)
+        self.assertEqual(diagnostics["remaining"], 15)
+
     def test_tavily_search_discover_does_not_call_extract(self):
         from research_center.tavily_search_service import TavilySearchService
         service = TavilySearchService(api_key="fake_key")
@@ -270,6 +314,57 @@ class TavilySearchTests(unittest.TestCase):
 
 
 class MiniMaxMCPFallbackTests(unittest.TestCase):
+    def test_tavily_official_usage_overrides_local_exhausted_marker(self):
+        from research_center.command_parser import parse_command_text
+        from research_center.config import ResearchCenterConfig
+        from research_center.orchestrator import _GeminiDiscoveryRunner
+        from research_center.tavily_search_service import TavilySearchResult
+
+        config = ResearchCenterConfig(api_key=None, tavily_api_key="fake")
+        object.__setattr__(config, 'enable_tavily_search', True)
+        object.__setattr__(config, 'tavily_credit_reserve', 20)
+
+        class WorkingTavily:
+            def is_configured(self):
+                return True
+            def has_available_usage(self, reserve=0):
+                return True, {"available": True, "remaining": 550}
+            def discover(self, request, tasks, progress=None):
+                src = make_source_items([{"title": "T", "url": "https://t.com", "snippet": "s"}])
+                return TavilySearchResult(src, {"enabled": True, "runs": [{"label": "test", "status": "ok"}]})
+
+        class LocalExhaustedGuard:
+            def __init__(self):
+                self.cleared = False
+            def is_available(self, provider, **kwargs):
+                return False
+            def is_under_monthly_limit(self, provider, limit, reserve=0, today=None):
+                return False
+            def clear(self, provider):
+                self.cleared = provider == "tavily"
+            def record_usage(self, provider, units):
+                return None
+            def mark_exhausted(self, provider, reason, **kwargs):
+                return None
+
+        class MockCenter:
+            pass
+
+        mock_center = MockCenter()
+        mock_center.config = config
+        mock_center.tavily_search = WorkingTavily()
+        mock_center.quota_guard = LocalExhaustedGuard()
+        runner = _GeminiDiscoveryRunner(mock_center)
+        request = parse_command_text("/research 2330 --deep")
+        sources = []
+        structured_data = {}
+
+        runner._run_tavily(request, [{"label": "test", "queries": ["2330"], "objective": "test"}], sources, structured_data, None)
+
+        self.assertTrue(mock_center.quota_guard.cleared)
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(structured_data["tavily_search_discovery"]["official_usage"]["remaining"], 550)
+
     def test_minimax_failure_does_not_block_tavily(self):
         from research_center.command_parser import parse_command_text
         from research_center.config import ResearchCenterConfig

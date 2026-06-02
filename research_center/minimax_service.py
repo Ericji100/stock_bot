@@ -10,7 +10,7 @@ import httpx
 
 
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
-DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7"
+DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
 MAX_ERROR_PREVIEW_CHARS = 1200
 
 
@@ -225,4 +225,3 @@ def _format_minimax_error_message(diagnostics: dict[str, Any]) -> str:
     if preview:
         parts.append(f"response={preview}")
     return "; ".join(parts)
-

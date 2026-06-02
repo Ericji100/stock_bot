@@ -21,6 +21,7 @@ NEWS_CONTEXT_COMMANDS = {
     "theme_radar",
     "theme_flow",
     "sector_strength",
+    "topic_maintain",
 }
 
 SEARCH_PROVIDER_KEYS = {
@@ -213,6 +214,7 @@ def _source_to_news_item(request: CommandRequest, structured_data: dict[str, Any
         full_text=source.snippet or "",
         importance_score=1,
         impact_direction="",
+        news_origin="research",
         created_at=datetime.now().astimezone().isoformat(timespec="seconds"),
     ))
 

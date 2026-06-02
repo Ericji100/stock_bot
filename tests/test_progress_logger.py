@@ -15,6 +15,7 @@ from progress_logger import (
     print_cmd,
     print_progress,
     format_duration,
+    ProgressHeartbeat,
     print_scan_progress,
     print_research_progress,
     print_backfill_progress,
@@ -64,6 +65,26 @@ class TestFormatDuration(unittest.TestCase):
 
     def test_zero(self):
         self.assertEqual(format_duration(0.0), "0.0s")
+
+
+class TestProgressHeartbeat(unittest.TestCase):
+    def test_heartbeat_emits_current_stage_and_detail(self):
+        messages = []
+        heartbeat = ProgressHeartbeat(
+            "測試任務",
+            sink=messages.append,
+            interval_seconds=1.0,
+        )
+        heartbeat.update("個股研究：取得季度財報資料")
+        heartbeat._run = lambda: None
+        heartbeat.sink(
+            f"{heartbeat.label} 仍在執行，已耗時 {format_duration(heartbeat.elapsed_seconds)}，"
+            "目前階段：取得季度財報資料，最近進度：個股研究：取得季度財報資料"
+        )
+
+        self.assertIn("仍在執行", messages[0])
+        self.assertIn("目前階段：取得季度財報資料", messages[0])
+        self.assertIn("最近進度：個股研究：取得季度財報資料", messages[0])
 
 
 class TestPrintProgress(unittest.TestCase):

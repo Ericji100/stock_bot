@@ -37,6 +37,7 @@ class NewsItem:
     news_heat_risk_score: int = 0
     news_signal_reason: str = ""
     news_heat_risk_reason: str = ""
+    news_origin: str = "refresh"
     created_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -58,6 +59,7 @@ class NewsItem:
             "news_heat_risk_score": self.news_heat_risk_score,
             "news_signal_reason": self.news_signal_reason,
             "news_heat_risk_reason": self.news_heat_risk_reason,
+            "news_origin": self.news_origin,
             "created_at": self.created_at,
         }
 
@@ -81,6 +83,7 @@ class NewsItem:
             news_heat_risk_score=int(data.get("news_heat_risk_score", 0) or 0),
             news_signal_reason=str(data.get("news_signal_reason", "")),
             news_heat_risk_reason=str(data.get("news_heat_risk_reason", "")),
+            news_origin=str(data.get("news_origin", "refresh") or "refresh"),
             created_at=str(data.get("created_at", "")),
         )
         return apply_news_signal_tags(item)

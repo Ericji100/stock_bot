@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from .models import CommandRequest, ReportArtifacts, SourceItem
+from .report_display_normalizer import normalize_report_text
 from .report_validator import append_qa_notes, validate_report
 from .company_knowledge_update_service import source_quality_score
 from .report_quality_service import build_report_quality_layer
@@ -70,6 +71,8 @@ def build_report_json(
             "gemini_search_discovery": data.get("gemini_search_discovery"),
             "minimax_search_discovery": data.get("minimax_search_discovery"),
             "minimax_diagnostics": data.get("minimax_diagnostics"),
+            "segmented_ai_analysis": data.get("segmented_ai_analysis"),
+            "segmented_ai_prompt_paths": data.get("segmented_ai_prompt_paths"),
             "opencode_diagnostics": data.get("opencode_diagnostics"),
             "shared_data_layer": shared_data_layer,
             "news_context": shared_data_layer.get("news_context"),
@@ -152,7 +155,8 @@ def _sector_strength_metadata_summary(data: dict[str, Any]) -> dict[str, Any]:
             "report_generated_at": data.get("report_generated_at"),
             "source": data.get("source"),
             "lookback_days": data.get("lookback_days"),
-            "sector_rankings": (data.get("sector_rankings") or [])[:10],
+            "sector_rankings": (data.get("sector_rankings") or [])[:20],
+            "subsector_rankings": (data.get("subsector_rankings") or [])[:20],
             "data_quality": data.get("data_quality"),
             "market_movers": _market_movers_metadata_summary(data.get("market_movers") or {}),
         },
@@ -170,13 +174,13 @@ def _market_movers_metadata_summary(data: dict[str, Any]) -> dict[str, Any]:
             "source_mode": data.get("source_mode"),
             "hard_filter_policy": data.get("hard_filter_policy"),
             "data_quality": data.get("data_quality"),
-            "top_gainers": (data.get("top_gainers") or [])[:10],
-            "top_losers": (data.get("top_losers") or [])[:10],
-            "top_volume_surge": (data.get("top_volume_surge") or [])[:10],
-            "top_turnover": (data.get("top_turnover") or [])[:10],
-            "new_highs": (data.get("new_highs") or [])[:10],
-            "new_lows": (data.get("new_lows") or [])[:10],
-            "sector_mover_rankings": (data.get("sector_mover_rankings") or [])[:10],
+            "top_gainers": (data.get("top_gainers") or [])[:20],
+            "top_losers": (data.get("top_losers") or [])[:20],
+            "top_volume_surge": (data.get("top_volume_surge") or [])[:20],
+            "top_turnover": (data.get("top_turnover") or [])[:20],
+            "new_highs": (data.get("new_highs") or [])[:20],
+            "new_lows": (data.get("new_lows") or [])[:20],
+            "sector_mover_rankings": (data.get("sector_mover_rankings") or [])[:20],
         },
         depth=4,
         max_list=12,
@@ -207,15 +211,17 @@ def write_report_artifacts(
     output_dir = report_root / report_type / _safe_slug(request.target or request.market_scope or request.candidate_pool or "latest")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    markdown = sanitize_report_markdown(markdown)
-    summary = sanitize_report_markdown(summary)
+    markdown = normalize_report_text(sanitize_report_markdown(markdown))
+    summary = normalize_report_text(sanitize_report_markdown(summary))
     markdown = _append_value_scan_candidate_analysis(request, markdown, structured_data)
     markdown = _append_report_quality_summary(request, markdown, structured_data, sources)
     markdown = _append_source_reference_bridge(markdown, sources)
     markdown = _append_complete_source_appendix(markdown, sources)
+    markdown = normalize_report_text(markdown)
     report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant)
     qa = validate_report(markdown, request, sources, report_json)
     markdown = append_qa_notes(markdown, qa)
+    markdown = normalize_report_text(markdown)
     if markdown != report_json.get("markdown_validated_source"):
         report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant)
     report_json["metadata"]["qa_validation"] = qa
@@ -410,7 +416,11 @@ def _value_scan_candidate_refs(data: dict[str, Any]) -> list[dict[str, str]]:
     return refs
 
 
-def _structured_data_report_snapshot(request: CommandRequest, data: dict[str, Any], report_quality: dict[str, Any] | None = None) -> dict[str, Any]:
+def _structured_data_report_snapshot(
+    request: CommandRequest,
+    data: dict[str, Any],
+    report_quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     quality = report_quality or {}
     common = {
         "schema_version": quality.get("schema_version"),
@@ -422,6 +432,7 @@ def _structured_data_report_snapshot(request: CommandRequest, data: dict[str, An
         "data_gap_summary": quality.get("data_gap_summary") or data.get("data_gap_summary"),
         "unified_evidence_pack": quality.get("unified_evidence_pack") or data.get("unified_evidence_pack"),
         "news_event_summary": quality.get("news_event_summary") or data.get("news_event_summary"),
+        "segmented_ai_analysis": data.get("segmented_ai_analysis"),
     }
     if request.command == "value_scan":
         return {
@@ -833,7 +844,7 @@ def _metadata_summary(report_json: dict[str, Any]) -> dict[str, Any]:
 
 
 def summarize_for_telegram(markdown: str, limit: int = 1200) -> str:
-    markdown = sanitize_report_markdown(markdown)
+    markdown = normalize_report_text(sanitize_report_markdown(markdown))
     title = _first_heading(markdown)
     cleaned = re.sub(r"[#*_`>]+", "", markdown)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
@@ -1049,14 +1060,6 @@ def _important_lines(text: str) -> list[str]:
         clean = line.strip(" -0123456789.、")
         if not clean:
             continue
-        if any(keyword in clean for keyword in ("分", "風險", "利多", "觀察", "重估", "籌碼", "營收")):
+        if any(keyword in clean for keyword in ("分", "風險", "利多", "觀察", "重估", "籌碼", "營收", "盤面", "新聞", "強勢", "來源", "媒體")):
             lines.append(clean[:160])
     return lines[:6]
-
-
-
-
-
-
-
-

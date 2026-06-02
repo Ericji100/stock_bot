@@ -9,6 +9,7 @@ from research_center.topic_source_sync_service import (
     apply_topic_source_caches_to_formal_library,
     TPEX_URL,
     UDN_INDUSTRY_URL,
+    _clean_text,
     parse_tpex_industry_chain,
     parse_udn_industry_topics,
     sync_topic_sources,
@@ -16,6 +17,27 @@ from research_center.topic_source_sync_service import (
 
 
 class TopicSourceSyncServiceTests(unittest.TestCase):
+    def test_clean_text_repairs_latin1_utf8_mojibake(self):
+        mojibake = "半導體".encode("utf-8").decode("latin1")
+
+        self.assertEqual(_clean_text(mojibake), "半導體")
+
+    def test_parse_tpex_industry_chain_uses_code_name_and_filters_navigation(self):
+        html = """
+        <html><body>
+          <a href="/introduce.php?ic=5300">broken label</a>
+          <a href="/sitemap.php">網站地圖</a>
+          <a href="/index.php">產業價值鏈資訊平台 企業籌資更便捷 大眾投資更穩當</a>
+        </body></html>
+        """
+
+        data = parse_tpex_industry_chain(html)
+        names = [item["name"] for item in data["items"]]
+
+        self.assertIn("人工智慧", names)
+        self.assertNotIn("網站地圖", names)
+        self.assertFalse(any("產業價值鏈資訊平台" in name for name in names))
+
     def test_parse_tpex_industry_chain_links_and_table_rows(self):
         html = """
         <html><body>

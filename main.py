@@ -1,9 +1,11 @@
 import json
 import asyncio
+import traceback
 import telegram
 import pytz
 from datetime import date, datetime, time, timedelta
 import threading
+from typing import Awaitable, Callable
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
@@ -15,6 +17,7 @@ from chip_strategies import (
     STRATEGY_DEFINITIONS,
     build_chip_reports,
     get_tw_today,
+    is_possible_trading_day,
     warmup_chip_data_cache,
 )
 from data_fetcher import StockExportError, StockNotFoundError
@@ -60,7 +63,7 @@ from radar_service import (
     run_radar,
 )
 
-from progress_logger import now_timestamp, has_leading_timestamp, format_cmd_message
+from progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
 from tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
 
 SCAN_CALLBACK_PREFIX = "scan_strategy:"
@@ -70,6 +73,10 @@ RADAR_MODEL_CALLBACK_PREFIX = "radar_model:"
 NOON_REPORT_MAX_RETRIES = 6
 NOON_REPORT_RETRY_DELAY_SECONDS = 30 * 60
 ACTIVE_USER_TASKS: dict[int, asyncio.Task] = {}
+ScheduledTaskRunner = Callable[[], Awaitable[None]]
+_SCHEDULED_TASK_QUEUE: asyncio.Queue[tuple[str, ScheduledTaskRunner]] | None = None
+_SCHEDULED_TASK_WORKER: asyncio.Task | None = None
+_SCHEDULED_CHIP_BACKFILL_TASKS: dict[str, asyncio.Task] = {}
 BOT_COMMAND_SPECS: tuple[tuple[str, str], ...] = (
     ("start", "顯示機器人指令說明"),
     ("stop", "停止目前執行中的任務"),
@@ -158,6 +165,44 @@ def save_config(config):
 
 
 # --- 4. 穩定發送機制 ---
+async def enqueue_scheduled_task(
+    context: ContextTypes.DEFAULT_TYPE,
+    label: str,
+    runner: ScheduledTaskRunner,
+) -> None:
+    """Queue scheduled report/cache jobs so they run one at a time."""
+    global _SCHEDULED_TASK_QUEUE, _SCHEDULED_TASK_WORKER
+    if _SCHEDULED_TASK_QUEUE is None:
+        _SCHEDULED_TASK_QUEUE = asyncio.Queue()
+    ahead = _SCHEDULED_TASK_QUEUE.qsize()
+    await _SCHEDULED_TASK_QUEUE.put((label, runner))
+    if ahead:
+        print(format_cmd_message(f"{label} 已排隊，目前前方 {ahead} 個任務", "定時任務"), flush=True)
+    else:
+        print(format_cmd_message(f"{label} 已排入定時任務佇列", "定時任務"), flush=True)
+    if _SCHEDULED_TASK_WORKER is None or _SCHEDULED_TASK_WORKER.done():
+        _SCHEDULED_TASK_WORKER = context.application.create_task(_scheduled_task_worker())
+        _SCHEDULED_TASK_WORKER.set_name("定時任務序列佇列")
+
+
+async def _scheduled_task_worker() -> None:
+    global _SCHEDULED_TASK_QUEUE
+    if _SCHEDULED_TASK_QUEUE is None:
+        return
+    while True:
+        label, runner = await _SCHEDULED_TASK_QUEUE.get()
+        try:
+            print(format_cmd_message(f"{label} 開始", "定時任務"), flush=True)
+            await runner()
+            print(format_cmd_message(f"{label} 完成", "定時任務"), flush=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(format_cmd_message(f"{label} 失敗：{exc}", "定時任務"), flush=True)
+        finally:
+            _SCHEDULED_TASK_QUEUE.task_done()
+
+
 def split_telegram_message(text: str, limit: int = 4000) -> list[str]:
     chunks = []
     remaining = text.strip()
@@ -360,7 +405,7 @@ START_TEXT = """台股 AI 助理
 /sector_strength - 族群強弱排行
 
 題材庫維護
-/topic_maintain - 更新題材庫
+/topic_maintain - 大範圍更新題材庫
 /topic_seed_prompt - 產生外部 AI 題材庫提示詞
 /topic_import - 匯入外部 AI 題材 JSON
 /topic_source_sync - 同步外部產業來源快取
@@ -546,6 +591,22 @@ def parse_scan_report_date(args: list[str] | tuple[str, ...] | None) -> date:
     raise ValueError("日期格式錯誤，請使用 YYYY-MM-DD、YYYY/MM/DD、YYYYMMDD 或 M/D")
 
 
+def resolve_scan_latest_report_date(today: date | None = None) -> tuple[date, str]:
+    """Resolve /scan latest date to the nearest possible trading day."""
+    current = today or get_tw_today()
+    candidate = current
+    for _ in range(10):
+        if is_possible_trading_day(candidate):
+            if candidate == current:
+                return candidate, ""
+            return (
+                candidate,
+                f"今天 {current.isoformat()} 不是交易日，已改用最近可用交易日 {candidate.isoformat()}",
+            )
+        candidate -= timedelta(days=1)
+    return current, "無法判斷最近交易日，暫以今天執行"
+
+
 def build_scan_strategy_keyboard(report_date: date | None = None) -> InlineKeyboardMarkup:
     # 新增 /scan 的互動式按鈕選單，避免使用者每次輸入指令就直接執行所有高成本掃描。
     # 若有 report_date，callback 會包含日期，點選後直接執行、不進日期選單。
@@ -575,14 +636,30 @@ def build_scan_date_menu(scan_mode: str) -> InlineKeyboardMarkup:
 
 
 async def run_selected_scan_reports(update: Update, selection: str, report_date: date | None = None):
+    async def send_text(text: str) -> None:
+        await safe_send_reply(update, text)
+
+    await run_selected_scan_reports_core(selection, report_date, send_text)
+
+
+async def run_selected_scan_reports_core(
+    selection: str,
+    report_date: date | None,
+    send_text: Callable[[str], Awaitable[None]],
+) -> None:
     selected_keys = SCAN_SELECTIONS.get(selection)
     if not selected_keys:
-        await safe_send_reply(update, "❌ 無效的選股策略選項。")
+        await send_text("❌ 無效的選股策略選項。")
         return
 
-    target_date = report_date or get_tw_today()
     menu_label = SCAN_MENU_LABELS.get(selection, selection)
+    if report_date is None:
+        target_date, date_note = resolve_scan_latest_report_date()
+    else:
+        target_date, date_note = report_date, ""
     report_parts: list[str] = []
+    if date_note:
+        print(f"[{now_timestamp()}] [scan progress][{menu_label}] date adjusted: {date_note}", flush=True)
     print(f"[{now_timestamp()}] [選股進度][{menu_label}] 0.00% 收到 /scan 選股任務，目標日期 {target_date.isoformat()}", flush=True)
 
     is_curated_only = selected_keys == ["curated"]
@@ -590,7 +667,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
 
     if is_curated_only:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 10.00% 開始精選交叉比對", flush=True)
-        await safe_send_reply(update, "正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
+        await send_text("正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
         try:
             config = load_config()
             curated_result = await asyncio.to_thread(
@@ -600,11 +677,11 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 90.00% 精選報告產生完成，準備傳送 Telegram", flush=True)
             save_recent_scan_result(menu_label, target_date, curated_result.report_text, curated_result.selected_codes)
-            await safe_send_reply(update, curated_result.report_text)
+            await send_text(curated_result.report_text)
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 精選選股失敗: {exc}")
-            await safe_send_reply(update, "⚠️ 精選選股產生失敗，請稍後再試。")
+            await send_text("⚠️ 精選選股產生失敗，請稍後再試。")
         return
 
     # 完成一段就先送一段，避免全部選股遇到單一資料源變慢時使用者長時間沒有任何回應。
@@ -620,10 +697,10 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 35.00% 財報營收報告完成，準備傳送 Telegram", flush=True)
             report_parts.append(financial_report)
-            await safe_send_reply(update, financial_report)
+            await send_text(financial_report)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 財報選股失敗: {exc}")
-            await safe_send_reply(update, "⚠️ 財報選股產生失敗，會繼續嘗試其他已選策略。")
+            await send_text("⚠️ 財報選股產生失敗，會繼續嘗試其他已選策略。")
 
     chip_keys = [key for key in selected_keys if key.startswith("chip_")]
     has_technical = "technical" in selected_keys
@@ -634,7 +711,7 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
     if chip_keys:
         chip_progress_end = 70.0 if has_technical else 90.0
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 40.00% 開始籌碼策略資料整理", flush=True)
-        await safe_send_reply(update, "籌碼選股資料整理中。")
+        await send_text("籌碼選股資料整理中。")
         try:
             chip_reports, _ = await asyncio.to_thread(
                 build_chip_reports,
@@ -647,20 +724,20 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
             )
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 籌碼選股失敗: {exc}")
-            await safe_send_reply(update, "⚠️ 籌碼選股產生失敗，請稍後再試或先單獨執行其他策略。")
+            await send_text("⚠️ 籌碼選股產生失敗，請稍後再試或先單獨執行其他策略。")
             return
 
         for index, key in enumerate(chip_keys, start=1):
             progress = chip_progress_end + index / max(1, len(chip_keys)) * 5.0
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] {progress:.2f}% 傳送 {CHIP_STRATEGY_NAMES.get(key, key)} 報告", flush=True)
             report_parts.append(chip_reports[key])
-            await safe_send_reply(update, chip_reports[key])
+            await send_text(chip_reports[key])
 
     # NEW: 技術面選股路由
     if has_technical:
         technical_start_progress = 75.0 if chip_keys or "financial" in selected_keys else 10.0
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] {technical_start_progress:.2f}% 開始技術面選股", flush=True)
-        await safe_send_reply(update, "技術面選股資料整理中。")
+        await send_text("技術面選股資料整理中。")
         try:
             config = load_config()
             technical_report = await asyncio.to_thread(
@@ -670,14 +747,14 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 98.00% 技術面報告完成，準備傳送 Telegram", flush=True)
             report_parts.append(technical_report)
-            await safe_send_reply(update, technical_report)
+            await send_text(technical_report)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 技術面選股失敗: {exc}")
-            await safe_send_reply(update, "⚠️ 技術面選股產生失敗，請稍後再試。")
+            await send_text("⚠️ 技術面選股產生失敗，請稍後再試。")
 
     if has_curated:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.00% 開始精選交叉比對", flush=True)
-        await safe_send_reply(update, "正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
+        await send_text("正在比對技術面、營收財報與法人大戶策略，整理重複命中的精選名單...")
         try:
             config = load_config()
             curated_result = await asyncio.to_thread(
@@ -687,10 +764,10 @@ async def run_selected_scan_reports(update: Update, selection: str, report_date:
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.50% 精選報告產生完成，準備傳送 Telegram", flush=True)
             report_parts.append(curated_result.report_text)
-            await safe_send_reply(update, curated_result.report_text)
+            await send_text(curated_result.report_text)
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 精選選股失敗: {exc}")
-            await safe_send_reply(update, "⚠️ 精選選股產生失敗，會繼續完成其他已選策略。")
+            await send_text("⚠️ 精選選股產生失敗，會繼續完成其他已選策略。")
 
     if selection == "7" and report_parts:
         save_recent_scan_result(menu_label, target_date, "\n\n".join(report_parts))
@@ -760,7 +837,13 @@ async def _manual_backfill_background(
     force_refresh: bool,
     stop_event: threading.Event,
 ) -> None:
+    heartbeat = ProgressHeartbeat(
+        "/backfill",
+        sink=lambda message: print(format_cmd_message(message, "完整回補"), flush=True),
+    ).start()
+
     def progress(message: str) -> None:
+        heartbeat.update(message)
         print(format_cmd_message(message, "完整回補"), flush=True)
 
     try:
@@ -778,6 +861,7 @@ async def _manual_backfill_background(
         print(format_cmd_message(f"背景完整回補失敗：{exc}", "完整回補"), flush=True)
         await bot.send_message(chat_id=chat_id, text=f"❌ 完整資料回補失敗：{exc}")
     finally:
+        heartbeat.stop()
         task = asyncio.current_task()
         if _USER_BACKFILL_TASKS.get(chat_id) is task:
             _USER_BACKFILL_TASKS.pop(chat_id, None)
@@ -787,8 +871,13 @@ async def _manual_backfill_background(
 
 async def _scheduled_backfill_background() -> None:
     global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
+    heartbeat = ProgressHeartbeat(
+        "定時回補檢查",
+        sink=lambda message: print(format_cmd_message(message, "定時回補檢查"), flush=True),
+    ).start()
 
     def progress(message: str) -> None:
+        heartbeat.update(message)
         print(format_cmd_message(message, "定時回補檢查"), flush=True)
 
     try:
@@ -845,6 +934,7 @@ async def _scheduled_backfill_background() -> None:
     except Exception as exc:
         print(format_cmd_message(f"背景定時回補失敗：{exc}", "定時回補檢查"), flush=True)
     finally:
+        heartbeat.stop()
         _SCHEDULED_BACKFILL_RUNNING = False
         _SCHEDULED_BACKFILL_TASK = None
 
@@ -1087,11 +1177,15 @@ async def handle_scan_date_callback(update: Update, context: ContextTypes.DEFAUL
     if date_action == "latest":
         # Execute immediately with today's date
         menu_label = SCAN_MENU_LABELS[scan_mode]
-        await query.edit_message_text(f"已選擇：{menu_label}\n目標資料日期：今日\n開始執行，請稍候...")
+        report_date, date_note = resolve_scan_latest_report_date()
+        note = f"\n{date_note}" if date_note else ""
+        await query.edit_message_text(
+            f"已選擇：{menu_label}\n目標資料日期：{report_date.isoformat()}{note}\n開始執行，請稍候..."
+        )
         await run_stoppable_command(
             update,
             f"選股：{menu_label}",
-            lambda: run_selected_scan_reports(update, scan_mode, None),
+            lambda: run_selected_scan_reports(update, scan_mode, report_date),
         )
     elif date_action == "custom":
         # Store pending state and ask user for date
@@ -1198,7 +1292,7 @@ def build_radar_model_keyboard() -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("Gemini", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}gemini")],
             [InlineKeyboardButton("DeepSeek V4 Pro", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}deepseek")],
-            [InlineKeyboardButton("MiniMax M2.7", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}minimax")],
+            [InlineKeyboardButton("MiniMax M3", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}minimax")],
             [InlineKeyboardButton("略過 AI 短評", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}skip")],
         ]
     )
@@ -1343,7 +1437,22 @@ async def execute_radar_request(update: Update, context: ContextTypes.DEFAULT_TY
         ),
     )
 
+    heartbeat = ProgressHeartbeat(
+        "/radar",
+        sink=lambda message: print(f"[{now_timestamp()}] {message}", flush=True),
+    ).start()
+    try:
+        from backfill_service import is_backfill_running
+
+        if is_backfill_running():
+            notice = "偵測到完整資料回補正在執行，本次 Radar 會優先使用既有快取與逾時降級，避免長時間等待資料源。"
+            heartbeat.update(notice, stage="回補狀態檢查")
+            print(f"[{now_timestamp()}] {notice}", flush=True)
+    except Exception:
+        pass
+
     def progress(message: str) -> None:
+        heartbeat.update(message)
         print(f"[{now_timestamp()}] {message}", flush=True)
 
     try:
@@ -1354,10 +1463,16 @@ async def execute_radar_request(update: Update, context: ContextTypes.DEFAULT_TY
             config=config,
             progress=progress,
         )
+    except asyncio.CancelledError:
+        heartbeat.stop()
+        raise
     except Exception as exc:
         print(f"[{now_timestamp()}] ❌ /radar 執行失敗: {exc}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        heartbeat.stop()
         await safe_send_reply(update, f"❌ Radar 執行失敗：{exc}")
         return
+    heartbeat.stop()
 
     await safe_send_reply(update, format_radar_report(result))
 
@@ -1510,6 +1625,10 @@ async def export_tmf_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 6. 定時任務 ---
 async def scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(context, "12:30 監控掃描", lambda: _scheduled_daily_scan(context))
+
+
+async def _scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     print(f"[{now_timestamp()}] 🔍 執行 12:30 監控掃描...")
     msg = await asyncio.to_thread(
@@ -1526,36 +1645,88 @@ async def scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(context, "21:30 Radar 推播（MiniMax M3 短評）", lambda: _scheduled_radar_push(context))
+
+
+async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(context, "20:30 全部選股", lambda: _scheduled_all_scan_push(context))
+
+
+async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     target_date = get_tw_today()
     try:
         from chip_strategies import is_possible_trading_day
 
         if not is_possible_trading_day(target_date):
-            print(f"[{now_timestamp()}] Radar 20:30 略過非交易日 {target_date.isoformat()}", flush=True)
+            print(format_cmd_message(f"20:30 全部選股略過非交易日 {target_date.isoformat()}", "定時任務"), flush=True)
+            return
+    except Exception as exc:
+        print(format_cmd_message(f"20:30 全部選股交易日判斷失敗，保守略過：{exc}", "定時任務"), flush=True)
+        return
+
+    async def send_text(text: str) -> None:
+        await safe_send_bot_message(context.bot, config["chat_id"], text)
+
+    print(format_cmd_message(f"20:30 全部選股開始，資料日期 {target_date.isoformat()}", "定時任務"), flush=True)
+    await send_text(f"20:30 交易日全部選股開始\n資料日期：{target_date.isoformat()}")
+    await run_selected_scan_reports_core("7", target_date, send_text)
+    await send_text(f"20:30 交易日全部選股完成\n資料日期：{target_date.isoformat()}")
+    print(format_cmd_message(f"20:30 全部選股完成，資料日期 {target_date.isoformat()}", "定時任務"), flush=True)
+
+
+async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+    target_date = get_tw_today()
+    try:
+        from chip_strategies import is_possible_trading_day
+
+        if not is_possible_trading_day(target_date):
+            print(f"[{now_timestamp()}] Radar 21:30 略過非交易日 {target_date.isoformat()}", flush=True)
             return
     except Exception as exc:
         print(f"[{now_timestamp()}] Radar 交易日判斷失敗，保守略過：{exc}", flush=True)
         return
 
+    heartbeat = ProgressHeartbeat(
+        "Radar 21:30",
+        sink=lambda message: print(f"[{now_timestamp()}] {message}", flush=True),
+    ).start()
+
     def progress(message: str) -> None:
+        heartbeat.update(message)
         print(f"[{now_timestamp()}] {message}", flush=True)
 
     try:
         result = await asyncio.to_thread(
             run_radar,
-            RadarRequest(source="technical", report_date=target_date, ai_top=5, model="deepseek", ai_comment_enabled=True),
+            RadarRequest(
+                source="technical",
+                report_date=target_date,
+                ai_top=5,
+                model="minimax",
+                ai_comment_enabled=True,
+            ),
             scan_settings=config.get("scan_settings", {}),
             config=config,
             progress=progress,
         )
         await context.bot.send_message(chat_id=config["chat_id"], text=format_radar_report(result))
-        print(f"[{now_timestamp()}] Radar 20:30 推送完成", flush=True)
+        print(f"[{now_timestamp()}] Radar 21:30 推送完成", flush=True)
     except Exception as exc:
-        print(f"[{now_timestamp()}] ❌ Radar 20:30 推送失敗：{exc}", flush=True)
+        print(f"[{now_timestamp()}] ❌ Radar 21:30 推送失敗：{exc}", flush=True)
+    finally:
+        heartbeat.stop()
 
 
 async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
+    label = "新聞自動整理"
+    if context.job and getattr(context.job, "name", None):
+        label = str(context.job.name)
+    await enqueue_scheduled_task(context, label, lambda: _scheduled_news_refresh(context))
+
+
+async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     print(f"[{now_timestamp()}] 📰 執行定時新聞整理...")
     try:
@@ -1571,7 +1742,7 @@ async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         def progress(msg: str) -> None:
             print(msg)
 
-        items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
+        items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="minimax")
         digests = run_news_latest(repository)
         text = format_news_digest(digests, period_label="今日")
         await context.bot.send_message(
@@ -1586,6 +1757,10 @@ async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(context, "17:45 持股報告", lambda: _scheduled_portfolio_report(context))
+
+
+async def _scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     attempt = int((context.job.data or {}).get("attempt", 0)) if context.job else 0
     report = await asyncio.to_thread(build_portfolio_report)
@@ -1620,6 +1795,10 @@ async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
 
 # 新增午報排程：13:50 自動推播台股現貨與台指期日盤，若非交易日或資料未更新則直接略過。
 async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(context, "13:50 午報", lambda: _scheduled_noon_market_report(context))
+
+
+async def _scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     attempt = 0
     if context.job and isinstance(context.job.data, dict):
@@ -1653,11 +1832,25 @@ async def scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
 
 async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data if context.job and isinstance(context.job.data, dict) else {}
+    label = str(job_data.get("label") or "籌碼快取回補")
+    existing_task = _SCHEDULED_CHIP_BACKFILL_TASKS.get(label)
+    if existing_task and not existing_task.done():
+        print(format_cmd_message(f"{label} 仍在背景執行，本次略過", "回補背景任務"), flush=True)
+        return
+    task = context.application.create_task(_scheduled_chip_cache_backfill(job_data))
+    task.set_name(label)
+    _SCHEDULED_CHIP_BACKFILL_TASKS[label] = task
+    task.add_done_callback(lambda done_task, task_label=label: _SCHEDULED_CHIP_BACKFILL_TASKS.pop(task_label, None))
+    print(format_cmd_message(f"{label} 已啟動背景執行", "回補背景任務"), flush=True)
+
+
+async def _scheduled_chip_cache_backfill(job_data: dict | None = None):
+    job_data = job_data or {}
     full_backfill = bool(job_data.get("full_backfill", False))
     label = str(job_data.get("label") or ("籌碼快取完整回補" if full_backfill else "籌碼快取今日回補"))
     report_date = get_tw_today()
 
-    print(f"[開始][{label}] 0.00% 準備回補資料 {report_date.isoformat()}", flush=True)
+    print(format_cmd_message(f"0.00% 準備回補資料 {report_date.isoformat()}", label), flush=True)
     try:
         await asyncio.to_thread(
             warmup_chip_data_cache,
@@ -1858,11 +2051,17 @@ def main():
             scheduled_news_refresh,
             time=time(hour=18, minute=0, tzinfo=tw_tz),
         )
-        # 籌碼資料改為背景慢速回補，不主動推播選股報告；/scan 執行時優先讀快取。
+        # 20:30 交易日執行全部選股；若前一個定時推播任務未完成，會排隊接續執行。
         app.job_queue.run_daily(
-            scheduled_radar_push,
+            scheduled_all_scan_push,
             time=time(hour=20, minute=30, tzinfo=tw_tz),
         )
+        # 21:30 交易日 Radar 推播；同樣走定時任務序列佇列。
+        app.job_queue.run_daily(
+            scheduled_radar_push,
+            time=time(hour=21, minute=30, tzinfo=tw_tz),
+        )
+        # 籌碼資料改為背景慢速回補，不主動推播選股報告；/scan 執行時優先讀快取。
         app.job_queue.run_daily(
             scheduled_chip_cache_backfill,
             time=time(hour=16, minute=30, tzinfo=tw_tz),
@@ -1953,6 +2152,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 

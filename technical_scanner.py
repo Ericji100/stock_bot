@@ -120,12 +120,26 @@ def _standardize_history(frame: pd.DataFrame) -> pd.DataFrame:
     required = ["date", "open", "high", "low", "close", "volume"]
     if not set(required).issubset(history.columns):
         return pd.DataFrame()
-    history = history[required].copy()
+    source_history = history
+    history = pd.DataFrame(index=source_history.index)
+    for column in required:
+        history[column] = _column_as_series(source_history, column)
     history["date"] = pd.to_datetime(history["date"], errors="coerce").dt.normalize()
     for column in ["open", "high", "low", "close", "volume"]:
         history[column] = pd.to_numeric(history[column], errors="coerce")
     history = history.dropna(subset=["date", "open", "high", "low", "close"])
     return history.sort_values("date").drop_duplicates("date").reset_index(drop=True)
+
+
+def _column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    value = frame[column]
+    if isinstance(value, pd.DataFrame):
+        if value.empty:
+            return pd.Series(pd.NA, index=frame.index)
+        value = value.iloc[:, 0]
+    if isinstance(value, pd.Series):
+        return value
+    return pd.Series(value, index=frame.index)
 
 
 def _load_cached_history(symbol: str, require_fresh: bool = True) -> pd.DataFrame:

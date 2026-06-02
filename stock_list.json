@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T08:00:39",
+  "generated_at": "2026-06-02T13:51:30",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -2559,13 +2559,6 @@
       "market": "TPEX",
       "name": "華星光",
       "industry": "通信網路業"
-    },
-    {
-      "code": "4987",
-      "symbol": "4987.TWO",
-      "market": "TPEX",
-      "name": "科誠",
-      "industry": "電腦及週邊設備業"
     },
     {
       "code": "4991",
@@ -5387,6 +5380,13 @@
       "market": "TPEX",
       "name": "民盛",
       "industry": "運動休閒"
+    },
+    {
+      "code": "7819",
+      "symbol": "7819.TWO",
+      "market": "TPEX",
+      "name": "精誠金融",
+      "industry": "資訊服務業"
     },
     {
       "code": "7820",
@@ -9215,7 +9215,7 @@
       "symbol": "2601.TW",
       "market": "TWSE",
       "name": "益航",
-      "industry": "貿易百貨"
+      "industry": "航運業"
     },
     {
       "code": "2603",
@@ -13108,6 +13108,13 @@
       "market": "TWSE",
       "name": "奧義賽博-KY創",
       "industry": "數位雲端"
+    },
+    {
+      "code": "7827",
+      "symbol": "7827.TW",
+      "market": "TWSE",
+      "name": "漢康-KY創",
+      "industry": "生技醫療業"
     },
     {
       "code": "8011",

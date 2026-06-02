@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -22,8 +24,11 @@ from research_center.date_aware_context import (
 )
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import ResearchCenter
+from research_center.data_services import collect_structured_data
+from research_center.evidence_pack_service import build_ai_compact_context, build_three_layer_evidence_context
 from research_center.news_repository import NewsRepository
 from research_center.recent_scans import load_recent_scan_results, save_recent_scan_result
+from research_center.structured_cache import load_latest_research_structured_cache, load_research_structured_cache
 from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
 from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
 from stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
@@ -31,8 +36,25 @@ from stock_scanner import load_recent_revenue_history, load_stock_universe, scan
 
 ROOT_DIR = Path(__file__).resolve().parent
 RADAR_CACHE_PATH = ROOT_DIR / ".cache" / "radar_results.json"
+RADAR_REPORT_DIR = ROOT_DIR / "reports" / "radar"
 DEFAULT_SOURCE = "technical"
 DEFAULT_AI_TOP = 5
+RADAR_AI_CHUNK_SIZE = 5
+RADAR_AI_PROMPT_MAX_CHARS = 90_000
+RADAR_AI_COMPACT_SOURCE_LIMIT = 10
+RADAR_AI_COMPACT_LIST_LIMIT = 12
+RADAR_AI_COMPACT_STRING_LIMIT = 300
+RADAR_AI_TIGHT_SOURCE_LIMIT = 5
+RADAR_AI_TIGHT_LIST_LIMIT = 8
+RADAR_AI_TIGHT_STRING_LIMIT = 180
+RADAR_AI_MINIMAL_SOURCE_LIMIT = 3
+RADAR_AI_MINIMAL_LIST_LIMIT = 5
+RADAR_AI_MINIMAL_STRING_LIMIT = 120
+RADAR_TELEGRAM_AI_TEXT_LIMIT = 160
+RADAR_MIN_EXTERNAL_SOURCES = 8
+RADAR_EVIDENCE_PACK_TIMEOUT_SECONDS = 120.0
+RADAR_FULL_RESEARCH_CACHE_MAX_AGE_DAYS = 5
+RADAR_LIGHT_RESEARCH_CACHE_DIR = ROOT_DIR / ".cache" / "radar_research_light"
 MAIN_SOURCES = {"technical", "curated", "financial", "chip", "monitor", "portfolio"}
 CHIP_KEYS = ["chip_1", "chip_2", "chip_3", "chip_4"]
 TECHNICAL_STRATEGY_LABELS = {
@@ -83,9 +105,12 @@ class RadarCandidate:
     strategy_codes: set[str] = field(default_factory=set)
     technical_signals: list[dict[str, Any]] = field(default_factory=list)
     chip_grades: dict[str, str] = field(default_factory=dict)
+    revenue_history: list[dict[str, Any]] = field(default_factory=list)
     news_items: list[dict[str, Any]] = field(default_factory=list)
     web_sources: list[dict[str, Any]] = field(default_factory=list)
     ai_sources: list[dict[str, Any]] = field(default_factory=list)
+    evidence_pack: dict[str, Any] = field(default_factory=dict)
+    data_coverage: dict[str, Any] = field(default_factory=dict)
     ai_comment: dict[str, Any] = field(default_factory=dict)
     score_components: dict[str, int] = field(default_factory=dict)
     total_score: int = 0
@@ -174,17 +199,22 @@ def run_radar(
     _attach_chip_scores(candidates, target_date, progress)
     _attach_local_news(candidates, target_date)
     _score_candidates(candidates)
+    _attach_base_evidence_packs(candidates, target_date)
 
+    ai_analysis_meta: dict[str, Any] = {}
     ai_codes = _select_ai_enrichment_codes(candidates, radar_request.ai_top)
     if ai_codes:
         if radar_request.ai_comment_enabled and radar_request.model:
             _emit(progress, f"Radar：每策略 Top{radar_request.ai_top} 外部來源與 AI 短評 {len(ai_codes)} 檔")
             _attach_research_center_sources(candidates, ai_codes, target_date, progress)
-            _attach_ai_comments(candidates, ai_codes, radar_request.model, target_date, progress)
+            _ensure_radar_source_sufficiency(candidates, ai_codes, target_date, progress)
+            _attach_research_evidence_packs(candidates, ai_codes, target_date, progress)
+            ai_analysis_meta = _attach_ai_comments(candidates, ai_codes, radar_request.model, target_date, progress)
         else:
             _emit(progress, f"Radar：Top{radar_request.ai_top} 外部來源補強 {len(ai_codes)} 檔")
             _attach_web_sources(candidates, ai_codes, target_date, progress)
         _score_candidates(candidates)
+        _attach_base_evidence_packs(candidates, target_date)
 
     candidates.sort(key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True)
     result = RadarResult(
@@ -192,10 +222,40 @@ def run_radar(
         target_date,
         candidates,
         ai_codes,
-        {"source_policy": source_policy, "candidate_count": len(candidates), "ai_top": radar_request.ai_top, "date_note": date_note},
+        {
+            "source_policy": source_policy,
+            "candidate_count": len(candidates),
+            "ai_top": radar_request.ai_top,
+            "date_note": date_note,
+            "ai_analysis": ai_analysis_meta,
+            "evidence_pack_status": _radar_evidence_pack_status(candidates, ai_codes),
+        },
     )
-    save_radar_result(result)
+    record = save_radar_result(result)
+    _save_radar_artifacts(result, record)
     return result
+
+
+def _radar_evidence_pack_status(candidates: list[RadarCandidate], ai_codes: list[str]) -> dict[str, Any]:
+    by_code = {item.code: item for item in candidates}
+    selected = [by_code[code] for code in ai_codes if code in by_code]
+    success = 0
+    timeout = 0
+    failed = 0
+    for item in selected:
+        pack = item.evidence_pack if isinstance(item.evidence_pack, dict) else {}
+        if pack.get("research_structured_timeout"):
+            timeout += 1
+        elif pack.get("research_structured_data"):
+            success += 1
+        elif pack.get("research_structured_error"):
+            failed += 1
+    return {
+        "selected": len(selected),
+        "success": success,
+        "timeout": timeout,
+        "failed": failed,
+    }
 
 
 def resolve_radar_report_date(report_date: date | None = None) -> tuple[date, str]:
@@ -222,6 +282,17 @@ def format_radar_report(result: RadarResult, *, limit: int = 10) -> str:
     date_note = str((result.diagnostics or {}).get("date_note") or "")
     if date_note:
         lines.extend([f"提示：{date_note}", ""])
+    evidence_status = (result.diagnostics or {}).get("evidence_pack_status") or {}
+    if evidence_status.get("selected"):
+        lines.extend(
+            [
+                "Evidence Pack："
+                f"{evidence_status.get('success', 0)}/{evidence_status.get('selected', 0)} 成功，"
+                f"{evidence_status.get('timeout', 0)} 檔逾時，"
+                f"{evidence_status.get('failed', 0)} 檔失敗",
+                "",
+            ]
+        )
     if not result.candidates:
         lines.append("目前沒有可評分候選股。")
         return "\n".join(lines)
@@ -295,12 +366,19 @@ def _ai_comment_lines(item: RadarCandidate) -> list[str]:
         return ["AI短評：本次模型分析失敗，保留本地 Radar 評分。"]
     lines = []
     if comment.get("reason"):
-        lines.append(f"AI短評：{comment['reason']}")
+        lines.append(f"AI短評：{_truncate_radar_text(comment['reason'])}")
     if comment.get("risk"):
-        lines.append(f"風險：{comment['risk']}")
+        lines.append(f"風險：{_truncate_radar_text(comment['risk'])}")
     if comment.get("watch"):
-        lines.append(f"觀察：{comment['watch']}")
+        lines.append(f"觀察：{_truncate_radar_text(comment['watch'])}")
     return lines
+
+
+def _truncate_radar_text(value: Any, *, limit: int = RADAR_TELEGRAM_AI_TEXT_LIMIT) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
 
 
 def save_radar_result(result: RadarResult) -> dict[str, Any]:
@@ -318,6 +396,39 @@ def save_radar_result(result: RadarResult) -> dict[str, Any]:
     RADAR_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     RADAR_CACHE_PATH.write_text(json.dumps(_json_safe(deduped[:30]), ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
+
+
+def _save_radar_artifacts(result: RadarResult, record: dict[str, Any]) -> dict[str, str]:
+    radar_id = str(record.get("radar_id") or f"radar_{result.report_date.strftime('%Y%m%d')}")
+    output_dir = RADAR_REPORT_DIR / result.report_date.isoformat() / radar_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = {
+        "summary": output_dir / "radar_summary.md",
+        "candidates": output_dir / "radar_candidates.json",
+        "evidence_pack": output_dir / "evidence_pack.json",
+        "ai_analysis": output_dir / "ai_analysis.json",
+        "sources": output_dir / "sources.json",
+    }
+    artifacts["summary"].write_text(format_radar_report(result, limit=max(50, len(result.candidates))), encoding="utf-8")
+    artifacts["candidates"].write_text(
+        json.dumps(_json_safe([_candidate_to_dict(item) for item in result.candidates]), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    artifacts["evidence_pack"].write_text(
+        json.dumps(_json_safe([item.evidence_pack for item in result.candidates]), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    artifacts["ai_analysis"].write_text(
+        json.dumps(_json_safe(result.diagnostics.get("ai_analysis") or {}), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    sources = []
+    for item in result.candidates:
+        for source in [*item.web_sources, *item.ai_sources]:
+            if isinstance(source, dict):
+                sources.append({"code": item.code, **source})
+    artifacts["sources"].write_text(json.dumps(_json_safe(sources), ensure_ascii=False, indent=2), encoding="utf-8")
+    return {key: str(path) for key, path in artifacts.items()}
 
 
 def load_radar_result(report_date: date | None = None) -> RadarResult | None:
@@ -589,6 +700,10 @@ def _attach_revenue_scores(candidates: list[RadarCandidate]) -> None:
         points = revenue.get(item.code) or []
         latest = points[0] if points else None
         yoy = getattr(latest, "yoy", None) if latest else None
+        item.revenue_history = [
+            {"month": point.month, "revenue": point.revenue, "yoy": point.yoy}
+            for point in points
+        ]
         item.score_components["revenue"] = _score_revenue(yoy)
 
 
@@ -665,7 +780,57 @@ def _attach_web_sources(
         except Exception:
             continue
         sources, _dropped_sources = filter_and_sort_sources_for_analysis_date(result.sources, request)
-        item.web_sources = [_source_to_dict(source) for source in sources[:5]]
+        _merge_source_dicts(item.web_sources, [_source_to_dict(source) for source in sources])
+
+
+def _ensure_radar_source_sufficiency(
+    candidates: list[RadarCandidate],
+    ai_codes: list[str],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> None:
+    by_code = {item.code: item for item in candidates}
+    lacking = [
+        code
+        for code in ai_codes
+        if code in by_code and _candidate_external_source_count(by_code[code]) < RADAR_MIN_EXTERNAL_SOURCES
+    ]
+    if not lacking:
+        return
+    _emit(progress, f"Radar：{len(lacking)} 檔外部來源不足，追加補搜")
+    _attach_web_sources(candidates, lacking, analysis_date, progress)
+    for code in lacking:
+        item = by_code.get(code)
+        if item is None:
+            continue
+        count = _candidate_external_source_count(item)
+        if count < RADAR_MIN_EXTERNAL_SOURCES:
+            _emit(progress, f"Radar：{code} 外部來源仍不足 {count}/{RADAR_MIN_EXTERNAL_SOURCES}，保留不足標記")
+
+
+def _candidate_external_source_count(item: RadarCandidate) -> int:
+    seen: set[str] = set()
+    count = 0
+    for source in [*item.ai_sources, *item.web_sources]:
+        if not isinstance(source, dict):
+            continue
+        key = str(source.get("url") or source.get("title") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        count += 1
+    return count
+
+
+def _merge_source_dicts(target: list[dict[str, Any]], additions: list[dict[str, Any]]) -> None:
+    seen = {str(item.get("url") or item.get("title") or "").strip() for item in target if isinstance(item, dict)}
+    for source in additions:
+        key = str(source.get("url") or source.get("title") or "").strip()
+        if key and key in seen:
+            continue
+        target.append(source)
+        if key:
+            seen.add(key)
 
 
 def _attach_research_center_sources(
@@ -707,7 +872,7 @@ def _attach_research_center_sources(
             _emit(progress, f"Radar：{item.code} 外部來源補強失敗：{exc}")
             continue
 
-        item.web_sources = [_source_to_dict(source) for source in sources[:5]]
+        item.web_sources = [_source_to_dict(source) for source in sources]
         item.ai_sources = _normalise_ai_sources(sources, structured_data)
 
 
@@ -733,13 +898,16 @@ def _radar_discovery_task(item: RadarCandidate, analysis_date: date) -> dict[str
 
 def _normalise_ai_sources(sources: list[SourceItem], structured_data: dict[str, Any]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    for source in sources[:8]:
+    for source in sources:
         items.append(
             {
                 "title": source.title,
                 "url": source.url,
                 "published_date": source.published_date,
                 "provider": source.provider,
+                "provider_detail": source.provider_detail,
+                "fetch_provider": source.fetch_provider,
+                "fetch_status": source.fetch_status,
                 "source_level": source.source_level,
                 "snippet": source.snippet,
             }
@@ -756,13 +924,436 @@ def _normalise_ai_sources(sources: list[SourceItem], structured_data: dict[str, 
                 "url": url,
                 "published_date": source.get("published_date"),
                 "provider": source.get("provider"),
+                "provider_detail": source.get("provider_detail"),
+                "fetch_provider": source.get("fetch_provider"),
+                "fetch_status": source.get("fetch_status"),
                 "source_level": source.get("source_level"),
                 "snippet": source.get("snippet") or source.get("content", "")[:300],
+                "content": source.get("content"),
             }
         )
-        if len(items) >= 8:
-            break
     return items
+
+
+def _attach_base_evidence_packs(candidates: list[RadarCandidate], analysis_date: date) -> None:
+    for item in candidates:
+        current_pack = item.evidence_pack if isinstance(item.evidence_pack, dict) else {}
+        research_pack = current_pack.get("research_structured_data")
+        research_sources = current_pack.get("research_sources")
+        research_error = current_pack.get("research_structured_error")
+        item.data_coverage = _build_radar_data_coverage(item, research_pack, error=research_error)
+        item.evidence_pack = _build_radar_evidence_pack(item, analysis_date, research_pack)
+        if research_sources:
+            item.evidence_pack["research_sources"] = research_sources
+        if research_error:
+            item.evidence_pack["research_structured_error"] = research_error
+        _refresh_radar_three_layer_context(item, analysis_date)
+
+
+def _attach_research_evidence_packs(
+    candidates: list[RadarCandidate],
+    ai_codes: list[str],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> None:
+    by_code = {item.code: item for item in candidates}
+    selected = [by_code[code] for code in ai_codes if code in by_code]
+    if not selected:
+        return
+    _emit(progress, f"Radar：建立 AI Evidence Pack {len(selected)} 檔")
+    for index, item in enumerate(selected, 1):
+        started_at = time.monotonic()
+        _emit(progress, f"Radar Evidence Pack {index}/{len(selected)} 開始：{item.code} {item.name}".strip())
+        request = CommandRequest(
+            command="research",
+            raw_text=f"/research {item.code} --date {analysis_date.isoformat()}",
+            target=item.code,
+            report_date=analysis_date,
+            mode="deep",
+        )
+        try:
+            structured_data, sources = _collect_structured_data_with_timeout(
+                request,
+                progress=lambda message, code=item.code: _emit(progress, f"Radar Evidence Pack {code}：{message}"),
+                timeout_seconds=RADAR_EVIDENCE_PACK_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            elapsed = time.monotonic() - started_at
+            _emit(
+                progress,
+                f"Radar Evidence Pack {index}/{len(selected)} 逾時跳過：{item.code}，耗時 {elapsed:.1f}s，保留本地資料：{exc}",
+            )
+            item.data_coverage = _build_radar_data_coverage(item, None, error=str(exc))
+            item.evidence_pack = _build_radar_evidence_pack(item, analysis_date, None)
+            item.evidence_pack["research_structured_error"] = str(exc)
+            item.evidence_pack["research_structured_timeout"] = True
+            continue
+        except Exception as exc:
+            _emit(progress, f"Radar Evidence Pack {item.code} 失敗，保留本地資料：{exc}")
+            item.data_coverage = _build_radar_data_coverage(item, None, error=str(exc))
+            item.evidence_pack = _build_radar_evidence_pack(item, analysis_date, None)
+            item.evidence_pack["research_structured_error"] = str(exc)
+            continue
+        item.data_coverage = _build_radar_data_coverage(item, structured_data)
+        item.evidence_pack = _build_radar_evidence_pack(item, analysis_date, structured_data)
+        item.evidence_pack["research_sources"] = [_source_to_dict(source) for source in sources]
+        _refresh_radar_three_layer_context(item, analysis_date)
+        elapsed = time.monotonic() - started_at
+        _emit(progress, f"Radar Evidence Pack {index}/{len(selected)} 完成：{item.code}，耗時 {elapsed:.1f}s")
+
+
+def _attach_research_evidence_packs(
+    candidates: list[RadarCandidate],
+    ai_codes: list[str],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> None:
+    by_code = {item.code: item for item in candidates}
+    selected = [by_code[code] for code in ai_codes if code in by_code]
+    if not selected:
+        return
+    _emit(progress, f"Radar：準備 AI 輕量 Evidence Pack {len(selected)} 檔")
+    stats = {"same_day_cache": 0, "recent_cache": 0, "light_cache": 0, "light_generated": 0}
+    for index, item in enumerate(selected, 1):
+        started_at = time.monotonic()
+        _emit(progress, f"Radar Evidence Pack {index}/{len(selected)} 輕量整理：{item.code} {item.name}".strip())
+        structured_data, sources, mode = _load_or_build_radar_light_research(item, analysis_date)
+        stats[mode] = stats.get(mode, 0) + 1
+        item.data_coverage = _build_radar_data_coverage(item, structured_data)
+        item.evidence_pack = _build_radar_evidence_pack(item, analysis_date, structured_data)
+        item.evidence_pack["research_pack_mode"] = mode
+        item.evidence_pack["research_sources"] = sources
+        _refresh_radar_three_layer_context(item, analysis_date)
+        elapsed = time.monotonic() - started_at
+        _emit(progress, f"Radar Evidence Pack {index}/{len(selected)} 完成：{item.code}｜{mode}｜{elapsed:.1f}s")
+    _emit(
+        progress,
+        "Radar Evidence Pack 來源："
+        f"同日快取 {stats.get('same_day_cache', 0)}、"
+        f"最近快取 {stats.get('recent_cache', 0)}、"
+        f"輕量快取 {stats.get('light_cache', 0)}、"
+        f"輕量新建 {stats.get('light_generated', 0)}",
+    )
+
+
+def _radar_light_cache_path(code: str, analysis_date: date) -> Path:
+    return RADAR_LIGHT_RESEARCH_CACHE_DIR / analysis_date.strftime("%Y%m%d") / f"{code}.json"
+
+
+def _load_radar_light_cache(code: str, analysis_date: date) -> dict[str, Any] | None:
+    path = _radar_light_cache_path(code, analysis_date)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    data = payload.get("data")
+    return data if isinstance(data, dict) else None
+
+
+def _save_radar_light_cache(code: str, analysis_date: date, data: dict[str, Any]) -> None:
+    path = _radar_light_cache_path(code, analysis_date)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "stock_code": code,
+        "report_date": analysis_date.isoformat(),
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "data": data,
+    }
+    path.write_text(json.dumps(_json_safe(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_or_build_radar_light_research(
+    item: RadarCandidate,
+    analysis_date: date,
+) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    same_day_cache = load_research_structured_cache(item.code, analysis_date)
+    if isinstance(same_day_cache, dict):
+        return _with_radar_cache_meta(same_day_cache, "same_day_cache", analysis_date), _research_sources_from_item(item), "same_day_cache"
+
+    latest_cache = load_latest_research_structured_cache(
+        item.code,
+        before_or_on=analysis_date,
+        max_age_days=RADAR_FULL_RESEARCH_CACHE_MAX_AGE_DAYS,
+    )
+    if latest_cache is not None:
+        cached_data, cache_date = latest_cache
+        return _with_radar_cache_meta(cached_data, "recent_cache", cache_date), _research_sources_from_item(item), "recent_cache"
+
+    light_cache = _load_radar_light_cache(item.code, analysis_date)
+    if isinstance(light_cache, dict):
+        return light_cache, _research_sources_from_item(item), "light_cache"
+
+    light_data = _build_radar_light_research_data(item, analysis_date)
+    _save_radar_light_cache(item.code, analysis_date, light_data)
+    return light_data, _research_sources_from_item(item), "light_generated"
+
+
+def _with_radar_cache_meta(data: dict[str, Any], mode: str, data_date: date) -> dict[str, Any]:
+    result = dict(data)
+    result["radar_research_mode"] = mode
+    result["radar_research_data_date"] = data_date.isoformat()
+    notes = list(result.get("notes") or [])
+    if mode == "recent_cache":
+        notes.append(f"Radar 使用最近完整 research 快取，資料日期 {data_date.isoformat()}。")
+    else:
+        notes.append(f"Radar 使用同日完整 research 快取，資料日期 {data_date.isoformat()}。")
+    result["notes"] = notes
+    return result
+
+
+def _research_sources_from_item(item: RadarCandidate) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    _merge_source_dicts(sources, item.ai_sources[:12])
+    _merge_source_dicts(sources, item.web_sources[:12])
+    return sources[:16]
+
+
+def _build_radar_light_research_data(item: RadarCandidate, analysis_date: date) -> dict[str, Any]:
+    source_count = _candidate_external_source_count(item)
+    latest_chip_date = _latest_chip_cache_date(analysis_date)
+    notes = [
+        "Radar 輕量 research：未找到完整 research 快取，改用本地 Radar 評分、技術訊號、營收、籌碼、新聞與外部來源摘要。",
+        "本資料包只供 Radar AI 短評使用；完整深度分析請使用 /research。",
+    ]
+    data_limits = []
+    if latest_chip_date and latest_chip_date < analysis_date:
+        data_limits.append(f"法人籌碼資料使用最近可用交易日 {latest_chip_date.isoformat()}，非 {analysis_date.isoformat()} 當日完整公告。")
+    if source_count < RADAR_MIN_EXTERNAL_SOURCES:
+        data_limits.append(f"外部來源不足 {RADAR_MIN_EXTERNAL_SOURCES} 則，目前 {source_count} 則。")
+    return {
+        "stock": {"code": item.code, "name": item.name, "symbol": item.symbol, "industry": item.industry},
+        "report_date": analysis_date.isoformat(),
+        "radar_research_mode": "light_generated",
+        "radar_research_data_date": analysis_date.isoformat(),
+        "notes": notes,
+        "technical_data": {
+            "strategies": sorted(item.strategy_codes),
+            "signals": item.technical_signals[:12],
+            "summary": _technical_signal_line(item),
+        },
+        "revenue_data": item.revenue_history[:12],
+        "institutional_data": [],
+        "margin_data": [],
+        "tdcc_data": [],
+        "financial_data": [],
+        "topic_context": {
+            "theme_score": item.score_components.get("theme", 0),
+            "market_score": item.score_components.get("market", 0),
+            "local_news_titles": [news.get("title") for news in item.news_items[:5] if isinstance(news, dict)],
+        },
+        "news_context": {
+            "local_news": item.news_items[:5],
+            "external_sources": _research_sources_from_item(item),
+        },
+        "feature_pack": {
+            "scope": "radar_light",
+            "total_score": item.total_score,
+            "score_components": item.score_components,
+            "chip_grades": item.chip_grades,
+            "chip_summary": _chip_grade_line(item),
+            "data_limits": data_limits,
+        },
+        "data_gap_summary": {
+            "mode": "radar_light",
+            "limits": data_limits,
+            "missing_fields": ["financial_data", "margin_data", "institutional_data", "tdcc_data"],
+            "message": "Radar 輕量資料包未現場抓完整 research 資料。",
+        },
+    }
+
+
+def _latest_chip_cache_date(analysis_date: date) -> date | None:
+    cache_dir = ROOT_DIR / ".cache" / "chip_daily"
+    if not cache_dir.exists():
+        return None
+    latest: date | None = None
+    for path in cache_dir.glob("*.csv"):
+        try:
+            item_date = datetime.strptime(path.stem, "%Y%m%d").date()
+        except ValueError:
+            continue
+        if item_date <= analysis_date and (latest is None or item_date > latest):
+            latest = item_date
+    return latest
+
+
+def _collect_structured_data_with_timeout(
+    request: CommandRequest,
+    *,
+    progress: Callable[[str], None] | None,
+    timeout_seconds: float,
+) -> tuple[dict[str, Any], list[SourceItem]]:
+    timeout = max(1.0, float(timeout_seconds))
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="radar-evidence-pack")
+    future = executor.submit(collect_structured_data, request, progress=progress)
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError as exc:
+        future.cancel()
+        raise TimeoutError(f"單檔 Evidence Pack 超過 {timeout:.0f} 秒") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _build_radar_evidence_pack(
+    item: RadarCandidate,
+    analysis_date: date,
+    research_structured_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    pack = {
+        "schema_version": "radar_evidence_pack_v1",
+        "analysis_date": analysis_date.isoformat(),
+        "candidate": {
+            "code": item.code,
+            "name": item.name,
+            "symbol": item.symbol,
+            "industry": item.industry,
+            "price": item.price,
+            "source_labels": item.source_labels,
+        },
+        "radar_scores": {
+            "total_score": item.total_score,
+            "score_components": item.score_components,
+            "policy": "本地 Radar 分數只供 AI 參考，不得由 AI 改寫。",
+        },
+        "technical": {
+            "strategies": sorted(item.strategy_codes),
+            "signals": item.technical_signals,
+            "summary": _technical_signal_line(item),
+        },
+        "revenue": {
+            "score": item.score_components.get("revenue", 0),
+            "history": item.revenue_history,
+        },
+        "chip": {
+            "score": item.score_components.get("chip", 0),
+            "grades": item.chip_grades,
+            "summary": _chip_grade_line(item),
+        },
+        "theme_and_market": {
+            "theme_score": item.score_components.get("theme", 0),
+            "market_score": item.score_components.get("market", 0),
+            "local_news": item.news_items,
+            "web_sources": item.web_sources,
+            "ai_sources": item.ai_sources,
+        },
+        "data_coverage": item.data_coverage,
+    }
+    if research_structured_data:
+        pack["research_structured_data"] = research_structured_data
+    raw_sources = _radar_raw_sources(item, pack)
+    pack["raw_sources"] = raw_sources
+    pack["final_context"] = _radar_final_context(item, analysis_date, raw_sources)
+    pack["three_layer_context"] = build_three_layer_evidence_context(
+        raw_sources=raw_sources,
+        evidence_pack=pack,
+        final_context=pack["final_context"],
+        min_source_count=RADAR_MIN_EXTERNAL_SOURCES,
+    )
+    return pack
+
+
+def _refresh_radar_three_layer_context(item: RadarCandidate, analysis_date: date) -> None:
+    if not isinstance(item.evidence_pack, dict):
+        return
+    raw_sources = _radar_raw_sources(item, item.evidence_pack)
+    item.evidence_pack["raw_sources"] = raw_sources
+    item.evidence_pack["final_context"] = _radar_final_context(item, analysis_date, raw_sources)
+    item.evidence_pack["three_layer_context"] = build_three_layer_evidence_context(
+        raw_sources=raw_sources,
+        evidence_pack={key: value for key, value in item.evidence_pack.items() if key != "three_layer_context"},
+        final_context=item.evidence_pack["final_context"],
+        min_source_count=RADAR_MIN_EXTERNAL_SOURCES,
+    )
+    item.evidence_pack["ai_compact_pack"] = _build_radar_ai_compact_pack(item, analysis_date)
+
+
+def _radar_raw_sources(item: RadarCandidate, pack: dict[str, Any]) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    for source_type, items in (
+        ("web_sources", item.web_sources),
+        ("ai_sources", item.ai_sources),
+        ("research_sources", pack.get("research_sources") if isinstance(pack, dict) else []),
+    ):
+        if not isinstance(items, list):
+            continue
+        for source in items:
+            if isinstance(source, dict):
+                sources.append({"source_type": source_type, **source})
+    return sources
+
+
+def _radar_final_context(item: RadarCandidate, analysis_date: date, raw_sources: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "schema_version": "radar_final_context_v1",
+        "analysis_date": analysis_date.isoformat(),
+        "candidate": {
+            "code": item.code,
+            "name": item.name,
+            "industry": item.industry,
+            "price": item.price,
+        },
+        "radar_scores": {
+            "total_score": item.total_score,
+            "score_components": item.score_components,
+            "strategies": sorted(item.strategy_codes),
+        },
+        "coverage": item.data_coverage,
+        "source_count": len(raw_sources),
+        "source_preview": raw_sources[: min(12, len(raw_sources))],
+        "local_news_count": len(item.news_items),
+        "technical_signal_count": len(item.technical_signals),
+        "revenue_points": len(item.revenue_history),
+    }
+
+
+def _build_radar_data_coverage(
+    item: RadarCandidate,
+    research_structured_data: dict[str, Any] | None = None,
+    *,
+    error: str | None = None,
+) -> dict[str, Any]:
+    structured = research_structured_data or {}
+    external_source_count = _candidate_external_source_count(item)
+    checks = {
+        "technical": "ok" if item.technical_signals else "missing",
+        "revenue": "ok" if item.revenue_history else "missing",
+        "chip": "ok" if item.chip_grades else "missing",
+        "local_news": "ok" if item.news_items else "missing",
+        "external_sources": "ok" if (item.ai_sources or item.web_sources) else "missing",
+        "source_sufficiency": "ok" if external_source_count >= RADAR_MIN_EXTERNAL_SOURCES else "insufficient",
+        "research_structured_data": "ok" if research_structured_data else ("error" if error else "not_requested"),
+        "financial": _coverage_status(structured.get("financial_data")),
+        "margin": _coverage_status(structured.get("margin_data")),
+        "institutional": _coverage_status(structured.get("institutional_data")),
+        "tdcc": _coverage_status(structured.get("tdcc_data")),
+        "topic_context": _coverage_status(structured.get("topic_context")),
+        "feature_pack": _coverage_status(structured.get("feature_pack")),
+        "unified_evidence_pack": _coverage_status(structured.get("unified_evidence_pack")),
+    }
+    if structured.get("radar_research_mode") == "light_generated":
+        for key in ("financial", "margin", "institutional", "tdcc", "unified_evidence_pack"):
+            if checks.get(key) in {"missing", "empty"}:
+                checks[key] = "limited_by_light_research"
+    missing = [key for key, value in checks.items() if value in {"missing", "empty", "error", "insufficient"}]
+    return {
+        "schema_version": "radar_data_coverage_v1",
+        "checks": checks,
+        "external_source_count": external_source_count,
+        "min_external_sources": RADAR_MIN_EXTERNAL_SOURCES,
+        "missing_or_weak_fields": missing,
+        "error": error,
+    }
+
+
+def _coverage_status(value: Any) -> str:
+    if value is None:
+        return "missing"
+    if isinstance(value, (list, tuple, set, dict)) and not value:
+        return "empty"
+    return "ok"
 
 
 def _attach_ai_comments(
@@ -771,23 +1362,65 @@ def _attach_ai_comments(
     model: str,
     analysis_date: date,
     progress: Callable[[str], None] | None,
-) -> None:
+) -> dict[str, Any]:
     by_code = {item.code: item for item in candidates}
     selected = [by_code[code] for code in ai_codes if code in by_code]
     if not selected:
-        return
-    prompt = _build_ai_comment_prompt(selected, analysis_date)
-    try:
-        raw_text = _call_ai_comment_model(model, prompt)
-        parsed = _parse_ai_comment_response(raw_text)
-        comments = _normalise_ai_comment_items(parsed)
-    except Exception as exc:
-        _emit(progress, f"Radar：AI 短評失敗，保留本地評分：{exc}")
-        for item in selected:
-            item.ai_comment = {"status": "failed", "model": model, "error": str(exc)}
-        return
+        return {"mode": "radar_compact_ai", "chunks": [], "comment_count": 0}
+
+    chunk_records: list[dict[str, Any]] = []
+    comments: dict[str, dict[str, Any]] = {}
+    for chunk_index, chunk in enumerate(_chunks(selected, RADAR_AI_CHUNK_SIZE), 1):
+        prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date)
+        record: dict[str, Any] = {
+            "chunk_index": chunk_index,
+            "codes": [item.code for item in chunk],
+            "status": "pending",
+            "jobs": [],
+        }
+        for job_index, job in enumerate(prompt_jobs, 1):
+            prompt = str(job["prompt"])
+            job_record = {
+                "job_index": job_index,
+                "codes": job["codes"],
+                "profile": job["profile"],
+                "prompt_chars": len(prompt),
+                "status": "pending",
+            }
+            try:
+                if len(prompt) > RADAR_AI_PROMPT_MAX_CHARS:
+                    raise ValueError(f"radar compact prompt too large: {len(prompt)} chars")
+                _emit(
+                    progress,
+                    f"Radar AI 短評 chunk {chunk_index}.{job_index} 開始，{len(job['codes'])} 檔，profile={job['profile']}，prompt={len(prompt)} chars",
+                )
+                raw_text = _call_ai_comment_model(model, prompt)
+                parsed = _parse_ai_comment_response(raw_text)
+                job_comments = _normalise_ai_comment_items(parsed)
+                comments.update(job_comments)
+                job_record.update({"status": "ok", "output_chars": len(str(raw_text or "")), "comment_count": len(job_comments)})
+                _emit(progress, f"Radar AI 短評 chunk {chunk_index}.{job_index} 完成，comments={len(job_comments)}")
+            except Exception as exc:
+                job_record.update({"status": "failed", "error": str(exc)})
+                _emit(progress, f"Radar AI 短評 chunk {chunk_index}.{job_index} 失敗：{exc}")
+                for code in job["codes"]:
+                    item = by_code.get(code)
+                    if item is not None:
+                        item.ai_comment = {"status": "failed", "model": model, "error": str(exc), "chunk_index": chunk_index}
+            record["jobs"].append(job_record)
+        ok_jobs = [job for job in record["jobs"] if job.get("status") == "ok"]
+        record.update(
+            {
+                "status": "ok" if len(ok_jobs) == len(record["jobs"]) else ("partial" if ok_jobs else "failed"),
+                "prompt_chars": sum(int(job.get("prompt_chars") or 0) for job in record["jobs"]),
+                "comment_count": sum(int(job.get("comment_count") or 0) for job in record["jobs"]),
+            }
+        )
+        chunk_records.append(record)
 
     for item in selected:
+        if item.ai_comment.get("status") == "failed":
+            continue
         comment = comments.get(item.code)
         if not comment:
             item.ai_comment = {"status": "missing", "model": model}
@@ -802,6 +1435,15 @@ def _attach_ai_comments(
             "watch": str(comment.get("watch") or comment.get("watch_point") or ""),
         }
     _emit(progress, f"Radar：AI 短評完成 {sum(1 for item in selected if item.ai_comment.get('status') == 'ok')} 檔")
+    return {
+        "mode": "radar_compact_ai",
+        "model": model,
+        "chunk_size": RADAR_AI_CHUNK_SIZE,
+        "prompt_max_chars": RADAR_AI_PROMPT_MAX_CHARS,
+        "chunk_count": len(chunk_records),
+        "chunks": chunk_records,
+        "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
+    }
 
 
 def _score_candidates(candidates: list[RadarCandidate]) -> None:
@@ -968,15 +1610,29 @@ def _chip_grade_line(item: RadarCandidate) -> str:
 
 def _source_to_dict(source: SourceItem) -> dict[str, Any]:
     return {
+        "source_id": source.source_id,
         "title": source.title,
         "url": source.url,
+        "source_level": source.source_level,
         "published_date": source.published_date,
         "provider": source.provider,
+        "provider_detail": source.provider_detail,
+        "fetch_provider": source.fetch_provider,
+        "fetch_status": source.fetch_status,
+        "failure_reason": source.failure_reason,
+        "found_by": source.found_by,
+        "snippet": source.snippet,
     }
 
 
-def _build_ai_comment_payload(item: RadarCandidate, analysis_date: date) -> dict[str, Any]:
+def _build_ai_comment_payload(
+    item: RadarCandidate,
+    analysis_date: date,
+    *,
+    compact_profile: str = "normal",
+) -> dict[str, Any]:
     components = item.score_components or {}
+    compact_pack = _build_radar_ai_compact_pack(item, analysis_date, compact_profile=compact_profile)
     return {
         "code": item.code,
         "name": item.name,
@@ -994,21 +1650,166 @@ def _build_ai_comment_payload(item: RadarCandidate, analysis_date: date) -> dict
         "technical_signal_summary": _technical_signal_line(item),
         "chip_summary": _chip_grade_line(item),
         "local_news": [news.get("title") for news in item.news_items[:5] if isinstance(news, dict)],
-        "external_sources": item.ai_sources[:8] or item.web_sources[:8],
+        "data_coverage": item.data_coverage,
+        "ai_compact_pack": compact_pack,
+        "full_evidence_pack_location": "local artifacts/cache only; not embedded in AI prompt",
     }
 
 
-def _build_ai_comment_prompt(candidates: list[RadarCandidate], analysis_date: date) -> str:
-    payloads = [_build_ai_comment_payload(item, analysis_date) for item in candidates]
+def _build_radar_ai_compact_pack(
+    item: RadarCandidate,
+    analysis_date: date,
+    *,
+    compact_profile: str = "normal",
+) -> dict[str, Any]:
+    limits = _radar_compact_limits(compact_profile)
+    pack = item.evidence_pack if isinstance(item.evidence_pack, dict) else {}
+    structured = pack.get("research_structured_data") if isinstance(pack, dict) else {}
+    compact_input = {
+        "analysis_date": analysis_date.isoformat(),
+        "candidate": {
+            "code": item.code,
+            "name": item.name,
+            "industry": item.industry,
+            "price": item.price,
+        },
+        "radar_scores": {
+            "total_score": item.total_score,
+            "score_components": item.score_components,
+            "strategies": sorted(item.strategy_codes),
+        },
+        "technical": {
+            "summary": _technical_signal_line(item),
+            "signals": item.technical_signals,
+        },
+        "revenue": {
+            "history": item.revenue_history[:6],
+            "score": item.score_components.get("revenue", 0),
+        },
+        "chip": {
+            "summary": _chip_grade_line(item),
+            "grades": item.chip_grades,
+            "score": item.score_components.get("chip", 0),
+        },
+        "news": {
+            "local_news": item.news_items,
+            "web_sources": item.web_sources,
+            "ai_sources": item.ai_sources,
+            "research_sources": pack.get("research_sources") if isinstance(pack, dict) else [],
+        },
+        "research_summary": _compact_research_structured_data(structured if isinstance(structured, dict) else {}),
+        "data_coverage": item.data_coverage,
+    }
+    return build_ai_compact_context(
+        compact_input,
+        max_sources=limits["source_limit"],
+        max_list=limits["list_limit"],
+        max_string=limits["string_limit"],
+    )
+
+
+def _radar_compact_limits(profile: str) -> dict[str, int]:
+    if profile == "minimal":
+        return {
+            "source_limit": RADAR_AI_MINIMAL_SOURCE_LIMIT,
+            "list_limit": RADAR_AI_MINIMAL_LIST_LIMIT,
+            "string_limit": RADAR_AI_MINIMAL_STRING_LIMIT,
+        }
+    if profile == "tight":
+        return {
+            "source_limit": RADAR_AI_TIGHT_SOURCE_LIMIT,
+            "list_limit": RADAR_AI_TIGHT_LIST_LIMIT,
+            "string_limit": RADAR_AI_TIGHT_STRING_LIMIT,
+        }
+    return {
+        "source_limit": RADAR_AI_COMPACT_SOURCE_LIMIT,
+        "list_limit": RADAR_AI_COMPACT_LIST_LIMIT,
+        "string_limit": RADAR_AI_COMPACT_STRING_LIMIT,
+    }
+
+
+def _compact_research_structured_data(structured: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "radar_research_mode": structured.get("radar_research_mode"),
+        "radar_research_data_date": structured.get("radar_research_data_date"),
+        "notes": _limit_rows(structured.get("notes"), 4),
+        "feature_pack": structured.get("feature_pack"),
+        "unified_evidence_pack": structured.get("unified_evidence_pack"),
+        "data_gap_summary": structured.get("data_gap_summary"),
+        "financial_data": _limit_rows(structured.get("financial_data"), 4),
+        "margin_data": _limit_rows(structured.get("margin_data"), 20),
+        "institutional_data": _limit_rows(structured.get("institutional_data"), 20),
+        "tdcc_data": _limit_rows(structured.get("tdcc_data"), 8),
+        "topic_context": structured.get("topic_context"),
+        "news_context": structured.get("news_context"),
+        "news_events": _limit_rows(structured.get("news_events"), 12),
+    }
+
+
+def _limit_rows(value: Any, limit: int) -> Any:
+    if isinstance(value, list):
+        return value[:limit]
+    return value
+
+
+def _build_ai_comment_prompt(
+    candidates: list[RadarCandidate],
+    analysis_date: date,
+    *,
+    compact_profile: str = "normal",
+) -> str:
+    payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
     return (
         "你是台股選股雷達的短評助手。請只根據輸入資料做判斷，不得新增股票，不得改變本地分數。\n"
+        "輸入使用 ai_compact_pack，完整 evidence_pack 已保存在本地報告檔，不會直接塞進 prompt。\n"
         "請輸出嚴格 JSON，不要 Markdown，不要 code fence。\n"
-        "JSON 格式：{\"comments\":[{\"code\":\"2330\",\"priority\":\"高|中|低\",\"confidence\":\"高|中|低\",\"reason\":\"一句推薦理由\",\"risk\":\"一句主要風險\",\"watch\":\"一句觀察重點\"}]}\n"
+        "所有 reason、risk、watch 必須使用繁體中文；專有名詞、公司名、產品名可保留英文，但禁止整段英文分析。\n"
+        "JSON 格式：{\"comments\":[{\"code\":\"2330\",\"priority\":\"高|中|低\",\"confidence\":\"高|中|低\",\"reason\":\"最多120字推薦理由\",\"risk\":\"最多120字主要風險\",\"watch\":\"最多120字觀察重點\"}]}\n"
         "若資料不足，priority 與 confidence 請降低，並在 reason 或 risk 說明資料不足。\n"
+        "請優先使用 ai_compact_pack 與 data_coverage，不要只看本地分數。\n"
         f"analysis_date：{analysis_date.isoformat()}\n"
         "候選股資料：\n"
         f"{json.dumps(_json_safe(payloads), ensure_ascii=False)}"
     )
+
+
+def _build_ai_comment_prompt(
+    candidates: list[RadarCandidate],
+    analysis_date: date,
+    *,
+    compact_profile: str = "normal",
+) -> str:
+    payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
+    return (
+        "你是台股選股雷達分析員。請根據候選股資料輸出繁體中文 JSON，不要使用 Markdown 或 code fence。\n"
+        "輸出格式：{\"comments\":[{\"code\":\"2330\",\"priority\":\"高/中/低\",\"confidence\":\"高/中/低\","
+        "\"reason\":\"短評\",\"risk\":\"風險\",\"watch\":\"觀察\"}]}\n"
+        "reason、risk、watch 每欄請控制在 120 個中文字內。\n"
+        "禁止整段英文分析；專有名詞可保留英文，但說明必須使用繁體中文。\n"
+        "請優先使用 ai_compact_pack 與 data_coverage，不要只看本地分數。\n"
+        "若 data_gap_summary 或 data_limits 顯示法人/籌碼資料尚未公告或使用最近可用日，"
+        "請寫成資料時點限制，不要寫成公司營運風險。\n"
+        "若 radar_research_mode 為 light_generated，代表 Radar 輕量補強，"
+        "請用既有技術、營收、籌碼、題材與來源摘要判斷，不要要求完整 research 資料。\n"
+        f"analysis_date：{analysis_date.isoformat()}\n"
+        "候選股資料：\n"
+        f"{json.dumps(_json_safe(payloads), ensure_ascii=False)}"
+    )
+
+
+def _build_ai_comment_prompt_jobs(chunk: list[RadarCandidate], analysis_date: date) -> list[dict[str, Any]]:
+    normal_prompt = _build_ai_comment_prompt(chunk, analysis_date, compact_profile="normal")
+    if len(normal_prompt) <= RADAR_AI_PROMPT_MAX_CHARS:
+        return [{"codes": [item.code for item in chunk], "profile": "normal", "prompt": normal_prompt}]
+
+    jobs: list[dict[str, Any]] = []
+    for item in chunk:
+        for profile in ("normal", "tight", "minimal"):
+            prompt = _build_ai_comment_prompt([item], analysis_date, compact_profile=profile)
+            if len(prompt) <= RADAR_AI_PROMPT_MAX_CHARS or profile == "minimal":
+                jobs.append({"codes": [item.code], "profile": profile, "prompt": prompt})
+                break
+    return jobs
 
 
 def _call_ai_comment_model(model: str, prompt: str) -> str:
@@ -1061,6 +1862,11 @@ def _normalise_ai_comment_items(parsed: dict[str, Any]) -> dict[str, dict[str, A
     return comments
 
 
+def _chunks(items: list[Any], size: int) -> list[list[Any]]:
+    chunk_size = max(1, int(size or 1))
+    return [items[index:index + chunk_size] for index in range(0, len(items), chunk_size)]
+
+
 def _result_to_record(result: RadarResult) -> dict[str, Any]:
     created = datetime.now().astimezone().isoformat(timespec="seconds")
     return {
@@ -1088,9 +1894,12 @@ def _candidate_to_dict(item: RadarCandidate) -> dict[str, Any]:
         "strategy_codes": sorted(item.strategy_codes),
         "technical_signals": item.technical_signals,
         "chip_grades": item.chip_grades,
+        "revenue_history": item.revenue_history,
         "news_items": item.news_items,
         "web_sources": item.web_sources,
         "ai_sources": item.ai_sources,
+        "data_coverage": item.data_coverage,
+        "evidence_pack": item.evidence_pack,
         "ai_comment": item.ai_comment,
         "score_components": item.score_components,
         "total_score": item.total_score,
@@ -1143,9 +1952,12 @@ def _record_to_result(record: dict[str, Any]) -> RadarResult:
             strategy_codes=set(raw.get("strategy_codes") or []),
             technical_signals=list(raw.get("technical_signals") or []),
             chip_grades=dict(raw.get("chip_grades") or {}),
+            revenue_history=list(raw.get("revenue_history") or []),
             news_items=list(raw.get("news_items") or []),
             web_sources=list(raw.get("web_sources") or []),
             ai_sources=list(raw.get("ai_sources") or []),
+            data_coverage=dict(raw.get("data_coverage") or {}),
+            evidence_pack=dict(raw.get("evidence_pack") or {}),
             ai_comment=dict(raw.get("ai_comment") or {}),
             score_components=dict(raw.get("score_components") or {}),
             total_score=int(raw.get("total_score") or 0),
@@ -1206,7 +2018,8 @@ def _normalise_model(value: str) -> str:
         "opencode-go": "deepseek",
         "deepseek-v4-pro": "deepseek",
         "minimax": "minimax",
-        "minimax-m2.7": "minimax",
+        "minimax-m3": "minimax",
+        "m3": "minimax",
     }
     model = aliases.get(text, text)
     if model not in {"gemini", "deepseek", "minimax"}:

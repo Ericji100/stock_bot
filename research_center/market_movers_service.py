@@ -69,6 +69,7 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
     top_turnover = _top_with_value(rows, "turnover", reverse=True, positive_only=True)
     new_highs = _top_with_value(rows, "new_high_days", reverse=True, positive_only=True)
     new_lows = _top_with_value(rows, "new_low_days", reverse=True, positive_only=True)
+    top_trend_strength = _top_with_value(rows, "trend_score", reverse=True, positive_only=True)
     limit_up = [row for row in rows if row.get("limit_up")][:DEFAULT_LIMIT]
     limit_down = [row for row in rows if row.get("limit_down")][:DEFAULT_LIMIT]
     top_active = sorted(rows, key=lambda row: (_num(row.get("avg_volume_20d")), _num(row.get("price"))), reverse=True)[:DEFAULT_LIMIT]
@@ -79,8 +80,9 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
             *top_volume_surge,
             *top_turnover,
             *new_highs,
+            *top_trend_strength,
             *limit_up,
-            *(top_active if not (top_gainers or top_volume_surge or top_turnover or new_highs or limit_up) else []),
+            *(top_active if not (top_gainers or top_volume_surge or top_turnover or new_highs or top_trend_strength or limit_up) else []),
         ],
         limit=160,
     )
@@ -107,6 +109,7 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
         "top_turnover": top_turnover,
         "new_highs": new_highs,
         "new_lows": new_lows,
+        "top_trend_strength": top_trend_strength,
         "limit_up": limit_up,
         "limit_down": limit_down,
         "top_active_by_liquidity": top_active,
@@ -118,6 +121,12 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
             "volume_ratio_coverage_pct": _coverage(rows, "volume_ratio"),
             "turnover_coverage_pct": _coverage(rows, "turnover"),
             "new_high_low_coverage_pct": max(_coverage(rows, "new_high_days"), _coverage(rows, "new_low_days")),
+            "trend_field_coverage_pct": max(
+                _coverage(rows, "change_pct_5d"),
+                _coverage(rows, "change_pct_10d"),
+                _coverage(rows, "change_pct_20d"),
+                _coverage(rows, "trend_score"),
+            ),
             "known_limitations": [
                 "market_movers 不套用選股硬篩，因此會保留低價股、小型股與投機股作為市場訊號。",
                 "若價量快取缺少 change_pct、turnover、volume_ratio 或新高新低欄位，該排行會標示不足並以流動性 proxy 輔助。",
@@ -144,25 +153,36 @@ def _build_stock_mover_row(entry: Any, price_metrics: dict[str, Any]) -> dict[st
     turnover = _first(metric, "turnover", "amount", "trading_value")
     if turnover is None and price is not None and volume is not None:
         turnover = round(float(price) * float(volume), 2)
-    return {
+    row = {
         "code": code,
         "name": str(getattr(entry, "name", "")),
         "symbol": symbol,
         "industry": str(getattr(entry, "industry", "")),
         "price": price,
         "previous_close": prev_close,
-        "price_date": _first(metric, "price_date", "date", "trade_date"),
+        "price_date": _first_text(metric, "price_date", "date", "trade_date"),
         "change_pct": change_pct,
+        "change_pct_5d": _first(metric, "change_pct_5d", "return_5d_pct", "pct_change_5d"),
+        "change_pct_10d": _first(metric, "change_pct_10d", "return_10d_pct", "pct_change_10d"),
+        "change_pct_20d": _first(metric, "change_pct_20d", "return_20d_pct", "pct_change_20d"),
         "volume": volume,
         "avg_volume_20d": avg_volume,
         "volume_ratio": volume_ratio,
         "turnover": turnover,
         "new_high_days": _first(metric, "new_high_days", "high_days"),
         "new_low_days": _first(metric, "new_low_days", "low_days"),
+        "days_since_high": _first(metric, "days_since_high"),
+        "near_high_20d": _first_bool(metric, "near_high_20d"),
+        "pullback_from_high_pct": _first(metric, "pullback_from_high_pct"),
+        "above_ma5": _first_bool(metric, "above_ma5"),
+        "above_ma10": _first_bool(metric, "above_ma10"),
+        "above_ma20": _first_bool(metric, "above_ma20"),
         "limit_up": bool(metric.get("limit_up") or metric.get("is_limit_up") or False),
         "limit_down": bool(metric.get("limit_down") or metric.get("is_limit_down") or False),
         "has_price_metric": bool(metric),
     }
+    row.update(_trend_profile(row))
+    return row
 
 
 def _market_data_date(rows: list[dict[str, Any]]) -> str | None:
@@ -184,16 +204,21 @@ def _sector_rankings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         losers = [row for row in sector_rows if _num(row.get("change_pct")) < 0]
         volume_surge = [row for row in sector_rows if _num(row.get("volume_ratio")) >= 1.5]
         new_highs = [row for row in sector_rows if _num(row.get("new_high_days")) > 0]
+        trend_pullbacks = [row for row in sector_rows if row.get("trend_state") == "trend_pullback"]
+        active_breakouts = [row for row in sector_rows if row.get("trend_state") == "active_breakout"]
         avg_change = _avg(_num(row.get("change_pct")) for row in sector_rows if row.get("change_pct") is not None)
         median_change = _median([_num(row.get("change_pct")) for row in sector_rows if row.get("change_pct") is not None])
         turnover_sum = sum(_num(row.get("turnover")) for row in sector_rows)
         avg_volume = _avg(_num(row.get("avg_volume_20d")) for row in sector_rows)
+        avg_trend_score = _avg(_num(row.get("trend_score")) for row in sector_rows)
         score = min(
             100.0,
             max(0.0, avg_change or 0.0) * 4
             + len(gainers) * 3
             + len(volume_surge) * 4
             + len(new_highs) * 5
+            + len(trend_pullbacks) * 3
+            + min(12.0, (avg_trend_score or 0.0) / 8)
             + min(20.0, turnover_sum / 1_000_000_000)
             + min(15.0, (avg_volume or 0.0) / 800),
         )
@@ -207,6 +232,10 @@ def _sector_rankings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "median_change_pct": round(median_change, 2) if median_change is not None else None,
             "volume_surge_count": len(volume_surge),
             "new_high_count": len(new_highs),
+            "active_breakout_count": len(active_breakouts),
+            "trend_pullback_count": len(trend_pullbacks),
+            "avg_trend_score": round(avg_trend_score, 2) if avg_trend_score is not None else None,
+            "sector_state": _group_trend_state(sector_rows),
             "new_low_count": sum(1 for row in sector_rows if _num(row.get("new_low_days")) > 0),
             "limit_up_count": sum(1 for row in sector_rows if row.get("limit_up")),
             "limit_down_count": sum(1 for row in sector_rows if row.get("limit_down")),
@@ -215,6 +244,7 @@ def _sector_rankings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "top_losers": _top_with_value(sector_rows, "change_pct", reverse=False, negative_only=True, limit=5),
             "top_volume_surge": _top_with_value(sector_rows, "volume_ratio", reverse=True, positive_only=True, limit=5),
             "top_turnover": _top_with_value(sector_rows, "turnover", reverse=True, positive_only=True, limit=5),
+            "top_trend_strength": _top_with_value(sector_rows, "trend_score", reverse=True, positive_only=True, limit=5),
         })
     result.sort(key=lambda row: (row["sector_score"], row["advancers"], row["volume_surge_count"]), reverse=True)
     return result[:30]
@@ -255,7 +285,7 @@ def _dedupe_rows(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]
 def _missing_fields(rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return ["all"]
-    fields = ["change_pct", "volume_ratio", "turnover", "new_high_days", "new_low_days"]
+    fields = ["change_pct", "volume_ratio", "turnover", "new_high_days", "new_low_days", "trend_score"]
     return [field for field in fields if not any(row.get(field) is not None for row in rows)]
 
 
@@ -276,6 +306,100 @@ def _first(metric: dict[str, Any], *keys: str) -> float | None:
         except Exception:
             continue
     return None
+
+
+def _first_text(metric: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = metric.get(key)
+        if value in (None, ""):
+            continue
+        return str(value)
+    return None
+
+
+def _first_bool(metric: dict[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        value = metric.get(key)
+        if value in (None, ""):
+            continue
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y"}:
+            return True
+        if text in {"0", "false", "no", "n"}:
+            return False
+    return None
+
+
+def _trend_profile(row: dict[str, Any]) -> dict[str, Any]:
+    one_day = _num(row.get("change_pct"))
+    r5 = _optional_num(row.get("change_pct_5d"))
+    r10 = _optional_num(row.get("change_pct_10d"))
+    r20 = _optional_num(row.get("change_pct_20d"))
+    new_high_days = _num(row.get("new_high_days"))
+    near_high = bool(row.get("near_high_20d"))
+    above_ma_count = sum(1 for key in ("above_ma5", "above_ma10", "above_ma20") if row.get(key) is True)
+    trend_score = 0.0
+    for value, weight in ((r5, 1.0), (r10, 0.8), (r20, 0.6)):
+        if value is not None:
+            trend_score += max(0.0, value) * weight
+    trend_score += min(20.0, new_high_days / 3)
+    trend_score += 8.0 if near_high else 0.0
+    trend_score += above_ma_count * 4.0
+    trend_score = round(min(100.0, trend_score), 2)
+    state = "neutral"
+    if one_day > 1.5 and (trend_score >= 35 or new_high_days > 0):
+        state = "active_breakout"
+    elif one_day < 0 and (trend_score >= 35 or near_high or (r20 is not None and r20 >= 8)):
+        state = "trend_pullback"
+    elif one_day < 0 and trend_score < 18 and (r20 is None or r20 <= 0):
+        state = "weak"
+    elif one_day <= 0 and trend_score >= 22:
+        state = "cooling"
+    elif one_day > 0:
+        state = "improving"
+    return {
+        "trend_score": trend_score,
+        "trend_state": state,
+        "trend_summary": _trend_summary(state),
+    }
+
+
+def _group_trend_state(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "unknown"
+    counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        counts[str(row.get("trend_state") or "neutral")] += 1
+    if counts["active_breakout"] >= max(2, counts["weak"] + counts["trend_pullback"]):
+        return "active_breakout"
+    if counts["trend_pullback"] >= 1 and counts["active_breakout"] + counts["improving"] + counts["trend_pullback"] >= counts["weak"]:
+        return "trend_pullback"
+    if counts["weak"] > counts["active_breakout"] + counts["improving"] + counts["trend_pullback"]:
+        return "weak"
+    if counts["cooling"] or counts["trend_pullback"]:
+        return "cooling"
+    return "neutral"
+
+
+def _trend_summary(state: str) -> str:
+    return {
+        "active_breakout": "今日強、近期趨勢也強",
+        "trend_pullback": "今日回檔，但近期趨勢仍強或接近高點",
+        "cooling": "近期仍有趨勢，但短線降溫",
+        "weak": "今日弱且近期趨勢不足",
+        "improving": "今日轉強，仍需觀察延續性",
+    }.get(state, "趨勢訊號中性或資料不足")
+
+
+def _optional_num(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
 
 
 def _avg(values: Any) -> float | None:

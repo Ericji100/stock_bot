@@ -12,6 +12,7 @@ from .free_sources import build_free_research_sources
 from .knowledge_base import enrich_company_rows
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
 from .price_fallbacks import load_price_metrics_with_fallback
+from .sector_alias_service import rerating_label_for_industry
 from .value_validation import build_value_cross_validation
 
 
@@ -230,19 +231,8 @@ def _rerating_score(industry: str, price: Any, avg_volume: Any, yoy: Any) -> dic
 
 
 def _industry_rerating_label(industry: str) -> tuple[float, str]:
-    """復用 data_services.py 的產業標籤重估映射。"""
-    mapping = {
-        "半導體": (18, "AI/HPC/先進封裝供應鏈"),
-        "電子零組件": (16, "AI 伺服器零組件/高速傳輸"),
-        "電腦及週邊設備": (14, "AI 伺服器/邊緣運算設備"),
-        "電機機械": (14, "重電/自動化/機器人供應鏈"),
-        "電器電纜": (12, "電網升級/能源基建"),
-        "通信網路": (12, "高速網通/資料中心網路"),
-    }
-    for key, value in mapping.items():
-        if key in industry:
-            return value
-    return 6, f"{industry or '未分類'} / 待驗證新題材"
+    """Use the shared sector alias map for neutral market rerating labels."""
+    return rerating_label_for_industry(industry)
 
 
 def _filter_quarter_frame(frame, column: str, report_date: date):

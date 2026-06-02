@@ -8,7 +8,7 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = "gemini-3-pro-preview"
 DEFAULT_FALLBACK_MODELS = ("gemini-3-flash-preview",)
-DEFAULT_MINIMAX_MODEL = "MiniMax-M2.7"
+DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_OPENCODE_MODEL = "deepseek-v4-pro"
 DEFAULT_OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"

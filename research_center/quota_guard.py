@@ -78,6 +78,9 @@ class SearchProviderQuotaGuard:
         state[provider] = entry
         self._write(state)
 
+    def clear(self, provider: str) -> None:
+        self._clear(provider)
+
     def is_under_monthly_limit(
         self,
         provider: str,

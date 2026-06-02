@@ -13,7 +13,7 @@
     "html",
     "json"
   ],
-  "minimax_model": "MiniMax-M2.7",
+  "minimax_model": "MiniMax-M3",
   "minimax_base_url": "https://api.minimax.io/v1",
   "enable_minimax_search": true,
   "enable_minimax_comparison": false,

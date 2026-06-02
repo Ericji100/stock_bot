@@ -6,11 +6,92 @@ from typing import Any
 from .models import CommandRequest
 
 EVIDENCE_PACK_SCHEMA_VERSION = "evidence_pack_v1"
+THREE_LAYER_CONTEXT_SCHEMA_VERSION = "three_layer_context_v1"
+AI_COMPACT_CONTEXT_SCHEMA_VERSION = "ai_compact_context_v1"
 
 
 def attach_unified_evidence_pack(request: CommandRequest, structured_data: dict[str, Any]) -> dict[str, Any]:
     structured_data["unified_evidence_pack"] = build_unified_evidence_pack(request, structured_data)
     return structured_data
+
+
+def build_three_layer_evidence_context(
+    *,
+    raw_sources: list[dict[str, Any]] | None = None,
+    evidence_pack: dict[str, Any] | None = None,
+    final_context: dict[str, Any] | None = None,
+    min_source_count: int = 0,
+) -> dict[str, Any]:
+    """Build a standard raw/evidence/final context object.
+
+    The raw layer intentionally keeps full source records. The final layer is
+    the AI-facing compact context and must not be treated as the only copy of
+    the evidence.
+    """
+
+    sources = list(raw_sources or [])
+    pack = dict(evidence_pack or {})
+    context = dict(final_context or {})
+    provider_counts: dict[str, int] = {}
+    level_counts: dict[str, int] = {}
+    for source in sources:
+        provider = str(source.get("provider") or source.get("fetch_provider") or "unknown")
+        level = str(source.get("source_level") or "unknown")
+        provider_counts[provider] = provider_counts.get(provider, 0) + 1
+        level_counts[level] = level_counts.get(level, 0) + 1
+    sufficiency = {
+        "source_count": len(sources),
+        "min_source_count": int(min_source_count or 0),
+        "sufficient": len(sources) >= int(min_source_count or 0),
+        "provider_counts": provider_counts,
+        "source_level_counts": level_counts,
+    }
+    context.setdefault("source_sufficiency", sufficiency)
+    return {
+        "schema_version": THREE_LAYER_CONTEXT_SCHEMA_VERSION,
+        "raw_sources": sources,
+        "evidence_pack": pack,
+        "final_context": context,
+        "source_sufficiency": sufficiency,
+    }
+
+
+def build_ai_compact_context(
+    value: Any,
+    *,
+    max_sources: int = 10,
+    max_list: int = 12,
+    max_keys: int = 50,
+    max_string: int = 300,
+    depth: int = 4,
+) -> dict[str, Any]:
+    """Build an AI-facing compact context while preserving full data elsewhere.
+
+    This helper is intentionally generic. Commands should keep their complete
+    evidence pack in artifacts/cache, and send this compact version to models
+    when prompt size or latency matters.
+    """
+
+    source_limited = _limit_source_lists(value, max_sources=max_sources, max_string=max_string)
+    compact = _compact(
+        source_limited,
+        depth=depth,
+        max_list=max_list,
+        max_keys=max_keys,
+        max_string=max_string,
+    )
+    return {
+        "schema_version": AI_COMPACT_CONTEXT_SCHEMA_VERSION,
+        "policy": "AI-facing compact context only; full evidence remains in local artifacts.",
+        "limits": {
+            "max_sources": max_sources,
+            "max_list": max_list,
+            "max_keys": max_keys,
+            "max_string": max_string,
+            "depth": depth,
+        },
+        "payload": compact,
+    }
 
 
 def build_unified_evidence_pack(request: CommandRequest, structured_data: dict[str, Any]) -> dict[str, Any]:
@@ -83,7 +164,14 @@ def _has_value(value: Any) -> bool:
     return True
 
 
-def _compact(value: Any, *, depth: int = 4, max_list: int = 20, max_keys: int = 60) -> Any:
+def _compact(
+    value: Any,
+    *,
+    depth: int = 4,
+    max_list: int = 20,
+    max_keys: int = 60,
+    max_string: int | None = None,
+) -> Any:
     if depth <= 0:
         if isinstance(value, (dict, list, tuple)):
             return f"<{type(value).__name__} truncated>"
@@ -94,11 +182,50 @@ def _compact(value: Any, *, depth: int = 4, max_list: int = 20, max_keys: int = 
             if index >= max_keys:
                 output["_truncated_keys"] = len(value) - max_keys
                 break
-            output[str(key)] = _compact(item, depth=depth - 1, max_list=max_list, max_keys=max_keys)
+            output[str(key)] = _compact(item, depth=depth - 1, max_list=max_list, max_keys=max_keys, max_string=max_string)
         return output
     if isinstance(value, (list, tuple)):
-        result = [_compact(item, depth=depth - 1, max_list=max_list, max_keys=max_keys) for item in list(value)[:max_list]]
+        result = [
+            _compact(item, depth=depth - 1, max_list=max_list, max_keys=max_keys, max_string=max_string)
+            for item in list(value)[:max_list]
+        ]
         if len(value) > max_list:
             result.append({"_truncated_items": len(value) - max_list})
         return result
+    if isinstance(value, str) and max_string is not None and len(value) > max_string:
+        return value[:max_string].rstrip() + "...<truncated>"
     return value
+
+
+def _limit_source_lists(value: Any, *, max_sources: int, max_string: int) -> Any:
+    if isinstance(value, dict):
+        output: dict[str, Any] = {}
+        for key, item in value.items():
+            if _looks_like_source_list_key(str(key)) and isinstance(item, list):
+                output[key] = [_compact_source_for_ai(row, max_string=max_string) for row in item[:max_sources]]
+                if len(item) > max_sources:
+                    output[f"{key}_truncated_count"] = len(item) - max_sources
+            else:
+                output[key] = _limit_source_lists(item, max_sources=max_sources, max_string=max_string)
+        return output
+    if isinstance(value, list):
+        return [_limit_source_lists(item, max_sources=max_sources, max_string=max_string) for item in value]
+    return value
+
+
+def _looks_like_source_list_key(key: str) -> bool:
+    lowered = key.lower()
+    return lowered in {"sources", "web_sources", "ai_sources", "research_sources", "raw_sources", "external_sources"}
+
+
+def _compact_source_for_ai(source: Any, *, max_string: int) -> Any:
+    if not isinstance(source, dict):
+        return _compact(source, max_string=max_string)
+    return {
+        "title": _compact(source.get("title"), max_string=max_string),
+        "url": source.get("url"),
+        "published_date": source.get("published_date"),
+        "provider": source.get("provider") or source.get("fetch_provider"),
+        "source_level": source.get("source_level"),
+        "snippet": _compact(source.get("snippet") or source.get("summary") or source.get("content"), max_string=max_string),
+    }

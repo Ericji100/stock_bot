@@ -33,6 +33,11 @@ from .source_snapshots import build_source_snapshots, snapshots_to_structured_co
 from .report_builder import fallback_markdown, summarize_for_telegram, write_report_artifacts
 from .research_logger import log_error, log_task
 from .scoring_engine import build_buy_rating, build_local_scores
+from .segmented_analysis_service import (
+    SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+    run_segmented_theme_analysis,
+    should_use_segmented_analysis,
+)
 from .source_rank import select_theme_sources_for_prompt, theme_source_relevance
 from .evidence_pack_service import attach_unified_evidence_pack
 from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
@@ -55,6 +60,14 @@ from .topic_formatters import (
 from .web_fetch_service import WebFetchService
 
 ProgressCallback = Callable[[str], None]
+
+
+class _GeminiSegmentedClient:
+    def __init__(self, service: GeminiService):
+        self.service = service
+
+    def generate_report(self, prompt: str) -> Any:
+        return self.service.generate_report(prompt, enable_grounding=False)
 
 
 class ResearchCenter:
@@ -98,6 +111,32 @@ class ResearchCenter:
     def parse(self, raw_text: str, user_id: str | None = None) -> CommandRequest:
         request = parse_command_text(raw_text, user_id=user_id)
         return _with_output_formats(request, self.config.output_formats)
+
+    def _segmented_ai_client_for(self, selected_ai_model: str):
+        if selected_ai_model == "deepseek":
+            if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
+                raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
+            return self.opencode
+        if selected_ai_model == "minimax":
+            if not self.minimax.is_configured():
+                raise RuntimeError("MiniMax model is not configured or API key is missing.")
+            return self.minimax
+        return _GeminiSegmentedClient(self.gemini)
+
+    def _segmented_provider_key_for(self, selected_ai_model: str) -> str:
+        if selected_ai_model == "deepseek":
+            return "opencode_go_segmented"
+        if selected_ai_model == "minimax":
+            return "minimax_segmented"
+        return "gemini_segmented"
+
+    def _store_segmented_diagnostics(self, data: dict[str, Any], selected_ai_model: str, diagnostics: dict[str, Any]) -> None:
+        if selected_ai_model == "deepseek":
+            data["opencode_diagnostics"] = diagnostics
+        elif selected_ai_model == "minimax":
+            data["minimax_diagnostics"] = diagnostics
+        else:
+            data["gemini_search_diagnostics"] = diagnostics
 
     def run_text_command(self, raw_text: str, user_id: str | None = None, progress: ProgressCallback | None = None) -> ResearchCenterResult:
         _emit_progress(progress, "解析 AI 投研指令")
@@ -204,7 +243,7 @@ class ResearchCenter:
                 "model_jobs": model_jobs,
             }
         }
-        summary = "多模型 AI 分析已開始，Gemini 與 MiniMax-M2.7 會並行產生報告；哪個模型先完成就會先傳送。"
+        summary = "多模型 AI 分析已開始，Gemini 與 MiniMax-M3 會並行產生報告；哪個模型先完成就會先傳送。"
         artifacts = ReportArtifacts("parallel_model_pending", request.command, Path("__no_markdown_file__"), Path("__no_html_file__"), Path("__no_json_file__"), Path("__no_sources_file__"))
         return ResearchCenterResult(
             status="pending_models",
@@ -238,33 +277,58 @@ class ResearchCenter:
         prompt_log_path = ""
         try:
             _emit_progress(progress, f"Calling parallel AI model: {self.config.model}")
-            prompt_log_path = str(write_prompt_log(request, prompt, self.config.model, use_grounding, sources, {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "model_key": "gemini"}))
-            _emit_progress(progress, f"Gemini model prompt saved: {prompt_log_path}")
-            gemini_result = self.gemini.generate_report(prompt, enable_grounding=use_grounding)
-            gemini_sources = normalize_source_items(
-                gemini_result.sources,
-                request,
-                provider="gemini_grounding",
-                query_intent="parallel_model_citation",
-            )
-            job_sources = _merge_sources(sources, gemini_sources)
-            actual_model = gemini_result.diagnostics.get("actual_model") or self.config.model
-            model_data = {**structured_data, "analysis_model": actual_model, "gemini_search_diagnostics": gemini_result.diagnostics}
-            if gemini_result.diagnostics.get("fallback_used"):
-                _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_model}")
-            if gemini_sources:
-                _emit_progress(progress, f"Gemini grounding citations: {len(gemini_sources)} sources will be written")
-            summary = summarize_for_telegram(gemini_result.markdown)
-            draft_path = write_knowledge_draft(request, gemini_result.markdown, job_sources, model_data)
+            model_data = {**structured_data, "analysis_model": self.config.model}
+            job_sources = sources
+            if should_use_segmented_analysis(request, "gemini", prompt_chars=len(prompt)):
+                segmented_result = run_segmented_theme_analysis(
+                    request=request,
+                    structured_data=model_data,
+                    sources=sources,
+                    ai_client=_GeminiSegmentedClient(self.gemini),
+                    model_name=self.config.model,
+                    original_prompt_chars=len(prompt),
+                    threshold_chars=SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+                    progress=progress,
+                )
+                prompt_log_path = segmented_result.prompt_paths[-1] if segmented_result.prompt_paths else ""
+                markdown = segmented_result.markdown
+                raw = segmented_result.raw
+                actual_model = self.config.model
+                model_data["analysis_provider"] = "gemini_segmented"
+                model_data["gemini_search_diagnostics"] = segmented_result.diagnostics
+                model_data["segmented_ai_analysis"] = segmented_result.diagnostics
+                model_data["segmented_ai_prompt_paths"] = segmented_result.prompt_paths
+            else:
+                prompt_log_path = str(write_prompt_log(request, prompt, self.config.model, use_grounding, sources, {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "model_key": "gemini"}))
+                _emit_progress(progress, f"Gemini model prompt saved: {prompt_log_path}")
+                gemini_result = self.gemini.generate_report(prompt, enable_grounding=use_grounding)
+                gemini_sources = normalize_source_items(
+                    gemini_result.sources,
+                    request,
+                    provider="gemini_grounding",
+                    query_intent="parallel_model_citation",
+                )
+                job_sources = _merge_sources(sources, gemini_sources)
+                actual_model = gemini_result.diagnostics.get("actual_model") or self.config.model
+                markdown = gemini_result.markdown
+                raw = gemini_result.raw
+                model_data["analysis_model"] = actual_model
+                model_data["gemini_search_diagnostics"] = gemini_result.diagnostics
+                if gemini_result.diagnostics.get("fallback_used"):
+                    _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_model}")
+                if gemini_sources:
+                    _emit_progress(progress, f"Gemini grounding citations: {len(gemini_sources)} sources will be written")
+            summary = summarize_for_telegram(markdown)
+            draft_path = write_knowledge_draft(request, markdown, job_sources, model_data)
             if draft_path:
                 model_data["knowledge_draft_path"] = str(draft_path)
                 _emit_progress(progress, f"知識庫草稿已保存：{draft_path}")
-            artifacts, report_json = write_report_artifacts(self.config.report_root, request, gemini_result.markdown, summary, job_sources, True, None, model_data)
+            artifacts, report_json = write_report_artifacts(self.config.report_root, request, markdown, summary, job_sources, True, None, model_data)
             self.database.save_report(request, artifacts, summary, job_sources, True, None)
             self.database.save_events([*build_source_events(request, job_sources, model_data), *extract_structured_events(model_data)])
-            self.database.save_snapshots(build_source_snapshots(request, job_sources, model_data, gemini_result.raw))
+            self.database.save_snapshots(build_source_snapshots(request, job_sources, model_data, raw))
             _emit_progress(progress, f"Parallel AI model report completed: {artifacts.report_id}")
-            return _model_job_entry("gemini", str(actual_model), "success", artifacts, prompt_log_path, summary, report_json, diagnostics=gemini_result.diagnostics)
+            return _model_job_entry("gemini", str(actual_model), "success", artifacts, prompt_log_path, summary, report_json, diagnostics=model_data.get("gemini_search_diagnostics"))
         except Exception as exc:
             _emit_progress(progress, f"Parallel AI model report failed: {self.config.model}: {exc}")
             return {"model_key": "gemini", "model": self.config.model, "status": "failed", "error": str(exc), "prompt_path": prompt_log_path}
@@ -273,24 +337,47 @@ class ResearchCenter:
         minimax_prompt_log_path = ""
         try:
             _emit_progress(progress, f"Calling parallel AI model: {self.config.minimax_model}")
-            minimax_prompt_log_path = str(write_prompt_log(
-                request,
-                prompt,
-                self.config.minimax_model,
-                False,
-                sources,
-                {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "primary_model": self.config.model, "shared_prompt_path": shared_prompt_path, "model_key": "minimax"}))
-            _emit_progress(progress, f"MiniMax model prompt saved: {minimax_prompt_log_path}")
-            minimax_result = self.minimax.generate_report(prompt)
-            summary = summarize_for_telegram(minimax_result.markdown)
-            model_data = {**structured_data, "analysis_model": self.config.minimax_model, "minimax_diagnostics": minimax_result.diagnostics}
+            model_data = {**structured_data, "analysis_model": self.config.minimax_model}
+            if should_use_segmented_analysis(request, "minimax", prompt_chars=len(prompt)):
+                segmented_result = run_segmented_theme_analysis(
+                    request=request,
+                    structured_data=model_data,
+                    sources=sources,
+                    ai_client=self.minimax,
+                    model_name=self.config.minimax_model,
+                    original_prompt_chars=len(prompt),
+                    threshold_chars=SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+                    progress=progress,
+                )
+                minimax_prompt_log_path = segmented_result.prompt_paths[-1] if segmented_result.prompt_paths else ""
+                markdown = segmented_result.markdown
+                raw = segmented_result.raw
+                model_data["analysis_provider"] = "minimax_segmented"
+                model_data["minimax_diagnostics"] = segmented_result.diagnostics
+                model_data["segmented_ai_analysis"] = segmented_result.diagnostics
+                model_data["segmented_ai_prompt_paths"] = segmented_result.prompt_paths
+            else:
+                minimax_prompt_log_path = str(write_prompt_log(
+                    request,
+                    prompt,
+                    self.config.minimax_model,
+                    False,
+                    sources,
+                    {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "primary_model": self.config.model, "shared_prompt_path": shared_prompt_path, "model_key": "minimax"}))
+                _emit_progress(progress, f"MiniMax model prompt saved: {minimax_prompt_log_path}")
+                minimax_result = self.minimax.generate_report(prompt)
+                markdown = minimax_result.markdown
+                raw = minimax_result.raw
+                model_data["analysis_provider"] = "minimax"
+                model_data["minimax_diagnostics"] = minimax_result.diagnostics
+            summary = summarize_for_telegram(markdown)
             model_data.pop("comparison_reports", None)
-            artifacts, report_json = write_report_artifacts(self.config.report_root, request, minimax_result.markdown, summary, sources, True, None, model_data, report_variant="minimax")
+            artifacts, report_json = write_report_artifacts(self.config.report_root, request, markdown, summary, sources, True, None, model_data, report_variant="minimax")
             self.database.save_report(request, artifacts, summary, sources, True, None)
             self.database.save_events([*build_source_events(request, sources, model_data), *extract_structured_events(model_data)])
-            self.database.save_snapshots(build_source_snapshots(request, sources, model_data, minimax_result.raw))
+            self.database.save_snapshots(build_source_snapshots(request, sources, model_data, raw))
             _emit_progress(progress, f"Parallel AI model report completed: {artifacts.report_id}")
-            return _model_job_entry("minimax", self.config.minimax_model, "success", artifacts, minimax_prompt_log_path, summary, report_json, diagnostics=minimax_result.diagnostics)
+            return _model_job_entry("minimax", self.config.minimax_model, "success", artifacts, minimax_prompt_log_path, summary, report_json, diagnostics=model_data.get("minimax_diagnostics"))
         except Exception as exc:
             _emit_progress(progress, f"Parallel AI model report failed: {self.config.minimax_model}: {exc}")
             return {"model_key": "minimax", "model": self.config.minimax_model, "status": "failed", "error": str(exc), "prompt_path": minimax_prompt_log_path}
@@ -386,7 +473,6 @@ class ResearchCenter:
                 attach_news_events(request, structured_data)
                 attach_data_gap_summary(request, structured_data)
                 attach_unified_evidence_pack(request, structured_data)
-                prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
                 if selected_ai_model == "deepseek":
                     final_model_name = self.config.opencode_model
                 elif selected_ai_model == "minimax":
@@ -394,61 +480,89 @@ class ResearchCenter:
                 else:
                     final_model_name = self.config.model
                 final_grounding = bool(gemini_search_used) and selected_ai_model == "gemini"
-                prompt_log_path = write_prompt_log(request, prompt, final_model_name, final_grounding, prompt_sources, structured_data.get("prompt_policy"))
-                _emit_progress(progress, f"Prompt saved: {prompt_log_path}")
-                _emit_progress(progress, f"Prompt template={structured_data.get('prompt_policy', {}).get('template')}, length={len(prompt)} chars, grounding={final_grounding}, sources={len(sources)}")
-                _emit_progress(progress, f"Calling AI model: {final_model_name}")
-                if selected_ai_model == "deepseek":
-                    if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
-                        raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
-                    opencode_result = self.opencode.generate_report(prompt)
-                    markdown = opencode_result.markdown
-                    gemini_raw = opencode_result.raw
-                    actual_gemini_model = str(opencode_result.diagnostics.get("actual_model") or self.config.opencode_model)
-                    structured_data["analysis_model"] = actual_gemini_model
-                    structured_data["analysis_provider"] = "opencode_go"
-                    structured_data["opencode_diagnostics"] = opencode_result.diagnostics
-                    gemini_discovery_count = _gemini_discovery_source_count(structured_data)
-                    if gemini_discovery_count:
-                        _emit_progress(progress, f"DeepSeek analysis will use {gemini_discovery_count} Gemini Search fallback sources")
-                elif selected_ai_model == "minimax":
-                    if not self.minimax.is_configured():
-                        raise RuntimeError("MiniMax model is not configured or API key is missing.")
-                    minimax_result = self.minimax.generate_report(prompt)
-                    markdown = minimax_result.markdown
-                    gemini_raw = minimax_result.raw
-                    actual_gemini_model = str(minimax_result.diagnostics.get("model") or self.config.minimax_model)
-                    structured_data["analysis_model"] = actual_gemini_model
-                    structured_data["analysis_provider"] = "minimax"
-                    structured_data["minimax_diagnostics"] = minimax_result.diagnostics
-                    gemini_discovery_count = _gemini_discovery_source_count(structured_data)
-                    if gemini_discovery_count:
-                        _emit_progress(progress, f"MiniMax analysis will use {gemini_discovery_count} Gemini Search fallback sources")
-                else:
-                    gemini_result = self.gemini.generate_report(prompt, enable_grounding=final_grounding)
-                    markdown = gemini_result.markdown
-                    gemini_raw = gemini_result.raw
-                    structured_data["gemini_search_diagnostics"] = gemini_result.diagnostics
-                    actual_gemini_model = str(gemini_result.diagnostics.get("actual_model") or self.config.model)
-                    structured_data["analysis_model"] = actual_gemini_model
-                    structured_data["analysis_provider"] = "gemini"
-                    gemini_discovery_count = _gemini_discovery_source_count(structured_data)
-                    if gemini_result.diagnostics.get("fallback_used"):
-                        _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_gemini_model}")
-                    _emit_progress(progress, f"Gemini Search diagnostics: metadata={gemini_result.diagnostics.get('grounding_metadata_present')}, queries={gemini_result.diagnostics.get('web_search_query_count')}, chunks={gemini_result.diagnostics.get('grounding_chunk_count')}, sources={len(gemini_result.sources)}")
-                    gemini_sources = normalize_source_items(
-                        gemini_result.sources,
-                        request,
-                        provider="gemini_grounding",
-                        query_intent="final_report_citation",
+                prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
+                use_segmented_analysis = should_use_segmented_analysis(
+                    request,
+                    selected_ai_model,
+                    prompt_chars=len(prompt),
+                    threshold_chars=SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+                )
+                if use_segmented_analysis:
+                    _emit_progress(progress, f"Use segmented AI analysis: command={request.command}, model={final_model_name}, prompt={len(prompt)} chars")
+                    segmented_result = run_segmented_theme_analysis(
+                        request=request,
+                        structured_data=structured_data,
+                        sources=prompt_sources,
+                        ai_client=self._segmented_ai_client_for(selected_ai_model),
+                        model_name=final_model_name,
+                        original_prompt_chars=len(prompt),
+                        threshold_chars=SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+                        progress=progress,
                     )
-                    if gemini_sources:
-                        _emit_progress(progress, f"Gemini grounding citations: {len(gemini_sources)} sources will be written")
-                    elif gemini_discovery_count:
-                        _emit_progress(progress, f"Final report returned no citations; keeping {gemini_discovery_count} Gemini Search fallback sources")
-                    elif use_grounding:
-                        _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
-                    sources = _merge_sources(sources, gemini_sources)
+                    markdown = segmented_result.markdown
+                    gemini_raw = segmented_result.raw
+                    actual_gemini_model = final_model_name
+                    structured_data["analysis_model"] = actual_gemini_model
+                    structured_data["analysis_provider"] = self._segmented_provider_key_for(selected_ai_model)
+                    self._store_segmented_diagnostics(structured_data, selected_ai_model, segmented_result.diagnostics)
+                    structured_data["segmented_ai_analysis"] = segmented_result.diagnostics
+                    structured_data["segmented_ai_prompt_paths"] = segmented_result.prompt_paths
+                else:
+                    prompt_log_path = write_prompt_log(request, prompt, final_model_name, final_grounding, prompt_sources, structured_data.get("prompt_policy"))
+                    _emit_progress(progress, f"Prompt saved: {prompt_log_path}")
+                    _emit_progress(progress, f"Prompt template={structured_data.get('prompt_policy', {}).get('template')}, length={len(prompt)} chars, grounding={final_grounding}, sources={len(sources)}")
+                    _emit_progress(progress, f"Calling AI model: {final_model_name}")
+                    if selected_ai_model == "deepseek":
+                        if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
+                            raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
+                        opencode_result = self.opencode.generate_report(prompt)
+                        markdown = opencode_result.markdown
+                        gemini_raw = opencode_result.raw
+                        actual_gemini_model = str(opencode_result.diagnostics.get("actual_model") or self.config.opencode_model)
+                        structured_data["analysis_model"] = actual_gemini_model
+                        structured_data["analysis_provider"] = "opencode_go"
+                        structured_data["opencode_diagnostics"] = opencode_result.diagnostics
+                        gemini_discovery_count = _gemini_discovery_source_count(structured_data)
+                        if gemini_discovery_count:
+                            _emit_progress(progress, f"DeepSeek analysis will use {gemini_discovery_count} Gemini Search fallback sources")
+                    elif selected_ai_model == "minimax":
+                        if not self.minimax.is_configured():
+                            raise RuntimeError("MiniMax model is not configured or API key is missing.")
+                        minimax_result = self.minimax.generate_report(prompt)
+                        markdown = minimax_result.markdown
+                        gemini_raw = minimax_result.raw
+                        actual_gemini_model = str(minimax_result.diagnostics.get("model") or self.config.minimax_model)
+                        structured_data["analysis_model"] = actual_gemini_model
+                        structured_data["analysis_provider"] = "minimax"
+                        structured_data["minimax_diagnostics"] = minimax_result.diagnostics
+                        gemini_discovery_count = _gemini_discovery_source_count(structured_data)
+                        if gemini_discovery_count:
+                            _emit_progress(progress, f"MiniMax analysis will use {gemini_discovery_count} Gemini Search fallback sources")
+                    else:
+                        gemini_result = self.gemini.generate_report(prompt, enable_grounding=final_grounding)
+                        markdown = gemini_result.markdown
+                        gemini_raw = gemini_result.raw
+                        structured_data["gemini_search_diagnostics"] = gemini_result.diagnostics
+                        actual_gemini_model = str(gemini_result.diagnostics.get("actual_model") or self.config.model)
+                        structured_data["analysis_model"] = actual_gemini_model
+                        structured_data["analysis_provider"] = "gemini"
+                        gemini_discovery_count = _gemini_discovery_source_count(structured_data)
+                        if gemini_result.diagnostics.get("fallback_used"):
+                            _emit_progress(progress, f"Gemini fallback used: {self.config.model} -> {actual_gemini_model}")
+                        _emit_progress(progress, f"Gemini Search diagnostics: metadata={gemini_result.diagnostics.get('grounding_metadata_present')}, queries={gemini_result.diagnostics.get('web_search_query_count')}, chunks={gemini_result.diagnostics.get('grounding_chunk_count')}, sources={len(gemini_result.sources)}")
+                        gemini_sources = normalize_source_items(
+                            gemini_result.sources,
+                            request,
+                            provider="gemini_grounding",
+                            query_intent="final_report_citation",
+                        )
+                        if gemini_sources:
+                            _emit_progress(progress, f"Gemini grounding citations: {len(gemini_sources)} sources will be written")
+                        elif gemini_discovery_count:
+                            _emit_progress(progress, f"Final report returned no citations; keeping {gemini_discovery_count} Gemini Search fallback sources")
+                        elif use_grounding:
+                            _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
+                        sources = _merge_sources(sources, gemini_sources)
                 ai_used = True
                 _emit_progress(progress, f"AI model completed: {actual_gemini_model or self.config.model}")
                 if selected_ai_model == "gemini" and self.config.enable_minimax_comparison and self.minimax.is_configured():
@@ -515,23 +629,44 @@ class ResearchCenter:
         minimax_prompt_log_path = ""
         try:
             _emit_progress(progress, f"Calling background comparison AI model: {self.config.minimax_model}")
-            minimax_prompt_log_path = str(write_prompt_log(
-                result.request,
-                prompt,
-                self.config.minimax_model,
-                False,
-                sources,
-                {**(structured_data.get("prompt_policy") or {}), "purpose": "comparison_report", "primary_model": self.config.model, "background": True},
-            ))
-            _emit_progress(progress, f"MiniMax comparison prompt saved: {minimax_prompt_log_path}")
-            minimax_result = self.minimax.generate_report(prompt)
-            comparison_summary = summarize_for_telegram(minimax_result.markdown)
-            comparison_data = {**structured_data, "analysis_model": self.config.minimax_model, "minimax_diagnostics": minimax_result.diagnostics}
+            comparison_data = {**structured_data, "analysis_model": self.config.minimax_model}
+            if should_use_segmented_analysis(result.request, "minimax", prompt_chars=len(prompt)):
+                segmented_result = run_segmented_theme_analysis(
+                    request=result.request,
+                    structured_data=comparison_data,
+                    sources=sources,
+                    ai_client=self.minimax,
+                    model_name=self.config.minimax_model,
+                    original_prompt_chars=len(prompt),
+                    threshold_chars=SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+                    progress=progress,
+                )
+                minimax_prompt_log_path = segmented_result.prompt_paths[-1] if segmented_result.prompt_paths else ""
+                markdown = segmented_result.markdown
+                comparison_data["analysis_provider"] = "minimax_segmented"
+                comparison_data["minimax_diagnostics"] = segmented_result.diagnostics
+                comparison_data["segmented_ai_analysis"] = segmented_result.diagnostics
+                comparison_data["segmented_ai_prompt_paths"] = segmented_result.prompt_paths
+            else:
+                minimax_prompt_log_path = str(write_prompt_log(
+                    result.request,
+                    prompt,
+                    self.config.minimax_model,
+                    False,
+                    sources,
+                    {**(structured_data.get("prompt_policy") or {}), "purpose": "comparison_report", "primary_model": self.config.model, "background": True},
+                ))
+                _emit_progress(progress, f"MiniMax comparison prompt saved: {minimax_prompt_log_path}")
+                minimax_result = self.minimax.generate_report(prompt)
+                markdown = minimax_result.markdown
+                comparison_data["analysis_provider"] = "minimax"
+                comparison_data["minimax_diagnostics"] = minimax_result.diagnostics
+            comparison_summary = summarize_for_telegram(markdown)
             comparison_data.pop("comparison_reports", None)
             comparison_artifacts, _comparison_json = write_report_artifacts(
                 self.config.report_root,
                 result.request,
-                minimax_result.markdown,
+                markdown,
                 comparison_summary,
                 sources,
                 True,
@@ -547,7 +682,7 @@ class ResearchCenter:
                 "json_path": str(comparison_artifacts.json_path),
                 "sources_path": str(comparison_artifacts.sources_path),
                 "prompt_path": minimax_prompt_log_path,
-                "diagnostics": minimax_result.diagnostics,
+                "diagnostics": comparison_data.get("minimax_diagnostics"),
             }
             self._update_comparison_metadata(result, entry)
             _emit_progress(progress, f"MiniMax comparison report completed: {comparison_artifacts.report_id}")
@@ -1175,14 +1310,45 @@ class _GeminiDiscoveryRunner:
             _emit_progress(progress, "Tavily Search skipped: disabled by config")
             return
         tavily_key_fingerprint = provider_key_fingerprint(self._center.config.tavily_api_key)
-        if not self._center.quota_guard.is_available("tavily", key_fingerprint=tavily_key_fingerprint):
-            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "quota_exhausted_this_month"}
-            _emit_progress(progress, "Tavily Search skipped: quota exhausted this month")
-            return
-        if not self._center.quota_guard.is_under_monthly_limit("tavily", self._center.config.tavily_monthly_credit_limit, self._center.config.tavily_credit_reserve):
-            structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "monthly_credit_reserve_reached"}
-            _emit_progress(progress, "Tavily Search skipped: monthly credit reserve reached")
-            return
+        usage_available = None
+        usage_diagnostics: dict | None = None
+        if (
+            self._center.tavily_search
+            and self._center.tavily_search.is_configured()
+            and hasattr(self._center.tavily_search, "has_available_usage")
+        ):
+            usage_available, usage_diagnostics = self._center.tavily_search.has_available_usage(
+                reserve=self._center.config.tavily_credit_reserve
+            )
+            if usage_available is True:
+                self._center.quota_guard.clear("tavily")
+                remaining = usage_diagnostics.get("remaining") if usage_diagnostics else None
+                _emit_progress(progress, f"Tavily usage check ok: remaining={remaining}")
+            elif usage_available is False:
+                structured_data["tavily_search_discovery"] = {
+                    "enabled": False,
+                    "reason": "official_usage_remaining_insufficient",
+                    "usage": usage_diagnostics,
+                }
+                _emit_progress(progress, "Tavily Search skipped: official usage remaining insufficient")
+                return
+        if usage_available is None:
+            if not self._center.quota_guard.is_available("tavily", key_fingerprint=tavily_key_fingerprint):
+                structured_data["tavily_search_discovery"] = {
+                    "enabled": False,
+                    "reason": "quota_exhausted_this_month",
+                    "usage": usage_diagnostics,
+                }
+                _emit_progress(progress, "Tavily Search skipped: quota exhausted this month")
+                return
+            if not self._center.quota_guard.is_under_monthly_limit("tavily", self._center.config.tavily_monthly_credit_limit, self._center.config.tavily_credit_reserve):
+                structured_data["tavily_search_discovery"] = {
+                    "enabled": False,
+                    "reason": "monthly_credit_reserve_reached",
+                    "usage": usage_diagnostics,
+                }
+                _emit_progress(progress, "Tavily Search skipped: monthly credit reserve reached")
+                return
         try:
             _emit_progress(progress, f"Run Tavily Search discovery: {len(discovery_tasks)} tasks")
             tavily_result = self._center.tavily_search.discover(request, discovery_tasks, progress=progress)
@@ -1197,7 +1363,10 @@ class _GeminiDiscoveryRunner:
             sources.clear()
             sources.extend(merged)
             added = len(sources) - before
-            structured_data["tavily_search_discovery"] = tavily_result.diagnostics
+            structured_data["tavily_search_discovery"] = {
+                **(tavily_result.diagnostics or {}),
+                "official_usage": usage_diagnostics,
+            }
             _append_search_provider_log(
                 structured_data,
                 provider="tavily_search",

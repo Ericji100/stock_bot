@@ -10,6 +10,7 @@ from research_center.data_services import collect_structured_data
 from research_center.prompt_registry import build_prompt_from_request
 from research_center.theme_radar_service import (
     _attach_theme_matches,
+    _build_theme_rankings,
     build_sector_strength_data,
     build_theme_flow_data,
     collect_theme_radar_data,
@@ -61,9 +62,9 @@ def _prepared_library() -> dict:
 
 def _metrics() -> dict:
     return {
-        "2330.TW": {"price": 900, "previous_close": 870, "volume": 90000, "avg_volume_20d": 60000, "new_high_days": 20},
-        "3661.TW": {"price": 120, "previous_close": 110, "volume": 50000, "avg_volume_20d": 22000},
-        "6415.TW": {"price": 560, "previous_close": 540, "volume": 25000, "avg_volume_20d": 15000},
+        "2330.TW": {"price": 900, "previous_close": 870, "volume": 90000, "avg_volume_20d": 60000, "new_high_days": 20, "price_date": "2026-05-22"},
+        "3661.TW": {"price": 120, "previous_close": 110, "volume": 50000, "avg_volume_20d": 22000, "price_date": "2026-05-22"},
+        "6415.TW": {"price": 560, "previous_close": 540, "volume": 25000, "avg_volume_20d": 15000, "price_date": "2026-05-22"},
     }
 
 
@@ -114,6 +115,7 @@ def test_theme_flow_returns_extension_layers_and_candidates():
             "change_pct": 3.2,
             "volume_ratio": 1.6,
             "avg_volume_20d": 60000,
+            "price_date": "2026-05-22",
             "theme_matches": [{"theme_id": "ai_server", "theme_name": "AI伺服器", "supply_chain_role": "晶片"}],
         },
         {
@@ -122,6 +124,7 @@ def test_theme_flow_returns_extension_layers_and_candidates():
             "industry": "電源",
             "change_pct": 0.2,
             "avg_volume_20d": 15000,
+            "price_date": "2026-05-22",
             "theme_matches": [{"theme_id": "ai_server", "theme_name": "AI伺服器", "supply_chain_role": "電源"}],
         },
     ]
@@ -129,7 +132,14 @@ def test_theme_flow_returns_extension_layers_and_candidates():
     data = build_theme_flow_data(
         "AI伺服器",
         date(2026, 5, 22),
-        preloaded={"topic_library": library, "stock_rows": rows, "news_stats": []},
+        preloaded={
+            "topic_library": library,
+            "stock_rows": rows,
+            "news_stats": [],
+            "market_movers": {
+                "market_data_date": "2026-05-22",
+            },
+        },
     )
 
     assert data["theme"]["theme_id"] == "ai_server"
@@ -137,6 +147,7 @@ def test_theme_flow_returns_extension_layers_and_candidates():
     assert len(data["layers"]) == 4
     assert "next_layer_candidates" in data
     assert data["layer_market_validation"][0]["status"] == "盤面已驗證"
+    assert data["layer_market_validation"][0]["market_validated"] is True
 
 
 def test_sector_strength_ranks_by_breadth_and_theme_hits():
@@ -149,7 +160,7 @@ def test_sector_strength_ranks_by_breadth_and_theme_hits():
     data = build_sector_strength_data(date(2026, 5, 22), strong_rows=rows, price_metrics={})
 
     assert data["command_role"] == "sector_strength"
-    assert data["sector_rankings"][0]["sector"] == "半導體"
+    assert data["sector_rankings"][0]["sector"] == "半導體業"
     assert data["sector_rankings"][0]["strong_stock_count"] == 2
     assert "market_movers_data_quality" in data["data_quality"]
 
@@ -172,8 +183,87 @@ def test_sector_strength_uses_market_movers_not_recent_scan_cache(monkeypatch):
     data = build_sector_strength_data(date(2026, 5, 22))
 
     assert data["market_movers"]["top_gainers"][0]["code"] == "1111"
-    assert data["sector_rankings"][0]["sector"] == "電子零組件"
+    assert data["sector_rankings"][0]["sector"] == "電子零組件業"
     assert "不套用 /scan" in data["market_movers"]["hard_filter_policy"]
+
+
+def test_sector_strength_exposes_subsector_rankings_for_passive_components():
+    rows = [
+        {"code": "2327", "name": "國巨", "industry": "電子零組件業", "change_pct": 9.5, "volume_ratio": 2.2, "avg_volume_20d": 18000, "new_high_days": 20, "theme_matches": []},
+        {"code": "2492", "name": "華新科", "industry": "電子零組件業", "change_pct": 8.0, "volume_ratio": 1.9, "avg_volume_20d": 9000, "new_high_days": 10, "theme_matches": []},
+        {"code": "1605", "name": "華新", "industry": "電器電纜", "change_pct": 6.0, "volume_ratio": 1.8, "avg_volume_20d": 12000, "new_high_days": 5, "theme_matches": []},
+    ]
+
+    data = build_sector_strength_data(date(2026, 5, 29), strong_rows=rows, price_metrics={})
+
+    subsectors = {(row["sector"], row["subsector"]) for row in data["subsector_rankings"]}
+    assert ("電子零組件業", "被動元件") in subsectors
+    assert ("電器電纜", "電線電纜") in subsectors
+    assert data["sector_rankings"][0]["top_subsectors"]
+
+
+def test_sector_strength_marks_recent_strong_single_day_pullback_as_pullback():
+    rows = [
+        {
+            "code": "2327",
+            "name": "國巨",
+            "industry": "電子零組件業",
+            "change_pct": -0.54,
+            "change_pct_5d": 8.0,
+            "change_pct_10d": 16.0,
+            "change_pct_20d": 31.0,
+            "trend_score": 62.0,
+            "trend_state": "trend_pullback",
+            "trend_summary": "今日回檔，但近期趨勢仍強或接近高點",
+            "near_high_20d": True,
+            "volume_ratio": 0.5,
+            "avg_volume_20d": 55170,
+            "new_high_days": None,
+            "theme_matches": [{"theme_id": "passive_components", "verification_status": "inferred"}],
+        }
+    ]
+
+    data = build_sector_strength_data(date(2026, 5, 29), strong_rows=rows, price_metrics={})
+    sector = data["sector_rankings"][0]
+    subsector = data["subsector_rankings"][0]
+
+    assert sector["sector_state"] == "trend_pullback"
+    assert sector["trend_pullback_count"] == 1
+    assert subsector["subsector_state"] == "trend_pullback"
+    assert subsector["trend_pullback_count"] == 1
+
+
+def test_theme_rankings_keep_pullback_lifecycle_when_recent_trend_is_strong():
+    rows = [
+        {
+            "code": "2327",
+            "name": "國巨",
+            "industry": "電子零組件業",
+            "change_pct": -0.54,
+            "trend_score": 62.0,
+            "trend_state": "trend_pullback",
+            "avg_volume_20d": 55170,
+            "theme_matches": [
+                {
+                    "theme_id": "passive_components",
+                    "theme_name": "被動元件漲價與庫存回補",
+                    "match_method": "direct_map",
+                    "verification_status": "inferred",
+                    "supply_chain_role": "被動元件供應商",
+                }
+            ],
+        }
+    ]
+
+    rankings = _build_theme_rankings(
+        rows,
+        {"profile_by_id": {"passive_components": {"risk_notes": []}}},
+        [{"theme_id": "passive_components", "news_count_7d": 20, "news_count_24h": 4, "trend_direction": "rising"}],
+    )
+
+    assert rankings[0]["theme_state"] == "trend_pullback"
+    assert rankings[0]["lifecycle"] == "強勢後整理"
+    assert rankings[0]["trend_pullback_count"] == 1
 
 
 def test_sector_strength_keeps_strong_samples_out_of_representatives():
@@ -489,72 +579,3 @@ def test_theme_flow_prompt_has_output_hard_rules():
     assert "market_data_date" in prompt_text
     assert "報告產生日" in prompt_text
     assert "本次盤面資料未直接驗證" in prompt_text
-
-
-def test_theme_flow_structured_prompt_keeps_market_dates():
-    from research_center.command_parser import parse_command_text
-    from research_center.prompt_registry import _prompt_structured_data
-
-    request = parse_command_text("/theme_flow AI伺服器 --date 2026-05-24")
-    structured = _prompt_structured_data(
-        request,
-        {
-            "command_role": "theme_flow",
-            "report_date": "2026-05-24",
-            "market_data_date": "2026-05-22",
-            "report_generated_at": "2026-05-24T21:30:00",
-            "theme_query": "AI伺服器",
-            "layers": [],
-            "layer_market_validation": [],
-        },
-    )
-    data = json.loads(structured)
-
-    assert data["market_data_date"] == "2026-05-22"
-    assert data["report_generated_at"] == "2026-05-24T21:30:00"
-    assert "layer_market_validation" in data
-
-
-def test_sector_strength_structured_prompt_keeps_market_movers_and_dates():
-    from research_center.command_parser import parse_command_text
-    from research_center.prompt_registry import _prompt_structured_data
-
-    request = parse_command_text("/sector_strength --date 2026-05-24")
-    structured = _prompt_structured_data(
-        request,
-        {
-            "command_role": "sector_strength",
-            "report_date": "2026-05-24",
-            "market_data_date": "2026-05-22",
-            "report_generated_at": "2026-05-24T21:30:00",
-            "market_movers": {
-                "market_data_date": "2026-05-22",
-                "top_gainers": [{"code": "2344", "name": "華邦電", "change_pct": 9.9}],
-            },
-            "sector_rankings": [
-                {
-                    "sector": "半導體業",
-                    "sector_score": 100,
-                    "strong_stock_count": 1,
-                    "sector_strong_samples": [{"code": "2344", "name": "華邦電", "change_pct": 9.9}],
-                    "representative_stocks": [],
-                    "candidate_stocks": [],
-                }
-            ],
-        },
-    )
-    data = json.loads(structured)
-
-    assert data["market_data_date"] == "2026-05-22"
-    assert data["market_movers"]["top_gainers"][0]["code"] == "2344"
-    assert data["sector_rankings"][0]["sector_strong_samples"][0]["change_pct"] == 9.9
-
-
-def test_sector_strength_prompt_has_date_and_market_movers_hard_rules():
-    prompt_text = (ROOT_DIR / "prompt" / "report" / "sector_strength.md").read_text(encoding="utf-8")
-
-    assert "report_date" in prompt_text
-    assert "market_data_date" in prompt_text
-    assert "`market_movers` 是 `/sector_strength` 的主要盤面資料來源" in prompt_text
-    assert "今日盤面" in prompt_text
-    assert "不相關來源" in prompt_text

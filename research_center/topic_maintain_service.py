@@ -30,6 +30,7 @@ from .topic_repository import (
     write_topic_audit_log,
 )
 from .topic_quality import normalize_change_pack_quality
+from .topic_pipeline_service import run_topic_pipeline
 
 
 def _load_prompt(name: str) -> str:
@@ -415,69 +416,61 @@ def run_topic_maintain(
     prompt_log_p = write_prompt_log(request, prompt, ai_model, False, discovery_sources, {"purpose": f"topic_maintain_{mode.value}"})
     emit("Prompt log 已保存")
 
-    # Call AI
-    emit(f"呼叫 AI：{ai_model}")
-    raw_response = ""
-    try:
-        if ai_model == "deepseek":
-            if center is None or not hasattr(center, "opencode"):
-                raise TopicMaintainAIError("DeepSeek model not available")
-            result = center.opencode.generate_report(prompt)
-            raw_response = _ai_response_to_text(result)
-        elif ai_model == "minimax":
-            if center is None or not hasattr(center, "minimax"):
-                raise TopicMaintainAIError("MiniMax model not available")
-            if not hasattr(center.minimax, "generate_json"):
-                raise TopicMaintainAIError("MiniMax JSON-only method not available")
-            result = center.minimax.generate_json(prompt)
-            raw_response = _ai_response_to_text(result)
-        else:
-            if center is None or not hasattr(center, "gemini"):
-                raise TopicMaintainAIError("Gemini model not available")
-            result = center.gemini.generate_report(prompt, enable_grounding=False)
-            raw_response = _ai_response_to_text(result)
-    except Exception as exc:
-        emit(f"AI 呼叫失敗：{exc}")
-        raise TopicMaintainAIError(f"AI 呼叫失敗：{exc}", str(raw_response))
+    raw_stages: list[dict[str, Any]] = []
 
-    # Save raw response
+    def _call_ai_json(stage_prompt: str, stage_name: str) -> dict[str, Any] | list[Any]:
+        emit(f"呼叫 AI：{ai_model} / {stage_name}")
+        raw_text = ""
+        try:
+            if ai_model == "deepseek":
+                if center is None or not hasattr(center, "opencode"):
+                    raise TopicMaintainAIError("DeepSeek model not available")
+                result = center.opencode.generate_report(stage_prompt)
+                raw_text = _ai_response_to_text(result)
+            elif ai_model == "minimax":
+                if center is None or not hasattr(center, "minimax"):
+                    raise TopicMaintainAIError("MiniMax model not available")
+                if not hasattr(center.minimax, "generate_json"):
+                    raise TopicMaintainAIError("MiniMax JSON-only method not available")
+                result = center.minimax.generate_json(stage_prompt)
+                raw_text = _ai_response_to_text(result)
+            else:
+                if center is None or not hasattr(center, "gemini"):
+                    raise TopicMaintainAIError("Gemini model not available")
+                result = center.gemini.generate_report(stage_prompt, enable_grounding=False)
+                raw_text = _ai_response_to_text(result)
+            raw_stages.append({"stage": stage_name, "raw": raw_text})
+            return _parse_ai_json_response(raw_text)
+        except json.JSONDecodeError as exc:
+            raw_stages.append({"stage": stage_name, "raw": raw_text, "error": str(exc)})
+            raise
+        except Exception as exc:
+            raw_stages.append({"stage": stage_name, "raw": raw_text, "error": str(exc)})
+            raise
+
+    # Run staged AI pipeline. AI returns small JSON fragments; local code assembles the pack.
+    pack, pipeline_logs = run_topic_pipeline(
+        mode=mode,
+        ai_model=ai_model,
+        change_id=change_id,
+        iso_ts=iso_ts,
+        structured_data=structured_data,
+        prompt_variables=variables,
+        load_prompt=_load_prompt,
+        render_prompt=_render_prompt,
+        call_ai_json=_call_ai_json,
+        progress=emit,
+    )
+
+    # Save staged raw responses
     raw_p = raw_response_path(change_id)
-    try:
-        # Try to parse as JSON and re-save as valid JSON
-        json.loads(raw_response)
-        raw_p.write_text(raw_response, encoding="utf-8")
-    except json.JSONDecodeError:
-        # Wrap in a JSON structure
-        wrapped = json.dumps({"raw": raw_response}, ensure_ascii=False, indent=2)
-        raw_p.write_text(wrapped, encoding="utf-8")
+    wrapped = json.dumps({"stages": raw_stages, "pipeline_logs": pipeline_logs}, ensure_ascii=False, indent=2)
+    raw_p.write_text(wrapped, encoding="utf-8")
     emit("Raw response 已保存")
 
-    # Parse JSON
-    try:
-        pack_data = _parse_ai_json_response(raw_response)
-        # Override required fields
-        pack_data["change_id"] = change_id
-        pack_data["mode"] = mode.value
-        pack_data["status"] = TopicChangeStatus.PENDING.value
-        pack_data["model"] = ai_model
-        pack_data["created_at"] = iso_ts
-        pack_data["updated_at"] = iso_ts
-        pack_data["raw_response_path"] = str(raw_p)
-        pack_data["prompt_log_path"] = str(prompt_log_p)
-        pack_data["company_knowledge_updates"] = _normalize_company_knowledge_updates(
-            pack_data.get("company_knowledge_updates", {})
-        )
-        pack = TopicChangePack.from_dict(pack_data)
-        normalize_change_pack_quality(pack)
-    except json.JSONDecodeError as exc:
-        preview = raw_response[:300] if raw_response else "(empty)"
-        emit("JSON 解析失敗：模型未回傳有效 JSON")
-        # raw_response_path and prompt_log_path are saved in the pack for debugging,
-        # but must NOT be shown to Telegram users.
-        raise TopicMaintainAIError(
-            "JSON 解析失敗：模型未回傳有效 JSON。請改用其他模型或重新執行 /topic_maintain。",
-            raw_response,
-        )
+    pack.raw_response_path = str(raw_p)
+    pack.prompt_log_path = str(prompt_log_p)
+    pack.company_knowledge_updates = _normalize_company_knowledge_updates(pack.company_knowledge_updates)
 
     # Validate actions
     if not pack.actions:

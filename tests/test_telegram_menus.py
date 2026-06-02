@@ -4,6 +4,7 @@ import asyncio
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from research_center.telegram_handlers import (
     _compose_direct_theme_command,
@@ -288,7 +289,7 @@ class TelegramMenuTests(unittest.TestCase):
         self.assertFalse(handled)
         self.assertEqual(context.user_data, {})
 
-    def test_topic_maintain_bootstrap_starts_model_menu(self):
+    def test_topic_maintain_starts_model_menu(self):
         sent = {}
 
         async def fake_send_reply(update, text, reply_markup=None):
@@ -296,11 +297,11 @@ class TelegramMenuTests(unittest.TestCase):
             sent["reply_markup"] = reply_markup
 
         context = SimpleNamespace(user_data={})
-        handled = asyncio.run(_maybe_start_menu(SimpleNamespace(), context, "/topic_maintain --bootstrap", fake_send_reply))
+        handled = asyncio.run(_maybe_start_menu(SimpleNamespace(), context, "/topic_maintain", fake_send_reply))
 
         self.assertTrue(handled)
         self.assertEqual(context.user_data["ai_menu"]["command"], "topic_maintain")
-        self.assertTrue(context.user_data["ai_menu"]["bootstrap"])
+        self.assertNotIn("bootstrap", context.user_data["ai_menu"])
         callbacks = [b.callback_data for row in sent["reply_markup"].inline_keyboard for b in row]
         self.assertIn("ai_menu:topic_maintain:model:minimax", callbacks)
 
@@ -372,9 +373,11 @@ class TelegramMenuTests(unittest.TestCase):
         self.assertEqual(req.command, "topic_maintain")
         self.assertEqual(req.mode, "deep")
         self.assertEqual(req.ai_model, "deepseek")
-        req_bootstrap = parse_command_text("/topic_maintain --bootstrap --model minimax")
-        self.assertEqual(req_bootstrap.command, "topic_maintain")
-        self.assertEqual(req_bootstrap.ai_model, "minimax")
+        req_minimax = parse_command_text("/topic_maintain --model minimax")
+        self.assertEqual(req_minimax.command, "topic_maintain")
+        self.assertEqual(req_minimax.ai_model, "minimax")
+        with self.assertRaises(CommandParseError):
+            parse_command_text("/topic_maintain --bootstrap --model minimax")
         # --date should raise error for topic_maintain
         with self.assertRaises(CommandParseError):
             parse_command_text("/topic_maintain --date 2026-05-15")
@@ -484,6 +487,33 @@ class ScanMenuTests(unittest.TestCase):
         from main import SCAN_SELECTIONS
         self.assertIn("curated", SCAN_SELECTIONS["7"])
         self.assertEqual(SCAN_SELECTIONS["8"], ["curated"])
+
+    def test_resolve_scan_latest_report_date_uses_previous_trading_day_on_weekend(self):
+        from datetime import date
+        import main
+
+        with (
+            patch.object(main, "get_tw_today", return_value=date(2026, 5, 30)),
+            patch.object(main, "is_possible_trading_day", side_effect=lambda d: d == date(2026, 5, 29)),
+        ):
+            resolved, note = main.resolve_scan_latest_report_date()
+
+        self.assertEqual(resolved, date(2026, 5, 29))
+        self.assertIn("2026-05-30", note)
+        self.assertIn("2026-05-29", note)
+
+    def test_resolve_scan_latest_report_date_keeps_trading_day(self):
+        from datetime import date
+        import main
+
+        with (
+            patch.object(main, "get_tw_today", return_value=date(2026, 5, 29)),
+            patch.object(main, "is_possible_trading_day", return_value=True),
+        ):
+            resolved, note = main.resolve_scan_latest_report_date()
+
+        self.assertEqual(resolved, date(2026, 5, 29))
+        self.assertEqual(note, "")
 
     def test_run_all_scan_sends_curated_last_and_saves_combined_recent_scan(self):
         import main
@@ -772,12 +802,12 @@ class ScanMenuTests(unittest.TestCase):
         from main import START_TEXT
         self.assertIn("/topic_maintain", START_TEXT)
         self.assertNotIn("--bootstrap", START_TEXT)
-        self.assertNotIn("MiniMax M2.7", START_TEXT)
+        self.assertNotIn("MiniMax M3", START_TEXT)
 
     def test_help_text_has_minimax_model_info(self):
-        """RESEARCH_HELP_TEXT should show MiniMax M2.7 and gemini|deepseek|minimax."""
+        """RESEARCH_HELP_TEXT should show MiniMax M3 and gemini|deepseek|minimax."""
         from research_center.telegram_handlers import RESEARCH_HELP_TEXT
-        self.assertIn("MiniMax M2.7", RESEARCH_HELP_TEXT)
+        self.assertIn("MiniMax M3", RESEARCH_HELP_TEXT)
         self.assertIn("gemini|deepseek|minimax", RESEARCH_HELP_TEXT)
         self.assertNotIn("[--model deepseek] - 直接執行", RESEARCH_HELP_TEXT)
 
@@ -786,7 +816,7 @@ class ScanMenuTests(unittest.TestCase):
         handlers_path = Path("d:/code/stock_ai_bot/research_center/telegram_handlers.py")
         source = handlers_path.read_text(encoding="utf-8")
         self.assertNotIn("[--model deepseek] - 直接執行", source)
-        self.assertIn("MiniMax M2.7", source)
+        self.assertIn("MiniMax M3", source)
         self.assertIn("gemini|deepseek|minimax", source)
 
     def test_prompt_topic_directory_preferred_over_config_prompts(self):
@@ -831,13 +861,13 @@ class ScanMenuTests(unittest.TestCase):
         raw = _compose_topic_maintain_command({"mode": "deep", "model": "deepseek"})
         self.assertEqual(raw, "/topic_maintain --model deepseek")
 
-    def test_topic_maintain_compose_bootstrap_minimax(self):
-        raw = _compose_topic_maintain_command({"bootstrap": True, "model": "minimax"})
-        self.assertEqual(raw, "/topic_maintain --bootstrap --model minimax")
+    def test_topic_maintain_compose_minimax(self):
+        raw = _compose_topic_maintain_command({"model": "minimax"})
+        self.assertEqual(raw, "/topic_maintain --model minimax")
 
-    def test_topic_maintain_help_has_bootstrap_example(self):
+    def test_topic_maintain_help_has_no_bootstrap_example(self):
         from research_center.telegram_handlers import RESEARCH_HELP_TEXT
-        self.assertIn("/topic_maintain --bootstrap --model minimax", RESEARCH_HELP_TEXT)
+        self.assertNotIn("--bootstrap", RESEARCH_HELP_TEXT)
 
     def test_topic_maintain_no_date_in_compose(self):
         # _compose_topic_maintain_command should never produce --date
@@ -905,6 +935,9 @@ class ScanMenuTests(unittest.TestCase):
         from main import build_radar_model_keyboard
         keyboard = build_radar_model_keyboard()
         callbacks = [b.callback_data for row in keyboard.inline_keyboard for b in row]
+        labels = [b.text for row in keyboard.inline_keyboard for b in row]
+        self.assertIn("MiniMax M3", labels)
+        self.assertNotIn("MiniMax M2.7", labels)
         self.assertIn("radar_model:gemini", callbacks)
         self.assertIn("radar_model:deepseek", callbacks)
         self.assertIn("radar_model:minimax", callbacks)
@@ -930,9 +963,12 @@ class ScanMenuTests(unittest.TestCase):
         self.assertIn('CallbackQueryHandler(handle_radar_date_callback', content)
         self.assertIn("resolve_radar_report_date", content)
 
-    def test_scheduled_radar_uses_deepseek(self):
+    def test_scheduled_radar_uses_minimax_comment(self):
         content = Path("d:/code/stock_ai_bot/main.py").read_text(encoding="utf-8")
-        self.assertIn('RadarRequest(source="technical", report_date=target_date, ai_top=5, model="deepseek"', content)
+        self.assertIn('source="technical"', content)
+        self.assertIn("ai_top=5", content)
+        self.assertIn('model="minimax"', content)
+        self.assertIn("ai_comment_enabled=True", content)
 
 
 # ------------------------------------------------------------------
@@ -975,7 +1011,7 @@ class NewsMenuTests(unittest.TestCase):
         self.assertEqual(len(buttons), 3)
         self.assertIn("Gemini", labels)
         self.assertIn("DeepSeek V4 Pro (OpenCode Go)", labels)
-        self.assertIn("MiniMax M2.7", labels)
+        self.assertIn("MiniMax M3", labels)
         self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:gemini", callbacks)
         self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:deepseek", callbacks)
         self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:minimax", callbacks)
@@ -1022,6 +1058,13 @@ class NewsMenuTests(unittest.TestCase):
         self.assertIn('CommandHandler("news"', content)
         self.assertIn('CommandHandler("news_detail"', content)
         self.assertIn('CommandHandler("news_save"', content)
+
+    def test_scheduled_news_refresh_uses_minimax(self):
+        """Scheduled news refresh should default to MiniMax M3 via the minimax model key."""
+        main_path = "d:/code/stock_ai_bot/main.py"
+        content = Path(main_path).read_text(encoding="utf-8")
+        self.assertIn('run_news_refresh, center, repository, progress, ai_model="minimax"', content)
+        self.assertNotIn('run_news_refresh, center, repository, progress, ai_model="deepseek"', content)
 
     def test_main_py_news_url_handler_before_generic_text_handlers(self):
         """Pasted news URLs must be handled before generic text handlers."""

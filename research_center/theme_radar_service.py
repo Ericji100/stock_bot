@@ -14,6 +14,12 @@ from .config import ROOT_DIR
 from .market_movers_service import build_market_movers, rows_from_market_movers
 from .news_repository import NewsRepository
 from .recent_scans import load_recent_scan_results
+from .sector_alias_service import (
+    annotate_rows_with_subsectors,
+    build_subsector_rankings,
+    sector_display_name,
+    top_subsectors_for_sector,
+)
 from .topic_legacy_references import build_legacy_theme_references
 from .topic_quality import infer_status, normalize_status
 
@@ -77,7 +83,7 @@ def collect_theme_radar_data(
 
     _emit(progress, f"題材雷達：強勢股票底稿 {len(strong_rows)} 檔，建立題材映射")
     topic_library = _load_topic_library()
-    mapped_rows = _attach_theme_matches(strong_rows, topic_library)
+    mapped_rows = annotate_rows_with_subsectors(_attach_theme_matches(strong_rows, topic_library))
     news_stats = _build_news_theme_stats(topic_library, lookback_days)
     sector_strength = build_sector_strength_data(
         report_date,
@@ -108,7 +114,7 @@ def collect_theme_radar_data(
     return {
         "command_role": "market_theme_radar",
         "report_date": target_date.isoformat(),
-        "market_data_date": market_movers.get("market_data_date") or target_date.isoformat(),
+        "market_data_date": _market_data_date_from(market_movers),
         "report_generated_at": datetime.now().isoformat(timespec="seconds"),
         "lookback_days": lookback_days,
         "source": source,
@@ -116,6 +122,7 @@ def collect_theme_radar_data(
         "strong_stock_policy": strong_policy,
         "strong_stocks": mapped_rows[:120],
         "theme_rankings": theme_rankings,
+        "subsector_rankings": sector_strength.get("subsector_rankings", []),
         "theme_flow_summaries": flow_summaries,
         "sector_strength": sector_strength,
         "news_theme_stats": news_stats,
@@ -147,13 +154,14 @@ def build_theme_flow_data(
         universe = load_stock_universe(False)
         price_metrics = _safe_price_metrics(universe[:200])
         market_movers = market_movers or build_market_movers(target_date, universe=universe, price_metrics=price_metrics, progress=progress)
-        stock_rows = _attach_theme_matches(
+        stock_rows = annotate_rows_with_subsectors(_attach_theme_matches(
             rows_from_market_movers(market_movers, "active_movers")
             or _fallback_active_rows(universe[:200], price_metrics, 160),
             topic_library,
-        )
+        ))
     else:
         market_movers = market_movers or (preloaded or {}).get("market_movers")
+        stock_rows = annotate_rows_with_subsectors(stock_rows)
 
     theme_id = theme.get("theme_id") if theme else ""
     theme_name = theme.get("theme_name") if theme else query
@@ -172,7 +180,7 @@ def build_theme_flow_data(
     return {
         "command_role": "theme_flow",
         "report_date": target_date.isoformat(),
-        "market_data_date": (market_movers or {}).get("market_data_date") or target_date.isoformat(),
+        "market_data_date": _market_data_date_from(market_movers),
         "report_generated_at": datetime.now().isoformat(timespec="seconds"),
         "lookback_days": lookback_days,
         "theme_query": query,
@@ -187,6 +195,7 @@ def build_theme_flow_data(
             "theme_found": bool(theme),
             "has_supply_chain_nodes": bool(nodes),
             "related_stock_count": len(related),
+            "market_data_date": _market_data_date_from(market_movers),
         },
         "analysis_policy": _analysis_policy(),
     }
@@ -221,9 +230,12 @@ def build_sector_strength_data(
     elif market_movers is None:
         market_movers = {"status": "provided_strong_rows", "active_movers": strong_rows, "data_quality": {}}
 
+    strong_rows = annotate_rows_with_subsectors(strong_rows)
+    subsector_rankings = build_subsector_rankings(strong_rows)
+
     by_sector: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in strong_rows:
-        sector = str(row.get("industry") or "未分類")
+        sector = str(row.get("sector") or row.get("industry") or "未分類")
         by_sector[sector].append(row)
 
     rankings = []
@@ -234,6 +246,9 @@ def build_sector_strength_data(
         theme_hits = sum(1 for row in rows if row.get("theme_matches"))
         volume_surge_count = sum(1 for row in rows if _num(row.get("volume_ratio")) >= 1.5)
         new_high_count = sum(1 for row in rows if _num(row.get("new_high_days")) > 0)
+        trend_pullback_count = sum(1 for row in rows if row.get("trend_state") == "trend_pullback")
+        active_breakout_count = sum(1 for row in rows if row.get("trend_state") == "active_breakout")
+        avg_trend_score = _avg(_num(row.get("trend_score")) for row in rows)
         limit_up_count = sum(1 for row in rows if row.get("limit_up"))
         stock_groups = _split_sector_stock_groups(rows)
         score = min(
@@ -242,17 +257,24 @@ def build_sector_strength_data(
             + max(0.0, avg_change or 0.0) * 4
             + volume_surge_count * 4
             + new_high_count * 5
+            + trend_pullback_count * 3
+            + min(12, (avg_trend_score or 0.0) / 8)
             + limit_up_count * 6
             + min(20, avg_volume / 500)
             + theme_hits * 2,
         )
         rankings.append({
             "sector": sector,
+            "sector_display_name": sector_display_name(sector),
             "sector_score": round(score, 2),
             "strong_stock_count": breadth,
             "avg_change_pct": round(avg_change, 2) if avg_change is not None else None,
             "volume_surge_count": volume_surge_count,
             "new_high_count": new_high_count,
+            "active_breakout_count": active_breakout_count,
+            "trend_pullback_count": trend_pullback_count,
+            "avg_trend_score": round(avg_trend_score, 2) if avg_trend_score is not None else None,
+            "sector_state": _group_trend_state(rows),
             "limit_up_count": limit_up_count,
             "avg_volume_20d": round(avg_volume, 2),
             "theme_hit_count": theme_hits,
@@ -260,6 +282,7 @@ def build_sector_strength_data(
             "representative_stocks": stock_groups["representative_stocks"],
             "candidate_stocks": stock_groups["candidate_stocks"],
             "display_stock_groups": stock_groups["display_stock_groups"],
+            "top_subsectors": top_subsectors_for_sector(subsector_rankings, sector, limit=5),
             "theme_relation_status_counts": stock_groups["theme_relation_status_counts"],
             "representative_policy": (
                 "sector_strong_samples are price/volume strong stocks in the sector; "
@@ -272,12 +295,12 @@ def build_sector_strength_data(
     return {
         "command_role": "sector_strength",
         "report_date": target_date.isoformat(),
-        "market_data_date": (market_movers or {}).get("market_data_date") or target_date.isoformat(),
+        "market_data_date": _market_data_date_from(market_movers),
         "report_generated_at": datetime.now().isoformat(timespec="seconds"),
         "lookback_days": lookback_days,
         "source": source,
         "market_movers": {
-            "market_data_date": (market_movers or {}).get("market_data_date"),
+            "market_data_date": _market_data_date_from(market_movers),
             "report_generated_at": (market_movers or {}).get("report_generated_at") or (market_movers or {}).get("generated_at"),
             "source_mode": (market_movers or {}).get("source_mode"),
             "hard_filter_policy": (market_movers or {}).get("hard_filter_policy"),
@@ -285,15 +308,19 @@ def build_sector_strength_data(
             "top_losers": (market_movers or {}).get("top_losers", [])[:20],
             "top_volume_surge": (market_movers or {}).get("top_volume_surge", [])[:20],
             "top_turnover": (market_movers or {}).get("top_turnover", [])[:20],
+            "top_trend_strength": (market_movers or {}).get("top_trend_strength", [])[:20],
             "new_highs": (market_movers or {}).get("new_highs", [])[:20],
             "new_lows": (market_movers or {}).get("new_lows", [])[:20],
             "sector_mover_rankings": (market_movers or {}).get("sector_mover_rankings", [])[:20],
             "data_quality": (market_movers or {}).get("data_quality", {}),
         },
         "sector_rankings": rankings[:20],
+        "subsector_rankings": subsector_rankings[:30],
         "data_quality": {
             "input_stock_count": len(strong_rows),
             "sector_count": len(rankings),
+            "subsector_count": len(subsector_rankings),
+            "market_data_date": _market_data_date_from(market_movers),
             "market_movers_data_quality": (market_movers or {}).get("data_quality", {}),
         },
         "analysis_policy": _analysis_policy(),
@@ -514,13 +541,18 @@ def _build_theme_rankings(rows: list[dict[str, Any]], topic_library: dict[str, A
         candidate_count = sum(1 for row in theme_rows if _match_status_for_theme(row, tid) == "candidate")
         news = news_by_id.get(tid, {})
         news_score = min(15.0, _num(news.get("news_count_7d")) * 1.5 + _num(news.get("news_count_24h")) * 2)
-        price_score = min(25.0, weighted_breadth * 3 + min(10.0, avg_volume / 1000))
+        avg_trend_score = _avg(_num(row.get("trend_score")) for row in theme_rows)
+        trend_pullback_count = sum(1 for row in theme_rows if row.get("trend_state") == "trend_pullback")
+        active_breakout_count = sum(1 for row in theme_rows if row.get("trend_state") == "active_breakout")
+        weak_count = sum(1 for row in theme_rows if row.get("trend_state") == "weak")
+        price_score = min(25.0, weighted_breadth * 3 + min(10.0, avg_volume / 1000) + min(8.0, (avg_trend_score or 0.0) / 10))
         breadth_score = min(20.0, weighted_breadth * 4 + direct_count)
         volume_score = min(15.0, avg_volume / 700)
         chip_score = 0.0
         diffusion_score = min(10.0, len(_roles_for_theme(theme_rows, tid)) * 2.5 + (3 if news.get("trend_direction") == "rising" else 0))
         total = round(price_score + breadth_score + volume_score + chip_score + news_score + diffusion_score, 2)
-        lifecycle = _lifecycle(total, breadth, news, diffusion_score)
+        theme_state = _group_trend_state(theme_rows)
+        lifecycle = _lifecycle(total, breadth, news, diffusion_score, theme_state=theme_state)
         representative_stocks, candidate_stocks = _split_representative_stocks(theme_rows, tid)
         rankings.append({
             "theme_id": tid,
@@ -534,8 +566,14 @@ def _build_theme_rankings(rows: list[dict[str, Any]], topic_library: dict[str, A
                 "chip_strength": round(chip_score, 2),
                 "news_heat": round(news_score, 2),
                 "diffusion_potential": round(diffusion_score, 2),
+                "trend_score": round(avg_trend_score, 2) if avg_trend_score is not None else None,
             },
             "strong_stock_count": breadth,
+            "active_breakout_count": active_breakout_count,
+            "trend_pullback_count": trend_pullback_count,
+            "weak_count": weak_count,
+            "avg_trend_score": round(avg_trend_score, 2) if avg_trend_score is not None else None,
+            "theme_state": theme_state,
             "weighted_strong_stock_count": round(weighted_breadth, 2),
             "direct_relation_count": direct_count,
             "inferred_relation_count": inferred_count,
@@ -700,6 +738,18 @@ def _stock_row(entry: Any, price_metrics: dict[str, Any]) -> dict[str, Any]:
         "turnover": metric.get("turnover") or metric.get("amount"),
         "new_high_days": metric.get("new_high_days"),
         "new_low_days": metric.get("new_low_days"),
+        "change_pct_5d": metric.get("change_pct_5d"),
+        "change_pct_10d": metric.get("change_pct_10d"),
+        "change_pct_20d": metric.get("change_pct_20d"),
+        "days_since_high": metric.get("days_since_high"),
+        "near_high_20d": metric.get("near_high_20d"),
+        "pullback_from_high_pct": metric.get("pullback_from_high_pct"),
+        "above_ma5": metric.get("above_ma5"),
+        "above_ma10": metric.get("above_ma10"),
+        "above_ma20": metric.get("above_ma20"),
+        "trend_score": metric.get("trend_score"),
+        "trend_state": metric.get("trend_state"),
+        "trend_summary": metric.get("trend_summary"),
         "limit_up": bool(metric.get("limit_up") or False),
         "limit_down": bool(metric.get("limit_down") or False),
     }
@@ -852,7 +902,13 @@ def _theme_risks(theme_id: str, topic_library: dict[str, Any]) -> list[str]:
     return (profile.get("risk_notes") or [])[:5]
 
 
-def _lifecycle(score: float, breadth: int, news: dict[str, Any], diffusion_score: float) -> str:
+def _lifecycle(score: float, breadth: int, news: dict[str, Any], diffusion_score: float, *, theme_state: str | None = None) -> str:
+    if theme_state == "trend_pullback":
+        return "強勢後整理"
+    if theme_state == "cooling":
+        return "高位震盪"
+    if theme_state == "weak" and score < 45:
+        return "趨勢轉弱"
     if score >= 75 and diffusion_score >= 6:
         return "擴散段"
     if score >= 70:
@@ -862,6 +918,21 @@ def _lifecycle(score: float, breadth: int, news: dict[str, Any], diffusion_score
     if score >= 45 and news.get("news_count_7d", 0) > breadth:
         return "末升段"
     return "待觀察"
+
+
+def _group_trend_state(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "unknown"
+    counts: Counter[str] = Counter(str(row.get("trend_state") or "neutral") for row in rows)
+    if counts["active_breakout"] >= max(2, counts["weak"] + counts["trend_pullback"]):
+        return "active_breakout"
+    if counts["trend_pullback"] >= 1 and counts["active_breakout"] + counts["improving"] + counts["trend_pullback"] >= counts["weak"]:
+        return "trend_pullback"
+    if counts["weak"] > counts["active_breakout"] + counts["improving"] + counts["trend_pullback"]:
+        return "weak"
+    if counts["cooling"] or counts["trend_pullback"]:
+        return "cooling"
+    return "neutral"
 
 
 def _layer_strength(rows: list[dict[str, Any]], candidate_rows: list[dict[str, Any]] | None = None) -> str:
@@ -889,6 +960,10 @@ def _layer_stage(layer: int, rows: list[dict[str, Any]], candidate_rows: list[di
         return "擴散或剛起漲"
     return "剛起漲"
 
+
+def _market_data_date_from(market_movers: dict[str, Any] | None) -> str:
+    data = market_movers or {}
+    return str(data.get("market_data_date") or "unknown")
 
 def _layer_market_validation(layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     validation = []

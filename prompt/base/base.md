@@ -24,3 +24,14 @@
    - evidence_type：verified / inferred / sentiment
    - data_status：sufficient / partial / insufficient
 5. Markdown 之外，報告內容需能讓程式解析成 sections、scores、risks、positive_factors、watch_items、sources。
+
+## AI 資料中心與入模規則
+
+1. 若輸入資料包含 `ai_prompt_context`、`ai_input_audit`、`report_confidence`，這些代表系統已先做資料整理、來源入模與可信度檢查。
+2. `ai_prompt_context` 是本次 AI 實際收到的規則化資料；未直接入模的完整資料仍保存在報告 JSON、來源 JSON 或本地結構化資料中。
+3. `ai_input_audit` 是入模審計，不是投研結論。你必須用它檢查資料是否足夠、是否缺少官方來源、是否缺少反證來源。
+4. `report_confidence` 是資料可信度底稿，不是最終判斷。若報告可信度低或有 warnings，主結論必須更保守，並明確標示資料缺口。
+5. 本地量化底稿、本地價值重估底稿、資料完整度與可信度只供參考；AI 最終結論必須依全部入模資料、來源可信度、反證與資料缺口重新判斷。
+6. 不得因為資料已被本地整理過，就省略風險、反證、資料不足、低可信來源限制。
+7. 若資料量很大，請優先使用入模資料產出主報告；但不得假裝未入模資料不存在。若未入模資料可能影響結論，需在「資料缺口與待驗證項目」說明。
+8. 報告正文請使用自然繁體中文。不要在主內容顯示程式內部英文參數名稱；必要技術欄位只可放在附錄、審計或補充資料分頁。

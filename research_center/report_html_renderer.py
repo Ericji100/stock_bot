@@ -61,12 +61,14 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     .source-meta {{ color: #64748b; font-size: 13px; margin-top: 4px; }}
     .disclaimer {{ margin-top: 32px; padding: 12px; background: #fff7ed; border-left: 4px solid #f97316; overflow-wrap: anywhere; }}
     #tab-main:checked ~ .tab-list label[for="tab-main"],
+    #tab-ai-audit:checked ~ .tab-list label[for="tab-ai-audit"],
     #tab-quality:checked ~ .tab-list label[for="tab-quality"],
     #tab-sources:checked ~ .tab-list label[for="tab-sources"],
     #tab-local-scoring:checked ~ .tab-list label[for="tab-local-scoring"],
     #tab-metadata:checked ~ .tab-list label[for="tab-metadata"],
     #tab-qa:checked ~ .tab-list label[for="tab-qa"] {{ background: #1d4ed8; color: #fff; border-color: #1d4ed8; }}
     #tab-main:checked ~ .panels #panel-main,
+    #tab-ai-audit:checked ~ .panels #panel-ai-audit,
     #tab-quality:checked ~ .panels #panel-quality,
     #tab-sources:checked ~ .panels #panel-sources,
     #tab-local-scoring:checked ~ .panels #panel-local-scoring,
@@ -101,6 +103,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     model = html.escape(str((report_json.get("metadata") or {}).get("analysis_model") or ""))
     sections = _split_markdown(markdown)
     main_html = _markdown_to_html(sections.get("main") or markdown)
+    ai_audit_html = _ai_audit_html(report_json)
     quality_html = _quality_html(report_json)
     sources_html = _sources_html(report_json)
     local_scoring_html = _local_scoring_html(report_json)
@@ -111,6 +114,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <h1>{title}</h1>
   <div class="report-meta">報告日期：{report_date}　模式：{mode}{'　模型：' + model if model else ''}</div>
   <input class="tab-input" type="radio" name="report-tabs" id="tab-main" checked>
+  <input class="tab-input" type="radio" name="report-tabs" id="tab-ai-audit">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-quality">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-sources">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-local-scoring">
@@ -118,6 +122,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <input class="tab-input" type="radio" name="report-tabs" id="tab-qa">
   <nav class="tab-list" aria-label="報告分頁">
     <label class="tab-label" for="tab-main">主報告</label>
+    <label class="tab-label" for="tab-ai-audit">入模審計</label>
     <label class="tab-label" for="tab-quality">資料品質</label>
     <label class="tab-label" for="tab-sources">完整來源</label>
     <label class="tab-label" for="tab-local-scoring">本地底稿</label>
@@ -126,6 +131,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   </nav>
   <div class="panels">
     <section class="tab-panel" id="panel-main">{main_html}</section>
+    <section class="tab-panel" id="panel-ai-audit">{ai_audit_html}</section>
     <section class="tab-panel" id="panel-quality">{quality_html}</section>
     <section class="tab-panel" id="panel-sources">{sources_html}</section>
     <section class="tab-panel" id="panel-local-scoring">{local_scoring_html}</section>
@@ -310,6 +316,59 @@ def _split_long_text(text: str, max_chars: int = 120) -> list[str]:
     if current:
         parts.append(current)
     return parts or [text]
+
+
+def _ai_audit_html(report_json: dict[str, Any]) -> str:
+    metadata = report_json.get("metadata") or {}
+    audit = metadata.get("ai_input_audit") or {}
+    confidence = metadata.get("report_confidence") or {}
+    prompt_context = metadata.get("ai_prompt_context") or {}
+    ai_received = audit.get("ai_received") or {}
+    ai_not_received = audit.get("ai_not_received_directly") or {}
+    source_coverage = audit.get("source_coverage") or {}
+    structured = audit.get("structured_coverage") or {}
+    parts = [
+        "<h2>AI 入模審計</h2>",
+        '<article class="quality-card">',
+        f"<p>報告可信度：<strong>{html.escape(str(confidence.get('confidence_label') or '未評估'))}</strong>"
+        f"（{html.escape(str(confidence.get('confidence_score') or 0))}/100）</p>",
+        f"<p>AI 實際收到來源：{html.escape(str(ai_received.get('selected_source_count') or 0))} 筆；"
+        f"未直接入模來源：{html.escape(str(ai_not_received.get('omitted_source_count') or 0))} 筆。</p>",
+        f"<p>官方來源：{html.escape(str(source_coverage.get('official_sources') or 0))}；"
+        f"媒體來源：{html.escape(str(source_coverage.get('media_sources') or 0))}；"
+        f"反證或風險來源：{html.escape(str(source_coverage.get('risk_or_counter_sources') or 0))}；"
+        f"有日期來源：{html.escape(str(source_coverage.get('dated_sources') or 0))}。</p>",
+        "</article>",
+    ]
+    reasons = confidence.get("reasons") or []
+    warnings = confidence.get("warnings") or []
+    if reasons or warnings:
+        parts.append("<h3>可信度依據</h3><ul>")
+        parts.extend(f"<li>{html.escape(display_value(item))}</li>" for item in reasons)
+        parts.extend(f"<li>提醒：{html.escape(display_value(item))}</li>" for item in warnings)
+        parts.append("</ul>")
+    available = structured.get("available_sections") or []
+    missing = structured.get("missing_sections") or []
+    rows = ["| 項目 | 內容 |", "|---|---|"]
+    rows.append(f"| AI 入模資料大小 | {display_value((audit.get('context_size') or {}).get('prompt_context_chars'))} 字 |")
+    rows.append(f"| 已入模資料類型 | {'、'.join(display_field_label(str(item)) for item in available) or '無'} |")
+    rows.append(f"| 缺少資料類型 | {'、'.join(display_field_label(str(item)) for item in missing) or '無'} |")
+    rows.append(f"| 未直接入模原因 | {_metadata_value_summary(ai_not_received.get('omitted_reason_counts') or {})} |")
+    parts.append(_markdown_table_to_html(rows))
+    selected_sources = ((metadata.get("ai_data_center") or {}).get("source_selection") or {}).get("selected_sources") or []
+    if selected_sources:
+        parts.append("<h3>AI 實際入模來源</h3>")
+        source_rows = ["| 來源 | 入模原因 |", "|---|---|"]
+        for item in selected_sources[:30]:
+            source = item.get("source") or {}
+            title = source.get("title") or source.get("url") or ""
+            reasons_text = "、".join(display_value(reason) for reason in (item.get("reasons") or []))
+            source_rows.append(f"| {title} | {reasons_text} |")
+        parts.append(_markdown_table_to_html(source_rows))
+    if prompt_context:
+        parts.append("<h3>入模資料說明</h3>")
+        parts.append(f"<p>{html.escape(display_value(prompt_context.get('說明') or '完整資料仍保存在本地報告與 JSON。'))}</p>")
+    return "\n".join(parts)
 
 
 def _quality_html(report_json: dict[str, Any]) -> str:

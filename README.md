@@ -217,6 +217,32 @@ HTML 報告的主報告、資料品質、完整來源、本地底稿、QA 與技
 
 底層 `.json` 與 `.sources.json` 仍保留原始欄位名稱，供系統回查、測試與後續資料共用層調度。若未來報告正文或 HTML 分頁又出現新的 raw key、英文狀態碼或 snake_case 題材 ID，優先補 `config/report_display_terms.json`，讓所有報告共用同一套顯示名稱。
 
+### AI 資料中心、入模審計與可信度
+
+投研報告型指令現在會先經過共用 AI 資料中心，再建立送給 AI 的 prompt。適用範圍包含 `/research`、`/value_scan`、`/macro`、`/theme`、`/theme_flow`、`/theme_radar`、`/sector_strength` 等由 research center orchestrator 產出報告的指令。
+
+共用流程如下：
+
+1. 收集結構化資料、新聞、官方來源、論壇來源、搜尋來源與既有快取。
+2. 建立共用證據包與資料缺口摘要。
+3. 依來源可信度、日期、官方來源、風險反證與題材關聯，挑選本次 AI 實際入模資料。
+4. 建立 `ai_prompt_context`，作為 AI 實際收到的規則化資料。
+5. 建立 `ai_input_audit`，記錄哪些資料有入模、哪些資料未直接入模、原因是什麼。
+6. 建立 `report_confidence`，用官方來源數、媒體來源數、風險反證、日期完整度與結構化資料完整度，產出報告可信度底稿。
+
+注意事項：
+
+- 本地量化底稿、價值重估底稿、資料完整度與可信度，只是 AI 判斷的底稿，不是最終投研結論。
+- AI 必須依全部入模資料、來源可信度、反證與資料缺口重新判斷。
+- 未直接入模的資料不會被刪除，仍保存在報告 JSON、來源 JSON 或本地快取。
+- HTML 報告預設顯示主報告；「入模審計」、「資料品質」、「完整來源」、「本地底稿」、「技術附錄」、「QA」會放在其他分頁。
+- 報告正文應使用自然繁體中文；內部英文欄位與 raw key 應放在附錄或審計分頁，並透過 `config/report_display_terms.json` 轉成人可讀名稱。
+
+特殊流程說明：
+
+- `/radar` 已有獨立 Radar Evidence Pack、AI Compact Pack 與三層證據包，邏輯與 AI 資料中心相近，目前維持既有雷達專用流程。
+- `/news refresh` 與 `/topic_maintain` 屬於資料維護或分類型 AI 流程，不一定產出投研 HTML 報告；它們仍保留各自的 prompt 與審核流程。
+
 ### Radar Evidence Pack 與分段 AI
 
 `/radar` 的 AI 分析名單會建立 `radar_evidence_pack_v1`。資料包包含候選來源、技術訊號、營收歷史、籌碼評級、本地新聞、外部來源、投研結構化資料、feature pack、data coverage 與 unified evidence pack。

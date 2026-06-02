@@ -94,6 +94,9 @@ def _date_context_prompt_fields(structured_data: dict[str, Any]) -> dict[str, An
         "feature_pack": structured_data.get("feature_pack"),
         "data_coverage": structured_data.get("data_coverage"),
         "date_aware_context": structured_data.get("date_aware_context"),
+        "ai_prompt_context": structured_data.get("ai_prompt_context"),
+        "ai_input_audit": structured_data.get("ai_input_audit"),
+        "report_confidence": structured_data.get("report_confidence"),
     }
 
 

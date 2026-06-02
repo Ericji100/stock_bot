@@ -40,6 +40,7 @@ from .segmented_analysis_service import (
 )
 from .source_rank import select_theme_sources_for_prompt, theme_source_relevance
 from .evidence_pack_service import attach_unified_evidence_pack
+from .ai_data_center import attach_ai_data_center
 from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
 from .search_source_normalizer import normalize_source_items
 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
@@ -222,6 +223,7 @@ class ResearchCenter:
         attach_news_events(request, structured_data)
         attach_data_gap_summary(request, structured_data)
         attach_unified_evidence_pack(request, structured_data)
+        attach_ai_data_center(request, structured_data, prompt_sources)
 
         prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
         prompt_log_path = write_prompt_log(request, prompt, self.config.model, use_grounding, prompt_sources, structured_data.get("prompt_policy"))
@@ -439,6 +441,7 @@ class ResearchCenter:
         }
         attach_data_gap_summary(request, structured_data)
         attach_unified_evidence_pack(request, structured_data)
+        attach_ai_data_center(request, structured_data, sources)
         if scores:
             _emit_progress(progress, f"本地量化底稿完成：{len(scores)} 項")
         else:
@@ -473,6 +476,7 @@ class ResearchCenter:
                 attach_news_events(request, structured_data)
                 attach_data_gap_summary(request, structured_data)
                 attach_unified_evidence_pack(request, structured_data)
+                attach_ai_data_center(request, structured_data, prompt_sources)
                 if selected_ai_model == "deepseek":
                     final_model_name = self.config.opencode_model
                 elif selected_ai_model == "minimax":

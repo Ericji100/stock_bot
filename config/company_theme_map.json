@@ -179,7 +179,34 @@
         "publish_date": "2025-05-20"
       },
       "QCT Press Release 2025-05-20",
-      "公開資訊觀測站法說會簡報"
+      "公開資訊觀測站法說會簡報",
+      {
+        "source": "QCT Press Release",
+        "source_level": "L1_official",
+        "content": "QCT 在 COMPUTEX 2025 展示支援 NVIDIA 平台的 QuantaGrid AI/HPC 伺服器",
+        "url": "https://qct.io/Press-Releases/index/PR/Server/QCT-Brings-Extensive-Line-up-of-NVIDIA-Accelerated-Infrastructure-to-COMPUTEX-2025/1/0",
+        "publish_date": "2025-05-20",
+        "score_contribution": 8.0
+      },
+      {
+        "source": "NVIDIA Newsroom",
+        "source_level": "L1_official",
+        "content": "NVIDIA 宣布與鴻海及台灣合作建置 AI Factory，採用 10,000 顆 NVIDIA Blackwell GPU",
+        "url": "https://nvidianews.nvidia.com/news/foxconn-builds-ai-factory-in-partnership-with-taiwan-and-nvidia",
+        "publish_date": "2025-05-18",
+        "score_contribution": 8.0
+      },
+      {
+        "source": "媒體報導",
+        "source_level": "L2_media",
+        "content": "PCB女王點兵 廣達 QCT 為 AI 伺服器 ODM 代表",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      },
+      "QCT Press Release L1 官方 COMPUTEX 2025",
+      "既有公司知識庫 verified",
+      "QCT Press Release 2025-05-20 COMPUTEX 展示",
+      "既有公司知識庫收錄廣達為 ai_server_odm_rack_scale verified 角色"
     ],
     "relation_strength": "high",
     "relation_type": "direct",
@@ -202,7 +229,10 @@
       "雲端資料中心",
       "傳產補庫",
       "內需消費",
-      "觀光餐飲"
+      "觀光餐飲",
+      "AI伺服器(QCT)",
+      "液冷整櫃",
+      "筆電代工"
     ],
     "customers": [
       "雲端服務商",
@@ -240,7 +270,7 @@
       "AI 伺服器營收佔比",
       "AI 伺服器營收毛利率"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -274,6 +304,22 @@
           "液冷方案客戶滲透率"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI 伺服器 ODM（QCT）",
+        "evidence": [
+          "QCT Press Release L1 官方 COMPUTEX 2025",
+          "既有公司知識庫 verified",
+          "QCT Press Release 2025-05-20 COMPUTEX 展示",
+          "既有公司知識庫收錄廣達為 ai_server_odm_rack_scale verified 角色"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -284,7 +330,8 @@
       "ai_server",
       "ai_server_odm_rack_scale",
       "apple_ai_device_supply_chain",
-      "old_ai_stocks_catch_up"
+      "old_ai_stocks_catch_up",
+      "compute_x_2026_ai_exhibition"
     ],
     "primary_theme": "ai_server",
     "evidence": [
@@ -426,11 +473,20 @@
         "source_level": "L2_media",
         "content": "緯創受惠於 AI 伺服器需求成長，出貨量攀升"
       },
-      "Reuters 2025-11-21"
+      "Reuters 2025-11-21",
+      {
+        "source": "自由財經",
+        "source_level": "L2_media",
+        "content": "AI 伺服器代工族群受惠 COMPUTEX 題材",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      },
+      "既有公司知識庫收錄為 ai_server 角色",
+      "既有公司知識庫收錄緯創為 ai_server 與 ai_server_odm_rack_scale 角色"
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "AI 伺服器 ODM",
+    "role": "AI 伺服器代工",
     "products": [
       "AI伺服器",
       "GPU加速伺服器",
@@ -445,7 +501,11 @@
       "鏡頭",
       "組裝",
       "機構件",
-      "伺服器機櫃"
+      "伺服器機櫃",
+      "通用伺服器",
+      "GPU伺服器",
+      "筆電代裝",
+      "整櫃系統"
     ],
     "customers": [
       "雲端服務商",
@@ -470,9 +530,11 @@
       "NVIDIA Blackwell 平台出貨進度",
       "主要客戶與營收佔比",
       "客戶營收佔比",
-      "GB300 平台出貨比重"
+      "GB300 平台出貨比重",
+      "GB300 出貨比重",
+      "主要客戶名單"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -504,6 +566,20 @@
           "GB300 平台出貨比重"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI 伺服器代工",
+        "evidence": [
+          "既有公司知識庫收錄為 ai_server 角色",
+          "既有公司知識庫收錄緯創為 ai_server 與 ai_server_odm_rack_scale 角色"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -992,7 +1068,8 @@
     "themes": [
       "ai_server",
       "ai_server_odm_rack_scale",
-      "old_ai_stocks_catch_up"
+      "old_ai_stocks_catch_up",
+      "compute_x_2026_ai_exhibition"
     ],
     "primary_theme": "ai_server",
     "evidence": [
@@ -1124,7 +1201,16 @@
         "publish_date": "2025-11-21",
         "score_contribution": 0.0
       },
-      "群益期貨 GTC Taipei 與 COMPUTEX 雙盛會（候選）"
+      "群益期貨 GTC Taipei 與 COMPUTEX 雙盛會（候選）",
+      {
+        "source": "自由財經",
+        "source_level": "L2_media",
+        "content": "電腦展效應權值股輪漲，英業達為 AI 伺服器與筆電代工代表",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      },
+      "候選名單",
+      "市場普遍視英業達為 AI 伺服器代工"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
@@ -1137,7 +1223,11 @@
       "GPU 伺服器",
       "雲端伺服器",
       "Blackwell",
-      "AI伺服器"
+      "AI伺服器",
+      "白牌伺服器",
+      "筆電代工",
+      "伺服器整機",
+      "AI PC"
     ],
     "customers": [
       "雲端服務商",
@@ -1160,9 +1250,11 @@
       "AI 伺服器營收佔比",
       "NVIDIA 平台認證進度",
       "主要客戶與營收佔比",
-      "主要客戶與出貨時程"
+      "主要客戶與出貨時程",
+      "主要 CSP 客戶名單",
+      "COMPUTEX 2026 展出產品具體內容"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -1194,6 +1286,20 @@
           "主要客戶與出貨時程"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI 伺服器代工",
+        "evidence": [
+          "候選名單",
+          "市場普遍視英業達為 AI 伺服器代工"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -1328,7 +1434,8 @@
     "themes": [
       "ai_power_cooling",
       "liquid_cooling_thermal",
-      "ai_power_800v_hvdc"
+      "ai_power_800v_hvdc",
+      "compute_x_2026_ai_exhibition"
     ],
     "primary_theme": "ai_power_cooling",
     "evidence": [
@@ -1428,11 +1535,26 @@
         "publish_date": "2026-05-22"
       },
       "TEEMA / TrendForce 2026-05-22",
-      "Wiwynn Official 2025-03-18"
+      "Wiwynn Official 2025-03-18",
+      {
+        "source": "TEEMA / TrendForce",
+        "source_level": "L2_media",
+        "content": "2026 年 AI Server 出貨增逾20%，液冷滲透率達 47%",
+        "url": "https://www.teema.org.tw/industry-information-detail.aspx?infoid=51356",
+        "publish_date": "2026-05-22",
+        "score_contribution": 5.0
+      },
+      {
+        "source": "媒體報導",
+        "source_level": "L2_media",
+        "content": "電腦展概念股包含奇鋐散熱",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "AI 伺服器散熱與機殼",
+    "relation_type": "indirect",
+    "role": "伺服器散熱",
     "products": [
       "散熱模組",
       "液冷冷板",
@@ -1471,9 +1593,10 @@
       "精確題材營收佔比",
       "不要捏造百分比",
       "精確營收佔比或業務佔比",
-      "主要客戶名單與出貨量"
+      "主要客戶名單與出貨量",
+      "COMPUTEX 2026 展品具體內容"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_factory_event",
@@ -1658,7 +1781,8 @@
       "sovereign_ai_compute",
       "quantum_computing_security",
       "cowos_advanced_packaging",
-      "compute_x_2026_ai_exhibition"
+      "compute_x_2026_ai_exhibition",
+      "ai_capex_semis"
     ],
     "primary_theme": "semiconductor_advanced",
     "evidence": [
@@ -1812,11 +1936,26 @@
         "publish_date": "2026-04-16"
       },
       "TSMC Investor Relations 2026 Q1",
-      "TrendForce 2025-11-27"
+      "TrendForce 2025-11-27",
+      {
+        "source": "TSMC Investor Relations",
+        "source_level": "L1_official",
+        "content": "2026 Q1 法說會資料佐證 HPC、先進製程與 CoWoS 平台角色",
+        "url": "https://investor.tsmc.com/english/quarterly-results/2026/q1",
+        "publish_date": "2026-04-16",
+        "score_contribution": 8.0
+      },
+      {
+        "source": "GI TW 早盤",
+        "source_level": "L2_media",
+        "content": "AI 資金潮核心權值股",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "CoWoS/SoIC 先進封裝主要供應商",
+    "relation_type": "core",
+    "role": "先進製程與 CoWoS 平台",
     "products": [
       "CoWoS封裝",
       "SoIC",
@@ -1837,7 +1976,10 @@
       "內需消費",
       "觀光餐飲",
       "先進封裝",
-      "N3/N2 晶圓"
+      "N3/N2 晶圓",
+      "晶圓代工",
+      "A16",
+      "HPC製程"
     ],
     "customers": [
       "NVIDIA",
@@ -1865,9 +2007,11 @@
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料",
       "CoWoS 毛利率",
-      "CoPoS 量產時程"
+      "CoPoS 量產時程",
+      "各 HPC 客戶具體營收佔比",
+      "N2/A16 製程量產時程最新進度"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "advanced_packaging_cowos_soic",
@@ -1907,7 +2051,8 @@
       "semiconductor_advanced",
       "advanced_packaging",
       "hbm_memory_supply_chain",
-      "silicon_photonics_cpo"
+      "silicon_photonics_cpo",
+      "ai_capex_semis"
     ],
     "primary_theme": "semiconductor_advanced",
     "evidence": [
@@ -1991,11 +2136,18 @@
         "publish_date": "2025-11-27",
         "score_contribution": 5.0
       },
-      "櫃買中心 半導體產業鏈簡介"
+      "櫃買中心 半導體產業鏈簡介",
+      {
+        "source": "GI TW 早盤",
+        "source_level": "L2_media",
+        "content": "AI 資金潮點名封測族群",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      }
     ],
     "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "後段封測與先進封裝",
+    "relation_type": "core",
+    "role": "封測與先進封裝",
     "products": [
       "先進封裝服務",
       "測試服務",
@@ -2014,7 +2166,9 @@
       "內需消費",
       "觀光餐飲",
       "封測",
-      "系統級封裝"
+      "系統級封裝",
+      "CoWoS後段",
+      "HBM封測"
     ],
     "customers": [
       "IC設計公司",
@@ -2045,9 +2199,12 @@
       "先進封裝營收佔比",
       "主要客戶名單",
       "AI 晶片客戶名單",
-      "TSMC CoWoS 後段合作份額"
+      "TSMC CoWoS 後段合作份額",
+      "CoWoS/SoIC 業務佔比",
+      "HBM 封裝具體客戶名單",
+      "先進封裝毛利率"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
@@ -2214,11 +2371,15 @@
         "url": "https://www.cna.com.tw/news/afe/202603250051.aspx",
         "publish_date": "2026-03-25",
         "score_contribution": 5.0
-      }
+      },
+      "既有 space_satellite 主題高信心度收錄",
+      "Yahoo 報導點名為 SpaceX 國防合約受惠股",
+      "Yahoo股市報導點名為 SpaceX 國防 730 億美元合約受惠股",
+      "既有 space_satellite 主題已收錄華通為衛星 PCB 與 HDI 供應商"
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "衛星 PCB 與 HDI 供應鏈",
+    "role": "衛星 PCB 與 HDI 供應商",
     "products": [
       "IC載板",
       "HDI板",
@@ -2258,7 +2419,26 @@
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "leo_satellite_defense",
+        "theme_name": "低軌衛星與 SpaceX 國防供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "衛星 PCB 與 HDI 供應商",
+        "evidence": [
+          "既有 space_satellite 主題高信心度收錄",
+          "Yahoo 報導點名為 SpaceX 國防合約受惠股",
+          "Yahoo股市報導點名為 SpaceX 國防 730 億美元合約受惠股",
+          "既有 space_satellite 主題已收錄華通為衛星 PCB 與 HDI 供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3037": {
     "company_name": "欣興",
@@ -2267,7 +2447,8 @@
       "pcb_material",
       "ai_pcb_ccl",
       "abf_substrate",
-      "advanced_pcb_ccl"
+      "advanced_pcb_ccl",
+      "advanced_ccl_abf"
     ],
     "primary_theme": "semiconductor_advanced",
     "evidence": [
@@ -2335,11 +2516,25 @@
         "publish_date": "2026-05-31",
         "score_contribution": 4.0
       },
-      "CMoney 高階 PCB 與 CCL 載板關聯"
+      "CMoney 高階 PCB 與 CCL 載板關聯",
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "高盛點名 ABF 載板、CCL 進入最強週期",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "CCL 與 PCB 搶鏡",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "IC 載板與高階 PCB",
+    "relation_type": "core",
+    "role": "ABF 載板與高階 PCB",
     "products": [
       "ABF載板",
       "伺服器PCB",
@@ -2354,7 +2549,9 @@
       "觀光餐飲",
       "ABF 載板",
       "高階 PCB",
-      "HDI"
+      "HDI",
+      "HPC載板",
+      "AI伺服器PCB"
     ],
     "customers": [
       "AMD",
@@ -2376,9 +2573,12 @@
       "主要客戶名單與出貨/量產資料",
       "ABF 載板 AI 營收佔比",
       "1.6T 交換器板材出貨比重",
-      "客戶營收結構"
+      "客戶營收結構",
+      "ABF 載板與 PCB 業務比重",
+      "AI 客戶名單",
+      "Vera Rubin 載板準備進度"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -2823,11 +3023,18 @@
         "source_level": "L2_media",
         "publish_date": "",
         "summary": "華城在台電強韌電網、離岸風電與美系資料中心變壓器接單動能受關注。"
-      }
+      },
+      "Yahoo 與 CMoney 報導點名",
+      "市場普遍視華城為變壓器外銷龍頭",
+      "Yahoo 與 CMoney 報導點名華城為變壓器與重電外銷受惠股",
+      "產業鏈簡介將大同(2371)歸於電機機械，但華城亦屬變壓器/重電主要供應商",
+      "候選名單",
+      "華城在 heavy_electrical_grid 主題亦被收錄為變壓器/重電",
+      "候選名單將華城列為儲能與重電兼具公司"
     ],
-    "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "重電與變壓器龍頭，受惠台電強韌電網、離岸風電變電站與 AI 資料中心高壓變壓器長單",
+    "relation_strength": "low",
+    "relation_type": "indirect",
+    "role": "儲能與重電兼具",
     "products": [
       "變壓器",
       "配電盤",
@@ -2884,7 +3091,7 @@
       "美系 CSP 客戶名單與出貨時程",
       "345kV/161kV 高壓變壓器認證與量產進度"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -2909,6 +3116,37 @@
           "345kV/161kV 高壓變壓器認證與量產進度"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "變壓器與重電外銷供應商",
+        "evidence": [
+          "Yahoo 與 CMoney 報導點名",
+          "市場普遍視華城為變壓器外銷龍頭",
+          "Yahoo 與 CMoney 報導點名華城為變壓器與重電外銷受惠股",
+          "產業鏈簡介將大同(2371)歸於電機機械，但華城亦屬變壓器/重電主要供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      },
+      {
+        "theme_id": "green_energy_storage",
+        "theme_name": "綠電、儲能與 BYOP 自備電力",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "儲能與重電兼具",
+        "evidence": [
+          "候選名單",
+          "華城在 heavy_electrical_grid 主題亦被收錄為變壓器/重電",
+          "候選名單將華城列為儲能與重電兼具公司"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -3189,11 +3427,15 @@
         "url": "https://www.cmoney.tw/",
         "publish_date": null,
         "score_contribution": 0.0
-      }
+      },
+      "CMoney 報導點名",
+      "TPEx 電動車輛產業鏈簡介收錄士電",
+      "CMoney 報導點名士電為重電與自動化受惠股",
+      "TPEx 電動車輛產業鏈簡介亦提及士電(1503)"
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "高壓電力設備與變壓器，機電系統整合受惠電網升級與儲能案場",
+    "role": "重電與自動化設備供應商",
     "products": [
       "變壓器",
       "開關設備",
@@ -3238,7 +3480,7 @@
       "美系資料中心客戶名單",
       "GIS 與 161kV 級距產品出貨結構"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -3254,6 +3496,22 @@
           "GIS 與 161kV 級距產品出貨結構"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "重電與自動化設備供應商",
+        "evidence": [
+          "CMoney 報導點名",
+          "TPEx 電動車輛產業鏈簡介收錄士電",
+          "CMoney 報導點名士電為重電與自動化受惠股",
+          "TPEx 電動車輛產業鏈簡介亦提及士電(1503)"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -3381,11 +3639,13 @@
         "content": "heavy_electric_power_equipment：依上市櫃產業分類、常見產品線與題材語意建立推論關聯；仍需由 topic_maintain 或人工以公司公告、年報、法說會與營收占比補強。",
         "url": "",
         "score_contribution": 2.0
-      }
+      },
+      "CMoney 報導點名",
+      "CMoney 報導點名中興電為重電與電力工程受惠股"
     ],
     "relation_strength": "medium",
-    "relation_type": "inferred",
-    "role": "重電/電力設備供應商",
+    "relation_type": "direct",
+    "role": "重電與電力工程供應商",
     "products": [
       "GIS氣體絕緣開關",
       "電廠工程",
@@ -3429,11 +3689,11 @@
       "特高壓變壓器營收佔比",
       "台電與民營資料中心客戶名單",
       "訂單能見度與交期",
-      "產品線營收占比",
+      "產品線營收佔比",
       "主要客戶與訂單能見度",
       "最新年報/法說會來源"
     ],
-    "updated_at": "2026-05-31T00:00:00+08:00",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_power_equipment",
@@ -3449,6 +3709,20 @@
           "訂單能見度與交期"
         ],
         "updated_at": "2026-05-31T17:37:16"
+      },
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "重電與電力工程供應商",
+        "evidence": [
+          "CMoney 報導點名",
+          "CMoney 報導點名中興電為重電與電力工程受惠股"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -4468,11 +4742,13 @@
         "source_level": "L2_media",
         "content": "太陽能模組銷售給系統開發商與EPC。",
         "url": "https://money.udn.com/industry/category/06"
-      }
+      },
+      "候選名單",
+      "候選名單將元晶列為太陽能電池模組供應商"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "太陽能模組與電池製造商",
+    "role": "太陽能模組供應商",
     "products": [
       "太陽能電池",
       "太陽能模組",
@@ -4504,7 +4780,24 @@
       "模組與電池營收佔比",
       "主要客戶名稱"
     ],
-    "updated_at": "2026-05-24T14:14:44"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "green_energy_storage",
+        "theme_name": "綠電、儲能與 BYOP 自備電力",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "太陽能模組供應商",
+        "evidence": [
+          "候選名單",
+          "候選名單將元晶列為太陽能電池模組供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3576": {
     "company_name": "聯合再生",
@@ -4563,11 +4856,13 @@
         "source_level": "L2_media",
         "content": "太陽能電池銷售給模組廠與系統商。",
         "url": "https://money.udn.com/industry/category/06"
-      }
+      },
+      "候選名單",
+      "候選名單將聯合再生列為太陽能模組供應商"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "太陽能電池與模組整合商",
+    "role": "太陽能模組供應商",
     "products": [
       "太陽能電池",
       "太陽能模組",
@@ -4599,7 +4894,24 @@
       "產品營收細分",
       "主要客戶名稱"
     ],
-    "updated_at": "2026-05-24T14:14:44"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "green_energy_storage",
+        "theme_name": "綠電、儲能與 BYOP 自備電力",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "太陽能模組供應商",
+        "evidence": [
+          "候選名單",
+          "候選名單將聯合再生列為太陽能模組供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3691": {
     "company_name": "碩禾",
@@ -4907,11 +5219,14 @@
         "url": "https://www.cna.com.tw/news/afe/202603250051.aspx",
         "publish_date": "2026-03-25",
         "score_contribution": 5.0
-      }
+      },
+      "Yahoo 報導點名",
+      "既有 space_satellite 主題收錄為射頻節點",
+      "Yahoo股市報導點名昇達科為 SpaceX 國防 730 億美元合約受惠股"
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "高頻微波與射頻元件",
+    "role": "衛星射頻元件供應商",
     "products": [
       "微波元件",
       "射頻",
@@ -4960,7 +5275,25 @@
       "射頻元件毛利率",
       "公司法說會或年報對該題材的直接揭露"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "leo_satellite_defense",
+        "theme_name": "低軌衛星與 SpaceX 國防供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "衛星射頻元件供應商",
+        "evidence": [
+          "Yahoo 報導點名",
+          "既有 space_satellite 主題收錄為射頻節點",
+          "Yahoo股市報導點名昇達科為 SpaceX 國防 730 億美元合約受惠股"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3135": {
     "company_name": "凌航",
@@ -5079,11 +5412,14 @@
         "url": "https://www.tasa.org.tw/en-US/missions/detail/Beyond-5G-LEO-Satellite",
         "publish_date": "2026-05-23",
         "score_contribution": 8.0
-      }
+      },
+      "Yahoo 報導點名",
+      "市場普遍將燿華視為低軌衛星 PCB 概念股",
+      "Yahoo股市報導點名燿華為 SpaceX 國防 730 億美元合約受惠股"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "燿華 在「太空衛星與低軌通訊供應鏈」中的擴充供應鏈節點",
+    "role": "低軌衛星 PCB 供應商",
     "products": [
       "PCB",
       "HDI",
@@ -5119,7 +5455,25 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "leo_satellite_defense",
+        "theme_name": "低軌衛星與 SpaceX 國防供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "低軌衛星 PCB 供應商",
+        "evidence": [
+          "Yahoo 報導點名",
+          "市場普遍將燿華視為低軌衛星 PCB 概念股",
+          "Yahoo股市報導點名燿華為 SpaceX 國防 730 億美元合約受惠股"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "2355": {
     "company_name": "敬鵬",
@@ -5188,7 +5542,8 @@
     "themes": [
       "pcb_material",
       "ai_pcb_ccl",
-      "ccl_substrate"
+      "ccl_substrate",
+      "advanced_ccl_abf"
     ],
     "primary_theme": "pcb_material",
     "evidence": [
@@ -5269,11 +5624,25 @@
         "url": "https://www.taiwannews.com.tw/news/6357991",
         "publish_date": "2026-05-08",
         "score_contribution": 5.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "CCL 搶鏡",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      },
+      {
+        "source": "Threads 貼文",
+        "source_level": "L3_community",
+        "content": "M7/M8/M9 需求",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "高階低損耗 CCL 材料供應商",
+    "relation_type": "core",
+    "role": "高階 CCL 與 AI 伺服器材料",
     "products": [
       "CCL",
       "低損耗材料",
@@ -5287,7 +5656,13 @@
       "高速材料",
       "傳產補庫",
       "內需消費",
-      "觀光餐飲"
+      "觀光餐飲",
+      "高階CCL",
+      "M6",
+      "M7",
+      "低損耗CCL",
+      "伺服器CCL",
+      "AI伺服器材料"
     ],
     "customers": [
       "PCB製造商",
@@ -5313,9 +5688,12 @@
       "客戶名單",
       "營收佔比",
       "具體產品線營收細分",
-      "官方未明確列出客戶名單，需法說會或年報驗證。"
+      "官方未明確列出客戶名單，需法說會或年報驗證。",
+      "M7/M8 量產時程",
+      "AI 伺服器客戶名單",
+      "ASP 與毛利率變化"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31"
   },
   "6213": {
     "company_name": "聯茂",
@@ -6216,7 +6594,8 @@
   "2327": {
     "company_name": "國巨",
     "themes": [
-      "passive_components"
+      "passive_components",
+      "mlcc_passive_upcycle"
     ],
     "primary_theme": "passive_components",
     "evidence": [
@@ -6299,11 +6678,25 @@
         "source_level": "L3_community",
         "publish_date": "",
         "summary": "國巨、華新科、大毅為被動元件漲價潮主要受惠股。"
+      },
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "高盛點名 MLCC 進入最強週期",
+        "publish_date": "2026-06-03",
+        "score_contribution": 6.0
+      },
+      {
+        "source": "既有被動元件題材",
+        "source_level": "L2_media",
+        "content": "國巨為被動元件龍頭，MLCC 與晶片電阻為主",
+        "publish_date": "2026-05-21",
+        "score_contribution": 5.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
-    "role": "MLCC 與晶片電阻龍頭，受惠 AI 伺服器高壓 MLCC 與車用被動元件升級",
+    "relation_type": "core",
+    "role": "MLCC 與晶片電阻",
     "products": [
       "晶片電阻",
       "MLCC",
@@ -6312,7 +6705,10 @@
       "鉭電容",
       "鋁電解電容",
       "電容",
-      "保護元件"
+      "保護元件",
+      "高壓MLCC",
+      "車用被動元件",
+      "AI伺服器被動元件"
     ],
     "customers": [
       "車用電子",
@@ -6348,9 +6744,12 @@
       "AI 伺服器高壓 MLCC 營收佔比",
       "車用 MLCC 與晶片電阻營收拆分",
       "基美(KEMET)併購後高階產品線佔比",
-      "2025-2026 年報或法說會揭露"
+      "2025-2026 年報或法說會揭露",
+      "AI 高壓 MLCC 客戶具體名單",
+      "AI 題材營收佔比",
+      "稼動率最新數據"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -6413,7 +6812,8 @@
   "2492": {
     "company_name": "華新科",
     "themes": [
-      "passive_components"
+      "passive_components",
+      "mlcc_passive_upcycle"
     ],
     "primary_theme": "passive_components",
     "evidence": [
@@ -6480,11 +6880,25 @@
         "source_level": "L2_media",
         "publish_date": "",
         "summary": "華新科受惠 MLCC 高壓題材與 AI 伺服器應用。"
+      },
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "高盛點名 MLCC 進入最強週期",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      },
+      {
+        "source": "既有被動元件題材",
+        "source_level": "L2_media",
+        "content": "華新科為 MLCC 與被動元件主要供應商",
+        "publish_date": "2026-05-21",
+        "score_contribution": 4.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
-    "role": "MLCC 與被動元件，受惠漲價循環與 AI 伺服器、車用需求",
+    "relation_type": "core",
+    "role": "MLCC 與被動元件",
     "products": [
       "晶片電阻",
       "MLCC",
@@ -6493,7 +6907,10 @@
       "射頻元件",
       "射頻",
       "電容",
-      "保護元件"
+      "保護元件",
+      "高壓MLCC",
+      "積層陶瓷電容",
+      "車用被動元件"
     ],
     "customers": [
       "消費電子",
@@ -6526,9 +6943,12 @@
       "AI 伺服器 MLCC 客戶名單",
       "高壓 MLCC 規格與量產進度",
       "車用 MLCC 客戶結構",
-      "法說會或年報佐證"
+      "法說會或年報佐證",
+      "AI 高壓 MLCC 客戶認證",
+      "稼動率與 ASP 變化",
+      "AI 題材營收佔比"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "passive_component_price_hike",
@@ -6667,7 +7087,8 @@
     "company_name": "大毅",
     "themes": [
       "passive_components",
-      "apple_ai_device_supply_chain"
+      "apple_ai_device_supply_chain",
+      "mlcc_passive_upcycle"
     ],
     "primary_theme": "passive_components",
     "evidence": [
@@ -6710,11 +7131,25 @@
         "source_level": "L3_community",
         "publish_date": "",
         "summary": "大毅為晶片電阻漲價潮代表股。"
+      },
+      {
+        "source": "既有被動元件題材",
+        "source_level": "L2_media",
+        "content": "大毅為晶片電阻主要供應商",
+        "publish_date": "2026-05-21",
+        "score_contribution": 4.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "被動元件族群輪動",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
-    "role": "晶片電阻，受惠漲價與車用電阻需求",
+    "relation_type": "core",
+    "role": "晶片電阻",
     "products": [
       "晶片電阻",
       "MLCC",
@@ -6726,7 +7161,10 @@
       "組裝",
       "機構件",
       "電容",
-      "保護元件"
+      "保護元件",
+      "車用電阻",
+      "電流偵測電阻",
+      "AI伺服器電阻"
     ],
     "customers": [
       "車用電子",
@@ -6748,9 +7186,11 @@
       "晶片電阻產品線營收拆分",
       "車用 / 工控電阻客戶名單",
       "ASP 與毛利率變化",
-      "法說會資料佐證"
+      "法說會資料佐證",
+      "AI 與車用電阻客戶名單",
+      "稼動率變化"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "passive_components",
@@ -11253,11 +11693,16 @@
         "publish_date": "2025-05-18"
       },
       "NVIDIA Newsroom 2025-05-18",
-      "Reuters 2025-11-21"
+      "Reuters 2025-11-21",
+      "NVIDIA Newsroom L1 官方",
+      "Reuters L2 媒體報導",
+      "既有公司知識庫 verified",
+      "NVIDIA Newsroom 與 Reuters 多則報導",
+      "既有公司知識庫收錄鴻海為 ai_server_odm_rack_scale verified 角色"
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "AI 伺服器整機與 AI Factory 系統整合",
+    "role": "AI Factory 與整櫃系統整合商",
     "products": [
       "AI 伺服器",
       "AI Factory",
@@ -11315,7 +11760,7 @@
       "GB300/VR200 客戶分配",
       "AI rack 單價與毛利"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -11349,6 +11794,23 @@
           "AI rack 單價與毛利"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI Factory 與整櫃系統整合商",
+        "evidence": [
+          "NVIDIA Newsroom L1 官方",
+          "Reuters L2 媒體報導",
+          "既有公司知識庫 verified",
+          "NVIDIA Newsroom 與 Reuters 多則報導",
+          "既有公司知識庫收錄鴻海為 ai_server_odm_rack_scale verified 角色"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -11357,7 +11819,8 @@
     "company_name": "緯穎",
     "themes": [
       "ai_server_odm_rack_scale",
-      "sovereign_ai_compute"
+      "sovereign_ai_compute",
+      "compute_x_2026_ai_exhibition"
     ],
     "primary_theme": "ai_server_odm_rack_scale",
     "evidence": [
@@ -11449,11 +11912,30 @@
         "publish_date": "2025-05-20",
         "score_contribution": 8.0
       },
-      "Wiwynn Official 2025-03-18"
+      "Wiwynn Official 2025-03-18",
+      {
+        "source": "Wiwynn Official",
+        "source_level": "L1_official",
+        "content": "緯穎展示搭載 NVIDIA GB300 NVL72 平台與液冷創新的 AI 伺服器",
+        "url": "https://www.wiwynn.com/news/wiwynn-showcases-ai-servers-featuring-nvidia-gb300-nvl72-platform-and-liquid-cooling-innovations-at-gtc-2025",
+        "publish_date": "2025-03-18",
+        "score_contribution": 8.0
+      },
+      {
+        "source": "媒體報導",
+        "source_level": "L2_media",
+        "content": "PCB女王點兵 緯穎為白牌 AI 伺服器代表",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      },
+      "Wiwynn Official L1 官方 GB300 NVL72",
+      "既有公司知識庫 verified",
+      "Wiwynn Official GB300 NVL72 平台展示",
+      "既有公司知識庫收錄緯穎為 ai_server 與整櫃系統供應商"
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "AI 伺服器 ODM（Wiwynn）",
+    "role": "白牌 AI 伺服器 ODM",
     "products": [
       "AI 伺服器",
       "液冷平台",
@@ -11469,7 +11951,11 @@
       "國家級超級電腦",
       "GB300 NVL72",
       "液冷 AI 伺服器",
-      "Wiwynn"
+      "Wiwynn",
+      "白牌AI伺服器",
+      "雲端伺服器",
+      "GB300",
+      "NVL72"
     ],
     "revenue_exposure": "待查",
     "benefit_logic": "Wiwynn 於 GTC 2025 展示 GB300 NVL72 平台與液冷創新，受惠於 AI 雲端服務商訂單。",
@@ -11483,9 +11969,12 @@
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料",
       "GB300 佔營收比重",
-      "液冷方案客戶名單"
+      "液冷方案客戶名單",
+      "CSP 客戶名單與營收佔比",
+      "COMPUTEX 2026 展出產品細節",
+      "Vera Rubin 平台準備進度"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_server_factory_event",
@@ -11502,6 +11991,22 @@
           "液冷方案客戶名單"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "白牌 AI 伺服器 ODM",
+        "evidence": [
+          "Wiwynn Official L1 官方 GB300 NVL72",
+          "既有公司知識庫 verified",
+          "Wiwynn Official GB300 NVL72 平台展示",
+          "既有公司知識庫收錄緯穎為 ai_server 與整櫃系統供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -11647,7 +12152,8 @@
   "6274": {
     "company_name": "台燿",
     "themes": [
-      "ai_pcb_ccl"
+      "ai_pcb_ccl",
+      "advanced_ccl_abf"
     ],
     "primary_theme": "ai_pcb_ccl",
     "evidence": [
@@ -11690,11 +12196,25 @@
         "url": "https://www.taiwannews.com.tw/news/6357991",
         "publish_date": "2026-05-08",
         "score_contribution": 5.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "CCL 族群受惠 AI",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      },
+      {
+        "source": "Threads 貼文",
+        "source_level": "L3_community",
+        "content": "1.6T switch 高速 CCL",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "高速 CCL 與伺服器材料供應商",
+    "relation_type": "core",
+    "role": "高速 CCL",
     "products": [
       "高速 CCL",
       "低損耗材料",
@@ -11704,7 +12224,12 @@
       "CCL",
       "傳產補庫",
       "內需消費",
-      "觀光餐飲"
+      "觀光餐飲",
+      "高速CCL",
+      "低損耗CCL",
+      "800G CCL",
+      "1.6T CCL",
+      "AI伺服器CCL"
     ],
     "revenue_exposure": "待查",
     "benefit_logic": "AI 伺服器與交換器規格升級推升高速材料需求。",
@@ -11716,9 +12241,12 @@
       "精確題材營收佔比",
       "不要捏造百分比",
       "精確營收佔比或業務佔比",
-      "主要客戶名單與出貨/量產資料"
+      "主要客戶名單與出貨/量產資料",
+      "1.6T 客戶認證進度",
+      "M7/M8 量產比重",
+      "毛利率變化"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31"
   },
   "2368": {
     "company_name": "金像電",
@@ -12745,11 +13273,13 @@
         "url": "https://www.cmoney.tw/",
         "publish_date": null,
         "score_contribution": 0.0
-      }
+      },
+      "CMoney 報導點名",
+      "CMoney 報導點名亞力為重電與配電盤受惠股"
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "重電與電力設備，配電盤與變壓器接單能見度",
+    "role": "重電與配電盤供應商",
     "products": [
       "變壓器",
       "重電設備",
@@ -12798,7 +13328,7 @@
       "台電標案比重",
       "AI 資料中心訂單具體狀態"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -12814,6 +13344,20 @@
           "AI 資料中心訂單具體狀態"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "重電與配電盤供應商",
+        "evidence": [
+          "CMoney 報導點名",
+          "CMoney 報導點名亞力為重電與配電盤受惠股"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -14797,7 +15341,8 @@
     "company_name": "聯詠",
     "themes": [
       "quantum_computing_security",
-      "ai_power_semiconductor_mosfet"
+      "ai_power_semiconductor_mosfet",
+      "ai_capex_semis"
     ],
     "primary_theme": "quantum_computing_security",
     "evidence": [
@@ -14832,11 +15377,18 @@
         "url": "https://www.ndc.gov.tw/Content_List.aspx?n=EF80A54FA6A63200",
         "publish_date": "2025-07-23",
         "score_contribution": 8.0
+      },
+      {
+        "source": "自由財經",
+        "source_level": "L2_media",
+        "content": "老AI族群與半導體輪動",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
       }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "IC 設計能力可作為長期量子控制晶片延伸觀察",
+    "relation_type": "indirect",
+    "role": "顯示驅動 IC",
     "products": [
       "量子晶片",
       "後量子密碼",
@@ -14849,7 +15401,12 @@
       "SiC",
       "量子科技",
       "量子電腦",
-      "量子位元"
+      "量子位元",
+      "顯示驅動IC",
+      "DDI",
+      "OLED DDI",
+      "TDDI",
+      "SoC"
     ],
     "revenue_exposure": "待查",
     "benefit_logic": "政府量子科技政策與後量子密碼需求提供長期候選方向。",
@@ -14858,9 +15415,12 @@
       "主要客戶名單與出貨/量產資料",
       "公司法說會或年報對該題材的直接揭露",
       "未找到可靠來源揭露精確客戶名單",
-      "不要捏造百分比"
+      "不要捏造百分比",
+      "AI 題材直接關聯度",
+      "車用/AI PC DDI 營收佔比",
+      "OLED 與 TV 拉貨比重"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31"
   },
   "6791": {
     "company_name": "虎門科技",
@@ -18148,11 +18708,13 @@
         "url": "https://www.digitimes.com.tw/tech/exhi_image/COMPUTEX2025/COMPUTEX_EN.pdf",
         "publish_date": "2025-05-20",
         "score_contribution": 5.0
-      }
+      },
+      "候選名單",
+      "機殼與整櫃為 AI 伺服器關鍵機構件"
     ],
     "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "勤誠 在「AI 伺服器代工與整櫃系統」中的擴充供應鏈節點",
+    "relation_type": "direct",
+    "role": "AI 伺服器機殼與整櫃",
     "products": [
       "AI 伺服器",
       "伺服器機殼",
@@ -18169,7 +18731,24 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-05-24T00:54:55"
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_server_odm",
+        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI 伺服器機殼與整櫃",
+        "evidence": [
+          "候選名單",
+          "機殼與整櫃為 AI 伺服器關鍵機構件"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3013": {
     "company_name": "晟銘電",
@@ -19634,7 +20213,8 @@
   "6173": {
     "company_name": "信昌電",
     "themes": [
-      "passive_components"
+      "passive_components",
+      "mlcc_passive_upcycle"
     ],
     "primary_theme": "passive_components",
     "evidence": [
@@ -19653,16 +20233,26 @@
         "source_level": "L2_media",
         "publish_date": "",
         "summary": "信昌電受惠 MLCC 高壓題材與上游陶瓷材料。"
+      },
+      {
+        "source": "既有被動元件題材",
+        "source_level": "L2_media",
+        "content": "信昌電為 MLCC 與陶瓷材料供應商",
+        "publish_date": "2026-05-21",
+        "score_contribution": 4.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "MLCC 與陶瓷材料，位於上游陶瓷介電粉料",
+    "relation_type": "indirect",
+    "role": "MLCC 與陶瓷材料",
     "products": [
       "MLCC",
       "晶片電阻",
       "電感",
-      "被動元件"
+      "被動元件",
+      "陶瓷材料",
+      "積層陶瓷電容",
+      "車用MLCC"
     ],
     "benefit_logic": "被動元件漲價與庫存回補需求提升，可能帶動信昌電相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -19674,9 +20264,12 @@
       "陶瓷介電粉料客戶名單",
       "高階 MLCC 用粉料營收佔比",
       "與國巨、華新科、太陽誘電的供貨關係",
-      "法說會資料佐證"
+      "法說會資料佐證",
+      "AI 與車用 MLCC 客戶名單",
+      "陶瓷材料出貨結構",
+      "稼動率變化"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "passive_components",
@@ -20197,11 +20790,15 @@
         "url": "https://money.udn.com/money/story/5612/9484583",
         "publish_date": "2026-05-06",
         "score_contribution": 0.0
-      }
+      },
+      "TPEx 電機機械產業鏈簡介列為上市公司",
+      "TPEx 電動車輛產業鏈簡介亦收錄大同",
+      "TPEx 電機機械產業鏈簡介將大同(2371)列為上市公司，涵蓋機電系統工程",
+      "TPEx 電動車輛產業鏈簡介亦收錄大同(2371)"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "重電/馬達",
+    "role": "重電與電力系統供應商",
     "benefit_logic": "大同具備電力變壓器製造能力，受惠於電網升級與電力基礎建設需求，但需確認其AI資料中心客戶滲透率。",
     "missing_data": [
       "電力變壓器營收佔比",
@@ -20211,7 +20808,7 @@
       "重電/馬達業務與智慧製造供應鏈關聯性待驗證",
       "公司公告未明確揭露智慧工廠相關產品線"
     ],
-    "updated_at": "2026-05-31T18:55:22",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_power_equipment",
@@ -20242,6 +20839,22 @@
           "公司公告未明確揭露智慧工廠相關產品線"
         ],
         "updated_at": "2026-05-31T18:55:22"
+      },
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "重電與電力系統供應商",
+        "evidence": [
+          "TPEx 電機機械產業鏈簡介列為上市公司",
+          "TPEx 電動車輛產業鏈簡介亦收錄大同",
+          "TPEx 電機機械產業鏈簡介將大同(2371)列為上市公司，涵蓋機電系統工程",
+          "TPEx 電動車輛產業鏈簡介亦收錄大同(2371)"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -20593,8 +21206,10 @@
   },
   "5347": {
     "company_name": "世界先進",
-    "themes": [],
-    "primary_theme": "",
+    "themes": [
+      "ai_capex_semis"
+    ],
+    "primary_theme": "ai_capex_semis",
     "evidence": [
       {
         "source": "永豐金證券",
@@ -20619,12 +21234,30 @@
         "url": null,
         "publish_date": "2026-04-16",
         "score_contribution": 0.0
+      },
+      {
+        "source": "自由財經",
+        "source_level": "L2_media",
+        "content": "成熟製程受惠 AI 周邊與車用",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "CoWoS封裝代工",
-    "updated_at": "2026-05-31T17:37:16",
+    "relation_type": "indirect",
+    "role": "成熟製程晶圓代工",
+    "products": [
+      "成熟製程",
+      "0.18um",
+      "0.11um",
+      "BCD製程",
+      "電源管理IC晶圓"
+    ],
+    "missing_data": [
+      "AI 題材直接關聯度",
+      "車用/工業用電源管理晶圓佔比"
+    ],
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
@@ -20717,12 +21350,14 @@
         "url": null,
         "publish_date": "2026-04-16",
         "score_contribution": 0.0
-      }
+      },
+      "候選名單",
+      "候選名單將一詮列為太陽能導電漿供應商"
     ],
     "relation_strength": "low",
-    "relation_type": "indirect",
-    "role": "材料分析",
-    "updated_at": "2026-05-31T17:37:16",
+    "relation_type": "direct",
+    "role": "太陽能導電漿供應商",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
@@ -20734,6 +21369,20 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-05-31T17:37:16"
+      },
+      {
+        "theme_id": "green_energy_storage",
+        "theme_name": "綠電、儲能與 BYOP 自備電力",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "太陽能導電漿供應商",
+        "evidence": [
+          "候選名單",
+          "候選名單將一詮列為太陽能導電漿供應商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -20839,7 +21488,8 @@
   "8046": {
     "company_name": "南電",
     "themes": [
-      "advanced_pcb_ccl"
+      "advanced_pcb_ccl",
+      "advanced_ccl_abf"
     ],
     "primary_theme": "advanced_pcb_ccl",
     "evidence": [
@@ -20868,23 +21518,37 @@
         "score_contribution": 0.0
       },
       "CMoney PCB 材料族群 3.94%",
-      "印刷電路板產業鏈簡介"
+      "印刷電路板產業鏈簡介",
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "高盛點名 ABF 載板",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "CCL 銅箔基板",
+    "relation_type": "core",
+    "role": "ABF 載板",
     "products": [
       "CCL",
       "銅箔基板",
-      "高速板材"
+      "高速板材",
+      "ABF載板",
+      "高階IC載板",
+      "HPC載板",
+      "AI ASIC載板"
     ],
     "benefit_logic": "銅箔基板（CCL）主要供應商，受惠於 AI 伺服器、800G/1.6T 交換器對高頻高速板材升級。",
     "missing_data": [
       "高速 CCL 產品線營收佔比",
       "AI 應用客戶名單",
-      "出貨量資料"
+      "出貨量資料",
+      "ABF 載板客戶名單",
+      "ABF 載板營收佔比",
+      "產能利用率最新狀況"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -22105,24 +22769,40 @@
   },
   "3189": {
     "company_name": "景碩",
-    "themes": [],
-    "primary_theme": "",
+    "themes": [
+      "advanced_ccl_abf"
+    ],
+    "primary_theme": "advanced_ccl_abf",
     "evidence": [
-      "CMoney 高階 PCB 與 CCL 載板關聯"
+      "CMoney 高階 PCB 與 CCL 載板關聯",
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "高盛點名 ABF 載板",
+        "publish_date": "2026-06-03",
+        "score_contribution": 5.0
+      }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
+    "relation_type": "core",
     "role": "ABF 載板",
     "products": [
       "ABF 載板",
-      "IC 載板"
+      "IC 載板",
+      "ABF載板",
+      "IC載板",
+      "HPC載板",
+      "AI晶片載板"
     ],
     "benefit_logic": "ABF 載板供應商，受惠於 AI 晶片對高階載板需求。",
     "missing_data": [
       "ABF 載板 AI 應用營收佔比",
-      "客戶名單與出貨量"
+      "客戶名單與出貨量",
+      "ABF 載板客戶分布",
+      "產能擴張進度",
+      "HPC/AI 比重"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -22248,8 +22928,10 @@
   },
   "8042": {
     "company_name": "金山電",
-    "themes": [],
-    "primary_theme": "",
+    "themes": [
+      "mlcc_passive_upcycle"
+    ],
+    "primary_theme": "mlcc_passive_upcycle",
     "evidence": [
       {
         "title": "Facebook 被動元件漲價潮",
@@ -22258,18 +22940,34 @@
         "source_level": "L3_community",
         "publish_date": "",
         "summary": "金山電為鋁質電容受惠股。"
+      },
+      {
+        "source": "既有被動元件題材",
+        "source_level": "L2_media",
+        "content": "金山電為鋁質電容供應商",
+        "publish_date": "2026-05-21",
+        "score_contribution": 4.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "鋁質電容，受惠 AI 伺服器與車用電子需求",
+    "relation_type": "core",
+    "role": "鋁質電容",
+    "products": [
+      "鋁質電容",
+      "高分子鋁電",
+      "AI伺服器鋁電",
+      "車用鋁電"
+    ],
     "missing_data": [
       "AI 伺服器鋁電客戶名單",
       "車用 / 工業鋁電營收佔比",
       "原料鋁箔成本變化",
-      "法說會資料佐證"
+      "法說會資料佐證",
+      "AI 與車用鋁電客戶名單",
+      "稼動率變化",
+      "ASP 與毛利率變化"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
         "theme_id": "passive_components",
@@ -22572,6 +23270,206 @@
           "法說會資料佐證"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "2303": {
+    "company_name": "聯電",
+    "themes": [
+      "ai_capex_semis"
+    ],
+    "primary_theme": "ai_capex_semis",
+    "evidence": [
+      {
+        "source": "自由財經",
+        "source_level": "L2_media",
+        "content": "電腦展效應權值股輪漲，成熟製程受惠 AI 周邊與車用",
+        "publish_date": "2026-06-03",
+        "score_contribution": 4.0
+      }
+    ],
+    "relation_strength": "medium",
+    "relation_type": "indirect",
+    "role": "成熟製程晶圓代工",
+    "products": [
+      "成熟製程",
+      "28nm",
+      "22nm",
+      "14nm",
+      "特殊製程"
+    ],
+    "missing_data": [
+      "AI 題材直接營收佔比",
+      "主要客戶名單與產品線營收拆分"
+    ],
+    "updated_at": "2026-06-03T08:33:31"
+  },
+  "8358": {
+    "company_name": "金居",
+    "themes": [
+      "advanced_ccl_abf"
+    ],
+    "primary_theme": "advanced_ccl_abf",
+    "evidence": [
+      {
+        "source": "Threads 貼文",
+        "source_level": "L3_community",
+        "content": "高速材料需求",
+        "publish_date": "2026-06-03",
+        "score_contribution": 3.0
+      },
+      {
+        "source": "產業價值鏈資訊平台 - 電動車",
+        "source_level": "L2_media",
+        "content": "金居列於電動車輛產業鏈中游零組件相關公司",
+        "url": "https://ic.tpex.org.tw/introduce.php?ic=A300",
+        "publish_date": "",
+        "score_contribution": 2.0
+      }
+    ],
+    "relation_strength": "medium",
+    "relation_type": "indirect",
+    "role": "銅箔與 AI 材料",
+    "products": [
+      "銅箔",
+      "高頻高速銅箔",
+      "AI伺服器材料",
+      "低粗糙度銅箔(RTF)"
+    ],
+    "missing_data": [
+      "AI 高速材料客戶認證",
+      "高階銅箔營收佔比",
+      "高頻/低損耗銅箔出貨比重"
+    ],
+    "updated_at": "2026-06-03T08:33:31"
+  },
+  "6282": {
+    "company_name": "康舒",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "YouTube",
+        "source_level": "L3_community",
+        "content": "",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "indirect",
+    "role": "電源供應器（衛星應用待驗證）",
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "leo_satellite_defense",
+        "theme_name": "低軌衛星與 SpaceX 國防供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "電源供應器（衛星應用待驗證）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "3030": {
+    "company_name": "德律",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "YouTube",
+        "source_level": "L3_community",
+        "content": "",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "indirect",
+    "role": "檢測設備（衛星應用待驗證）",
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "leo_satellite_defense",
+        "theme_name": "低軌衛星與 SpaceX 國防供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "檢測設備（衛星應用待驗證）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "6873": {
+    "company_name": "泓德能源",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      "候選名單",
+      "綠電交易商與案場整合角色明確",
+      "候選名單將泓德能源列為綠電與儲能整合商"
+    ],
+    "relation_strength": "medium",
+    "relation_type": "direct",
+    "role": "綠電與儲能整合商",
+    "updated_at": "2026-06-03T08:33:31",
+    "candidate_themes": [
+      {
+        "theme_id": "green_energy_storage",
+        "theme_name": "綠電、儲能與 BYOP 自備電力",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "綠電與儲能整合商",
+        "evidence": [
+          "候選名單",
+          "綠電交易商與案場整合角色明確",
+          "候選名單將泓德能源列為綠電與儲能整合商"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-03T08:33:31"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"

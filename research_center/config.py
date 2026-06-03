@@ -9,6 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = "gemini-3-pro-preview"
 DEFAULT_FALLBACK_MODELS = ("gemini-3-flash-preview",)
 DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
+DEFAULT_MINIMAX_LOW_MODEL = "MiniMax-M2.7"
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_OPENCODE_MODEL = "deepseek-v4-pro"
 DEFAULT_OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"
@@ -23,7 +24,9 @@ class ResearchCenterConfig:
     api_key: str | None = None
     minimax_api_key: str | None = None
     minimax_model: str = DEFAULT_MINIMAX_MODEL
+    minimax_low_model: str = DEFAULT_MINIMAX_LOW_MODEL
     minimax_base_url: str = DEFAULT_MINIMAX_BASE_URL
+    enable_low_model_digest: bool = True
     opencode_api_key: str | None = None
     opencode_model: str = DEFAULT_OPENCODE_MODEL
     opencode_base_url: str = DEFAULT_OPENCODE_BASE_URL
@@ -41,6 +44,7 @@ class ResearchCenterConfig:
     enable_tavily_extract: bool = True
     gemini_search_mode: str = "fallback"
     tavily_api_key: str | None = None
+    tavily_api_keys: tuple[str, ...] = ()
     tavily_monthly_credit_limit: int = 1000
     tavily_credit_reserve: int = 20
     tavily_search_depth: str = "basic"
@@ -83,7 +87,9 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     api_key = secrets.get("gemini_api_key") or secrets.get("google_api_key")
     minimax_api_key = secrets.get("minimax_api_key")
     minimax_model = str(public_config.get("minimax_model") or secrets.get("minimax_model") or DEFAULT_MINIMAX_MODEL)
+    minimax_low_model = str(public_config.get("minimax_low_model") or secrets.get("minimax_low_model") or DEFAULT_MINIMAX_LOW_MODEL)
     minimax_base_url = str(public_config.get("minimax_base_url") or secrets.get("minimax_base_url") or DEFAULT_MINIMAX_BASE_URL)
+    enable_low_model_digest = bool(public_config.get("enable_low_model_digest", bool(minimax_api_key)))
     opencode_api_key = secrets.get("opencode_api_key")
     opencode_model = str(public_config.get("opencode_model") or secrets.get("opencode_model") or DEFAULT_OPENCODE_MODEL)
     opencode_base_url = str(public_config.get("opencode_base_url") or secrets.get("opencode_base_url") or DEFAULT_OPENCODE_BASE_URL)
@@ -101,6 +107,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     enable_tavily_extract = bool(public_config.get("enable_tavily_extract", True))
     gemini_search_mode = str(public_config.get("gemini_search_mode", "fallback"))
     tavily_api_key = secrets.get("tavily_api_key")
+    tavily_api_keys = _normalize_api_keys(secrets.get("tavily_api_keys"), tavily_api_key)
     tavily_monthly_credit_limit = int(public_config.get("tavily_monthly_credit_limit", 1000))
     tavily_credit_reserve = int(public_config.get("tavily_credit_reserve", 20))
     tavily_search_depth = str(public_config.get("tavily_search_depth", "basic"))
@@ -117,7 +124,9 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         api_key=str(api_key).strip() if api_key else None,
         minimax_api_key=str(minimax_api_key).strip() if minimax_api_key else None,
         minimax_model=minimax_model,
+        minimax_low_model=minimax_low_model,
         minimax_base_url=minimax_base_url,
+        enable_low_model_digest=enable_low_model_digest,
         opencode_api_key=str(opencode_api_key).strip() if opencode_api_key else None,
         opencode_model=opencode_model,
         opencode_base_url=opencode_base_url,
@@ -133,6 +142,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         enable_tavily_extract=enable_tavily_extract,
         gemini_search_mode=gemini_search_mode,
         tavily_api_key=str(tavily_api_key).strip() if tavily_api_key else None,
+        tavily_api_keys=tavily_api_keys,
         tavily_monthly_credit_limit=tavily_monthly_credit_limit,
         tavily_credit_reserve=tavily_credit_reserve,
         tavily_search_depth=tavily_search_depth,
@@ -147,3 +157,24 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         api_port=api_port,
         output_formats=formats,
     )
+
+
+def _normalize_api_keys(value: Any, fallback: Any = None) -> tuple[str, ...]:
+    raw_items: list[Any]
+    if isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, str):
+        raw_items = [part.strip() for part in value.replace("\n", ",").split(",")]
+    else:
+        raw_items = []
+    if fallback:
+        raw_items.insert(0, fallback)
+    keys: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        key = str(item or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return tuple(keys)

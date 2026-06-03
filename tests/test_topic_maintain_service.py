@@ -12,7 +12,11 @@ from research_center.topic_models import (
     TopicChangeStatus,
     TopicConfidence,
 )
-from research_center.topic_maintain_service import run_topic_maintain, TopicMaintainAIError
+from research_center.topic_maintain_service import (
+    TopicMaintainAIError,
+    _build_topic_low_model_payload,
+    run_topic_maintain,
+)
 
 
 class TestTopicMaintainService(unittest.TestCase):
@@ -277,6 +281,30 @@ class TestTopicMaintainService(unittest.TestCase):
         self.assertIn("{mode}", content)
         self.assertIn("mode=initial", content)
         self.assertIn("mode=update", content)
+
+    def test_topic_low_model_payload_excludes_full_topic_library(self):
+        structured_data = {
+            "existing_topic_profiles": [{"theme_id": f"theme_{idx}", "large": "x" * 2000} for idx in range(60)],
+            "company_topic_map": {f"{2300 + idx}": ["theme"] for idx in range(120)},
+            "supply_chain_nodes": [{"node_id": f"n{idx}", "large": "y" * 2000} for idx in range(100)],
+            "candidate_companies": [{"code": f"{2300 + idx}", "name": f"Stock{idx}"} for idx in range(130)],
+            "webfetch_evidence": {"items": [{"finding": f"evidence {idx}"} for idx in range(90)]},
+            "external_topic_source_caches": {f"k{idx}": {"large": "z" * 2000} for idx in range(80)},
+        }
+        payload = _build_topic_low_model_payload(
+            mode=TopicChangeMode.UPDATE,
+            report_date="2026-06-03",
+            structured_data=structured_data,
+            discovery_sources=[],
+        )
+
+        self.assertNotIn("structured_data", payload)
+        self.assertNotIn("company_topic_map", payload)
+        self.assertNotIn("supply_chain_nodes", payload)
+        self.assertLessEqual(len(payload["library_samples"]["existing_topic_profiles_sample"]), 20)
+        self.assertLessEqual(len(payload["library_samples"]["supply_chain_nodes_sample"]), 30)
+        self.assertEqual(payload["change_scope"]["existing_topic_profile_count"], 60)
+        self.assertEqual(payload["change_scope"]["company_topic_map_count"], 120)
 
     def test_run_topic_maintain_injects_recent_scan_candidates(self):
         """run_topic_maintain should inject recent_scan_candidates_json in prompt variables."""

@@ -38,14 +38,77 @@ def build_search_discovery_tasks(request: CommandRequest, structured_data: dict[
         pool = request.candidate_pool or request.target or structured_data.get("candidate_pool") or "台股"
         candidates = structured_data.get("ai_candidates") or structured_data.get("candidates") or []
         batches = _candidate_batches(candidates) or [str(pool)]
-        return [
-            _task("價值重估候選驗證", "搜尋候選股舊標籤、新標籤、產品、客戶、營收驗證與反證。", [_group("候選股", [
-                f"{batch} 價值重估 產品 客戶 營收 法說 新聞" for batch in batches
-            ])]),
-            _task("市場重新定價線索", "搜尋法人、新聞、產業趨勢與題材推論是否開始被市場定價。", [_group("重估線索", [
-                f"{batch} 法人 新聞 轉型 題材 市場重估" for batch in batches
-            ])]),
+        tasks = [
+            _task(
+                "官方公告與月營收",
+                "搜尋 MOPS、TWSE、TPEx、公司 IR、月營收與財報資料，用來確認重估是否有硬資料支撐。",
+                [
+                    _group("官方公告", [
+                        f"{batch} 公開資訊觀測站 MOPS 重大訊息 公司公告" for batch in batches
+                    ]),
+                    _group("月營收財報", [
+                        f"{batch} 月營收 YoY 毛利率 EPS 財報" for batch in batches
+                    ]),
+                    _group("法說會展望", [
+                        f"{batch} 法說會 展望 投資人關係 簡報" for batch in batches
+                    ]),
+                ],
+                evidence_role="支持重估或資料不足",
+            ),
+            _task(
+                "產品客戶與供應鏈驗證",
+                "搜尋新產品、新客戶、訂單、供應鏈位置與營收貢獻，避免只用題材名稱推論。",
+                [
+                    _group("產品客戶", [
+                        f"{batch} 新產品 新客戶 訂單 營收貢獻 供應鏈" for batch in batches
+                    ]),
+                    _group("產業位置", [
+                        f"{batch} 產業趨勢 供應鏈 產品 客戶 應用" for batch in batches
+                    ]),
+                ],
+                evidence_role="支持重估",
+            ),
+            _task(
+                "舊標籤與新標籤重估",
+                "搜尋公司是否從舊業務標籤轉向新成長標籤，以及市場是否已開始重新定價。",
+                [
+                    _group("重估線索", [
+                        f"{batch} 價值重估 市場重估 轉型 新題材 新應用" for batch in batches
+                    ]),
+                    _group("市場定價", [
+                        f"{batch} 法人 報告 目標價 評等 重新定價" for batch in batches
+                    ]),
+                ],
+                evidence_role="支持重估或只作情緒",
+            ),
+            _task(
+                "法人籌碼與資金確認",
+                "搜尋外資、投信、自營商、TDCC、融資券與股權集中變化，確認資金是否支持重估。",
+                [
+                    _group("法人籌碼", [
+                        f"{batch} 外資 投信 自營商 法人 籌碼" for batch in batches
+                    ]),
+                    _group("股權與融資", [
+                        f"{batch} TDCC 集保 融資 融券 大戶 持股" for batch in batches
+                    ]),
+                ],
+                evidence_role="支持重估或只作情緒",
+            ),
+            _task(
+                "反證與重估失敗風險",
+                "搜尋營收未跟上、庫存、毛利下滑、客戶集中、題材過熱與負面事件，作為降分反證。",
+                [
+                    _group("反證風險", [
+                        f"{batch} 風險 衰退 庫存 毛利 下滑 客戶集中" for batch in batches
+                    ]),
+                    _group("負面事件", [
+                        f"{batch} 營收 未達預期 展望 下修 訂單 遞延" for batch in batches
+                    ]),
+                ],
+                evidence_role="支持反證",
+            ),
         ]
+        return _append_site_queries(tasks, max_base_queries=2, max_site_per_task=4)
     if command == "topic_maintain":
         plan_items = (
             (structured_data.get("candidate_discovery_plan") or {}).get("search_query_plan")
@@ -135,8 +198,18 @@ def flatten_task_queries(tasks: list[dict[str, Any]]) -> list[str]:
     return queries
 
 
-def _task(label: str, objective: str, queries: list[dict[str, list[str]] | str], exclude: list[str] | None = None) -> dict[str, Any]:
-    return {"label": label, "objective": objective, "exclude": exclude or [], "queries": queries}
+def _task(
+    label: str,
+    objective: str,
+    queries: list[dict[str, list[str]] | str],
+    exclude: list[str] | None = None,
+    *,
+    evidence_role: str | None = None,
+) -> dict[str, Any]:
+    task = {"label": label, "objective": objective, "exclude": exclude or [], "queries": queries}
+    if evidence_role:
+        task["evidence_role"] = evidence_role
+    return task
 
 
 def _group(title: str, items: list[str]) -> dict[str, list[str]]:

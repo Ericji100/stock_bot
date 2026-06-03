@@ -399,6 +399,41 @@ def _classify_retry_text_limit() -> int:
         return 120
 
 
+def _news_high_tier_classify_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("NEWS_HIGH_TIER_CLASSIFY_LIMIT", "12")))
+    except ValueError:
+        return 12
+
+
+def _select_high_tier_news_items(items: list[NewsItem], limit: int) -> list[NewsItem]:
+    if limit <= 0:
+        return []
+    ranked = sorted(items, key=_high_tier_news_score, reverse=True)
+    return ranked[:limit]
+
+
+def _high_tier_news_score(item: NewsItem) -> int:
+    text = f"{item.title} {item.summary} {' '.join(item.related_topics or [])}".lower()
+    score = int(item.importance_score or 0)
+    preferred = match_preferred_source(item.url)
+    if preferred:
+        score += int(preferred.get("weight", 0) or 0)
+    if item.source and any(key in item.source.lower() for key in ("cna", "中央社", "工商", "經濟日報", "鉅亨", "moneydj")):
+        score += 30
+    if item.news_signal_score:
+        score += int(item.news_signal_score)
+    for keyword in (
+        "重大訊息", "法說", "財報", "月營收", "ai", "半導體", "伺服器", "關稅",
+        "fed", "匯率", "油價", "戰爭", "政策", "降息", "升息", "供應鏈",
+    ):
+        if keyword in text:
+            score += 12
+    if item.impact_direction in {"positive", "negative", "mixed"}:
+        score += 15
+    return score
+
+
 def _tag_portfolio_news_items(items: list[NewsItem], portfolio: dict[str, str]) -> list[NewsItem]:
     if not portfolio:
         return items
@@ -806,43 +841,108 @@ def _batch_classify_news(
         # Fallback: categorize by simple keyword matching
         return _simple_categorize(items)
 
+    primary_model = _primary_news_classifier_model(center, ai_model)
+    if primary_model != ai_model:
+        emit(f"新聞分類分流：一般分類使用 MiniMax M2.7，高階模型 {ai_model} 僅複核重要新聞")
+    result_items = _classify_news_batches(
+        items,
+        center,
+        emit,
+        ai_model=primary_model,
+        prompt_text=prompt_text,
+        label="MiniMax M2.7 一般新聞分類" if primary_model != ai_model else "AI 分類",
+    )
+    if primary_model == ai_model:
+        return result_items
+
+    high_limit = _news_high_tier_classify_limit()
+    selected = _select_high_tier_news_items(result_items, high_limit)
+    if not selected:
+        return result_items
+    emit(f"高階新聞複核開始：{len(selected)} 則，model={ai_model}")
+    reviewed = _classify_news_batches(
+        selected,
+        center,
+        emit,
+        ai_model=ai_model,
+        prompt_text=prompt_text,
+        label="高階新聞複核",
+    )
+    return _merge_reviewed_news_items(result_items, reviewed)
+
+
+def _primary_news_classifier_model(center: Any, ai_model: str) -> str:
+    if ai_model == "minimax":
+        return ai_model
+    low_model = getattr(center, "low_model_minimax", None)
+    is_configured = getattr(low_model, "is_configured", None) if low_model is not None else None
+    if callable(is_configured):
+        try:
+            if is_configured() is True:
+                return "minimax_low"
+        except Exception:
+            return ai_model
+    return ai_model
+
+
+def _merge_reviewed_news_items(base_items: list[NewsItem], reviewed_items: list[NewsItem]) -> list[NewsItem]:
+    by_url = {item.url: item for item in reviewed_items if item.url}
+    by_id = {item.id: item for item in reviewed_items if item.id}
+    merged: list[NewsItem] = []
+    for item in base_items:
+        reviewed = by_url.get(item.url) or by_id.get(item.id)
+        merged.append(reviewed or item)
+    return merged
+
+
+def _classify_news_batches(
+    items: list[NewsItem],
+    center: Any,
+    emit: Callable[[str], None],
+    *,
+    ai_model: str,
+    prompt_text: str,
+    label: str,
+) -> list[NewsItem]:
     batch_size = _classify_batch_size()
     timeout_seconds = _classify_timeout_seconds()
     text_limit = _classify_text_limit()
     retry_text_limit = _classify_retry_text_limit()
     result_items: list[NewsItem] = []
     total_batches = (len(items) + batch_size - 1) // batch_size
-    emit(f"AI 分類開始：{len(items)} 則，共 {total_batches} 批，每批最多 {batch_size} 則")
+    emit(f"{label}開始：{len(items)} 則，共 {total_batches} 批，每批最多 {batch_size} 則")
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
         batch_no = (i // batch_size) + 1
-        emit(f"AI 分類 {batch_no}/{total_batches} 開始：{len(batch)} 則")
+        emit(f"{label} {batch_no}/{total_batches} 開始：{len(batch)} 則")
         batch_json = json.dumps(_classification_payload(batch, text_limit), ensure_ascii=False)
         full_prompt = prompt_text.replace("{news_batch_json}", batch_json)
+        emit(f"{label} {batch_no}/{total_batches} prompt={len(full_prompt)} chars est_tokens={max(1, len(full_prompt) // 4)} items={len(batch)}")
 
         try:
             ai_result = _call_news_classifier(center, ai_model, full_prompt, timeout_seconds)
             raw = getattr(ai_result, "raw", str(ai_result))
             parsed = _parse_ai_json_batch(raw)
             result_items.extend(_apply_classification_meta(batch, parsed))
-            emit(f"AI 分類 {batch_no}/{total_batches} 完成")
+            emit(f"{label} {batch_no}/{total_batches} 完成")
         except Exception as exc:
-            emit(f"AI classification batch {batch_no}/{total_batches} failed: {exc}; retrying with lightweight payload")
+            emit(f"{label} {batch_no}/{total_batches} failed: {exc}; retrying with lightweight payload")
             retry_json = json.dumps(_classification_payload(batch, retry_text_limit, lightweight=True), ensure_ascii=False)
             retry_prompt = prompt_text.replace("{news_batch_json}", retry_json)
+            emit(f"{label} {batch_no}/{total_batches} retry_prompt={len(retry_prompt)} chars est_tokens={max(1, len(retry_prompt) // 4)} items={len(batch)}")
             try:
                 ai_result = _call_news_classifier(center, ai_model, retry_prompt, timeout_seconds)
                 raw = getattr(ai_result, "raw", str(ai_result))
                 parsed = _parse_ai_json_batch(raw)
                 result_items.extend(_apply_classification_meta(batch, parsed))
-                emit(f"AI classification batch {batch_no}/{total_batches} lightweight retry completed")
+                emit(f"{label} {batch_no}/{total_batches} lightweight retry completed")
             except Exception as retry_exc:
-                emit(f"AI classification batch {batch_no}/{total_batches} fallback to local rules: {retry_exc}")
+                emit(f"{label} {batch_no}/{total_batches} fallback to local rules: {retry_exc}")
                 result_items.extend(_fallback_classification(batch))
                 if _is_timeout_exception(exc) or _is_timeout_exception(retry_exc):
                     remaining = items[i + batch_size :]
                     if remaining:
-                        emit(f"AI classification timeout; fallback remaining {len(remaining)} items to local rules")
+                        emit(f"{label} timeout; fallback remaining {len(remaining)} items to local rules")
                         result_items.extend(_fallback_classification(remaining))
                     break
 
@@ -924,6 +1024,11 @@ def _call_news_classifier(center: Any, ai_model: str, prompt: str, timeout_secon
         client = center.minimax
         if not hasattr(client, "generate_json"):
             raise RuntimeError("MiniMax JSON-only API (generate_json) is not available. Cannot classify news.")
+        return _call_with_temporary_timeout(client, timeout_seconds, lambda: client.generate_json(prompt))
+    if ai_model == "minimax_low":
+        client = getattr(center, "low_model_minimax", None)
+        if client is None or not hasattr(client, "generate_json"):
+            raise RuntimeError("MiniMax M2.7 low-model classifier is not available.")
         return _call_with_temporary_timeout(client, timeout_seconds, lambda: client.generate_json(prompt))
 
     client = center.gemini

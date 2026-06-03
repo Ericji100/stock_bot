@@ -47,6 +47,23 @@ def _prompt_structured_data(request: CommandRequest, structured_data: dict[str, 
     - macro: 使用 macro 專用 pack，保留 quantitative_market / fear_greed 等
     - theme: 使用 theme 專用 pack，保留 matched_universe / matched_companies
     """
+    high_model_package = structured_data.get("high_model_input_package")
+    if isinstance(high_model_package, dict) and high_model_package.get("input_mode") in {"balanced", "compact"}:
+        return _json({
+            "high_model_input_package": high_model_package,
+            "ai_workflow_policy": structured_data.get("ai_workflow_policy"),
+            "high_model_input_mode": structured_data.get("high_model_input_mode"),
+            "low_model_validation": structured_data.get("low_model_validation"),
+            "analysis_model": structured_data.get("analysis_model"),
+            "analysis_model_choice": structured_data.get("analysis_model_choice"),
+            "重要規則": [
+                "這是高階模型的主要入模資料包；完整原始資料仍保存在報告 JSON、sources JSON 與本地快取。",
+                "MiniMax M2.7 資料整理底稿只能作為事實整理參考，不是最終投研結論。",
+                "最終評分、推論、排序與買賣風險判斷必須由高階模型重新判斷。",
+                "若資料包、反證、來源可信度或資料缺口互相衝突，請以來源層級、日期、反證與可信度優先。",
+            ],
+        })
+
     if request.command == "value_scan":
         if "ai_candidate_evidence_pack" in structured_data:
             pack = structured_data["ai_candidate_evidence_pack"]
@@ -97,6 +114,13 @@ def _date_context_prompt_fields(structured_data: dict[str, Any]) -> dict[str, An
         "ai_prompt_context": structured_data.get("ai_prompt_context"),
         "ai_input_audit": structured_data.get("ai_input_audit"),
         "report_confidence": structured_data.get("report_confidence"),
+        "low_model_digest": structured_data.get("low_model_digest"),
+        "low_model_model": structured_data.get("low_model_model"),
+        "low_model_prompt_path": structured_data.get("low_model_prompt_path"),
+        "high_model_input_package": structured_data.get("high_model_input_package"),
+        "high_model_input_mode": structured_data.get("high_model_input_mode"),
+        "ai_workflow_policy": structured_data.get("ai_workflow_policy"),
+        "low_model_validation": structured_data.get("low_model_validation"),
     }
 
 
@@ -594,6 +618,7 @@ def build_grounding_discovery_prompts(
     for index, task in enumerate(tasks, 1):
         label = str(task.get("label") or f"task_{index}")
         objective = str(task.get("objective") or _discovery_rules(request))
+        evidence_role = str(task.get("evidence_role") or "依任務目標判斷")
 
         exclude_items = task.get("exclude") or ["無"]
         exclude_text = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(exclude_items))
@@ -620,13 +645,14 @@ def build_grounding_discovery_prompts(
             report_date=report_date,
             stock_name=stock_name,
             objective=objective,
+            evidence_role=evidence_role,
             exclude_text=exclude_text,
             query_text=query_text,
             local_brief_json=_json(local_brief)[:5000],
             existing_sources=existing_sources,
         ).strip()
         flat_queries = _flatten_queries(queries)
-        prompts.append({"label": label, "prompt": prompt, "queries": flat_queries, "objective": objective})
+        prompts.append({"label": label, "prompt": prompt, "queries": flat_queries, "objective": objective, "evidence_role": evidence_role})
     return prompts
 
 
@@ -1392,19 +1418,47 @@ def _discovery_rules(request: CommandRequest) -> str:
 def _scoring_rules_for_request(request: CommandRequest) -> str:
     blocks: list[str] = []
     if request.command == "research" and request.mode in {"score", "deep"}:
-        blocks.append("## 股票量化評分標準原稿\n" + _read_scoring("股票量化評分標準.md"))
-        blocks.append("## 股票標籤重估模型原稿\n" + _read_scoring("股票標籤重估模型.md"))
+        blocks.extend(_split_scoring_blocks([
+            ("財務硬指標評分規則", "financial_hard_metrics.md"),
+            ("題材軟指標評分規則", "theme_soft_metrics.md"),
+            ("飆股基因評分規則", "high_growth_gene.md"),
+            ("股票標籤重估模型原稿", "rerating_model.md"),
+            ("最終研究優先度與風險報酬評估規則", "final_research_score.md"),
+        ]))
     elif request.command == "value_scan":
-        blocks.append("## 股票標籤重估模型原稿\n" + _read_scoring("股票標籤重估模型.md"))
-        blocks.append("## 股票量化評分標準中與重估相關的原稿\n" + _read_scoring("股票量化評分標準.md"))
+        scoring_files = [
+            ("股票標籤重估模型原稿", "rerating_model.md"),
+            ("題材軟指標評分規則", "theme_soft_metrics.md"),
+            ("財務硬指標評分規則", "financial_hard_metrics.md"),
+        ]
+        if request.mode == "deep":
+            scoring_files.append(("飆股基因評分規則", "high_growth_gene.md"))
+        blocks.extend(_split_scoring_blocks(scoring_files))
     else:
         blocks.append("本模式不要求完整量化評分；若資料不足，不得自行給分。")
     return "\n\n".join(blocks)[:SCORING_RULES_CHAR_LIMIT]
 
 
+def _split_scoring_blocks(files: list[tuple[str, str]]) -> list[str]:
+    blocks: list[str] = []
+    for title, fname in files:
+        content = _read_scoring(fname)
+        if content:
+            blocks.append(f"## {title}\n{content}")
+    if blocks:
+        return blocks
+    return [
+        "## 股票量化評分標準原稿\n" + _read_scoring("股票量化評分標準.md"),
+        "## 股票標籤重估模型原稿\n" + _read_scoring("股票標籤重估模型.md"),
+    ]
+
+
 def _rules_for_request(request: CommandRequest) -> str:
     """Load prompt rules files based on command and mode."""
     blocks: list[str] = []
+    imagination_rule = _embedded_market_imagination_rule_for_request(request)
+    if imagination_rule:
+        blocks.append(f"## embedded_market_imagination_rules.md\n{imagination_rule}")
     rules_map = {
         "research": {
             "normal": [
@@ -1490,6 +1544,22 @@ def _rules_for_request(request: CommandRequest) -> str:
         if hist:
             blocks.append(f"## historical_date_rules.md\n{hist}")
     return "\n\n".join(blocks)
+
+
+def _embedded_market_imagination_rule_for_request(request: CommandRequest) -> str:
+    if request.source_only or request.mode == "source_only":
+        return ""
+    if request.command in {
+        "research",
+        "value_scan",
+        "macro",
+        "theme",
+        "theme_radar",
+        "theme_flow",
+        "sector_strength",
+    }:
+        return _read_rule_prompt("embedded_market_imagination_rules.md")
+    return ""
 
 
 def _read_base_prompt(name: str) -> str:

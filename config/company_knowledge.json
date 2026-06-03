@@ -25212,6 +25212,78 @@
         "customers",
         "revenue_exposure"
       ]
+    },
+    "2009": {
+      "company_name": "第一銅",
+      "updated_at": "2026-06-03T13:23:49+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 21,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "TWSE"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:TWSE"
+      ],
+      "evidence_sources": [
+        {
+          "title": "法人日資料 2009 2026-06-02",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-02",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 2009 2026-06-01",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-01",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 2009 2026-05-29",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-05-29",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 2009 2026-05-28",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-05-28",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 2009 2026-05-27",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-05-27",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 2009 2026-05-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-05-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
     }
   },
   "metadata": {
@@ -25223,7 +25295,7 @@
       "客戶名稱若公司未公開，請使用公開分類或供應鏈角色標籤，避免填入未授權或未驗證資訊。"
     ],
     "source": "topic_change_pack",
-    "auto_company_knowledge_updated_at": "2026-06-02T00:39:38+08:00",
+    "auto_company_knowledge_updated_at": "2026-06-03T13:23:49+08:00",
     "auto_company_knowledge_policy": "Only high-quality public sources are allowed; existing core fields are not overwritten."
   }
 }

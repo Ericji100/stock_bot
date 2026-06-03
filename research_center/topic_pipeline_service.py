@@ -143,6 +143,7 @@ def _extract_candidates(
         stage_logs.append({"stage": "candidate_extract", "error": "missing prompt"})
         return []
     prompt = render_prompt(template, prompt_variables)
+    prompt = _append_low_model_digest_block(prompt, prompt_variables)
     try:
         emit("AI 產生候選題材")
         payload = call_ai_json(prompt, "candidate_extract")
@@ -190,6 +191,7 @@ def _expand_batch(
     variables = dict(prompt_variables)
     variables["topic_candidates_json"] = json.dumps(batch, ensure_ascii=False, indent=2)
     prompt = render_prompt(template, variables)
+    prompt = _append_low_model_digest_block(prompt, variables)
     try:
         emit(f"AI 補題材細節 batch {batch_index}")
         payload = call_ai_json(prompt, f"detail_expand_{batch_index}")
@@ -263,6 +265,18 @@ def _merge_company_knowledge_updates(base: dict[str, Any], update: dict[str, Any
         if key != "companies":
             result[key] = value
     return result
+
+
+def _append_low_model_digest_block(prompt: str, variables: dict[str, str]) -> str:
+    digest = str(variables.get("low_model_digest_json") or "").strip()
+    if not digest or digest in {"{}", "null"}:
+        return prompt
+    return (
+        f"{prompt}\n\n"
+        "## MiniMax M2.7 資料整理底稿\n"
+        "以下底稿只可作為候選題材與證據對照參考；最終變更包仍必須由本階段 AI 重新審查、去重、驗證來源與反證。\n"
+        f"{digest}"
+    )
 
 
 def _chunks(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:

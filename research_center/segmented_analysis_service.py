@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,8 @@ ProgressCallback = Callable[[str], None]
 
 THEME_ANALYSIS_COMMANDS = {"theme_radar", "theme_flow", "sector_strength"}
 SEGMENTED_ANALYSIS_PROMPT_THRESHOLD = 120_000
+SEGMENTED_ANALYSIS_TARGET_CHARS = 120_000
+SEGMENTED_ANALYSIS_HARD_CHARS = 180_000
 
 
 class ReportGenerator(Protocol):
@@ -83,18 +86,22 @@ def run_segmented_theme_analysis(
     _emit(progress, f"分段 AI 分析啟動：{len(plans)} 個分析段，model={model_name}")
     for index, plan in enumerate(plans, 1):
         prompt = _build_segment_prompt(request, structured_data, plan, outputs)
+        segment_sources = _sources_for_segment_plan(plan, sources)
         prompt_path = write_prompt_log(
             request,
             prompt,
             model_name,
             False,
-            sources,
+            segment_sources,
             {
                 **(structured_data.get("prompt_policy") or {}),
                 "purpose": "segmented_theme_analysis",
                 "segment_label": plan["label"],
                 "segment_index": index,
                 "segment_total": len(plans),
+                "prompt_chars": len(prompt),
+                "estimated_tokens": max(1, len(prompt) // 4),
+                "source_count": len(segment_sources),
             },
         )
         prompt_paths.append(str(prompt_path))
@@ -131,17 +138,21 @@ def run_segmented_theme_analysis(
             _emit(progress, f"分段 AI 失敗，改用本地段落摘要：{plan['title']}，原因：{exc}")
         segment_runs.append(run)
 
-    final_prompt = _build_final_prompt(request, structured_data, outputs, sources)
+    final_sources = _sources_for_segment_outputs(outputs, sources)
+    final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources)
     final_prompt_path = write_prompt_log(
         request,
         final_prompt,
         model_name,
         False,
-        sources,
+        final_sources,
         {
             **(structured_data.get("prompt_policy") or {}),
             "purpose": "segmented_theme_final_report",
             "segment_count": len(segment_runs),
+            "prompt_chars": len(final_prompt),
+            "estimated_tokens": max(1, len(final_prompt) // 4),
+            "source_count": len(final_sources),
         },
     )
     prompt_paths.append(str(final_prompt_path))
@@ -208,7 +219,7 @@ def _build_segment_prompt(
     plan: dict[str, Any],
     prior_outputs: list[dict[str, Any]],
 ) -> str:
-    payload = plan.get("payload") or {}
+    payload = _compact_segment_payload(plan.get("payload") or {})
     return "\n".join(
         [
             "# 台股族群題材分段分析",
@@ -839,6 +850,40 @@ def _source_refs(sources: list[SourceItem]) -> list[dict[str, Any]]:
         }
         for source in sources[:30]
     ]
+
+
+def _compact_segment_payload(payload: Any) -> Any:
+    compact = _compact(payload, depth=4, max_list=45, max_keys=90, max_string=1200)
+    if len(_json(compact)) <= SEGMENTED_ANALYSIS_TARGET_CHARS:
+        return compact
+    compact = _compact(payload, depth=3, max_list=28, max_keys=60, max_string=700)
+    if len(_json(compact)) <= SEGMENTED_ANALYSIS_HARD_CHARS:
+        return compact
+    return _compact(payload, depth=3, max_list=18, max_keys=45, max_string=420)
+
+
+def _sources_for_segment_plan(plan: dict[str, Any], sources: list[SourceItem]) -> list[SourceItem]:
+    if not sources:
+        return []
+    text = _json(plan.get("payload") or {})
+    ids = set(re.findall(r"S\d{3,}", text))
+    if ids:
+        matched = [item for item in sources if item.source_id in ids]
+        if matched:
+            return matched[:60]
+    return sources[: min(25, len(sources))]
+
+
+def _sources_for_segment_outputs(outputs: list[dict[str, Any]], sources: list[SourceItem]) -> list[SourceItem]:
+    if not sources:
+        return []
+    text = _json(outputs)
+    ids = set(re.findall(r"S\d{3,}", text))
+    if ids:
+        matched = [item for item in sources if item.source_id in ids]
+        if matched:
+            return matched[:80]
+    return sources[: min(30, len(sources))]
 
 
 def _compact(

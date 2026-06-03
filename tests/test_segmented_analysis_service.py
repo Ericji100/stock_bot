@@ -1,9 +1,12 @@
 ﻿from __future__ import annotations
 
+import unittest
 from dataclasses import dataclass
+from unittest.mock import patch
 
 from research_center.command_parser import parse_command_text
 from research_center.config import ResearchCenterConfig
+from research_center.models import SourceItem
 from research_center.orchestrator import ResearchCenter
 from research_center.segmented_analysis_service import (
     SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
@@ -81,6 +84,21 @@ def _theme_radar_data() -> dict:
         "strong_stocks": market_rows,
         "data_quality": {"theme_mapped_stock_rows": 30},
     }
+
+
+def _theme_sources(count: int = 60) -> list[SourceItem]:
+    return [
+        SourceItem(
+            source_id=f"S{idx:03d}",
+            title=f"source {idx}",
+            url=f"https://example.com/{idx}",
+            source_level="Level 2",
+            published_date="2026-06-01",
+            snippet=f"theme evidence {idx}",
+            provider="unit_test",
+        )
+        for idx in range(1, count + 1)
+    ]
 
 
 def _sector_strength_data() -> dict:
@@ -172,6 +190,55 @@ def test_segmented_theme_analysis_calls_multiple_small_prompts():
     assert result.diagnostics["final_status"] == "success"
     assert all(len(prompt) < 50000 for prompt in client.prompts)
     assert "segment 9" in result.markdown
+
+
+def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(monkeypatch):
+    request = parse_command_text("/theme_radar --model minimax")
+    client = _FakeMiniMax()
+    logged_source_counts: list[int] = []
+
+    def fake_write_prompt_log(*args, **kwargs):
+        logged_source_counts.append(len(args[4]))
+        return "logs/ai_prompts/fake.json"
+
+    monkeypatch.setattr("research_center.segmented_analysis_service.write_prompt_log", fake_write_prompt_log)
+    run_segmented_theme_analysis(
+        request=request,
+        structured_data=_theme_radar_data(),
+        sources=_theme_sources(109),
+        ai_client=client,
+        model_name="MiniMax-M3",
+    )
+
+    self_counts = logged_source_counts[:-1]
+    assert self_counts
+    assert max(self_counts) <= 25
+    assert logged_source_counts[-1] <= 30
+
+
+class SegmentedAnalysisSourceFilterTests(unittest.TestCase):
+    def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        client = _FakeMiniMax()
+        logged_source_counts: list[int] = []
+
+        def fake_write_prompt_log(*args, **kwargs):
+            logged_source_counts.append(len(args[4]))
+            return "logs/ai_prompts/fake.json"
+
+        with patch("research_center.segmented_analysis_service.write_prompt_log", fake_write_prompt_log):
+            run_segmented_theme_analysis(
+                request=request,
+                structured_data=_theme_radar_data(),
+                sources=_theme_sources(109),
+                ai_client=client,
+                model_name="MiniMax-M3",
+            )
+
+        segment_counts = logged_source_counts[:-1]
+        self.assertTrue(segment_counts)
+        self.assertLessEqual(max(segment_counts), 25)
+        self.assertLessEqual(logged_source_counts[-1], 30)
 
 
 def test_segmented_theme_analysis_keeps_report_when_one_segment_fails():

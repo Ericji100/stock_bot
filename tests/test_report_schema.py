@@ -566,6 +566,36 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         self.assertEqual(report_json["structured_data"]["data_gap_summary"]["schema_version"], "data_gap_v1")
         self.assertEqual(report_json["structured_data"]["unified_evidence_pack"]["schema_version"], "evidence_pack_v1")
 
+    def test_report_json_preserves_tavily_discovery_diagnostics(self):
+        request = parse_command_text("/value_scan 精選選股 --deep --top 1")
+        structured_data = {
+            "ai_candidates": [{"code": "2330", "name": "台積電"}],
+            "ai_candidate_evidence_pack": [{"code": "2330", "name": "台積電"}],
+            "search_query_log": {
+                "schema_version": "search_tasks_v1",
+                "task_count": 1,
+                "providers": [{"provider": "tavily_search", "source_count": 1}],
+            },
+            "tavily_search_discovery": {
+                "enabled": True,
+                "provider": "tavily",
+                "runs": [{"label": "官方公告與月營收", "status": "ok", "source_count": 1}],
+            },
+        }
+        report_json = build_report_json(
+            request,
+            "# Test\n\n## Sources\n- [S001] Example",
+            "summary",
+            [SourceItem("S001", "Example", "https://example.com", "Level 2", provider="tavily_search")],
+            False,
+            "fallback",
+            structured_data,
+        )
+
+        self.assertEqual(report_json["metadata"]["tavily_search_discovery"]["provider"], "tavily")
+        self.assertEqual(report_json["metadata"]["tavily_search_discovery"]["runs"][0]["status"], "ok")
+        self.assertEqual(report_json["metadata"]["shared_data_layer"]["search_query_log"]["providers"][0]["provider"], "tavily_search")
+
     def test_non_value_scan_markdown_appends_report_quality_summary(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("report_schema/test_research_quality_summary")

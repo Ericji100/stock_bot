@@ -19,6 +19,33 @@ from research_center.source_rank import make_source_items, select_theme_sources_
 
 
 class SearchProviderTests(unittest.TestCase):
+    def test_load_research_config_normalizes_tavily_api_keys(self):
+        import json
+        from research_center.config import load_research_config
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        tmp = ensure_test_cache_dir("search_providers/test_tavily_api_keys")
+        try:
+            config_dir = tmp / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (config_dir / "research_center.json").write_text("{}", encoding="utf-8")
+            (config_dir / "secrets.json").write_text(
+                json.dumps(
+                    {
+                        "tavily_api_key": "key_a",
+                        "tavily_api_keys": ["key_b", "key_a", "", " key_c "],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_research_config(tmp)
+
+            self.assertEqual(config.tavily_api_key, "key_a")
+            self.assertEqual(config.tavily_api_keys, ("key_a", "key_b", "key_c"))
+        finally:
+            safe_remove_test_cache("search_providers/test_tavily_api_keys")
+
     def test_quota_guard_disables_until_next_month_and_recovers(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("search_providers/test_quota_guard_disables")
@@ -312,6 +339,31 @@ class TavilySearchTests(unittest.TestCase):
         completed = [m for m in progress_messages if "completed" in m]
         self.assertTrue(any("extracted=0" in m for m in completed), f"extracted=0 not in {completed}")
 
+    def test_tavily_search_switches_to_second_key_on_quota_error(self):
+        from research_center.quota_guard import provider_key_fingerprint
+        from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
+
+        service = TavilySearchService(api_key=None, api_keys=("key_one", "key_two"))
+        calls: list[str] = []
+
+        def fake_search_with_key(query, api_key):
+            calls.append(api_key)
+            if api_key == "key_one":
+                raise TavilyQuotaError("quota exceeded")
+            return [{"title": "B", "url": "https://b.com", "snippet": "ok"}]
+
+        service._search_with_key = fake_search_with_key
+        from research_center.command_parser import parse_command_text
+        request = parse_command_text("/research 2330")
+        result = service.discover(request, [{"label": "test", "queries": ["2330"], "objective": "test"}])
+
+        fp_one = provider_key_fingerprint("key_one")
+        fp_two = provider_key_fingerprint("key_two")
+        self.assertEqual(calls, ["key_one", "key_two"])
+        self.assertEqual(len(result.sources), 1)
+        self.assertIn(fp_one, result.diagnostics["quota_exhausted_key_fingerprints"])
+        self.assertEqual(result.diagnostics["query_count_by_key_fingerprint"][fp_two], 1)
+
 
 class MiniMaxMCPFallbackTests(unittest.TestCase):
     def test_tavily_official_usage_overrides_local_exhausted_marker(self):
@@ -328,7 +380,11 @@ class MiniMaxMCPFallbackTests(unittest.TestCase):
             def is_configured(self):
                 return True
             def has_available_usage(self, reserve=0):
-                return True, {"available": True, "remaining": 550}
+                return True, {
+                    "available": True,
+                    "remaining": 550,
+                    "selected_key_fingerprint": provider_key_fingerprint("fake"),
+                }
             def discover(self, request, tasks, progress=None):
                 src = make_source_items([{"title": "T", "url": "https://t.com", "snippet": "s"}])
                 return TavilySearchResult(src, {"enabled": True, "runs": [{"label": "test", "status": "ok"}]})
@@ -341,7 +397,7 @@ class MiniMaxMCPFallbackTests(unittest.TestCase):
             def is_under_monthly_limit(self, provider, limit, reserve=0, today=None):
                 return False
             def clear(self, provider):
-                self.cleared = provider == "tavily"
+                self.cleared = provider.startswith("tavily:")
             def record_usage(self, provider, units):
                 return None
             def mark_exhausted(self, provider, reason, **kwargs):

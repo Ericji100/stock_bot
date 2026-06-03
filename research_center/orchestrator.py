@@ -41,6 +41,7 @@ from .segmented_analysis_service import (
 from .source_rank import select_theme_sources_for_prompt, theme_source_relevance
 from .evidence_pack_service import attach_unified_evidence_pack
 from .ai_data_center import attach_ai_data_center
+from .ai_workflow_service import attach_high_model_input_package, attach_low_model_digest
 from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
 from .search_source_normalizer import normalize_source_items
 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
@@ -86,6 +87,11 @@ class ResearchCenter:
             model=self.config.minimax_model,
             base_url=self.config.minimax_base_url,
         )
+        self.low_model_minimax = MiniMaxService(
+            api_key=self.config.minimax_api_key,
+            model=self.config.minimax_low_model,
+            base_url=self.config.minimax_base_url,
+        )
         self.minimax_search = MiniMaxSearchService(
             serper_api_key=self.config.serper_api_key,
             jina_api_key=self.config.jina_api_key,
@@ -99,6 +105,7 @@ class ResearchCenter:
         )
         self.tavily_search = TavilySearchService(
             api_key=self.config.tavily_api_key,
+            api_keys=self.config.tavily_api_keys,
             enable_search=self.config.enable_tavily_search,
             enable_extract=self.config.enable_tavily_extract,
             search_depth=self.config.tavily_search_depth,
@@ -224,7 +231,23 @@ class ResearchCenter:
         attach_data_gap_summary(request, structured_data)
         attach_unified_evidence_pack(request, structured_data)
         attach_ai_data_center(request, structured_data, prompt_sources)
+        attach_low_model_digest(
+            request,
+            structured_data,
+            prompt_sources,
+            minimax=self.low_model_minimax,
+            enabled=self.config.enable_low_model_digest,
+            progress=progress,
+        )
 
+        preliminary_prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
+        attach_high_model_input_package(
+            request,
+            structured_data,
+            prompt_sources,
+            prompt_chars_estimate=len(preliminary_prompt),
+            progress=progress,
+        )
         prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
         prompt_log_path = write_prompt_log(request, prompt, self.config.model, use_grounding, prompt_sources, structured_data.get("prompt_policy"))
         _emit_progress(progress, f"Shared prompt saved: {prompt_log_path}")
@@ -477,6 +500,14 @@ class ResearchCenter:
                 attach_data_gap_summary(request, structured_data)
                 attach_unified_evidence_pack(request, structured_data)
                 attach_ai_data_center(request, structured_data, prompt_sources)
+                attach_low_model_digest(
+                    request,
+                    structured_data,
+                    prompt_sources,
+                    minimax=self.low_model_minimax,
+                    enabled=self.config.enable_low_model_digest,
+                    progress=progress,
+                )
                 if selected_ai_model == "deepseek":
                     final_model_name = self.config.opencode_model
                 elif selected_ai_model == "minimax":
@@ -484,6 +515,14 @@ class ResearchCenter:
                 else:
                     final_model_name = self.config.model
                 final_grounding = bool(gemini_search_used) and selected_ai_model == "gemini"
+                preliminary_prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
+                attach_high_model_input_package(
+                    request,
+                    structured_data,
+                    prompt_sources,
+                    prompt_chars_estimate=len(preliminary_prompt),
+                    progress=progress,
+                )
                 prompt = build_prompt(request, structured_data=structured_data, source_list=prompt_sources)
                 use_segmented_analysis = should_use_segmented_analysis(
                     request,
@@ -1313,7 +1352,26 @@ class _GeminiDiscoveryRunner:
             structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "disabled_by_config"}
             _emit_progress(progress, "Tavily Search skipped: disabled by config")
             return
-        tavily_key_fingerprint = provider_key_fingerprint(self._center.config.tavily_api_key)
+        tavily_keys = list(self._center.config.tavily_api_keys or ())
+        if not tavily_keys and self._center.config.tavily_api_key:
+            tavily_keys = [self._center.config.tavily_api_key]
+        available_keys: list[str] = []
+        skipped_fingerprints: list[str] = []
+        for key in tavily_keys:
+            fp = provider_key_fingerprint(key)
+            provider_id = _tavily_quota_provider_id(fp)
+            if not self._center.quota_guard.is_available(provider_id, key_fingerprint=fp):
+                skipped_fingerprints.append(fp or "")
+                continue
+            if not self._center.quota_guard.is_under_monthly_limit(provider_id, self._center.config.tavily_monthly_credit_limit, self._center.config.tavily_credit_reserve):
+                skipped_fingerprints.append(fp or "")
+                continue
+            available_keys.append(key)
+        local_key_pool_empty = not available_keys
+        if local_key_pool_empty:
+            available_keys = list(tavily_keys)
+        if self._center.tavily_search and hasattr(self._center.tavily_search, "set_api_keys"):
+            self._center.tavily_search.set_api_keys(tuple(available_keys))
         usage_available = None
         usage_diagnostics: dict | None = None
         if (
@@ -1325,9 +1383,11 @@ class _GeminiDiscoveryRunner:
                 reserve=self._center.config.tavily_credit_reserve
             )
             if usage_available is True:
-                self._center.quota_guard.clear("tavily")
+                selected_fp = (usage_diagnostics or {}).get("selected_key_fingerprint")
+                if selected_fp:
+                    self._center.quota_guard.clear(_tavily_quota_provider_id(str(selected_fp)))
                 remaining = usage_diagnostics.get("remaining") if usage_diagnostics else None
-                _emit_progress(progress, f"Tavily usage check ok: remaining={remaining}")
+                _emit_progress(progress, f"Tavily usage check ok: selected_fp={selected_fp}, remaining={remaining}")
             elif usage_available is False:
                 structured_data["tavily_search_discovery"] = {
                     "enabled": False,
@@ -1337,22 +1397,15 @@ class _GeminiDiscoveryRunner:
                 _emit_progress(progress, "Tavily Search skipped: official usage remaining insufficient")
                 return
         if usage_available is None:
-            if not self._center.quota_guard.is_available("tavily", key_fingerprint=tavily_key_fingerprint):
+            if local_key_pool_empty:
                 structured_data["tavily_search_discovery"] = {
                     "enabled": False,
-                    "reason": "quota_exhausted_this_month",
-                    "usage": usage_diagnostics,
+                    "reason": "all_tavily_keys_unavailable",
+                    "skipped_key_fingerprints": [fp for fp in skipped_fingerprints if fp],
                 }
-                _emit_progress(progress, "Tavily Search skipped: quota exhausted this month")
+                _emit_progress(progress, "Tavily Search skipped: all API keys unavailable or reserved")
                 return
-            if not self._center.quota_guard.is_under_monthly_limit("tavily", self._center.config.tavily_monthly_credit_limit, self._center.config.tavily_credit_reserve):
-                structured_data["tavily_search_discovery"] = {
-                    "enabled": False,
-                    "reason": "monthly_credit_reserve_reached",
-                    "usage": usage_diagnostics,
-                }
-                _emit_progress(progress, "Tavily Search skipped: monthly credit reserve reached")
-                return
+            _emit_progress(progress, f"Tavily local key pool available: {len(available_keys)}/{len(tavily_keys)} keys")
         try:
             _emit_progress(progress, f"Run Tavily Search discovery: {len(discovery_tasks)} tasks")
             tavily_result = self._center.tavily_search.discover(request, discovery_tasks, progress=progress)
@@ -1378,10 +1431,16 @@ class _GeminiDiscoveryRunner:
                 diagnostics=tavily_result.diagnostics,
             )
             estimated_units = int((tavily_result.diagnostics or {}).get("estimated_credits") or 1)
-            self._center.quota_guard.record_usage("tavily", estimated_units)
+            query_count_by_fp = (tavily_result.diagnostics or {}).get("query_count_by_key_fingerprint") or {}
+            for fp, units in query_count_by_fp.items():
+                self._center.quota_guard.record_usage(_tavily_quota_provider_id(str(fp)), int(units or 0))
+            for fp in (tavily_result.diagnostics or {}).get("quota_exhausted_key_fingerprints") or []:
+                self._center.quota_guard.mark_exhausted(_tavily_quota_provider_id(str(fp)), "quota_exhausted_during_search", key_fingerprint=str(fp))
             _emit_progress(progress, f"Tavily Search completed: {len(provider_sources)} sources, added={added}")
         except TavilyQuotaError as exc:
-            self._center.quota_guard.mark_exhausted("tavily", str(exc), key_fingerprint=tavily_key_fingerprint)
+            for key in available_keys:
+                fp = provider_key_fingerprint(key)
+                self._center.quota_guard.mark_exhausted(_tavily_quota_provider_id(fp), str(exc), key_fingerprint=fp)
             structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "quota_exhausted", "error": str(exc)}
             _emit_progress(progress, f"Tavily quota exhausted; disabled until next month: {exc}")
         except Exception as exc:
@@ -1457,6 +1516,10 @@ def _fallback_threshold_key(request: CommandRequest) -> str:
     if request.command == "value_scan":
         return f"value_scan_{request.mode if request.mode == 'deep' else 'normal'}"
     return "default"
+
+
+def _tavily_quota_provider_id(key_fingerprint: str | None) -> str:
+    return f"tavily:{key_fingerprint or 'default'}"
 
 
 def _build_search_query_log(discovery_tasks: list[dict[str, Any]]) -> dict[str, Any]:

@@ -56,3 +56,15 @@
 少量高品質新聞是題材線索；新聞爆量是過熱/出貨風險。若無法判斷，tags 可留空。
 
 ---
+## 市場故事與後續發酵
+
+新聞整理不得只做公開資訊摘要，必須判斷哪些新聞可能發酵成市場題材、哪些只是資訊或情緒。
+
+請在可用欄位中盡量補上：
+
+1. `tags`：可加入 `market_story`、`early_clue`、`theme_diffusion`、`benefit_hypothesis`、`failure_signal`。
+2. `news_signal_reason`：說明此新聞可能帶出什麼受惠故事、催化條件或早期蛛絲馬跡。
+3. `news_heat_risk_reason`：說明是否只是新聞爆量、社群情緒、蹭題材或追高風險。
+4. `related_topics` 與 `related_symbols`：只填與新聞有合理關聯者；推論型關聯需在理由中標示為待驗證。
+
+不得把新聞標題直接等同於公司受惠，也不得用單一媒體或社群情緒支撐強結論。

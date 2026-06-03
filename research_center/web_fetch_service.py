@@ -214,9 +214,11 @@ def _fetch_with_tavily(url: str, exc: str | None = None, progress: ProgressCallb
     from .config import load_research_config
 
     config = load_research_config()
-    api_key = config.tavily_api_key
+    api_keys = list(config.tavily_api_keys or ())
+    if not api_keys and config.tavily_api_key:
+        api_keys = [config.tavily_api_key]
 
-    if not api_key:
+    if not api_keys:
         return WebFetchResult(
             url=url,
             title=None,
@@ -236,6 +238,25 @@ def _fetch_with_tavily(url: str, exc: str | None = None, progress: ProgressCallb
             failure_reason=exc or "tavily_extract_disabled_by_config",
         )
 
+    last_result: WebFetchResult | None = None
+    for key_index, api_key in enumerate(api_keys, 1):
+        result = _fetch_with_tavily_key(url, api_key, key_index)
+        if result.content_status == "success":
+            return result
+        last_result = result
+        if not _is_tavily_quota_failure(result.failure_reason or ""):
+            return result
+    return last_result or WebFetchResult(
+        url=url,
+        title=None,
+        content="",
+        content_status="failed",
+        fetch_provider="tavily_extract",
+        failure_reason=exc or "all_tavily_extract_keys_failed",
+    )
+
+
+def _fetch_with_tavily_key(url: str, api_key: str, key_index: int) -> WebFetchResult:
     try:
         headers = {"Content-Type": "application/json"}
         if api_key:
@@ -261,6 +282,7 @@ def _fetch_with_tavily(url: str, exc: str | None = None, progress: ProgressCallb
                 content=str(item.get("raw_content") or item.get("content") or item.get("markdown") or "")[:15000],
                 content_status="success",
                 fetch_provider="tavily_extract",
+                failure_reason=None,
             )
         else:
             return WebFetchResult(
@@ -269,7 +291,7 @@ def _fetch_with_tavily(url: str, exc: str | None = None, progress: ProgressCallb
                 content="",
                 content_status="failed",
                 fetch_provider="tavily_extract",
-                failure_reason=exc or "tavily_extract_returned_no_results",
+                failure_reason=f"tavily_extract_returned_no_results:key_index={key_index}",
             )
     except Exception as fetch_exc:
         return WebFetchResult(
@@ -278,8 +300,13 @@ def _fetch_with_tavily(url: str, exc: str | None = None, progress: ProgressCallb
             content="",
             content_status="failed",
             fetch_provider="tavily_extract",
-            failure_reason=exc or str(fetch_exc),
+            failure_reason=f"{fetch_exc}:key_index={key_index}",
         )
+
+
+def _is_tavily_quota_failure(text: str) -> bool:
+    lower = str(text or "").lower()
+    return any(term in lower for term in ("quota", "credit", "limit", "insufficient", "exceeded", "402", "429", "432", "433"))
 
 
 def fetch_many(

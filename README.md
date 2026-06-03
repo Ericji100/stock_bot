@@ -183,6 +183,22 @@ Windows 可直接執行：
 
 ## AI、搜尋與成本
 
+### Tavily 多 Key 輪替
+
+Tavily 可設定多組 Key 共用。建議在 `config/secrets.json` 使用：
+
+```json
+{
+  "tavily_api_key": "主要 Tavily Key",
+  "tavily_api_keys": [
+    "備用 Tavily Key 1",
+    "備用 Tavily Key 2"
+  ]
+}
+```
+
+執行搜尋時會先用 `tavily_api_key`，若該 Key 被 Tavily 回覆 quota / credit / limit 類錯誤，會自動切到下一組 `tavily_api_keys`。報告 JSON metadata 會記錄 `key_fingerprints_used`、`quota_exhausted_key_fingerprints`、`query_count_by_key_fingerprint`，只保存 Key 指紋，不保存完整 API Key。
+
 | 指令 | AI | 外部搜尋 | 說明 |
 |---|---|---|---|
 | `/scan` | 否 | 否 | 本地量化掃描 |
@@ -445,3 +461,97 @@ pytest tests/test_backfill_service.py
 - Prompt、題材規則、搜尋成本、資料來源規則要放在可維護的獨立文件。
 - 新增指令時，同步更新 `research_center/telegram_handlers.py` 的 help 文字與 [docs/commands.md](docs/commands.md)。
 - 新增 AI 或外部搜尋行為時，同步更新本 README 的成本表與 [docs/ai-research.md](docs/ai-research.md)。
+
+## AI 雙模型資料整理流程
+
+投研報告型指令會先經過共用 AI 資料中心，再執行雙模型流程：
+
+1. 低階資料整理模型固定使用 MiniMax M2.7。
+2. MiniMax M2.7 只負責整理事實、事件、風險、反證、來源對照與資料缺口，不負責最終投資判斷。
+3. 高階分析模型仍依 Telegram 選單或指令參數決定，例如 Gemini、DeepSeek 或 MiniMax。
+4. 高階模型會收到原本的入模資料、入模審計、可信度底稿，以及 MiniMax M2.7 的資料整理底稿。
+5. 高階模型必須重新判斷最終結論、評分、排序與風險，不得直接照抄低階模型底稿。
+6. 若 MiniMax M2.7 額度不足、逾時或失敗，報告不會中斷，系統會保留失敗診斷並改用原本資料中心內容繼續產出。
+7. HTML 報告會新增「資料整理底稿」分頁；主內容仍只放最終投研報告，技術資料與底稿放在分頁中。
+
+低階整理現在有共用安全閘門，但目的不是節省 MiniMax M2.7 額度，而是避免 context 爆掉、逾時或格式失敗。低階模型會盡量完整整理資料，真正控制 token 的重點放在高階模型入模。
+
+- MiniMax M2.7 prompt 會先估算字數與 token，CMD 會顯示 `prompt=... chars`、`est_tokens=...`、來源數與分段數。
+- 單次低階 prompt 超過安全上限時，會優先依資料群組完整分段整理，再由本地合併 facts、events、risk_evidence、counter_evidence、missing_data 與 source_map。
+- 低階分段會盡量保留每段完整資料；只有單段仍超過硬限制，或段數超過安全上限時，才做最低限度壓縮或截斷，且完整原始資料仍保留在本地 JSON。
+- 任一分段失敗時，狀態會標為 `partial_success` 或 `failed`，高階模型仍會收到成功分段與本地資料中心，不會讓整份報告中斷。
+- 低階快取 fingerprint 會排除 `generated_at`、`created_at`、`updated_at`、prompt path、diagnostics 等易變欄位，避免同一天重跑因時間戳不同而無法命中快取。
+- 完整原始資料不會因低階分段被刪除；完整資料仍保存在報告 JSON、完整來源 JSON、本地快取與低階整理 artifact。
+
+### `/value_scan` 搜尋與來源用途
+
+`/value_scan` 的搜尋 query 會依候選股批次拆成官方公告與月營收、產品客戶與供應鏈、舊標籤與新標籤重估、法人籌碼與資金、反證與重估失敗風險等任務。搜尋整理 prompt 會要求每個 finding 標示用途：支持重估、支持反證、只作情緒或資料不足。只有新聞熱度、論壇討論、股價波動或 snippet 的資料不得當成強重估證據；缺少官方、財報、月營收、法說會、產品客戶或供應鏈資料時，必須寫入資料缺口。
+
+`/value_scan` 驗收可使用三層 smoke：
+
+1. `python scripts/smoke_value_scan_discovery.py`：不連外，只驗證 discovery tasks、query log 與 prompt 欄位。
+2. `python scripts/smoke_value_scan_report_local.py`：不連外，用本地 fixture 跑完整報告 artifacts。
+3. `python scripts/smoke_value_scan_tavily_live.py`：會消耗少量 Tavily 額度，驗證外部搜尋來源與 provider diagnostics 進入報告 JSON。
+
+### News / Topic / Radar 分流策略
+
+非完整報告型 AI 功能也會盡量沿用同一個「低階整理、高階判讀」原則，但不會無限制增加高階模型呼叫：
+
+| 功能 | MiniMax M2.7 低階工作 | 高階模型工作 | 成本控制 |
+|---|---|---|---|
+| `/news refresh` | 一般新聞分類、摘要、初步利多利空與標籤 | 只複核前 N 則重要新聞、重大來源與重大題材 | `NEWS_HIGH_TIER_CLASSIFY_LIMIT`，預設 12 |
+| `/topic_maintain` | 整理候選題材、產品、公司、供應鏈證據與缺口 | 產生可審核變更包，重新去重、驗證來源、判斷是否寫入題材庫 | 分段 pipeline，小 JSON 輸出 |
+| `/radar` | 對前 N 檔候選股做一次批次資料整理 | 只針對短名單產生短評、風險與觀察重點 | 批次整理，不做每檔雙模型完整報告 |
+
+低階模型輸出只作為資料底稿；所有分類覆核、題材變更包、Radar 短評的最後判斷仍由高階模型或本地規則完成。若 MiniMax M2.7 無法使用，這些流程會回到既有單模型或本地 fallback，不會中斷任務。
+
+補充成本控制：
+
+- `/theme_radar`、`/theme_flow`、`/sector_strength` 的高階分段分析不再讓每段都攜帶全部來源；每段只帶與該段 payload 相關的來源，找不到對應來源 ID 時只帶少量代表來源。
+- `/topic_maintain` 的低階整理不會把完整題材庫、完整公司題材 map 或完整供應鏈節點送給 MiniMax M2.7；只送本次變動、候選題材、候選公司、重點證據、資料缺口與題材庫摘要/樣本。
+- `/news refresh` 的 AI 分類批次會在 CMD 顯示每批 prompt 字數、估算 token 與新聞筆數；高階模型只複核前 N 則重要新聞。
+
+## 多模型分工 AI 工作流
+
+所有投研報告型指令會先經過共用 AI 資料中心，再依資料量決定高階模型入模方式。
+
+流程：
+
+1. 本地資料中心整理完整資料、來源、反證、資料缺口與可信度。
+2. MiniMax M2.7 只做低階資料整理，產出事實、事件、風險、反證、缺口與來源對照。
+3. 系統會驗證低階資料包，並保存 JSON / Markdown 到 `logs/ai_low_model/`。
+4. 系統先估算原始 prompt 字數。
+5. 若資料量未超過門檻，高階模型沿用完整入模模式。
+6. 若資料量過大，高階模型改用 `balanced` 或 `compact` 入模資料包。
+7. 完整原始資料不會被刪除，仍保存在報告 JSON、完整來源 JSON、低階資料包與本地快取。
+8. 高階模型必須重新判斷、重新評分，不得直接照抄 MiniMax M2.7 或本地量化底稿。
+
+入模模式：
+
+| 模式 | 觸發條件 | 說明 |
+|---|---:|---|
+| `full` | 原始 prompt 小於 180,000 字 | 高階模型可直接吃完整規則化資料 |
+| `balanced` | 原始 prompt 約 180,000 字以上 | 高階模型主要吃證據包、可信度、反證、缺口與必要原文摘錄 |
+| `compact` | 原始 prompt 約 320,000 字以上 | 進一步壓縮入模資料，但完整資料仍保留在本地與附錄 |
+
+報告可追溯資訊：
+
+- HTML「入模審計」與「技術附錄」會顯示高階模型入模模式。
+- HTML「資料整理底稿」會顯示 MiniMax M2.7 的低階整理結果。
+- JSON metadata 會保存 `high_model_input_package`、`high_model_input_mode`、`low_model_validation`、`ai_workflow_policy`。
+- Prompt log 仍保存在 `logs/ai_prompts/`，低階資料包保存在 `logs/ai_low_model/`。
+
+這套流程的目標不是節省低階模型額度，而是在報告品質優先的前提下，讓低階模型完整整理資料，並降低高階模型重複閱讀大量原始資料造成的時間與 token 浪費。
+## AI 市場想像力規格
+
+所有會產生 AI 分析的投研指令，包含 `/research`、`/value_scan`、`/macro`、`/theme`、`/theme_radar`、`/theme_flow`、`/sector_strength`、`/radar` AI 短評、`/news refresh` 分類與 `/topic_maintain` 題材維護，都必須在原本事實分析與評分架構中加入「嵌入式市場想像」。
+
+核心要求：
+
+1. 保留原本報告章節、量化底稿與評分架構。
+2. 每個重要判斷盡量拆成已驗證事實、市場可能買單故事、爆發條件、待驗證訊號與失敗條件。
+3. 從技術面、籌碼面、營收面、新聞面、產業面、趨勢面、題材面找蛛絲馬跡，推演可能的市場脈動與受惠路徑。
+4. 想像力只能補強研究優先度、劇本與觀察指標，不得取代財務硬指標、題材軟指標、飆股基因、價值重估或最終買入評分。
+5. `--source-only` 與 source-only 類型任務維持純資料整理，不載入市場想像規則。
+
+共用規則位於 `prompt/rules/embedded_market_imagination_rules.md`，由 `research_center/prompt_registry.py` 對報告型 AI 指令注入。獨立 AI prompt 另在 `prompt/radar/radar_ai_comment.md`、`prompt/news/news_summary.md`、`prompt/topic/topic_maintain.md` 保留對應規範。

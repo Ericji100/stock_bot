@@ -67,6 +67,36 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertIn("candidate_extract", calls)
         self.assertIn("detail_expand_1", calls)
 
+    def test_pipeline_appends_low_model_digest_to_stage_prompts(self):
+        prompts = []
+        variables = self._variables()
+        variables["low_model_digest_json"] = json.dumps(
+            {"status": "success", "facts": [{"fact": "候選題材證據"}]},
+            ensure_ascii=False,
+        )
+
+        def call_ai_json(prompt, stage):
+            prompts.append(prompt)
+            if stage == "candidate_extract":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+
+        pack, _logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="gemini",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=variables,
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertTrue(any("MiniMax M2.7 資料整理底稿" in prompt for prompt in prompts))
+        self.assertTrue(any("候選題材證據" in prompt for prompt in prompts))
+
     def test_pipeline_keeps_pack_when_detail_batch_fails(self):
         def call_ai_json(prompt, stage):
             if stage == "candidate_extract":

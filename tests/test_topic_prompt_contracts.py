@@ -22,6 +22,16 @@ class TopicPromptContracts(unittest.TestCase):
         ):
             self.assertIn(field, prompt_text)
 
+    def test_topic_maintain_prompt_keeps_imagination_with_verification_boundaries(self):
+        from research_center.topic_maintain_service import _load_prompt
+
+        prompt_text = _load_prompt("topic_maintain")
+        self.assertIn("市場想像與候選題材推演", prompt_text)
+        self.assertIn("verified", prompt_text)
+        self.assertIn("candidate", prompt_text)
+        self.assertIn("市場可能買單故事", prompt_text)
+        self.assertIn("失敗條件", prompt_text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@
 模式：{mode}
 資料日期：{report_date}
 分析標的：{target} {stock_name}
+本任務預期來源用途：{evidence_role}
 
 ---
 
@@ -42,6 +43,8 @@
 ## 一、搜尋目標
 
 {objective}
+
+本任務預期來源用途為「{evidence_role}」。整理 findings 時，請優先判斷資料屬於支持重估、支持反證、只作情緒或資料不足；若任務用途與來源內容不一致，需在 reliability_note 標明。
 
 ---
 
@@ -239,6 +242,7 @@
       "finding": "string",
       "stance": "positive | negative | neutral | mixed | insufficient",
       "evidence_level": "strong | medium | weak | insufficient",
+      "evidence_usage": "supports_rerating | supports_counter_evidence | sentiment_only | insufficient",
       "temporary_source_ids": ["T1"]
     }}
   ],

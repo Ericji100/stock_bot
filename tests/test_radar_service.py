@@ -125,8 +125,8 @@ class RadarDataMaximizationTests(unittest.TestCase):
                     "comments": [
                         {
                             "code": "2330",
-                            "priority": "high",
-                            "confidence": "medium",
+                            "priority": "高",
+                            "confidence": "中",
                             "reason": "compact evidence reviewed",
                             "risk": "data quality",
                             "watch": "revenue",
@@ -135,7 +135,8 @@ class RadarDataMaximizationTests(unittest.TestCase):
                 }
             )
 
-        with patch.object(radar, "RADAR_AI_PROMPT_MAX_CHARS", 5000), \
+        with patch.object(radar, "RADAR_AI_PROMPT_MAX_CHARS", 7000), \
+             patch.object(radar, "_attach_radar_low_model_digest", return_value={}), \
              patch.object(radar, "_call_ai_comment_model", side_effect=fake_call):
             meta = radar._attach_ai_comments([candidate], ["2330"], "deepseek", date(2026, 5, 22), None)
 
@@ -179,7 +180,28 @@ class RadarDataMaximizationTests(unittest.TestCase):
 
         self.assertIn("繁體中文", prompt)
         self.assertIn("ai_compact_pack", prompt)
+        self.assertIn("MiniMax M2.7 批次資料整理底稿", prompt)
         self.assertIn("禁止整段英文分析", prompt)
+        self.assertIn("不得新增候選股票", prompt)
+        self.assertIn("不得改變本地分數", prompt)
+        self.assertIn("priority=高", prompt)
+        self.assertIn("confidence=高", prompt)
+        self.assertIn("資料覆蓋為 insufficient", prompt)
+
+    def test_ai_prompt_includes_low_model_digest_for_selected_codes_unittest(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電")
+        digest = {
+            "status": "success",
+            "facts": [
+                {"fact": "2330 來源證據完整", "source_ids": ["S001"]},
+                {"fact": "2454 其他候選資料", "source_ids": ["S002"]},
+            ],
+        }
+
+        prompt = radar._build_ai_comment_prompt([candidate], date(2026, 5, 22), low_model_digest=digest)
+
+        self.assertIn("2330 來源證據完整", prompt)
+        self.assertNotIn("2454 其他候選資料", prompt)
 
     def test_radar_report_truncates_ai_comment_lines_unittest(self):
         candidate = radar.RadarCandidate(
@@ -451,8 +473,8 @@ def test_attach_ai_comments_uses_compact_single_stock_job_when_prompt_is_large(m
                 "comments": [
                     {
                         "code": "2330",
-                        "priority": "high",
-                        "confidence": "medium",
+                        "priority": "高",
+                        "confidence": "中",
                         "reason": "compact evidence reviewed",
                         "risk": "data quality",
                         "watch": "revenue",
@@ -461,7 +483,8 @@ def test_attach_ai_comments_uses_compact_single_stock_job_when_prompt_is_large(m
             }
         )
 
-    monkeypatch.setattr(radar, "RADAR_AI_PROMPT_MAX_CHARS", 5000)
+    monkeypatch.setattr(radar, "RADAR_AI_PROMPT_MAX_CHARS", 7000)
+    monkeypatch.setattr(radar, "_attach_radar_low_model_digest", lambda *args, **kwargs: {})
     monkeypatch.setattr(radar, "_call_ai_comment_model", fake_call)
 
     meta = radar._attach_ai_comments([candidate], ["2330"], "deepseek", date(2026, 5, 22), None)

@@ -19,6 +19,7 @@ from .topic_models import (
     TopicChangeStatus,
     TopicSourceLevel,
 )
+from .ai_workflow_service import run_low_model_digest_for_payload
 from .topic_repository import (
     backup_topic_files,
     is_formal_library_empty,
@@ -131,6 +132,50 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         return [_json_safe(item) for item in value]
     return str(value)
+
+
+def _build_topic_low_model_payload(
+    *,
+    mode: TopicChangeMode,
+    report_date: str,
+    structured_data: dict[str, Any],
+    discovery_sources: list[Any],
+) -> dict[str, Any]:
+    profiles = structured_data.get("existing_topic_profiles", [])
+    company_topic_map = structured_data.get("company_topic_map", {})
+    supply_chain_nodes = structured_data.get("supply_chain_nodes", [])
+    external_caches = structured_data.get("external_topic_source_caches", {})
+    return {
+        "command": "topic_maintain",
+        "mode": mode.value,
+        "report_date": report_date,
+        "change_scope": {
+            "policy": "只整理本次變動、候選題材、重點證據與資料缺口；不得把完整題材庫當成最終結論。",
+            "existing_topic_profile_count": len(profiles) if isinstance(profiles, list) else 0,
+            "company_topic_map_count": len(company_topic_map) if isinstance(company_topic_map, dict) else 0,
+            "supply_chain_node_count": len(supply_chain_nodes) if isinstance(supply_chain_nodes, list) else 0,
+        },
+        "discovery_sources": _bounded_topic_items(discovery_sources, limit=80),
+        "webfetch_evidence": _bounded_topic_items((structured_data.get("webfetch_evidence") or {}).get("items", []), limit=80),
+        "web_fetch_diagnostics": structured_data.get("web_fetch_diagnostics", {}),
+        "candidate_companies": _bounded_topic_items(structured_data.get("candidate_companies", []), limit=100),
+        "recent_scan_candidates": _bounded_topic_items(structured_data.get("recent_scan_candidates", []), limit=100),
+        "recent_theme_reports": _bounded_topic_items(structured_data.get("recent_theme_reports", []), limit=30),
+        "market_signals": structured_data.get("market_signals", {}),
+        "base_sources": _bounded_topic_items(structured_data.get("base_sources", []), limit=80),
+        "library_samples": {
+            "existing_topic_profiles_sample": _bounded_topic_items(profiles, limit=20),
+            "supply_chain_nodes_sample": _bounded_topic_items(supply_chain_nodes, limit=30),
+            "external_topic_source_cache_keys": list(external_caches.keys())[:40] if isinstance(external_caches, dict) else [],
+        },
+        "missing_data": structured_data.get("data_gap_summary") or structured_data.get("missing_data") or [],
+    }
+
+
+def _bounded_topic_items(value: Any, *, limit: int) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    return [_json_safe(item) for item in value[:limit]]
 
 
 def _normalize_company_knowledge_updates(value: Any) -> dict[str, Any]:
@@ -357,7 +402,7 @@ def run_topic_maintain(
     def _json_dumps(data: Any, max_chars: int) -> str:
         if data is None:
             return ""
-        text = json.dumps(_json_safe(data), ensure_ascii=False, indent=2)
+        text = json.dumps(_json_safe(data), ensure_ascii=False, indent=2, default=str)
         if len(text) > max_chars:
             text = text[:max_chars] + f"\n... [truncated, total {len(text)} chars]"
         return text
@@ -379,6 +424,50 @@ def run_topic_maintain(
     company_knowledge_json = _json_dumps(load_company_knowledge_data(), 20000)
     recent_theme_reports_json = _json_dumps(structured_data.get("recent_theme_reports", []), 15000)
     external_sources_json = _json_dumps(structured_data.get("external_topic_source_caches", {}), 30000)
+    low_model_digest: dict[str, Any] = {}
+    low_model_enabled = bool(getattr(getattr(center, "config", None), "enable_low_model_digest", True))
+    low_model = getattr(center, "low_model_minimax", None) if center is not None else None
+    is_low_model_configured = False
+    if low_model is not None:
+        is_configured = getattr(low_model, "is_configured", None)
+        if callable(is_configured):
+            try:
+                is_low_model_configured = is_configured() is True
+            except Exception:
+                is_low_model_configured = False
+    if low_model is not None and is_low_model_configured:
+        try:
+            low_payload = _build_topic_low_model_payload(
+                mode=mode,
+                report_date=report_date,
+                structured_data=structured_data,
+                discovery_sources=discovery_sources,
+            )
+            low_model_digest = run_low_model_digest_for_payload(
+                request,
+                low_payload,
+                sources=list(discovery_sources or []),
+                minimax=low_model,
+                enabled=low_model_enabled,
+                progress=emit,
+                purpose=f"topic_maintain_low_model_{mode.value}",
+                max_sources=160,
+                max_list=220,
+                max_keys=240,
+                max_string=1800,
+                depth=7,
+            )
+            structured_data["low_model_digest"] = low_model_digest
+        except Exception as exc:
+            low_model_digest = {
+                "schema_version": "low_model_digest_v1",
+                "status": "failed",
+                "model": "MiniMax-M2.7",
+                "error": str(exc),
+            }
+            structured_data["low_model_digest"] = low_model_digest
+            emit(f"MiniMax M2.7 題材資料整理略過：{exc}")
+    low_model_digest_json = _json_dumps(low_model_digest, 20000)
 
     emit(f"結構化資料摘要：{len(sd_json)} chars")
     emit(f"Discovery來源：{len(discovery_sources)} 筆")
@@ -400,6 +489,7 @@ def run_topic_maintain(
         "base_sources_json": base_sources_json,
         "webfetch_evidence_json": webfetch_evidence_json,
         "external_topic_source_caches_json": external_sources_json,
+        "low_model_digest_json": low_model_digest_json,
         "recent_theme_reports_json": recent_theme_reports_json,
         "existing_topic_profiles_json": profiles_json,
         "company_topic_map_json": ctm_json,
@@ -471,6 +561,15 @@ def run_topic_maintain(
     pack.raw_response_path = str(raw_p)
     pack.prompt_log_path = str(prompt_log_p)
     pack.company_knowledge_updates = _normalize_company_knowledge_updates(pack.company_knowledge_updates)
+    pack.extra = dict(pack.extra or {})
+    if low_model_digest:
+        pack.extra["low_model_digest"] = {
+            "status": low_model_digest.get("status"),
+            "model": low_model_digest.get("model"),
+            "prompt_path": low_model_digest.get("prompt_path"),
+            "facts_count": len(low_model_digest.get("facts") or []),
+            "warnings_count": len(low_model_digest.get("warnings") or []),
+        }
 
     # Validate actions
     if not pack.actions:

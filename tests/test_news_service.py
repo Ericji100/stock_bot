@@ -16,6 +16,8 @@ from research_center.news_service import (
     _classify_limit,
     _classify_text_limit,
     _classify_timeout_seconds,
+    _news_high_tier_classify_limit,
+    _select_high_tier_news_items,
     _filter_taiwan_finance_news,
     _is_non_article_page,
     _is_taiwan_finance_news,
@@ -1154,6 +1156,22 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
                 "1": {"category": "金融股", "summary": "AI summary 1", "importance_score": 80},
             }))
 
+    class FakeMiniMaxLow:
+        def __init__(self):
+            self.timeout_seconds = 999
+            self.calls: list[str] = []
+
+        def is_configured(self):
+            return True
+
+        def generate_json(self, prompt):
+            self.calls.append(prompt)
+            content = json.dumps({
+                "0": {"category": "AI / 半導體", "summary": "low summary 0", "importance_score": 55},
+                "1": {"category": "金融股", "summary": "low summary 1", "importance_score": 45},
+            })
+            return SimpleNamespace(raw={"choices": [{"message": {"content": content}}]})
+
     class FailingOnceGemini(FakeGemini):
         def generate_report(self, prompt, enable_grounding=False):
             self.calls.append(prompt)
@@ -1188,6 +1206,7 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         self.assertEqual(gemini.timeout_during_call, 33.0)
         self.assertTrue(any("AI" in msg and "1/3" in msg for msg in messages))
         self.assertTrue(any("AI" in msg and "3/3" in msg for msg in messages))
+        self.assertTrue(any("prompt=" in msg and "est_tokens=" in msg for msg in messages))
 
     def test_classification_defaults_are_conservative(self):
         with patch.dict("os.environ", {}, clear=False):
@@ -1195,6 +1214,7 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
             self.assertEqual(_classify_batch_size(), 3)
             self.assertEqual(_classify_timeout_seconds(), 45.0)
             self.assertEqual(_classify_text_limit(), 500)
+            self.assertEqual(_news_high_tier_classify_limit(), 12)
 
     def test_classification_payload_truncates_full_text(self):
         item = self._items(1)[0]
@@ -1255,6 +1275,36 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         _call_news_classifier(center, "gemini", "{}", 45.0)
         self.assertEqual(gemini.timeout_during_call, 45.0)
         self.assertEqual(gemini.timeout_seconds, 999)
+
+    def test_low_model_classifies_all_and_high_model_reviews_top_items(self):
+        gemini = self.FakeGemini()
+        low = self.FakeMiniMaxLow()
+        center = SimpleNamespace(gemini=gemini, low_model_minimax=low)
+        messages: list[str] = []
+        items = self._items(3)
+        items[0].source = "中央社"
+        items[0].importance_score = 100
+        with patch.dict("os.environ", {"NEWS_AI_CLASSIFY_BATCH_SIZE": "2", "NEWS_HIGH_TIER_CLASSIFY_LIMIT": "1"}):
+            classified = _batch_classify_news(items, center, messages.append, ai_model="gemini")
+
+        self.assertEqual(len(classified), 3)
+        self.assertGreaterEqual(len(low.calls), 2)
+        self.assertEqual(len(gemini.calls), 1)
+        self.assertTrue(any("新聞分類分流" in msg for msg in messages))
+
+    def test_select_high_tier_news_prefers_major_source_and_theme(self):
+        items = self._items(3)
+        items[0].source = "random"
+        items[0].importance_score = 1
+        items[1].source = "中央社"
+        items[1].title = "台股半導體重大訊息"
+        items[1].importance_score = 10
+        items[2].source = "random"
+        items[2].importance_score = 5
+
+        selected = _select_high_tier_news_items(items, 1)
+
+        self.assertEqual(selected[0].id, items[1].id)
 
 
 class UserSubmittedNewsUrlTests(unittest.TestCase):

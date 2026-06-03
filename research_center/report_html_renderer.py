@@ -62,6 +62,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     .disclaimer {{ margin-top: 32px; padding: 12px; background: #fff7ed; border-left: 4px solid #f97316; overflow-wrap: anywhere; }}
     #tab-main:checked ~ .tab-list label[for="tab-main"],
     #tab-ai-audit:checked ~ .tab-list label[for="tab-ai-audit"],
+    #tab-low-model:checked ~ .tab-list label[for="tab-low-model"],
     #tab-quality:checked ~ .tab-list label[for="tab-quality"],
     #tab-sources:checked ~ .tab-list label[for="tab-sources"],
     #tab-local-scoring:checked ~ .tab-list label[for="tab-local-scoring"],
@@ -69,6 +70,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     #tab-qa:checked ~ .tab-list label[for="tab-qa"] {{ background: #1d4ed8; color: #fff; border-color: #1d4ed8; }}
     #tab-main:checked ~ .panels #panel-main,
     #tab-ai-audit:checked ~ .panels #panel-ai-audit,
+    #tab-low-model:checked ~ .panels #panel-low-model,
     #tab-quality:checked ~ .panels #panel-quality,
     #tab-sources:checked ~ .panels #panel-sources,
     #tab-local-scoring:checked ~ .panels #panel-local-scoring,
@@ -104,6 +106,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     sections = _split_markdown(markdown)
     main_html = _markdown_to_html(sections.get("main") or markdown)
     ai_audit_html = _ai_audit_html(report_json)
+    low_model_html = _low_model_digest_html(report_json)
     quality_html = _quality_html(report_json)
     sources_html = _sources_html(report_json)
     local_scoring_html = _local_scoring_html(report_json)
@@ -115,6 +118,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <div class="report-meta">報告日期：{report_date}　模式：{mode}{'　模型：' + model if model else ''}</div>
   <input class="tab-input" type="radio" name="report-tabs" id="tab-main" checked>
   <input class="tab-input" type="radio" name="report-tabs" id="tab-ai-audit">
+  <input class="tab-input" type="radio" name="report-tabs" id="tab-low-model">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-quality">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-sources">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-local-scoring">
@@ -123,6 +127,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <nav class="tab-list" aria-label="報告分頁">
     <label class="tab-label" for="tab-main">主報告</label>
     <label class="tab-label" for="tab-ai-audit">入模審計</label>
+    <label class="tab-label" for="tab-low-model">資料整理底稿</label>
     <label class="tab-label" for="tab-quality">資料品質</label>
     <label class="tab-label" for="tab-sources">完整來源</label>
     <label class="tab-label" for="tab-local-scoring">本地底稿</label>
@@ -132,6 +137,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <div class="panels">
     <section class="tab-panel" id="panel-main">{main_html}</section>
     <section class="tab-panel" id="panel-ai-audit">{ai_audit_html}</section>
+    <section class="tab-panel" id="panel-low-model">{low_model_html}</section>
     <section class="tab-panel" id="panel-quality">{quality_html}</section>
     <section class="tab-panel" id="panel-sources">{sources_html}</section>
     <section class="tab-panel" id="panel-local-scoring">{local_scoring_html}</section>
@@ -323,6 +329,8 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
     audit = metadata.get("ai_input_audit") or {}
     confidence = metadata.get("report_confidence") or {}
     prompt_context = metadata.get("ai_prompt_context") or {}
+    high_package = metadata.get("high_model_input_package") or {}
+    high_mode = metadata.get("high_model_input_mode") or high_package.get("input_mode") or ""
     ai_received = audit.get("ai_received") or {}
     ai_not_received = audit.get("ai_not_received_directly") or {}
     source_coverage = audit.get("source_coverage") or {}
@@ -368,6 +376,67 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
     if prompt_context:
         parts.append("<h3>入模資料說明</h3>")
         parts.append(f"<p>{html.escape(display_value(prompt_context.get('說明') or '完整資料仍保存在本地報告與 JSON。'))}</p>")
+    return "\n".join(parts)
+
+
+def _low_model_digest_html(report_json: dict[str, Any]) -> str:
+    metadata = report_json.get("metadata") or {}
+    digest = metadata.get("low_model_digest") or {}
+    model = metadata.get("low_model_model") or digest.get("model") or ""
+    prompt_path = metadata.get("low_model_prompt_path") or digest.get("prompt_path") or ""
+    status = str(digest.get("status") or "not_used")
+    parts = [
+        "<h2>低階模型資料整理底稿</h2>",
+        '<article class="quality-card">',
+        f"<p>模型：<strong>{html.escape(str(model or '未啟用'))}</strong></p>",
+        f"<p>狀態：{html.escape(display_value(status))}</p>",
+        f"<p>提示詞紀錄：{html.escape(str(prompt_path or '無'))}</p>",
+        "<p>此分頁只呈現 MiniMax M2.7 的資料整理底稿；最終投研判斷仍由主分析模型重新評估。</p>",
+        "</article>",
+    ]
+    if not digest:
+        parts.append("<p>本報告沒有低階模型資料整理底稿。</p>")
+        return "\n".join(parts)
+    if status == "failed":
+        parts.append(f"<p>失敗原因：{html.escape(display_value(digest.get('error') or '未知'))}</p>")
+        return "\n".join(parts)
+    if status == "skipped":
+        parts.append(f"<p>略過原因：{html.escape(display_value(digest.get('reason') or '未設定'))}</p>")
+        return "\n".join(parts)
+    sections = [
+        ("facts", "事實整理", ["fact", "stance", "evidence_type", "source_ids", "confidence", "needs_verification"]),
+        ("events", "事件整理", ["event", "stance", "date", "source_ids", "summary"]),
+        ("risk_evidence", "風險證據", ["risk", "source_ids", "confidence"]),
+        ("counter_evidence", "反證整理", ["counter_evidence", "source_ids", "confidence"]),
+        ("source_map", "來源對照", ["source_id", "title", "source_level", "used_for"]),
+    ]
+    for key, title, columns in sections:
+        rows = digest.get(key) or []
+        if not rows:
+            continue
+        parts.append(f"<h3>{html.escape(title)}</h3>")
+        table = ["| " + " | ".join(display_field_label(column) for column in columns) + " |", "|---" * len(columns) + "|"]
+        for row in rows[:50]:
+            if not isinstance(row, dict):
+                continue
+            values = []
+            for column in columns:
+                value = row.get(column)
+                if isinstance(value, list):
+                    value = "、".join(str(item) for item in value)
+                values.append(display_value(value))
+            table.append("| " + " | ".join(values) + " |")
+        parts.append(_markdown_table_to_html(table))
+    missing = digest.get("missing_data") or []
+    warnings = digest.get("warnings") or []
+    if missing:
+        parts.append("<h3>資料缺口</h3><ul>")
+        parts.extend(f"<li>{html.escape(display_value(item))}</li>" for item in missing[:30])
+        parts.append("</ul>")
+    if warnings:
+        parts.append("<h3>底稿提醒</h3><ul>")
+        parts.extend(f"<li>{html.escape(display_value(item))}</li>" for item in warnings[:30])
+        parts.append("</ul>")
     return "\n".join(parts)
 
 
@@ -507,6 +576,12 @@ def _metadata_summary(report_json: dict[str, Any]) -> dict[str, Any]:
         "report_date": report_json.get("report_date"),
         "ai_used": metadata.get("ai_used"),
         "analysis_model": metadata.get("analysis_model"),
+        "high_model_input_mode": metadata.get("high_model_input_mode"),
+        "high_model_input_package": metadata.get("high_model_input_package"),
+        "ai_workflow_policy": metadata.get("ai_workflow_policy"),
+        "low_model_model": metadata.get("low_model_model"),
+        "low_model_digest": metadata.get("low_model_digest"),
+        "low_model_prompt_path": metadata.get("low_model_prompt_path"),
         "report_schema_version": metadata.get("report_schema_version"),
         "data_coverage_score": metadata.get("data_coverage_score"),
         "source_coverage_summary": metadata.get("source_coverage_summary"),

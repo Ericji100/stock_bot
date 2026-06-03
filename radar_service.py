@@ -24,6 +24,7 @@ from research_center.date_aware_context import (
 )
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import ResearchCenter
+from research_center.ai_workflow_service import run_low_model_digest_for_payload
 from research_center.data_services import collect_structured_data
 from research_center.evidence_pack_service import build_ai_compact_context, build_three_layer_evidence_context
 from research_center.news_repository import NewsRepository
@@ -37,6 +38,7 @@ from stock_scanner import load_recent_revenue_history, load_stock_universe, scan
 ROOT_DIR = Path(__file__).resolve().parent
 RADAR_CACHE_PATH = ROOT_DIR / ".cache" / "radar_results.json"
 RADAR_REPORT_DIR = ROOT_DIR / "reports" / "radar"
+RADAR_PROMPT_DIR = ROOT_DIR / "prompt" / "radar"
 DEFAULT_SOURCE = "technical"
 DEFAULT_AI_TOP = 5
 RADAR_AI_CHUNK_SIZE = 5
@@ -1370,8 +1372,9 @@ def _attach_ai_comments(
 
     chunk_records: list[dict[str, Any]] = []
     comments: dict[str, dict[str, Any]] = {}
+    low_model_digest = _attach_radar_low_model_digest(selected, analysis_date, progress)
     for chunk_index, chunk in enumerate(_chunks(selected, RADAR_AI_CHUNK_SIZE), 1):
-        prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date)
+        prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date, low_model_digest=low_model_digest)
         record: dict[str, Any] = {
             "chunk_index": chunk_index,
             "codes": [item.code for item in chunk],
@@ -1443,7 +1446,65 @@ def _attach_ai_comments(
         "chunk_count": len(chunk_records),
         "chunks": chunk_records,
         "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
+        "low_model_digest": {
+            "status": low_model_digest.get("status"),
+            "model": low_model_digest.get("model"),
+            "prompt_path": low_model_digest.get("prompt_path"),
+            "facts_count": len(low_model_digest.get("facts") or []),
+            "warnings_count": len(low_model_digest.get("warnings") or []),
+        } if low_model_digest else {},
     }
+
+
+def _attach_radar_low_model_digest(
+    selected: list[RadarCandidate],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    try:
+        center = ResearchCenter()
+        low_model = getattr(center, "low_model_minimax", None)
+        enabled = bool(getattr(center.config, "enable_low_model_digest", True))
+        if low_model is None:
+            return {}
+        request = CommandRequest(
+            command="radar",
+            raw_text="/radar low-model digest",
+            target="選股雷達候選股",
+            report_date=analysis_date,
+        )
+        payload = {
+            "command": "radar",
+            "analysis_date": analysis_date.isoformat(),
+            "candidate_count": len(selected),
+            "candidates": [
+                _build_ai_comment_payload(item, analysis_date, compact_profile="tight")
+                for item in selected
+            ],
+            "rule": "只整理候選股證據、風險、缺口與來源對照，不輸出買賣建議或最終短評。",
+        }
+        return run_low_model_digest_for_payload(
+            request,
+            payload,
+            sources=[],
+            minimax=low_model,
+            enabled=enabled,
+            progress=progress,
+            purpose="radar_low_model_batch_digest",
+            max_sources=60,
+            max_list=60,
+            max_keys=120,
+            max_string=700,
+            depth=6,
+        )
+    except Exception as exc:
+        _emit(progress, f"Radar：MiniMax M2.7 批次資料整理略過：{exc}")
+        return {
+            "schema_version": "low_model_digest_v1",
+            "status": "failed",
+            "model": "MiniMax-M2.7",
+            "error": str(exc),
+        }
 
 
 def _score_candidates(candidates: list[RadarCandidate]) -> None:
@@ -1757,55 +1818,73 @@ def _build_ai_comment_prompt(
     analysis_date: date,
     *,
     compact_profile: str = "normal",
+    low_model_digest: dict[str, Any] | None = None,
 ) -> str:
     payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
+    template = _read_radar_prompt("radar_ai_comment.md")
+    low_digest_json = json.dumps(
+        _json_safe(_filter_low_model_digest_for_codes(low_model_digest or {}, [item.code for item in candidates])),
+        ensure_ascii=False,
+    )
+    rendered = template.replace("{analysis_date}", analysis_date.isoformat()).replace(
+        "{candidate_payload_json}",
+        json.dumps(_json_safe(payloads), ensure_ascii=False),
+    )
+    if "{low_model_digest_json}" in rendered:
+        return rendered.replace("{low_model_digest_json}", low_digest_json)
     return (
-        "你是台股選股雷達的短評助手。請只根據輸入資料做判斷，不得新增股票，不得改變本地分數。\n"
-        "輸入使用 ai_compact_pack，完整 evidence_pack 已保存在本地報告檔，不會直接塞進 prompt。\n"
-        "請輸出嚴格 JSON，不要 Markdown，不要 code fence。\n"
-        "所有 reason、risk、watch 必須使用繁體中文；專有名詞、公司名、產品名可保留英文，但禁止整段英文分析。\n"
-        "JSON 格式：{\"comments\":[{\"code\":\"2330\",\"priority\":\"高|中|低\",\"confidence\":\"高|中|低\",\"reason\":\"最多120字推薦理由\",\"risk\":\"最多120字主要風險\",\"watch\":\"最多120字觀察重點\"}]}\n"
-        "若資料不足，priority 與 confidence 請降低，並在 reason 或 risk 說明資料不足。\n"
-        "請優先使用 ai_compact_pack 與 data_coverage，不要只看本地分數。\n"
-        f"analysis_date：{analysis_date.isoformat()}\n"
-        "候選股資料：\n"
-        f"{json.dumps(_json_safe(payloads), ensure_ascii=False)}"
+        rendered
+        + "\n\nMiniMax M2.7 批次資料整理底稿：\n"
+        + low_digest_json
     )
 
 
-def _build_ai_comment_prompt(
-    candidates: list[RadarCandidate],
-    analysis_date: date,
-    *,
-    compact_profile: str = "normal",
-) -> str:
-    payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
+def _read_radar_prompt(name: str) -> str:
+    path = RADAR_PROMPT_DIR / name
+    if path.exists():
+        return path.read_text(encoding="utf-8-sig")
     return (
         "你是台股選股雷達分析員。請根據候選股資料輸出繁體中文 JSON，不要使用 Markdown 或 code fence。\n"
-        "輸出格式：{\"comments\":[{\"code\":\"2330\",\"priority\":\"高/中/低\",\"confidence\":\"高/中/低\","
-        "\"reason\":\"短評\",\"risk\":\"風險\",\"watch\":\"觀察\"}]}\n"
-        "reason、risk、watch 每欄請控制在 120 個中文字內。\n"
-        "禁止整段英文分析；專有名詞可保留英文，但說明必須使用繁體中文。\n"
-        "請優先使用 ai_compact_pack 與 data_coverage，不要只看本地分數。\n"
-        "若 data_gap_summary 或 data_limits 顯示法人/籌碼資料尚未公告或使用最近可用日，"
-        "請寫成資料時點限制，不要寫成公司營運風險。\n"
-        "若 radar_research_mode 為 light_generated，代表 Radar 輕量補強，"
-        "請用既有技術、營收、籌碼、題材與來源摘要判斷，不要要求完整 research 資料。\n"
-        f"analysis_date：{analysis_date.isoformat()}\n"
-        "候選股資料：\n"
-        f"{json.dumps(_json_safe(payloads), ensure_ascii=False)}"
+        "不得新增候選股票，不得改變本地分數。請優先使用 ai_compact_pack 與 data_coverage。\n"
+        "若資料不足，priority 與 confidence 請降低。\n"
+        "候選股資料：\n{candidate_payload_json}"
     )
 
 
-def _build_ai_comment_prompt_jobs(chunk: list[RadarCandidate], analysis_date: date) -> list[dict[str, Any]]:
-    normal_prompt = _build_ai_comment_prompt(chunk, analysis_date, compact_profile="normal")
+def _filter_low_model_digest_for_codes(digest: dict[str, Any], codes: list[str]) -> dict[str, Any]:
+    if not digest:
+        return {}
+    code_set = {str(code) for code in codes if code}
+    if not code_set:
+        return digest
+    result = dict(digest)
+    for key in ("facts", "events", "risk_evidence", "counter_evidence", "source_map"):
+        values = result.get(key)
+        if not isinstance(values, list):
+            continue
+        filtered = []
+        for item in values:
+            text = json.dumps(item, ensure_ascii=False, default=str) if isinstance(item, dict) else str(item)
+            if any(code in text for code in code_set):
+                filtered.append(item)
+        result[key] = filtered or values[:5]
+    return result
+
+
+def _build_ai_comment_prompt_jobs(
+    chunk: list[RadarCandidate],
+    analysis_date: date,
+    *,
+    low_model_digest: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    normal_prompt = _build_ai_comment_prompt(chunk, analysis_date, compact_profile="normal", low_model_digest=low_model_digest)
     if len(normal_prompt) <= RADAR_AI_PROMPT_MAX_CHARS:
         return [{"codes": [item.code for item in chunk], "profile": "normal", "prompt": normal_prompt}]
 
     jobs: list[dict[str, Any]] = []
     for item in chunk:
         for profile in ("normal", "tight", "minimal"):
-            prompt = _build_ai_comment_prompt([item], analysis_date, compact_profile=profile)
+            prompt = _build_ai_comment_prompt([item], analysis_date, compact_profile=profile, low_model_digest=low_model_digest)
             if len(prompt) <= RADAR_AI_PROMPT_MAX_CHARS or profile == "minimal":
                 jobs.append({"codes": [item.code], "profile": profile, "prompt": prompt})
                 break

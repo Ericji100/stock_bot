@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T13:51:30",
+  "generated_at": "2026-06-03T14:54:27",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -115,7 +115,7 @@
       "symbol": "1595.TWO",
       "market": "TPEX",
       "name": "川寶",
-      "industry": "電子零組件業"
+      "industry": "半導體業"
     },
     {
       "code": "1599",
@@ -269,7 +269,7 @@
       "symbol": "2230.TWO",
       "market": "TPEX",
       "name": "泰茂",
-      "industry": "電機機械"
+      "industry": "居家生活"
     },
     {
       "code": "2235",
@@ -493,7 +493,7 @@
       "symbol": "3067.TWO",
       "market": "TPEX",
       "name": "全域",
-      "industry": "其他電子業"
+      "industry": "居家生活"
     },
     {
       "code": "3071",
@@ -612,7 +612,7 @@
       "symbol": "3131.TWO",
       "market": "TPEX",
       "name": "弘塑",
-      "industry": "其他電子業"
+      "industry": "半導體業"
     },
     {
       "code": "3141",
@@ -962,7 +962,7 @@
       "symbol": "3313.TWO",
       "market": "TPEX",
       "name": "斐成",
-      "industry": "其他"
+      "industry": "建材營造"
     },
     {
       "code": "3317",
@@ -2425,7 +2425,7 @@
       "symbol": "4905.TWO",
       "market": "TPEX",
       "name": "台聯電",
-      "industry": "通信網路業"
+      "industry": "生技醫療業"
     },
     {
       "code": "4907",
@@ -2467,7 +2467,7 @@
       "symbol": "4924.TWO",
       "market": "TPEX",
       "name": "欣厚-KY",
-      "industry": "電腦及週邊設備業"
+      "industry": "綠能環保"
     },
     {
       "code": "4931",
@@ -2950,7 +2950,7 @@
       "symbol": "5381.TWO",
       "market": "TPEX",
       "name": "光譜",
-      "industry": "電子零組件業"
+      "industry": "電機機械"
     },
     {
       "code": "5386",
@@ -3482,7 +3482,7 @@
       "symbol": "6125.TWO",
       "market": "TPEX",
       "name": "廣運",
-      "industry": "光電業"
+      "industry": "電機機械"
     },
     {
       "code": "6126",
@@ -3622,7 +3622,7 @@
       "symbol": "6163.TWO",
       "market": "TPEX",
       "name": "華電網",
-      "industry": "通信網路業"
+      "industry": "資訊服務業"
     },
     {
       "code": "6167",
@@ -3895,7 +3895,7 @@
       "symbol": "6236.TWO",
       "market": "TPEX",
       "name": "中湛",
-      "industry": "其他"
+      "industry": "數位雲端"
     },
     {
       "code": "6237",
@@ -5239,7 +5239,7 @@
       "symbol": "7718.TWO",
       "market": "TPEX",
       "name": "友鋮",
-      "industry": "鋼鐵工業"
+      "industry": "電機機械"
     },
     {
       "code": "7723",
@@ -6135,7 +6135,7 @@
       "symbol": "8932.TWO",
       "market": "TPEX",
       "name": "智通*",
-      "industry": "其他"
+      "industry": "數位雲端"
     },
     {
       "code": "8933",

@@ -176,6 +176,7 @@ Windows 可直接執行：
 | 法人籌碼 | TWSE、TPEx、FinMind、Fugle | `.cache/chip_daily` | 缺口時可嘗試 FinMind 即時備援 |
 | 大戶分布 | TDCC | `.cache/tdcc` | 價值重估與籌碼分析使用 |
 | 新聞 | MiniMax、Tavily、Gemini、新聞 URL 匯入 | `database/stock_research.db` | `/news latest` 讀本地庫；`/news refresh` 會搜尋 |
+| 晨間市場速報 | Yahoo Finance、Yahoo 期貨頁首、TAIFEX 備援 | 即時查詢 | `/morning` 台指期夜盤優先抓最新期貨頁首報價；TAIFEX 日檔只作歷史備援，避免清晨日檔未更新時輸出舊夜盤 |
 | 題材庫 | `config/theme_profiles.json` 等 | `config/`、`data/theme/` | 變更包需 review/confirm |
 | AI 報告 | Gemini、DeepSeek、MiniMax | `reports/`、`database/` | 同時保存來源與 metadata |
 

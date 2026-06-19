@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+import re
 from io import BytesIO
 import json
 import zipfile
 
+from bs4 import BeautifulSoup
 import httpx
 import pandas as pd
 import pytz
@@ -25,6 +27,7 @@ TW_INDEX_CHANNELS = [
 ]
 TAIFEX_DAILY_CSV_URL = "https://www.taifex.com.tw/file/taifex/Dailydownload/DailydownloadCSV/Daily_{date_str}.zip"
 TWSE_INDEX_API_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+YAHOO_TX_FUTURES_URL = "https://tw.stock.yahoo.com/future/WTX%40"
 TX_PRODUCT_CODE = "TX"
 SESSION_DAY = "day"
 SESSION_NIGHT = "night"
@@ -59,10 +62,13 @@ def is_morning_push_window(now: datetime | None = None) -> bool:
 def build_morning_market_report(reference_time: datetime | None = None) -> str:
     report_time = reference_time.astimezone(TW_TIMEZONE) if reference_time else get_tw_now()
     us_quotes = [fetch_latest_yfinance_quote(symbol, label, decimals) for symbol, label, decimals in US_INDEX_SYMBOLS]
-    tx_night_quote = fetch_latest_tx_night_session_quote(report_time.date())
+    try:
+        tx_night_quote = fetch_latest_tx_night_session_quote(report_time.date())
+        tx_lines = [format_quote_line(tx_night_quote)]
+    except MarketSummaryError:
+        tx_lines = ["• 最新夜盤資料暫時無法取得"]
 
     us_lines = [format_quote_line(quote) for quote in us_quotes]
-    tx_lines = [format_quote_line(tx_night_quote)]
 
     return "\n".join(
         [
@@ -243,10 +249,116 @@ def fetch_latest_tx_session_quote(session_type: str, reference_date: date) -> Qu
 
 
 def fetch_latest_tx_night_session_quote(reference_date: date) -> QuoteSnapshot:
+    yahoo_quote = fetch_latest_tx_quote_from_yahoo(reference_date)
+    if yahoo_quote is not None:
+        return yahoo_quote
+
+    return fetch_latest_tx_night_session_quote_from_taifex(reference_date)
+
+
+def fetch_latest_tx_quote_from_yahoo(reference_date: date) -> QuoteSnapshot | None:
+    try:
+        with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
+            response = client.get(YAHOO_TX_FUTURES_URL)
+            response.raise_for_status()
+    except Exception:
+        return None
+
+    quote = parse_yahoo_tx_futures_header(response.text)
+    if quote is None or quote.quote_date != reference_date:
+        return None
+
+    return quote
+
+
+def parse_yahoo_tx_futures_header(html_text: str) -> QuoteSnapshot | None:
+    soup = BeautifulSoup(html_text, "html.parser")
+    header = soup.find(id="main-1-FutureHeader-Proxy")
+    if header is None:
+        return None
+
+    label_node = header.find("h1")
+    price_node = header.find("span", class_=lambda value: value and "Fz(32px)" in value)
+    change_node = header.find("span", class_=lambda value: value and "Fz(20px)" in value and "Mend(4px)" in value)
+    percent_node = header.find("span", string=re.compile(r"\([-+]?\d+(?:\.\d+)?%\)"))
+    time_node = header.find("span", string=re.compile(r"\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}"))
+
+    label = label_node.get_text(strip=True) if label_node else ""
+    close_price = parse_official_number(price_node.get_text(strip=True) if price_node else None)
+    change = parse_signed_yahoo_number(change_node)
+    percent_change = parse_signed_yahoo_percent(percent_node, change)
+    quote_date = parse_yahoo_update_date(time_node.get_text(" ", strip=True) if time_node else None)
+
+    if not label or close_price is None or change is None or percent_change is None or quote_date is None:
+        return None
+
+    return QuoteSnapshot(
+        label=label,
+        close=close_price,
+        change=change,
+        percent_change=percent_change,
+        quote_date=quote_date,
+        decimals=0,
+    )
+
+
+def parse_signed_yahoo_number(node) -> float | None:
+    if node is None:
+        return None
+
+    value = parse_official_number(node.get_text(strip=True))
+    if value is None:
+        return None
+
+    text = node.get_text(strip=True)
+    if text.startswith("-"):
+        return value
+
+    class_text = " ".join(node.get("class") or []).lower()
+    return -abs(value) if "down" in class_text else abs(value)
+
+
+def parse_signed_yahoo_percent(node, change: float | None) -> float | None:
+    if node is None:
+        return None
+
+    text = node.get_text(strip=True).strip("()")
+    if text.endswith("%"):
+        text = text[:-1]
+
+    value = parse_official_number(text)
+    if value is None:
+        return None
+
+    if text.startswith("-"):
+        return value
+
+    if change is not None and change < 0:
+        return -abs(value)
+
+    class_text = " ".join(node.get("class") or []).lower()
+    return -abs(value) if "down" in class_text else abs(value)
+
+
+def parse_yahoo_update_date(raw_value: str | None) -> date | None:
+    if not raw_value:
+        return None
+
+    match = re.search(r"(\d{4})/(\d{2})/(\d{2})\s+\d{2}:\d{2}", raw_value)
+    if not match:
+        return None
+
+    return datetime.strptime(match.group(0), "%Y/%m/%d %H:%M").date()
+
+
+def fetch_latest_tx_night_session_quote_from_taifex(reference_date: date) -> QuoteSnapshot:
     sessions = load_tx_session_closes(reference_date)
     current_night_session = pick_latest_session(sessions, SESSION_NIGHT, reference_date)
     if current_night_session is None:
         raise MarketSummaryError("台指期近月夜盤資料不足。")
+
+    if current_night_session.quote_date != expected_taifex_night_session_date(reference_date):
+        raise MarketSummaryError("台指期近月夜盤資料尚未更新。")
 
     same_date_day_session = pick_exact_session(sessions, SESSION_DAY, current_night_session.quote_date)
     if same_date_day_session is None:
@@ -263,6 +375,10 @@ def fetch_latest_tx_night_session_quote(reference_date: date) -> QuoteSnapshot:
         quote_date=current_night_session.quote_date,
         decimals=0,
     )
+
+
+def expected_taifex_night_session_date(reference_date: date) -> date:
+    return reference_date - timedelta(days=1)
 
 
 def load_tx_session_closes(reference_date: date) -> list[QuoteSnapshot]:

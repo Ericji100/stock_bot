@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from data_fetcher import StockExportError
 
@@ -43,6 +45,7 @@ from .evidence_pack_service import attach_unified_evidence_pack
 from .ai_data_center import attach_ai_data_center
 from .ai_workflow_service import attach_high_model_input_package, attach_low_model_digest
 from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
+from .required_data_gap_service import build_required_data_gap_summary, build_required_gap_fill_tasks
 from .search_source_normalizer import normalize_source_items
 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
 from .topic_models import TopicChangeStatus
@@ -544,7 +547,11 @@ class ResearchCenter:
                     )
                     markdown = segmented_result.markdown
                     gemini_raw = segmented_result.raw
-                    actual_gemini_model = final_model_name
+                    actual_gemini_model = str(
+                        segmented_result.diagnostics.get("actual_model")
+                        or segmented_result.diagnostics.get("model")
+                        or final_model_name
+                    )
                     structured_data["analysis_model"] = actual_gemini_model
                     structured_data["analysis_provider"] = self._segmented_provider_key_for(selected_ai_model)
                     self._store_segmented_diagnostics(structured_data, selected_ai_model, segmented_result.diagnostics)
@@ -633,6 +640,7 @@ class ResearchCenter:
         if draft_path:
             _emit_progress(progress, f"知識庫草稿已保存：{draft_path}")
             structured_data["knowledge_draft_path"] = str(draft_path)
+        sources = normalize_source_items(sources, request)
         artifacts, report_json = write_report_artifacts(self.config.report_root, request, markdown, summary, sources, ai_used, fallback_reason, structured_data)
         if request.command == "theme":
             saved_theme_context = save_theme_report_context(request, summary, sources, structured_data, artifacts)
@@ -923,7 +931,7 @@ class ResearchCenter:
             ai_model = request.ai_model or "gemini"
             items, meta = run_news_refresh(self, repository, progress, ai_model=ai_model)
             total_cats = len({it.category for it in items if it.category})
-            summary = format_news_refresh_result(meta.get("saved", 0), meta.get("skipped", 0), total_cats)
+            summary = format_news_refresh_result(meta.get("saved", 0), meta.get("skipped", 0), total_cats, items, meta)
             markdown = summary
             return ResearchCenterResult(
                 status="success", request=request, summary=summary, markdown=markdown,
@@ -1152,18 +1160,43 @@ def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[Sour
                     provider_detail=existing.provider_detail,
                     fetch_provider=item.fetch_provider or existing.fetch_provider,
                     fetch_status=item.fetch_status or existing.fetch_status,
+                    fetch_quality=item.fetch_quality or existing.fetch_quality,
                     failure_reason=item.failure_reason or existing.failure_reason,
                     found_by=combined_found_by,
                 )
     merged: list[SourceItem] = []
     for url, item in merged_dict.items():
         merged.append(SourceItem(
-            f"S{len(merged) + 1:03d}", item.title, item.url, item.source_level,
-            item.published_date, item.snippet, item.used_in_section,
-            item.provider, item.provider_detail,
-            item.fetch_provider, item.fetch_status, item.failure_reason, item.found_by,
+            source_id=f"S{len(merged) + 1:03d}",
+            title=item.title,
+            url=item.url,
+            source_level=item.source_level,
+            published_date=item.published_date,
+            snippet=item.snippet,
+            used_in_section=item.used_in_section,
+            provider=item.provider,
+            provider_detail=item.provider_detail,
+            fetch_provider=item.fetch_provider,
+            fetch_status=item.fetch_status,
+            fetch_quality=item.fetch_quality,
+            failure_reason=item.failure_reason,
+            found_by=item.found_by,
         ))
     return merged
+
+
+def _mark_gap_fill_sources(sources: list[SourceItem]) -> list[SourceItem]:
+    marked: list[SourceItem] = []
+    for source in sources:
+        found_by = list(source.found_by or [])
+        for marker in ("required_data_gap_fill", "query_intent:required_data_gap_fill"):
+            if marker not in found_by:
+                found_by.append(marker)
+        used_in_section = list(source.used_in_section or [])
+        if "必備資料缺口補搜" not in used_in_section:
+            used_in_section.append("必備資料缺口補搜")
+        marked.append(replace(source, found_by=found_by, used_in_section=used_in_section))
+    return marked
 
 
 def _select_sources_for_prompt(
@@ -1258,16 +1291,21 @@ class _GeminiDiscoveryRunner:
             self._run_minimax_mcp(request, discovery_tasks, sources, structured_data, progress)
             # Step 2: Tavily Search (second priority)
             self._run_tavily(request, discovery_tasks, sources, structured_data, progress)
+            # Step 2.5: required-data gap fill. This keeps original discovery intact
+            # and only adds focused backfill tasks when command-specific evidence is missing.
+            gap_tasks = self._run_required_data_gap_fill(request, sources, structured_data, progress)
             # Step 3: Gemini fallback if needed
-            should_run = self._should_run_gemini(request, sources)
+            structured_data["pre_gemini_source_quality"] = _source_quality_summary(sources, request, structured_data)
+            should_run = self._should_run_gemini(request, sources, structured_data)
             if should_run and use_grounding:
-                self._run_gemini(request, discovery_tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
+                gemini_tasks = gap_tasks or discovery_tasks
+                self._run_gemini(request, gemini_tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
                 gemini_search_used = True
             else:
                 structured_data["gemini_search_discovery"] = {
                     "enabled": False,
                     "reason": "skipped_enough_non_gemini_sources" if not should_run else "gemini_search_mode_off",
-                    "source_quality": _source_quality_summary(sources, request),
+                    "source_quality": structured_data.get("pre_gemini_source_quality"),
                 }
                 if progress:
                     _emit_progress(progress, "Gemini Search skipped: sources sufficient or mode not enabled")
@@ -1280,6 +1318,101 @@ class _GeminiDiscoveryRunner:
             "policy": "Shared search source normalizer: provider, found_by and used_in_section standardized.",
         }
         return sources, gemini_search_used
+
+    def _run_required_data_gap_fill(self, request, sources, structured_data, progress):
+        before_summary = build_required_data_gap_summary(request, sources, structured_data)
+        structured_data["required_data_gap_summary"] = before_summary
+        gap_tasks = build_required_gap_fill_tasks(request, before_summary)
+        if not gap_tasks:
+            _emit_progress(progress, "Required data gap check: complete")
+            return []
+
+        _emit_progress(
+            progress,
+            f"Required data gap check: missing={before_summary.get('missing_count')} backfill_tasks={len(gap_tasks)}",
+        )
+        structured_data["required_data_gap_backfill_tasks"] = _build_search_query_log(gap_tasks)
+        self._run_gap_fill_minimax(request, gap_tasks, sources, structured_data, progress)
+        self._run_gap_fill_tavily(request, gap_tasks, sources, structured_data, progress)
+        after_summary = build_required_data_gap_summary(request, sources, structured_data)
+        structured_data["required_data_gap_summary"] = {
+            **after_summary,
+            "initial_missing_count": before_summary.get("missing_count"),
+            "gap_fill_task_count": len(gap_tasks),
+        }
+        remaining_tasks = build_required_gap_fill_tasks(request, after_summary)
+        structured_data["required_data_gap_remaining_tasks"] = _build_search_query_log(remaining_tasks) if remaining_tasks else {
+            "schema_version": SEARCH_QUERY_TEMPLATE_VERSION,
+            "task_count": 0,
+            "total_query_count": 0,
+            "tasks": [],
+            "providers": [],
+        }
+        if remaining_tasks:
+            _emit_progress(progress, f"Required data gap fill remaining: {len(remaining_tasks)} tasks")
+        else:
+            _emit_progress(progress, "Required data gap fill completed: no remaining high/soft gaps")
+        return remaining_tasks
+
+    def _run_gap_fill_minimax(self, request, gap_tasks, sources, structured_data, progress):
+        if not self._center.config.enable_minimax_search or not self._center.minimax_search.is_configured():
+            structured_data["required_gap_minimax_discovery"] = {"enabled": False, "reason": "not_configured_or_disabled"}
+            return
+        try:
+            _emit_progress(progress, f"MiniMax MCP required gap fill: {len(gap_tasks)} tasks")
+            result = self._center.minimax_search.discover(request, gap_tasks, progress=progress)
+            provider_sources = normalize_source_items(
+                result.sources,
+                request,
+                provider="minimax_mcp_search",
+                query_intent="required_data_gap_fill",
+            )
+            provider_sources = _mark_gap_fill_sources(provider_sources)
+            before = len(sources)
+            merged = _merge_sources(sources, provider_sources)
+            sources.clear()
+            sources.extend(merged)
+            structured_data["required_gap_minimax_discovery"] = result.diagnostics
+            _append_search_provider_log(
+                structured_data,
+                provider="minimax_mcp_search:required_gap_fill",
+                source_count=len(provider_sources),
+                diagnostics=result.diagnostics,
+            )
+            _emit_progress(progress, f"MiniMax MCP required gap fill completed: {len(provider_sources)} sources, added={len(sources) - before}")
+        except Exception as exc:
+            structured_data["required_gap_minimax_discovery"] = {"enabled": True, "reason": "failed", "error": str(exc)}
+            _emit_progress(progress, f"MiniMax MCP required gap fill failed: {exc}")
+
+    def _run_gap_fill_tavily(self, request, gap_tasks, sources, structured_data, progress):
+        if not self._center.config.enable_tavily_search or not self._center.tavily_search or not self._center.tavily_search.is_configured():
+            structured_data["required_gap_tavily_discovery"] = {"enabled": False, "reason": "not_configured_or_disabled"}
+            return
+        try:
+            _emit_progress(progress, f"Tavily required gap fill: {len(gap_tasks)} tasks")
+            result = self._center.tavily_search.discover(request, gap_tasks, progress=progress)
+            provider_sources = normalize_source_items(
+                result.sources,
+                request,
+                provider="tavily_search",
+                query_intent="required_data_gap_fill",
+            )
+            provider_sources = _mark_gap_fill_sources(provider_sources)
+            before = len(sources)
+            merged = _merge_sources(sources, provider_sources)
+            sources.clear()
+            sources.extend(merged)
+            structured_data["required_gap_tavily_discovery"] = result.diagnostics
+            _append_search_provider_log(
+                structured_data,
+                provider="tavily_search:required_gap_fill",
+                source_count=len(provider_sources),
+                diagnostics=result.diagnostics,
+            )
+            _emit_progress(progress, f"Tavily required gap fill completed: {len(provider_sources)} sources, added={len(sources) - before}")
+        except Exception as exc:
+            structured_data["required_gap_tavily_discovery"] = {"enabled": True, "reason": "failed", "error": str(exc)}
+            _emit_progress(progress, f"Tavily required gap fill failed: {exc}")
 
     def _run_minimax_mcp(self, request, discovery_tasks, sources, structured_data, progress):
         if not self._center.config.enable_minimax_search:
@@ -1447,27 +1580,45 @@ class _GeminiDiscoveryRunner:
             structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "failed", "error": str(exc)}
             _emit_progress(progress, f"Tavily Search failed: {exc}")
 
-    def _should_run_gemini(self, request, sources):
+    def _should_run_gemini(self, request, sources, structured_data=None):
         mode = self._center.config.gemini_search_mode
         if mode == "always":
             return True
         if mode == "off":
             return False
-        return _should_run_gemini_search_fallback(request, sources, self._center.config)
+        return _should_run_gemini_search_fallback(request, sources, self._center.config, structured_data=structured_data)
 
     def _run_gemini(self, request, discovery_tasks, sources, structured_data, discovery_sources, discovery_runs, progress):
         _emit_progress(progress, f"Run Gemini Search discovery (fallback): {len(discovery_tasks)} compact prompts")
         for task_index, task in enumerate(discovery_tasks, 1):
             label = task.get("label") or f"task_{task_index}"
             discovery_prompt = task.get("prompt") or ""
+            started_at = time.monotonic()
             try:
-                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] start")
+                discovery_timeout = min(float(getattr(self._center.gemini, "timeout_seconds", 90.0) or 90.0), 45.0)
+                discovery_model = str(getattr(self._center.config, "gemini_discovery_model", "") or self._center.gemini.model)
+                model_chain = [discovery_model]
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] start: model_chain={model_chain}, timeout={discovery_timeout:.0f}s, retries=0")
                 discovery_log_path = write_prompt_log(
-                    request, discovery_prompt, self._center.config.model, True, sources,
+                    request, discovery_prompt, discovery_model, True, sources,
                     {**(structured_data.get("prompt_policy") or {}), "purpose": "grounding_discovery", "discovery_label": label, "discovery_index": task_index},
                 )
                 _emit_progress(progress, f"Search discovery prompt saved: {discovery_log_path}")
-                discovery_result = self._center.gemini.generate_report(discovery_prompt, enable_grounding=True)
+                old_timeout = self._center.gemini.timeout_seconds
+                old_retries = self._center.gemini.max_retries
+                old_model = self._center.gemini.model
+                old_fallback_models = self._center.gemini.fallback_models
+                try:
+                    self._center.gemini.timeout_seconds = discovery_timeout
+                    self._center.gemini.max_retries = 0
+                    self._center.gemini.model = discovery_model
+                    self._center.gemini.fallback_models = ()
+                    discovery_result = self._center.gemini.generate_report(discovery_prompt, enable_grounding=True)
+                finally:
+                    self._center.gemini.timeout_seconds = old_timeout
+                    self._center.gemini.max_retries = old_retries
+                    self._center.gemini.model = old_model
+                    self._center.gemini.fallback_models = old_fallback_models
                 task_sources = normalize_source_items(
                     discovery_result.sources,
                     request,
@@ -1485,14 +1636,17 @@ class _GeminiDiscoveryRunner:
                 discovery_runs.append({
                     "label": label, "prompt_path": str(discovery_log_path), "diagnostics": discovery_result.diagnostics,
                     "source_count": len(task_sources), "added_source_count": added, "markdown": discovery_result.markdown,
+                    "elapsed_seconds": round(time.monotonic() - started_at, 2),
                 })
-                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added}")
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: elapsed={time.monotonic() - started_at:.1f}s, model={discovery_result.diagnostics.get('actual_model') or discovery_result.diagnostics.get('model')}, metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added}")
             except Exception as exc:
-                discovery_runs.append({"label": label, "status": "failed", "error": str(exc), "source_count": 0, "added_source_count": 0})
-                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed: {exc}")
+                elapsed = round(time.monotonic() - started_at, 2)
+                discovery_runs.append({"label": label, "status": "failed", "error": str(exc), "source_count": 0, "added_source_count": 0, "elapsed_seconds": elapsed})
+                _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed after {elapsed:.1f}s; continue with existing sources. error={exc}")
         structured_data["gemini_search_discovery"] = {
             "mode": "multi_stage", "task_count": len(discovery_tasks),
             "source_count": len(discovery_sources), "runs": discovery_runs,
+            "source_quality": structured_data.get("pre_gemini_source_quality"),
         }
         _append_search_provider_log(
             structured_data,
@@ -1532,6 +1686,7 @@ def _build_search_query_log(discovery_tasks: list[dict[str, Any]]) -> dict[str, 
             "objective": task.get("objective") or "",
             "query_count": len(queries),
             "queries": queries,
+            "query_budget": task.get("query_budget") or {},
         })
     return {
         "schema_version": SEARCH_QUERY_TEMPLATE_VERSION,
@@ -1563,17 +1718,96 @@ def _append_search_provider_log(
     })
 
 
-def _source_quality_summary(sources: list[SourceItem], request: CommandRequest) -> dict[str, Any]:
+SOCIAL_OR_VIDEO_DOMAINS = (
+    "ptt.cc",
+    "dcard.tw",
+    "mobile01.com",
+    "cmoney.tw",
+    "social.cmoney.tw",
+    "facebook.com",
+    "instagram.com",
+    "youtube.com",
+    "youtu.be",
+    "threads.com",
+    "threads.net",
+    "x.com",
+    "twitter.com",
+)
+
+DATE_MARKERS = ("source_date:explicit", "source_date:inferred", "source_date:relative")
+
+
+def _source_quality_summary(
+    sources: list[SourceItem],
+    request: CommandRequest,
+    structured_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     total = len(sources)
     level1 = sum(1 for s in sources if s.source_level in {"Level 1", "L1_official"})
-    level23 = sum(1 for s in sources if s.source_level in {"Level 2", "Level 3", "L2_media", "L2_industry"})
-    risk_terms = ("風險", "反證", "衰退", "下滑", "庫存", "毛利", "虧損", "制裁", "關稅", "戰爭", "risk", "decline", "inventory")
+    level2 = sum(1 for s in sources if s.source_level in {"Level 2", "L2_media", "L2_industry"})
+    level3 = sum(1 for s in sources if s.source_level in {"Level 3", "L3_media", "L3_other"})
+    level23 = level2 + level3
+    high_quality = level1 + level2
+    risk_terms = (
+        "\u98a8\u96aa", "\u8870\u9000", "\u4e0b\u6ed1", "\u5eab\u5b58", "\u6bdb\u5229\u7387", "\u8a34\u8a1f", "\u9055\u7d04", "\u6e1b\u7522",
+        "\u61b8\u5238", "\u6468\u6020",
+        "risk", "decline", "inventory", "lawsuit", "default", "margin",
+    )
     risk = sum(1 for s in sources if any(term.lower() in ((s.title or "") + " " + (s.snippet or "")).lower() for term in risk_terms))
     by_provider: dict[str, int] = {}
+    by_domain: dict[str, int] = {}
+    social_or_video = 0
+    dated = 0
+    fetch_success = 0
+    fetch_failed = 0
     for s in sources:
         provider = s.provider or "unknown"
         by_provider[provider] = by_provider.get(provider, 0) + 1
-    summary = {"total": total, "level1": level1, "level2_or_3": level23, "risk_or_contradiction": risk, "by_provider": by_provider}
+        host = urlparse(s.url or "").netloc.lower()
+        if host:
+            by_domain[host] = by_domain.get(host, 0) + 1
+        if any(domain in host for domain in SOCIAL_OR_VIDEO_DOMAINS) or s.source_level in {"Level 4", "L4_forum"}:
+            social_or_video += 1
+        if s.published_date or any(marker in (s.found_by or []) for marker in DATE_MARKERS):
+            dated += 1
+        if s.fetch_status == "success":
+            fetch_success += 1
+        elif s.fetch_status == "failed":
+            fetch_failed += 1
+
+    minimax_diag = (structured_data or {}).get("minimax_search_discovery") or {}
+    minimax_runs = minimax_diag.get("runs") or []
+    minimax_query_count = sum(int(run.get("query_count") or 0) for run in minimax_runs if isinstance(run, dict))
+    minimax_error_count = sum(int(run.get("error_count") or 0) for run in minimax_runs if isinstance(run, dict))
+    minimax_error_reasons = sorted(set(str(reason) for reason in (minimax_diag.get("error_reasons") or []) if reason))
+    weak_tasks = [
+        str(run.get("label") or run.get("task_name") or run.get("task_id") or "unknown")
+        for run in minimax_runs
+        if isinstance(run, dict) and int(run.get("source_count") or 0) == 0 and int(run.get("error_count") or 0) > 0
+    ]
+
+    summary = {
+        "total": total,
+        "level1": level1,
+        "level2": level2,
+        "level3": level3,
+        "level2_or_3": level23,
+        "high_quality": high_quality,
+        "risk_or_contradiction": risk,
+        "by_provider": by_provider,
+        "top_domains": sorted(by_domain.items(), key=lambda item: item[1], reverse=True)[:10],
+        "social_or_video_sources": social_or_video,
+        "social_or_video_ratio": round(social_or_video / total, 4) if total else 0,
+        "dated_sources": dated,
+        "dated_ratio": round(dated / total, 4) if total else 0,
+        "fetch_success": fetch_success,
+        "fetch_failed": fetch_failed,
+        "minimax_query_count": minimax_query_count,
+        "minimax_error_count": minimax_error_count,
+        "minimax_error_rate": round(minimax_error_count / minimax_query_count, 4) if minimax_query_count else 0,
+        "minimax_error_reasons": minimax_error_reasons,
+        "weak_discovery_tasks": weak_tasks,
+    }
     if request.command == "theme":
         terms = _theme_relevance_terms_for_request(request)
         relevant = sum(1 for s in sources if theme_source_relevance(s, terms) > 0)
@@ -1586,8 +1820,127 @@ def _source_quality_summary(sources: list[SourceItem], request: CommandRequest) 
         summary["theme_relevant"] = relevant
         summary["theme_high_quality_relevant"] = high_quality_relevant
         summary["theme_relevance_ratio"] = round(relevant / total, 4) if total else 0
+    summary["fallback_reasons"] = _gemini_quality_fallback_reasons(request, summary, structured_data)
     return summary
 
+
+def _quality_thresholds_for_command(request: CommandRequest, config=None) -> dict[str, float]:
+    thresholds: dict[str, float] = {
+        "min_total_sources": 10,
+        "min_level1_sources": 0,
+        "min_level2_or_3_sources": 0,
+        "min_risk_or_contradiction_sources": 0,
+        "min_level2_sources": 0,
+        "min_high_quality_when_tavily_empty": 8,
+        "max_social_ratio": 0.4,
+        "max_minimax_error_rate": 0.25,
+        "min_dated_ratio": 0.35,
+        "min_theme_relevant_sources": 8,
+        "min_theme_high_quality_relevant_sources": 3,
+    }
+    command_overrides: dict[str, dict[str, float]] = {
+        "research": {"min_level1_sources": 2, "min_level2_sources": 5, "min_dated_ratio": 0.4, "min_high_quality_when_tavily_empty": 10},
+        "macro": {"min_level1_sources": 2, "min_level2_sources": 6, "min_dated_ratio": 0.3, "min_high_quality_when_tavily_empty": 10},
+        "theme": {"min_level1_sources": 2, "min_level2_sources": 5, "min_dated_ratio": 0.35, "min_high_quality_when_tavily_empty": 8},
+        "theme_radar": {"min_level1_sources": 2, "min_level2_sources": 5, "min_dated_ratio": 0.35, "min_high_quality_when_tavily_empty": 8},
+        "theme_flow": {"min_level1_sources": 1, "min_level2_sources": 4, "min_dated_ratio": 0.35, "min_high_quality_when_tavily_empty": 6},
+        "sector_strength": {"min_level1_sources": 2, "min_level2_sources": 5, "min_dated_ratio": 0.3, "min_high_quality_when_tavily_empty": 7},
+        "value_scan": {"min_level1_sources": 5, "min_level2_sources": 10, "min_dated_ratio": 0.35, "min_high_quality_when_tavily_empty": 16},
+        "news": {"min_level1_sources": 1, "min_level2_sources": 5, "min_dated_ratio": 0.5, "min_high_quality_when_tavily_empty": 6},
+        "topic_maintain": {"min_level1_sources": 2, "min_level2_sources": 4, "min_dated_ratio": 0.25, "max_social_ratio": 0.45, "min_high_quality_when_tavily_empty": 6},
+    }
+    thresholds.update(command_overrides.get(request.command, {}))
+    if request.mode == "deep":
+        thresholds["min_level2_sources"] = float(thresholds.get("min_level2_sources", 0)) + 1
+    if config is not None:
+        legacy = getattr(config, "gemini_fallback_thresholds", {}) or {}
+        thresholds.update(legacy.get(_fallback_threshold_key(request), {}))
+    if "min_level2_or_3_sources" in thresholds and "min_level2_sources" not in thresholds:
+        thresholds["min_level2_sources"] = thresholds["min_level2_or_3_sources"]
+    return thresholds
+
+
+def _gemini_quality_fallback_reasons(
+    request: CommandRequest,
+    summary: dict[str, Any],
+    structured_data: dict[str, Any] | None = None,
+    config=None,
+) -> list[str]:
+    thresholds = _quality_thresholds_for_command(request, config)
+    if _topic_maintain_has_sufficient_minimax_discovery(request, summary, structured_data):
+        return []
+    reasons: list[str] = []
+    topic_maintain_sources_sufficient = (
+        request.command == "topic_maintain"
+        and int(summary.get("total") or 0) >= int(thresholds.get("min_total_sources", 10))
+        and int(summary.get("level2") or 0) >= int(thresholds.get("min_level2_sources", 0))
+        and int(summary.get("high_quality") or 0) >= int(thresholds.get("min_high_quality_when_tavily_empty", 8))
+    )
+    if int(summary.get("total") or 0) < int(thresholds.get("min_total_sources", 10)):
+        reasons.append("total_sources_insufficient")
+    if (
+        int(summary.get("level1") or 0) < int(thresholds.get("min_level1_sources", 0))
+        and not topic_maintain_sources_sufficient
+    ):
+        reasons.append("official_sources_insufficient")
+    if int(summary.get("level2") or 0) < int(thresholds.get("min_level2_sources", 0)):
+        reasons.append("mainstream_media_sources_insufficient")
+    if int(summary.get("level2_or_3") or 0) < int(thresholds.get("min_level2_or_3_sources", 0)):
+        reasons.append("level2_or_3_sources_insufficient")
+    if int(summary.get("risk_or_contradiction") or 0) < int(thresholds.get("min_risk_or_contradiction_sources", 0)):
+        reasons.append("risk_or_contradiction_sources_insufficient")
+    if float(summary.get("social_or_video_ratio") or 0) > float(thresholds.get("max_social_ratio", 0.4)):
+        reasons.append("social_or_video_ratio_too_high")
+    if float(summary.get("minimax_error_rate") or 0) > float(thresholds.get("max_minimax_error_rate", 0.25)):
+        reasons.append("minimax_error_rate_too_high")
+    if (
+        "minimax_sensitive_query_blocked" in set(summary.get("minimax_error_reasons") or [])
+        and not topic_maintain_sources_sufficient
+    ):
+        reasons.append("minimax_sensitive_query_blocked")
+    if summary.get("weak_discovery_tasks") and not topic_maintain_sources_sufficient:
+        reasons.append("discovery_task_coverage_insufficient")
+    if structured_data is not None and request.command in {"research", "theme", "theme_radar", "theme_flow", "sector_strength", "value_scan", "news"}:
+        if float(summary.get("dated_ratio") or 0) < float(thresholds.get("min_dated_ratio", 0.35)):
+            reasons.append("dated_sources_insufficient")
+    required_gap = (structured_data or {}).get("required_data_gap_summary") or {}
+    if required_gap.get("backfill_recommended"):
+        hard_missing = required_gap.get("hard_missing") or []
+        soft_missing = required_gap.get("soft_missing") or []
+        if hard_missing:
+            reasons.append("required_hard_data_gap")
+        elif soft_missing:
+            reasons.append("required_soft_data_gap")
+    tavily_diag = (structured_data or {}).get("tavily_search_discovery") or {}
+    tavily_unavailable = not tavily_diag.get("enabled", bool(summary.get("by_provider", {}).get("tavily_search")))
+    if tavily_unavailable and int(summary.get("high_quality") or 0) < int(thresholds.get("min_high_quality_when_tavily_empty", 8)):
+        reasons.append("tavily_unavailable_and_high_quality_sources_low")
+    if request.command == "theme":
+        if int(summary.get("theme_relevant") or 0) < int(thresholds.get("min_theme_relevant_sources", 8)):
+            reasons.append("theme_relevant_sources_insufficient")
+        if int(summary.get("theme_high_quality_relevant") or 0) < int(thresholds.get("min_theme_high_quality_relevant_sources", 3)):
+            reasons.append("theme_high_quality_relevant_sources_insufficient")
+    return sorted(set(reasons))
+
+
+def _topic_maintain_has_sufficient_minimax_discovery(
+    request: CommandRequest,
+    summary: dict[str, Any],
+    structured_data: dict[str, Any] | None = None,
+) -> bool:
+    """Avoid extra Gemini discovery when topic maintenance already has broad MiniMax sources."""
+    if request.command != "topic_maintain":
+        return False
+    minimax_diag = (structured_data or {}).get("minimax_search_discovery") or {}
+    run_count = sum(
+        int(run.get("source_count") or 0)
+        for run in (minimax_diag.get("runs") or [])
+        if isinstance(run, dict)
+    )
+    diag_count = int(minimax_diag.get("source_count") or 0)
+    provider_count = int((summary.get("by_provider") or {}).get("minimax_mcp_search") or 0)
+    minimax_count = max(run_count, diag_count, provider_count)
+    return minimax_count >= 60 and int(summary.get("total") or 0) >= 40
 
 def _gemini_discovery_source_count(structured_data: dict[str, Any]) -> int:
     discovery = structured_data.get("gemini_search_discovery") or {}
@@ -1596,25 +1949,15 @@ def _gemini_discovery_source_count(structured_data: dict[str, Any]) -> int:
     return int(discovery.get("source_count") or 0)
 
 
-def _should_run_gemini_search_fallback(request: CommandRequest, sources: list[SourceItem], config) -> bool:
-    thresholds = config.gemini_fallback_thresholds.get(_fallback_threshold_key(request), {})
-    summary = _source_quality_summary(sources, request)
-    if summary["total"] < thresholds.get("min_total_sources", 10):
-        return True
-    if summary["level1"] < thresholds.get("min_level1_sources", 0):
-        return True
-    if summary["level2_or_3"] < thresholds.get("min_level2_or_3_sources", 0):
-        return True
-    if summary["risk_or_contradiction"] < thresholds.get("min_risk_or_contradiction_sources", 0):
-        return True
-    if request.command == "theme":
-        min_relevant = thresholds.get("min_theme_relevant_sources", 12 if request.mode == "deep" else 8)
-        min_hq_relevant = thresholds.get("min_theme_high_quality_relevant_sources", 4 if request.mode == "deep" else 3)
-        if int(summary.get("theme_relevant") or 0) < min_relevant:
-            return True
-        if int(summary.get("theme_high_quality_relevant") or 0) < min_hq_relevant:
-            return True
-    return False
+def _should_run_gemini_search_fallback(
+    request: CommandRequest,
+    sources: list[SourceItem],
+    config,
+    structured_data: dict[str, Any] | None = None,
+) -> bool:
+    summary = _source_quality_summary(sources, request, structured_data)
+    reasons = _gemini_quality_fallback_reasons(request, summary, structured_data, config)
+    return bool(reasons)
 
 
 def _theme_relevance_terms_for_request(request: CommandRequest) -> list[str]:
@@ -1646,117 +1989,3 @@ def _format_ai_fallback_reason(
     prompt_note = f"; prompt_chars={len(prompt)}" if prompt else ""
     source_note = f"; sources={len(sources)}"
     return f"{selected_ai_model} ({model_label}) 調用失敗：{details}{prompt_note}{source_note}"
-
-
-def _enrich_sources_with_web_fetch(
-    request: CommandRequest,
-    sources: list[SourceItem],
-    structured_data: dict[str, Any],
-    progress: ProgressCallback | None = None,
-) -> None:
-    """Best-effort page-content enrichment; failures must never block AI analysis."""
-    if not sources:
-        return
-
-    if request.command == "topic_maintain":
-        max_urls = 30 if request.mode == "deep" else 12
-    else:
-        max_urls = 8 if request.mode == "deep" else 4
-    selected: list[SourceItem] = []
-    seen: set[str] = set()
-    for source in sources:
-        url = (source.url or "").strip()
-        if not url or url in seen:
-            continue
-        lower = url.lower()
-        if not lower.startswith(("http://", "https://")):
-            continue
-        if any(lower.endswith(ext) for ext in (".pdf", ".xls", ".xlsx", ".csv", ".zip")):
-            continue
-        selected.append(source)
-        seen.add(url)
-        if len(selected) >= max_urls:
-            break
-
-    if not selected:
-        structured_data["web_fetch_diagnostics"] = {
-            "enabled": True,
-            "status": "skipped",
-            "reason": "no_fetchable_urls",
-            "total_urls": 0,
-        }
-        return
-
-    try:
-        if progress:
-            progress(f"WebFetch：開始讀取來源正文 {len(selected)} 筆")
-        service = WebFetchService(timeout=12.0, max_workers=3)
-        result = service.fetch_many([item.url for item in selected], progress=progress)
-        by_url = {item.url: item for item in result.results}
-        enriched_sources: list[SourceItem] = []
-        enriched_count = 0
-        for source in sources:
-            fetched = by_url.get(source.url)
-            if not fetched:
-                enriched_sources.append(source)
-                continue
-            if fetched.content:
-                enriched_count += 1
-                snippet = fetched.content[:2000]
-            else:
-                snippet = source.snippet
-            enriched_sources.append(
-                replace(
-                    source,
-                    title=fetched.title or source.title,
-                    snippet=snippet,
-                    fetch_provider=fetched.fetch_provider,
-                    fetch_status=fetched.content_status,
-                    failure_reason=fetched.failure_reason,
-                )
-            )
-        sources[:] = enriched_sources
-        structured_data["web_fetch_diagnostics"] = {
-            **result.diagnostics,
-            "enabled": True,
-            "status": "completed",
-            "selected_url_count": len(selected),
-            "enriched_source_count": enriched_count,
-        }
-        structured_data["web_fetched_sources"] = [
-            {
-                "url": item.url,
-                "title": item.title,
-                "content_status": item.content_status,
-                "fetch_provider": item.fetch_provider,
-                "failure_reason": item.failure_reason,
-                "content_preview": item.content[:1200],
-            }
-            for item in result.results
-        ]
-        if progress:
-            progress(f"WebFetch：完成，成功補正文 {enriched_count}/{len(selected)} 筆")
-    except Exception as exc:
-        structured_data["web_fetch_diagnostics"] = {
-            "enabled": True,
-            "status": "failed",
-            "error": str(exc),
-            "selected_url_count": len(selected),
-        }
-        if progress:
-            progress(f"WebFetch：失敗但不中斷 AI 分析：{exc}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

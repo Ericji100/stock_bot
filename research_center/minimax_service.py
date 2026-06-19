@@ -11,6 +11,7 @@ import httpx
 
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
+DEFAULT_MINIMAX_TIMEOUT_SECONDS = 600.0
 MAX_ERROR_PREVIEW_CHARS = 1200
 
 
@@ -35,7 +36,7 @@ class MiniMaxService:
         api_key: str | None,
         model: str = DEFAULT_MINIMAX_MODEL,
         base_url: str = DEFAULT_MINIMAX_BASE_URL,
-        timeout_seconds: float = 1200.0,
+        timeout_seconds: float = DEFAULT_MINIMAX_TIMEOUT_SECONDS,
         max_retries: int = 1,
     ):
         self.api_key = api_key
@@ -140,7 +141,15 @@ class MiniMaxService:
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_error = exc
                 if attempt >= self.max_retries:
-                    raise
+                    diagnostics = _build_minimax_transport_error_diagnostics(
+                        url=url,
+                        model=self.model,
+                        payload=payload,
+                        attempt=attempt + 1,
+                        exc=exc,
+                        timeout_seconds=self.timeout_seconds,
+                    )
+                    raise MiniMaxRequestError(_format_minimax_error_message(diagnostics), diagnostics) from exc
                 time.sleep(1.5 * (attempt + 1))
             except httpx.HTTPStatusError as exc:
                 last_error = exc
@@ -189,6 +198,31 @@ def _build_minimax_error_diagnostics(
         "prompt_chars": prompt_chars,
         "payload_bytes": payload_bytes,
         "response_preview": body_preview,
+    }
+
+
+def _build_minimax_transport_error_diagnostics(
+    *,
+    url: str,
+    model: str,
+    payload: dict[str, Any],
+    attempt: int,
+    exc: Exception,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    prompt_chars = _payload_prompt_chars(payload)
+    payload_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    return {
+        "provider": "minimax",
+        "url": url,
+        "status_code": "timeout" if isinstance(exc, httpx.TimeoutException) else "transport_error",
+        "reason_phrase": type(exc).__name__,
+        "model": model,
+        "attempt": attempt,
+        "prompt_chars": prompt_chars,
+        "payload_bytes": payload_bytes,
+        "timeout_seconds": timeout_seconds,
+        "response_preview": str(exc)[:MAX_ERROR_PREVIEW_CHARS],
     }
 
 

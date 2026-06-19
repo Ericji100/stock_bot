@@ -1,8 +1,9 @@
 ﻿from __future__ import annotations
 
 import json
+import concurrent.futures
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -15,7 +16,12 @@ from market_summary import MarketSummaryError, build_morning_market_report, buil
 from portfolio_manager import list_portfolio, resolve_stock_reference
 from stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
 from chip_strategies import get_tw_today
-from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
+from curated_scan_service import (
+    CURATED_SCAN_TYPE,
+    build_curated_scan_result,
+    find_cached_curated_scan,
+    find_latest_cached_curated_scan,
+)
 
 from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot
 from .company_knowledge_update_service import attach_company_knowledge_autofill
@@ -27,6 +33,7 @@ from .forum_service import fetch_forum_sources
 from .free_sources import build_free_macro_sources, build_free_research_sources
 from .knowledge_base import enrich_company_rows, theme_knowledge_summary
 from .macro_indicators import build_macro_indicators
+from .macro_data_guard import build_macro_data_guard
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
 from .price_fallbacks import load_price_metrics_with_fallback
 from .recent_scans import find_recent_scan, load_recent_scan_results, save_recent_scan_result
@@ -54,6 +61,38 @@ from .theme_radar_service import (
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+RESEARCH_FETCH_TIMEOUT_SECONDS = 45.0
+
+
+def _fetch_research_frame(
+    label: str,
+    fetch: Callable[[], pd.DataFrame],
+    progress: Callable[[str], None] | None,
+    notes: list[str],
+    *,
+    timeout_seconds: float = RESEARCH_FETCH_TIMEOUT_SECONDS,
+) -> pd.DataFrame:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(fetch)
+        return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError:
+        message = f"{label} 超過 {timeout_seconds:.0f} 秒，改以空資料繼續；報告需標示資料缺口。"
+        notes.append(message)
+        if progress:
+            progress(f"個股研究：{message}")
+        return pd.DataFrame()
+    except Exception as exc:
+        message = f"{label} 取得失敗：{type(exc).__name__}: {exc}"
+        notes.append(message)
+        if progress:
+            progress(f"個股研究：{message}")
+        return pd.DataFrame()
+    finally:
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
 
 def collect_structured_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> tuple[dict[str, Any], list]:
@@ -101,6 +140,8 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     attach_data_inventory(request, data)
 
     sources = _official_sources()
+    if request.command == "macro":
+        sources.extend(_renumber_source_items(_macro_official_sources(), start=len(sources) + 1))
     if request.command in {"theme_radar", "theme_flow", "sector_strength"}:
         data["forum_data"] = {
             "enabled": False,
@@ -669,6 +710,7 @@ def _collect_research_data_live(request: CommandRequest, progress: Callable[[str
             meta = fetcher.resolve_stock(code)
         except StockNotFoundError:
             raise StockNotFoundError("查無此股票，請確認股票代號或名稱。")
+        research_fetch_notes: list[str] = []
 
         if progress:
             progress(f"個股研究：取得股價資料 {meta.code} {meta.name}")
@@ -679,19 +721,48 @@ def _collect_research_data_live(request: CommandRequest, progress: Callable[[str
 
         if progress:
             progress(f"個股研究：取得法人買賣資料，交易日 {len(trading_dates)} 筆")
-        institutional_df = fetcher.fetch_institutional_daily(meta, trading_dates) if trading_dates else pd.DataFrame()
+        institutional_df = (
+            _fetch_research_frame(
+                "法人買賣資料",
+                lambda: fetcher.fetch_institutional_daily(meta, trading_dates),
+                progress,
+                research_fetch_notes,
+            )
+            if trading_dates
+            else pd.DataFrame()
+        )
 
         if progress:
             progress("個股研究：取得融資融券資料")
-        margin_df = fetcher.fetch_margin_daily(meta, trading_dates) if trading_dates else pd.DataFrame()
+        margin_df = (
+            _fetch_research_frame(
+                "融資融券資料",
+                lambda: fetcher.fetch_margin_daily(meta, trading_dates),
+                progress,
+                research_fetch_notes,
+            )
+            if trading_dates
+            else pd.DataFrame()
+        )
 
         if progress:
             progress("個股研究：取得月營收資料")
-        revenue_df = fetcher.fetch_monthly_revenue(meta, start_year=max(2023, (report_date.year - 2 if report_date else 2023)))
+        revenue_start_year = max(2023, (report_date.year - 2 if report_date else 2023))
+        revenue_df = _fetch_research_frame(
+            "月營收資料",
+            lambda: fetcher.fetch_monthly_revenue(meta, start_year=revenue_start_year),
+            progress,
+            research_fetch_notes,
+        )
 
         if progress:
             progress("個股研究：取得季度財報資料")
-        financial_df = fetcher.fetch_quarterly_financials(meta)
+        financial_df = _fetch_research_frame(
+            "季度財報資料",
+            lambda: fetcher.fetch_quarterly_financials(meta),
+            progress,
+            research_fetch_notes,
+        )
 
         if report_date is not None:
             revenue_df = _filter_month_frame(revenue_df, "Month", report_date)
@@ -732,6 +803,9 @@ def _collect_research_data_live(request: CommandRequest, progress: Callable[[str
             "--date 模式目前對本地結構化資料採日期切片；若原始抓取函式只取近期資料，較久日期可能資料不足。"
         ] if report_date else [],
     }
+    if research_fetch_notes:
+        result["notes"] = list(result.get("notes") or []) + research_fetch_notes
+        result["research_fetch_notes"] = research_fetch_notes
 
     # /research --deep 或 --score 時寫入價值重估底稿
     _ensure_research_rerating_snapshot(result, request, meta.code, progress=progress)
@@ -810,6 +884,15 @@ def collect_macro_data(request: CommandRequest, progress: Callable[[str], None] 
         progress("宏觀研究：取得 TWSE 類股公開資料")
     data["free_public_sources"] = build_free_macro_sources(request.report_date)
     data["industry_index_data"] = data["free_public_sources"].get("twse_industry_index", {})
+    data["macro_data_guard"] = build_macro_data_guard(data)
+    if progress:
+        guard = data["macro_data_guard"]
+        progress(
+            "宏觀研究：硬數據護欄完成，"
+            f"可驗證數字 {len(guard.get('facts') or [])} 項，"
+            f"異常警示 {len(guard.get('alerts') or [])} 項，"
+            f"資料缺口 {len(guard.get('missing_data') or [])} 項"
+        )
     data["notes"] = ["Macro 第三版加入 VIX proxy、台指選擇權 IV 接入狀態、類股流動性 proxy 與 fear/greed 系統分數。"]
     return data
 
@@ -1112,6 +1195,28 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
                 "missing_codes": missing,
                 "note": "已使用相同資料日期的 /scan 精選選股交叉命中快取，不重新執行選股程式。",
             }
+        if request.report_date is None:
+            latest_cached = find_latest_cached_curated_scan(max_date=target_date)
+            if latest_cached:
+                codes = [str(code) for code in latest_cached.get("codes") or []]
+                selected = [by_code[code] for code in codes if code in by_code]
+                missing = [code for code in codes if code not in by_code]
+                cached_date = str(latest_cached.get("report_date") or "")
+                if progress:
+                    progress(
+                        f"價值重估：今日無可用精選快取，改用最近有效資料日期 {cached_date} 的精選選股快取，候選名單 {len(selected)} 檔"
+                    )
+                return selected, {
+                    "source": "最近有效精選選股交叉命中快取",
+                    "status": "latest_cached",
+                    "candidate_count": len(selected),
+                    "report_date": cached_date,
+                    "requested_report_date": target_date.isoformat(),
+                    "scan_id": latest_cached.get("scan_id"),
+                    "requested_codes": codes,
+                    "missing_codes": missing,
+                    "note": "今日或目標日沒有 backfill-ready 精選快取，已改用最近一筆具有效 backfill marker 的精選快取，不重新執行選股程式。",
+                }
         try:
             if progress:
                 progress(f"價值重估：沒有資料日期 {target_date.isoformat()} 的精選選股快取，開始執行精選選股交叉命中")
@@ -1500,6 +1605,40 @@ def _official_sources() -> list:
             {"title": "公開資訊觀測站", "url": "https://mops.twse.com.tw/"},
         ]
     )
+
+
+def _macro_official_sources() -> list:
+    return make_source_items(
+        [
+            {
+                "title": "台灣期貨交易所：期貨與選擇權交易資訊",
+                "url": "https://www.taifex.com.tw/",
+                "snippet": "台指期、選擇權、未平倉與波動相關公開資料入口。",
+            },
+            {
+                "title": "中央銀行：匯率與利率統計",
+                "url": "https://www.cbc.gov.tw/",
+                "snippet": "台幣匯率、利率、貨幣政策與金融統計官方入口。",
+            },
+            {
+                "title": "主計總處：總體經濟統計",
+                "url": "https://www.dgbas.gov.tw/",
+                "snippet": "GDP、CPI、景氣與總體統計官方入口。",
+            },
+            {
+                "title": "美國聯準會：利率與政策聲明",
+                "url": "https://www.federalreserve.gov/",
+                "snippet": "FOMC、利率決策、政策聲明與總經資料官方入口。",
+            },
+        ]
+    )
+
+
+def _renumber_source_items(items: list, *, start: int = 1) -> list:
+    return [
+        replace(item, source_id=f"S{index:03d}")
+        for index, item in enumerate(items, start)
+    ]
 
 
 def _forum_query_for_request(request: CommandRequest, data: dict[str, Any]) -> str:

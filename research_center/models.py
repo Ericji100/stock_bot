@@ -44,6 +44,7 @@ class SourceItem:
     provider_detail: str | None = None
     fetch_provider: str | None = None
     fetch_status: str | None = None
+    fetch_quality: str | None = None
     failure_reason: str | None = None
     found_by: list[str] = field(default_factory=list)
 

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import curated_scan_service
 import research_center.recent_scans as recent_scans
+import research_center.orchestrator as orchestrator_module
 from research_center.command_parser import parse_command_text
 from research_center.config import ResearchCenterConfig
 from research_center.database import ResearchDatabase
@@ -21,6 +22,7 @@ from research_center.value_validation import build_value_cross_validation
 from research_center.mops_sources import financial_detail_snapshot
 from research_center.models import CommandRequest, ReportArtifacts
 from research_center.models import CommandRequest, SourceItem
+from research_center.gemini_service import GeminiResult
 from research_center.orchestrator import ResearchCenter
 from research_center.report_builder import fallback_markdown, write_report_artifacts
 from research_center.source_rank import rank_source
@@ -379,6 +381,99 @@ class ThemeAndValueScanTests(unittest.TestCase):
         finally:
             safe_remove_test_cache("research_center/test_curated_scan_cache")
 
+    def test_latest_curated_scan_cache_uses_latest_ready_marker(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("research_center/test_latest_curated_scan_cache")
+        try:
+            original_curated_recent_path = curated_scan_service.RECENT_SCAN_PATH if hasattr(curated_scan_service, "RECENT_SCAN_PATH") else None
+            cache_path = tmp / "recent_scan_results.json"
+            curated_scan_service.RECENT_SCAN_PATH = cache_path
+            records = []
+            for index in range(80):
+                records.append({
+                    "scan_type": "curated",
+                    "report_date": "2026-06-06",
+                    "scan_id": f"not-ready-{index}",
+                    "selected_codes": ["9999"],
+                })
+            records.extend([
+                {
+                    "scan_type": "curated",
+                    "report_date": "2026-06-04",
+                    "scan_id": "ready",
+                    "selected_codes": ["2330", "5425"],
+                },
+                {
+                    "scan_type": "curated",
+                    "report_date": "2026-06-02",
+                    "scan_id": "older-ready",
+                    "selected_codes": ["6282"],
+                },
+            ])
+            cache_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+            for marker_date in ("2026-06-04", "2026-06-02"):
+                marker_dir = tmp / ".cache" / "backfill" / marker_date
+                marker_dir.mkdir(parents=True, exist_ok=True)
+                (marker_dir / "complete.json").write_text(
+                    json.dumps({
+                        "schema_version": 2,
+                        "backfill_ready_for_scan": marker_date == "2026-06-02",
+                        "curated_scan_ready": True,
+                    }, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            with patch.object(curated_scan_service, "ROOT_DIR", tmp):
+                record = curated_scan_service.find_latest_cached_curated_scan(date(2026, 6, 6))
+            self.assertIsNotNone(record)
+            self.assertEqual(record["scan_id"], "ready")
+            self.assertEqual(record["codes"], ["2330", "5425"])
+        finally:
+            if original_curated_recent_path is None:
+                delattr(curated_scan_service, "RECENT_SCAN_PATH")
+            else:
+                curated_scan_service.RECENT_SCAN_PATH = original_curated_recent_path
+            safe_remove_test_cache("research_center/test_latest_curated_scan_cache")
+
+    def test_curated_scan_cache_ready_does_not_require_full_scan_ready(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("research_center/test_curated_cache_ready_only")
+        try:
+            original_curated_recent_path = curated_scan_service.RECENT_SCAN_PATH if hasattr(curated_scan_service, "RECENT_SCAN_PATH") else None
+            cache_path = tmp / "recent_scan_results.json"
+            curated_scan_service.RECENT_SCAN_PATH = cache_path
+            cache_path.write_text(json.dumps([
+                {
+                    "scan_type": "curated",
+                    "report_date": "2026-06-04",
+                    "scan_id": "curated-ready",
+                    "selected_codes": ["2330", "5425"],
+                }
+            ], ensure_ascii=False), encoding="utf-8")
+            marker_dir = tmp / ".cache" / "backfill" / "2026-06-04"
+            marker_dir.mkdir(parents=True, exist_ok=True)
+            (marker_dir / "complete.json").write_text(
+                json.dumps({
+                    "schema_version": 2,
+                    "scan_data_ready": False,
+                    "curated_scan_cache_ready": True,
+                    "backfill_ready_for_scan": False,
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            with patch.object(curated_scan_service, "ROOT_DIR", tmp):
+                record = curated_scan_service.find_cached_curated_scan(date(2026, 6, 4))
+
+            self.assertIsNotNone(record)
+            self.assertEqual(record["scan_id"], "curated-ready")
+            self.assertEqual(record["codes"], ["2330", "5425"])
+        finally:
+            if original_curated_recent_path is None:
+                delattr(curated_scan_service, "RECENT_SCAN_PATH")
+            else:
+                curated_scan_service.RECENT_SCAN_PATH = original_curated_recent_path
+            safe_remove_test_cache("research_center/test_curated_cache_ready_only")
+
 class KnowledgeAndValidationTests(unittest.TestCase):
     def test_company_knowledge_enrichment_marks_covered_and_missing(self):
         rows = [{"code": "2330", "name": "TSMC"}, {"code": "9999", "name": "Missing"}]
@@ -516,6 +611,68 @@ class ReportLookupTests(unittest.TestCase):
             if center is not None and hasattr(center, 'database'):
                 center.database.close()
             safe_remove_test_cache("research_center/test_report_lookup")
+
+
+class ResearchCenterRunCoverageTests(unittest.TestCase):
+    def test_new_ai_report_written_by_run_contains_workflow_coverage(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        class FakeGemini:
+            def generate_report(self, prompt, enable_grounding=False):
+                return GeminiResult(
+                    "# 2330 research\n\n## 摘要\nAI 分析完成 [S001]\n\n## 資料來源\n- [S001] TWSE",
+                    [],
+                    {"raw": "ok"},
+                    {"actual_model": "fake-gemini", "grounding_metadata_present": False},
+                )
+
+        tmp = ensure_test_cache_dir("research_center/test_run_writes_ai_workflow_coverage")
+        try:
+            config = ResearchCenterConfig(
+                api_key="fake-key",
+                enable_grounding=False,
+                enable_low_model_digest=False,
+                minimax_api_key=None,
+                serper_api_key=None,
+                jina_api_key=None,
+                tavily_api_key=None,
+                report_root=tmp / "reports",
+                database_path=tmp / "research.db",
+            )
+            center = ResearchCenter(config)
+            center.gemini = FakeGemini()  # type: ignore[assignment]
+
+            source = SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1", snippet="台積電測試來源")
+            structured_data = {
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "price_data": [{"date": "2026-06-05", "close": 1000}],
+                "technical_data": {"above_ma21": True},
+                "revenue_data": [{"YoY": 10}],
+                "financial_data": [{"EPS": 1.0, "operating_margin": 20}],
+            }
+
+            with patch.object(orchestrator_module, "collect_structured_data", return_value=(structured_data, [source])):
+                with patch.object(center._gemini_discovery_runner, "run_discovery_flow", return_value=([source], False)):
+                    with patch.object(orchestrator_module, "_enrich_sources_with_web_fetch", lambda *args, **kwargs: None):
+                        with patch.object(orchestrator_module, "persist_search_sources_to_news", lambda *args, **kwargs: None):
+                            with patch.object(orchestrator_module, "attach_news_events", lambda *args, **kwargs: None):
+                                result = center.run(parse_command_text("/research 2330 --model gemini"))
+
+            self.assertEqual(result.status, "success")
+            coverage = result.report_json["metadata"].get("ai_workflow_coverage")
+            self.assertIsInstance(coverage, dict)
+            self.assertEqual(coverage["schema_version"], "ai_workflow_coverage_v1")
+            self.assertEqual(coverage["status"], "aligned")
+            self.assertEqual(coverage["missing_capabilities"], [])
+            saved = json.loads(result.artifacts.json_path.read_text(encoding="utf-8-sig"))
+            self.assertEqual(saved["metadata"]["ai_workflow_coverage"]["status"], "aligned")
+        finally:
+            try:
+                center.database.close()  # type: ignore[name-defined]
+            except Exception:
+                pass
+            safe_remove_test_cache("research_center/test_run_writes_ai_workflow_coverage")
 
 
 class MemoryFallbackIsolationTests(unittest.TestCase):

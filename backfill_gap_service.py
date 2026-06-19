@@ -280,8 +280,17 @@ def analyze_research_structured_gaps(core_rows: list[dict[str, Any]], report_dat
                 if not isinstance(data, dict):
                     code_reasons.append("research_structured_cache_invalid")
                 else:
-                    for key in ("stock", "revenue", "chip_backup_data", "free_public_sources"):
-                        if key not in data:
+                    required_keys: tuple[str | tuple[str, ...], ...] = (
+                        "stock",
+                        ("revenue", "revenue_data"),
+                        "chip_backup_data",
+                        "free_public_sources",
+                    )
+                    for key in required_keys:
+                        if isinstance(key, tuple):
+                            if not any(candidate_key in data for candidate_key in key):
+                                code_reasons.append(f"{key[0]}_missing")
+                        elif key not in data:
                             code_reasons.append(f"{key}_missing")
             except Exception:
                 code_reasons.append("research_structured_cache_read_failed")
@@ -297,9 +306,12 @@ def build_backfill_gap_report(
     core_pool: dict[str, Any] | Iterable[Any],
     revenue_history: dict[str, Any] | None = None,
     chip_context: Any | None = None,
+    priority_codes: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     candidate_rows = candidates_to_rows(candidates)
     core_rows = candidates_to_rows(core_pool)
+    priority_code_set = {normalize_code(code) for code in (priority_codes or [])}
+    priority_rows = [row for row in candidate_rows if row["code"] in priority_code_set]
     target_days = int(getattr(chip_context, "scan_settings", {}).get("target_trading_days", 60)) if chip_context is not None else 60
     sections = {
         "technical": analyze_technical_gaps(candidate_rows, report_date),
@@ -310,6 +322,13 @@ def build_backfill_gap_report(
         "research_structured": analyze_research_structured_gaps(core_rows, report_date),
     }
     health = {key: asdict(value) for key, value in sections.items()}
+    priority_health: dict[str, Any] = {}
+    if priority_rows:
+        priority_sections = {
+            "chip": analyze_chip_gaps(priority_rows, getattr(chip_context, "daily_data", None), target_days),
+            "tdcc": analyze_tdcc_gaps(priority_rows, getattr(chip_context, "weekly_data", None)),
+        }
+        priority_health = {key: asdict(value) for key, value in priority_sections.items()}
     still_missing: dict[str, list[str]] = {}
     reason_by_code: dict[str, dict[str, list[str]]] = {}
     for key, section in health.items():
@@ -322,7 +341,12 @@ def build_backfill_gap_report(
         "generated_at": _now_iso(),
         "candidate_count": len(candidate_rows),
         "core_research_count": len(core_rows),
+        "priority_pool": {
+            "candidate_count": len(priority_rows),
+            "codes": [row["code"] for row in priority_rows],
+        },
         "health": health,
+        "priority_health": priority_health,
         "still_missing": still_missing,
         "reason_by_code": reason_by_code,
     }

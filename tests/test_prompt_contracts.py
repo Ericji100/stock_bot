@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from pathlib import Path
@@ -23,11 +23,11 @@ class PromptContractTests(unittest.TestCase):
             structured_data={'stock': {'code': '2330', 'name': 'TSMC'}, 'strategy_summary': []},
             source_list=[SourceItem(source_id='S001', title='MOPS', url='https://mops.twse.com.tw/', source_level='Level 1')],
         )
-        self.assertIn('財務硬指標評分規則', prompt)
-        self.assertIn('題材軟指標評分規則', prompt)
-        self.assertIn('飆股基因評分規則', prompt)
-        self.assertIn('股票標籤重估模型原稿', prompt)
-        self.assertIn('最終研究優先度與風險報酬評估規則', prompt)
+        self.assertIn('financial_hard_metrics', prompt)
+        self.assertIn('theme_soft_metrics', prompt)
+        self.assertIn('high_growth_gene', prompt)
+        self.assertIn('rerating_model', prompt)
+        self.assertIn('final_research_score', prompt)
         self.assertIn('/research', prompt)
         self.assertIn('資料來源', prompt)
         # 新版 base.md 簡化規則，無「不得捏造」但有「不得直接給出保證獲利」
@@ -37,7 +37,8 @@ class PromptContractTests(unittest.TestCase):
         self.assertIn('AI 最終投研評分', prompt)
         metadata = prompt_metadata(request)
         self.assertEqual(metadata['template'], 'research_score.md')
-        self.assertIn('股票量化評分標準.md', metadata['scoring_files'])
+        self.assertIn('financial_hard_metrics.md', metadata['scoring_files'])
+        self.assertIn('rerating_model.md', metadata['scoring_files'])
 
     def test_value_scan_prompt_uses_top_10_default_and_rerating_rules(self):
         request = parse_command_text('/value_scan')
@@ -46,11 +47,11 @@ class PromptContractTests(unittest.TestCase):
             structured_data={'candidate_pool': '精選選股', 'candidates': []},
             source_list=[],
         )
-        self.assertIn('前 10 名', prompt)
-        self.assertIn('股票標籤重估模型原稿', prompt)
-        self.assertIn('題材軟指標評分規則', prompt)
-        self.assertIn('財務硬指標', prompt)
-        self.assertNotIn('飆股基因評分規則', prompt)
+        self.assertIn('10', prompt)
+        self.assertIn('rerating_model', prompt)
+        self.assertIn('theme_soft_metrics', prompt)
+        self.assertIn('financial_hard_metrics', prompt)
+        self.assertNotIn('high_growth_gene', prompt)
         self.assertIn('價值重估掃描報告', prompt)
         # 新結構：source_quality_rules.md 的規則（非舊版 base.md 的 rule）
         self.assertIn('資料來源可信度', prompt)
@@ -152,9 +153,38 @@ class PromptContractTests(unittest.TestCase):
         self.assertIn('蹭題材風險偏高型', content)
         self.assertIn('## 十二、指定章節', content)
         self.assertIn('## 十三、各章節要求', content)
+        self.assertIn('市場正在交易什麼故事', content)
+        self.assertIn('早期蛛絲馬跡', content)
+        self.assertIn('下一波可能發酵的催化劑', content)
+        self.assertIn('如果要大漲，還缺什麼訊號', content)
+        self.assertIn('反向驗證與失敗條件', content)
+        self.assertIn('想像力結論', content)
         self.assertNotIn('## 十一、指定章節', content)
         self.assertNotIn('## 十一、各章節要求', content)
         self.assertNotIn('第七章「低分或未入選候選快速說明」', content)
+
+    def test_deep_report_templates_require_market_imagination_structure(self):
+        prompt_root = Path(__file__).parent.parent / 'prompt'
+        files = [
+            prompt_root / 'report' / 'value_scan_deep.md',
+            prompt_root / 'report' / 'research_deep.md',
+            prompt_root / 'report' / 'theme_deep.md',
+            prompt_root / 'report' / 'theme_radar.md',
+            prompt_root / 'radar' / 'radar_ai_comment.md',
+        ]
+        required = [
+            '市場正在交易什麼故事',
+            '早期蛛絲馬跡',
+            '下一波可能發酵的催化劑',
+            '如果要大漲，還缺什麼訊號',
+            '反向驗證與失敗條件',
+            '想像力結論',
+        ]
+        for path in files:
+            content = path.read_text(encoding='utf-8-sig')
+            for term in required:
+                with self.subTest(path=path.name, term=term):
+                    self.assertIn(term, content)
 
 
     def test_research_prompt_contains_topic_library_rules(self):
@@ -350,9 +380,8 @@ class SearchQueryOptimizationTests(unittest.TestCase):
             for group in task.get("queries", []):
                 if isinstance(group, dict):
                     all_items.extend(group.get("items", []))
-        batched_items = [item for item in all_items if "2300" in item and "2304" not in item]
-        self.assertTrue(batched_items)
-        self.assertTrue(any("2304" in item for item in all_items))
+        self.assertTrue(any("2300" in item and "2304" in item for item in all_items))
+        self.assertTrue(any("2305" in item and "2309" in item for item in all_items))
         self.assertFalse(any("2311" in item and "2300" in item for item in all_items))
 
     def test_value_scan_queries_include_rerating_evidence_groups(self):
@@ -483,6 +512,7 @@ class PromptTemplateStructureTests(unittest.TestCase):
             "rules/discovery_macro.md",
             "rules/discovery_theme.md",
             "rules/discovery_value_scan.md",
+            "rules/output_quality_rules.md",
             "rules/embedded_market_imagination_rules.md",
         ]
         for path_str in necessary_templates:
@@ -529,6 +559,7 @@ class PromptTemplateStructureTests(unittest.TestCase):
             "discovery_macro.md",
             "discovery_theme.md",
             "discovery_value_scan.md",
+            "output_quality_rules.md",
             "embedded_market_imagination_rules.md",
         ]:
             with self.subTest(name=name):
@@ -539,6 +570,35 @@ class PromptTemplateStructureTests(unittest.TestCase):
 
 
 class EmbeddedMarketImaginationPromptTests(unittest.TestCase):
+    def test_report_ai_commands_include_output_quality_rules(self):
+        commands = [
+            "/research 2330",
+            "/research 2330 --deep",
+            "/research 2330 --score",
+            "/value_scan 精選選股 --deep",
+            "/theme AI伺服器 --deep",
+            "/theme_radar --days 7",
+            "/theme_flow AI伺服器",
+            "/sector_strength",
+            "/macro",
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                request = parse_command_text(command)
+                prompt = build_prompt(
+                    request,
+                    structured_data={
+                        "stock": {"code": "2330", "name": "台積電"},
+                        "theme": "AI伺服器",
+                        "candidate_pool": "精選選股",
+                        "candidates": [],
+                    },
+                    source_list=[],
+                )
+                self.assertIn("output_quality_rules.md", prompt)
+                self.assertIn("固定分析骨架", prompt)
+                self.assertIn("輸出穩定性", prompt)
+
     def test_report_ai_commands_include_embedded_market_imagination_rules(self):
         commands = [
             "/research 2330 --deep",
@@ -591,6 +651,61 @@ class EmbeddedMarketImaginationPromptTests(unittest.TestCase):
         self.assertIn("market_story", news)
         self.assertIn("市場想像與候選題材推演", topic)
         self.assertIn("題材擴散路徑", topic)
+
+    def test_discovery_prompt_is_readable_and_enforces_json_evidence_usage(self):
+        prompt_root = Path(__file__).parent.parent / "prompt"
+        discovery = (prompt_root / "discovery" / "discovery_task.md").read_text(encoding="utf-8-sig")
+
+        self.assertIn("搜尋整理代理", discovery)
+        self.assertIn("evidence_usage", discovery)
+        self.assertIn("supports_rerating", discovery)
+        self.assertIn("supports_counter_evidence", discovery)
+        self.assertIn("只輸出可被 `json.loads()` 解析的 JSON", discovery)
+
+    def test_source_quality_rules_are_readable_and_define_levels(self):
+        prompt_root = Path(__file__).parent.parent / "prompt"
+        rules = (prompt_root / "rules" / "source_quality_rules.md").read_text(encoding="utf-8-sig")
+
+        self.assertIn("資料來源可信度規則", rules)
+        self.assertIn("Level 1", rules)
+        self.assertIn("Level 5", rules)
+        self.assertIn("snippet_only", rules)
+        self.assertIn("強證據條件", rules)
+
+    def test_news_refresh_prompt_requires_direction_credibility_and_page_type(self):
+        prompt_root = Path(__file__).parent.parent / "prompt"
+        news = (prompt_root / "news" / "news_summary.md").read_text(encoding="utf-8-sig")
+
+        for required in (
+            "impact_direction",
+            "credibility",
+            "affected_companies",
+            "affected_industries",
+            "affected_topics",
+            "counter_evidence",
+            "missing_data",
+            "page_type",
+            "quote_page",
+            "ranking_page",
+            "forum_repost",
+        ):
+            self.assertIn(required, news)
+
+    def test_topic_maintain_prompt_requires_supply_chain_evidence_rules(self):
+        from research_center.topic_maintain_service import _load_prompt
+
+        topic = _load_prompt("topic_maintain")
+        for required in (
+            "供應鏈證據硬性規則",
+            "公司在題材中的角色",
+            "上游 / 中游 / 下游位置",
+            "營收曝險",
+            "long_term_theme",
+            "short_term_news",
+            "theme_riding",
+            "不得只靠單篇新聞寫入長期題材庫",
+        ):
+            self.assertIn(required, topic)
 
 
 class PromptBuildIntegrationTests(unittest.TestCase):

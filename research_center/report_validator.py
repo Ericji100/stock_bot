@@ -29,6 +29,10 @@ EXPECTED_SECTIONS = {
     "value_scan": ["價值重估", "候選", "排名", "舊市場標籤", "新市場標籤", "風險", "資料來源"],
 }
 
+SECTION_ALIASES = {
+    "波動": ("波動", "VIX", "波動率", "市場風險", "風險偏好", "期貨與波動率"),
+}
+
 AI_FINAL_SECTION_KEYWORDS = (
     "AI 最終推薦買入評分",
     "AI 最終財務與題材評分",
@@ -134,7 +138,8 @@ def _main_markdown_for_qa(markdown: str) -> str:
 
 
 def _contains_heading(headings: list[str], keyword: str) -> bool:
-    return any(keyword in heading for heading in headings)
+    aliases = SECTION_ALIASES.get(keyword, (keyword,))
+    return any(any(alias in heading for alias in aliases) for heading in headings)
 
 
 def _schema_errors(report_json: dict[str, Any]) -> list[str]:

@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 from .config import load_research_config
 from .models import CommandRequest, SourceItem
+from .source_date_normalizer import normalize_published_date
 from .source_rank import make_source_items
 
 ProgressCallback = Callable[[str], None] | None
@@ -139,17 +140,17 @@ def _build_mcp_startup_params(api_key: str) -> tuple[str, list[str], dict]:
 
     Startup order:
     1. MINIMAX_MCP_COMMAND env override (user pre-installed tool)
-    2. .venv/Scripts/uvx.exe (preferred)
+    2. project .runtime installed minimax-coding-plan-mcp.exe
     3. .venv/Scripts/uv.exe tool run --from
     4. python -m uv tool run --from (system python fallback)
+    5. .venv/Scripts/uvx.exe fallback
 
     UV_CACHE_DIR and UV_TOOL_DIR are set to TEMP-based dirs to avoid WinError 5
     on the default LocalAppData/Roaming dirs.
     """
-    # Resolve UV cache/tool dirs - prefer TEMP-based writable dirs
-    temp_dir = os.environ.get("TEMP", ".")
-    default_uv_cache = str(Path(temp_dir) / "uv_cache_stock_ai_bot")
-    default_uv_tool = str(Path(temp_dir) / "uv_tools_stock_ai_bot")
+    root_dir = Path(__file__).resolve().parent.parent
+    default_uv_cache = str(root_dir / ".runtime" / "uv_cache")
+    default_uv_tool = str(root_dir / ".runtime" / "uv_tools")
     uv_cache_dir = os.environ.get("UV_CACHE_DIR") or default_uv_cache
     uv_tool_dir = os.environ.get("UV_TOOL_DIR") or default_uv_tool
 
@@ -173,15 +174,27 @@ def _build_mcp_startup_params(api_key: str) -> tuple[str, list[str], dict]:
     # Prefer .venv uvx/uv over system python
     venv_uvx = str(Path(__file__).parent.parent / ".venv" / "Scripts" / "uvx.exe")
     venv_uv = str(Path(__file__).parent.parent / ".venv" / "Scripts" / "uv.exe")
+    runtime_mcp = root_dir / ".runtime" / "uv_tools" / MCP_PACKAGE / "Scripts" / f"{MCP_PACKAGE}.exe"
 
     python_exe = sys.executable
 
-    if Path(venv_uvx).exists():
-        cmd = venv_uvx
-        args_list = [MCP_PACKAGE]
+    if runtime_mcp.exists():
+        runtime_python = root_dir / ".runtime" / "uv_tools" / MCP_PACKAGE / "Scripts" / "python.exe"
+        if runtime_python.exists():
+            cmd = str(runtime_python)
+            args_list = ["-m", "minimax_mcp.server"]
+        else:
+            cmd = str(runtime_mcp)
+            args_list = []
     elif Path(venv_uv).exists():
         cmd = venv_uv
         args_list = ["tool", "run", "--from", MCP_PACKAGE, MCP_PACKAGE]
+    elif shutil.which("uv"):
+        cmd = "uv"
+        args_list = ["tool", "run", "--from", MCP_PACKAGE, MCP_PACKAGE]
+    elif Path(venv_uvx).exists():
+        cmd = venv_uvx
+        args_list = [MCP_PACKAGE]
     else:
         cmd = python_exe
         args_list = ["-m", "uv", "tool", "run", "--from", MCP_PACKAGE, MCP_PACKAGE]
@@ -539,36 +552,45 @@ def _classify_errors(errors: list[str]) -> list[str]:
         return []
     reasons: set[str] = set()
     for err in errors:
-        err_lower = err.lower()
-        if "mcp_parseerror" in err_lower or "failed to extract search items" in err_lower or "no recognized item keys" in err_lower or "unexpected content list" in err_lower:
+        err_lower = str(err or "").lower()
+        matched = False
+        if "1027-output" in err_lower or "new_sensitive" in err_lower or "sensitive" in err_lower:
+            reasons.add("minimax_sensitive_query_blocked")
+            matched = True
+        elif "mcp_parseerror" in err_lower or "failed to extract search items" in err_lower or "no recognized item keys" in err_lower or "unexpected content list" in err_lower:
             reasons.add("mcp_parse_error")
-        elif any(k in err_lower for k in ("MINIMAX_API_KEY", "environment variable is required", "api key not found")):
+            matched = True
+        elif any(k in err_lower for k in ("minimax_api_key", "environment variable is required", "api key not found")):
             reasons.add("minimax_api_key_missing")
+            matched = True
         elif any(k in err_lower for k in ("401", "unauthorized", "authentication failed", "auth failed")):
             reasons.add("minimax_api_auth_failed")
-        elif "mcp_error" in err_lower or "mcp_error:" in err_lower or (err.startswith("error response") and len(err) < 100):
+            matched = True
+        elif "mcp_error" in err_lower or "mcp_error:" in err_lower or (err_lower.startswith("error response") and len(err_lower) < 100):
             reasons.add("mcp_error_response")
+            matched = True
         elif any(k in err_lower for k in ("quota", "credit", "rate limit", "exceeded", "insufficient")):
             reasons.add("minimax_quota_or_credit_failed")
+            matched = True
         elif any(k in err_lower for k in ("empty response", "no content", "response is empty", "null response", "empty response data")):
             reasons.add("mcp_empty_response")
+            matched = True
         elif any(k in err_lower for k in ("timed out", "timeout")):
             reasons.add("mcp_timeout")
-        elif any(k in err_lower for k in ("存取被拒", "access denied", "permission denied", "winerror 5", "eperm")):
+            matched = True
+        elif any(k in err_lower for k in ("access denied", "permission denied", "winerror 5", "eperm")):
             reasons.add("uv_permission_denied")
+            matched = True
         elif any(k in err_lower for k in ("failed to fetch", "pypi.org", "connection refused", "httperror", "sslerror", "proxy")):
             reasons.add("pypi_connection_failed")
+            matched = True
         elif any(k in err_lower for k in ("not enough values to unpack", "typeerror", "attributeerror", "jsondecodeerror", "unexpected token", "expecting value")):
             reasons.add("mcp_protocol_error")
-        elif (
-            "ENOENT" in err
-            or "not found" in err_lower
-            or "not installed" in err_lower
-            or "no module named" in err_lower
-        ):
+            matched = True
+        elif any(k in err_lower for k in ("enoent", "not found", "not installed", "no module named")):
             reasons.add("mcp_package_not_installed")
-        # Only add unknown if nothing matched
-        if not reasons:
+            matched = True
+        if not matched:
             reasons.add("mcp_unknown_error")
     return sorted(reasons)
 
@@ -591,7 +613,12 @@ def _extract_search_items(result: Any) -> list[dict[str, str]]:
             else:
                 raise _McpParseError(f"Unexpected content list item type: {type(first).__name__}")
         elif isinstance(content, str):
-            data = json.loads(content)
+            stripped = content.strip()
+            if not stripped:
+                raise _McpParseError("Empty text response data")
+            if not stripped.startswith(("{", "[")):
+                raise _McpParseError(f"MiniMax MCP returned text response: {stripped[:200]}")
+            data = json.loads(stripped)
         else:
             data = content if isinstance(content, dict) else {}
 
@@ -615,11 +642,25 @@ def _extract_search_items(result: Any) -> list[dict[str, str]]:
 
 def _normalize_search_item(item: dict[str, Any]) -> dict[str, str]:
     """Normalize a search item from various formats."""
+    snippet = str(item.get("snippet") or item.get("description") or item.get("summary") or "")
+    published_date = normalize_published_date(
+        item.get("published_date"),
+        item.get("published_at"),
+        item.get("date"),
+        item.get("time"),
+        item.get("datetime"),
+        item.get("datePublished"),
+        item.get("dateModified"),
+        item.get("article:published_time"),
+        snippet,
+        item.get("title") or item.get("name"),
+        item.get("url") or item.get("link"),
+    )
     return {
         "title": str(item.get("title") or item.get("name") or ""),
         "url": str(item.get("url") or item.get("link") or ""),
-        "snippet": str(item.get("snippet") or item.get("description") or item.get("summary") or ""),
-        "published_date": str(item.get("published_date") or item.get("date") or ""),
+        "snippet": snippet,
+        "published_date": published_date or "",
     }
 
 
@@ -653,6 +694,7 @@ def _merge_minimax_sources(base: list[SourceItem], extra: list[SourceItem]) -> l
                 provider_detail=existing.provider_detail,
                 fetch_provider=item.fetch_provider or existing.fetch_provider,
                 fetch_status=item.fetch_status or existing.fetch_status,
+                fetch_quality=item.fetch_quality or existing.fetch_quality,
                 failure_reason=item.failure_reason or existing.failure_reason,
                 found_by=combined_found_by,
             )

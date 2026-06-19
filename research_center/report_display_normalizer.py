@@ -32,8 +32,12 @@ def normalize_report_text(text: str) -> str:
     value_phrases = _string_map(terms_data.get("value_phrases"))
     protected, placeholders = _protect_urls(value)
     normalized = _replace_value_phrases(protected, value_phrases)
+    normalized = _replace_theme_radar_relation_codes(normalized)
+    normalized = _replace_truncation_placeholders(normalized)
     normalized = _replace_terms(normalized, terms)
+    normalized = _replace_internal_reference_paths(normalized)
     normalized = _replace_unknown_snake_case(normalized, terms)
+    normalized = _cleanup_display_artifacts(normalized)
     normalized = _restore_placeholders(normalized, placeholders)
     return normalized
 
@@ -85,11 +89,16 @@ def display_provider_detail(raw: str) -> str:
     text = str(raw or "").strip()
     if not text:
         return ""
+    text = re.sub(r"\[L1[_ ]official\s+([^\]]+)\]", r"[官方來源 \1]", text, flags=re.I)
+    text = re.sub(r"\[L2[_ ]media\s+([^\]]+)\]", r"[媒體來源 \1]", text, flags=re.I)
     parts = []
     for chunk in re.split(r"\s*;\s*", text):
         if not chunk:
             continue
-        if "=" in chunk:
+        chunk = re.sub(r"\bquery\s*[:=]\s*", "搜尋詞：", chunk, flags=re.I)
+        chunk = re.sub(r"\btask\s*[:=]\s*", "搜尋任務：", chunk, flags=re.I)
+        chunk = re.sub(r"\bsearch\s+depth\s*[:=]\s*", "搜尋深度：", chunk, flags=re.I)
+        if "=" in chunk and re.fullmatch(r"[A-Za-z0-9_. -]+", chunk.split("=", 1)[0].strip()):
             key, value = chunk.split("=", 1)
             parts.append(f"{display_field_label(key)}：{display_value(value)}")
         else:
@@ -121,6 +130,106 @@ def _replace_terms(text: str, terms: dict[str, str]) -> str:
     for raw, label in sorted(terms.items(), key=lambda item: len(item[0]), reverse=True):
         pattern = _term_pattern(raw)
         result = pattern.sub(label, result)
+    return result
+
+
+def _replace_internal_reference_paths(text: str) -> str:
+    result = text
+
+    def evidence_repl(match: re.Match[str]) -> str:
+        index = int(match.group(1)) + 1
+        return f"共用證據包第 {index} 筆"
+
+    result = re.sub(
+        r"共用證據包\.(?:news|items|sources|events|evidence)\[(\d+)\]",
+        evidence_repl,
+        result,
+        flags=re.I,
+    )
+    result = re.sub(r"\bsource[_ ]ids?\b\s*[:=]\s*", "來源編號：", result, flags=re.I)
+    return result
+
+
+def _replace_theme_radar_relation_codes(text: str) -> str:
+    """Translate compact theme-radar relation codes in user-facing report text."""
+    result = text
+    replacements = [
+        (r"\bL1\s*official\b", "官方來源"),
+        (r"\bL2\s*media\b", "媒體來源"),
+        (r"\bL1\s*級", "官方一級來源"),
+        (r"\bL2\s*級", "媒體或市場二級來源"),
+        (r"\bL1\s*（", "官方一級來源（"),
+        (r"\bL2\s*（", "媒體或市場二級來源（"),
+        (r"待補\s*L1\s*證據", "待補官方一級來源證據"),
+        (r"進行\s*L1\s*驗證", "進行官方一級來源驗證"),
+        (r"\bL1\s*驗證", "官方一級來源驗證"),
+        (r"\bC\s*/\s*\(\s*V\s*\+\s*C\s*\)", "候選占比"),
+        (r"\bV\s*\+\s*C\b", "已驗證加候選"),
+        (r"B\s*級中\s*V\s*數最高", "B級中已驗證數量最高"),
+        (r"\bV\s*數\b", "已驗證數量"),
+        (r"無高\s*V\s*主題對應", "沒有高已驗證度題材對應"),
+        (r"高\s*V", "高已驗證度"),
+        (r"\bV\s*仍須以\s*L1\s*補強", "已驗證關聯仍須以官方或一級來源補強"),
+        (r"候選股（C）", "候選股"),
+        (r"已驗證股（V）", "已驗證股"),
+        (r"\bV\s*/\s*C\s*/\s*I\b", "已驗證／候選／推論"),
+        (r"\bV\s*/\s*C\b", "已驗證／候選"),
+        (r"\bV\s+占比", "已驗證占比"),
+        (r"\bC\s+占比", "候選占比"),
+        (r"\bI\s+占比", "推論占比"),
+        (r"\bV\s*=\s*([0-9]+)\b", r"已驗證數量為 \1"),
+        (r"\bC\s*=\s*([0-9]+)\b", r"候選數量為 \1"),
+        (r"\bI\s*=\s*([0-9]+)\b", r"推論數量為 \1"),
+        (r"\bC\s*≥\s*V\s*×\s*2\b", "候選數量至少是已驗證的兩倍"),
+        (r"\bC\s*>=\s*V\s*\*\s*2\b", "候選數量至少是已驗證的兩倍"),
+        (r"\bC\s*≥\s*V\b", "候選數量高於已驗證數量"),
+        (r"\bV\s+級\b", "已驗證級"),
+        (r"\bC\s+級\b", "候選級"),
+        (r"\bI\s+級\b", "推論級"),
+        (r"\bTier\s+A\b", "A級"),
+        (r"\bTier\s+B\b", "B級"),
+        (r"\bTier\s+C\b", "C級"),
+    ]
+    for pattern, replacement in replacements:
+        result = re.sub(pattern, replacement, result, flags=re.I)
+    result = re.sub(r"\bV\s+(\d+)", r"已驗證 \1", result)
+    result = re.sub(r"\bC\s+(\d+)", r"候選 \1", result)
+    result = re.sub(r"\bI\s+(\d+)", r"推論 \1", result)
+    return result
+
+
+def _replace_truncation_placeholders(text: str) -> str:
+    result = text
+    placeholders = {
+        "<list truncated>": "清單已精簡，完整明細保存在 JSON 附錄",
+        "<dict truncated>": "欄位已精簡，完整明細保存在 JSON 附錄",
+        "<truncated>": "內容已精簡，完整資料保存在 JSON 附錄",
+        "&lt;list truncated&gt;": "清單已精簡，完整明細保存在 JSON 附錄",
+        "&lt;dict truncated&gt;": "欄位已精簡，完整明細保存在 JSON 附錄",
+        "&lt;truncated&gt;": "內容已精簡，完整資料保存在 JSON 附錄",
+    }
+    for raw, label in placeholders.items():
+        result = result.replace(raw, label)
+    return result
+
+
+def _cleanup_display_artifacts(text: str) -> str:
+    result = text
+    result = result.replace("全市場 市場題材雷達報告", "全市場題材雷達報告")
+    result = result.replace("`清單已精簡，完整明細保存在 JSON 附錄`", "清單已精簡，完整明細保存在 JSON 附錄")
+    result = result.replace("`欄位已精簡，完整明細保存在 JSON 附錄`", "欄位已精簡，完整明細保存在 JSON 附錄")
+    result = result.replace("`內容已精簡，完整資料保存在 JSON 附錄`", "內容已精簡，完整資料保存在 JSON 附錄")
+    result = re.sub(r"\bA/B/C\b", "A級／B級／C級", result)
+    result = re.sub(r"\bA/B\b", "A級／B級", result)
+    result = re.sub(r"\b24h\b", "近24小時", result, flags=re.IGNORECASE)
+    result = re.sub(r"\b7d\b", "近7日", result, flags=re.IGNORECASE)
+    result = result.replace(" vs ", " 相對於 ")
+    result = re.sub(r"(覆蓋率)\s*=\s*([0-9.]+%?)", r"\1為 \2", result)
+    result = result.replace("`、", "、").replace("`，", "，").replace("`。", "。")
+    result = re.sub(r"([0-9%％])`", r"\1", result)
+    result = re.sub(r"`([，。、；：）])", r"\1", result)
+    result = re.sub(r"([（(])`", r"\1", result)
+    result = re.sub(r"\b來源編號\s*=\s*", "來源編號：", result)
     return result
 
 

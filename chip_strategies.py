@@ -21,6 +21,7 @@ from progress_logger import now_timestamp
 # Singletons for health and quota tracking
 _CHIP_HEALTH = SourceHealthManager()
 _FINMIND_QUOTA = FinMindQuotaManager()
+_HOLIDAY_DATES_CACHE: dict[int, set[date]] = {}
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -36,6 +37,8 @@ TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 TPEX_QFII_URL = "https://www.tpex.org.tw/www/zh-tw/insti/qfiiStat"
 TPEX_SITC_URL = "https://www.tpex.org.tw/www/zh-tw/insti/sitcStat"
+TPEX_OPENAPI_DAILY_TRADING_URL = "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
+TPEX_OPENAPI_QFII_URL = "https://www.tpex.org.tw/openapi/v1/tpex_3insti_qfii"
 TPEX_MAINBOARD_QUOTES_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 TPEX_ESB_QUOTES_URL = "https://www.tpex.org.tw/openapi/v1/tpex_esb_daily_close_quotes"
 TWSE_HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
@@ -54,10 +57,14 @@ TRADING_DAY_LOOKBACK = 120
 TDCC_TARGET_WEEKS = 8
 SOURCE_COOLDOWN_SECONDS = 30 * 60
 FINMIND_MAX_FALLBACK_STOCKS_PER_DATE = 50
+DAILY_NET_DIRECT_FINMIND_THRESHOLD = 3
+TWSE_FOREIGN_RATIO_DIRECT_FINMIND_THRESHOLD = 3
 CHIP_PROGRESS_DEFAULT_LABEL = "籌碼資料"
 SOURCE_MIN_INTERVAL_SECONDS = {
     "twse_t86": 3.0,
     "twse_mi_qfiis": 3.0,
+    "tpex_openapi_daily_trading": 3.0,
+    "tpex_openapi_qfii": 3.0,
     "tpex_qfii": 3.0,
     "tpex_sitc": 3.0,
     "finmind": 1.2,
@@ -67,6 +74,8 @@ SOURCE_BACKOFF_SECONDS = [60, 300, SOURCE_COOLDOWN_SECONDS]
 SOURCE_LABELS = {
     "twse_t86": "TWSE",
     "twse_mi_qfiis": "TWSE",
+    "tpex_openapi_daily_trading": "TPEX OpenAPI",
+    "tpex_openapi_qfii": "TPEX OpenAPI",
     "tpex_qfii": "TPEX",
     "tpex_sitc": "TPEX",
     "finmind": "FinMind",
@@ -193,6 +202,7 @@ def _write_json(path: Path, payload: Any) -> None:
 SOURCE_COOLDOWNS: dict[str, datetime] = {}
 SOURCE_FAILURE_COUNTS: dict[str, int] = {}
 SOURCE_LAST_REQUEST_AT: dict[str, float] = {}
+TPEX_OPENAPI_AVAILABLE_DATES: dict[str, set[date]] = {}
 SOURCE_LOCK = Lock()
 
 
@@ -236,7 +246,7 @@ def _wait_for_source_slot(source_key: str) -> None:
 def _to_float(value: Any) -> float | None:
     if value is None:
         return None
-    text = str(value).strip().replace(",", "")
+    text = str(value).strip().replace(",", "").replace("%", "")
     if not text or text in {"--", "---", "nan", "None", "-"}:
         return None
     try:
@@ -254,6 +264,65 @@ def _to_lots_from_shares(value: Any) -> float | None:
 
 def _normalize_code(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _row_value(row: dict[str, Any], candidates: tuple[str, ...]) -> Any:
+    for key in candidates:
+        if key in row:
+            return row.get(key)
+    normalized = {str(key).replace(" ", "").replace("\n", "").strip(): value for key, value in row.items()}
+    for key in candidates:
+        compact = key.replace(" ", "").replace("\n", "").strip()
+        if compact in normalized:
+            return normalized[compact]
+    return None
+
+
+def _parse_tpex_openapi_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    compact = text.replace("/", "").replace("-", "")
+    if compact.isdigit() and len(compact) == 7:
+        try:
+            return date(int(compact[:3]) + 1911, int(compact[3:5]), int(compact[5:7]))
+        except ValueError:
+            return None
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    parts = text.replace("-", "/").split("/")
+    if len(parts) == 3:
+        try:
+            year = int(parts[0])
+            if year < 1911:
+                year += 1911
+            return date(year, int(parts[1]), int(parts[2]))
+        except ValueError:
+            return None
+    return None
+
+
+def _remember_tpex_openapi_dates(source_key: str, payload: Any) -> set[date]:
+    if not isinstance(payload, list):
+        return set()
+    dates = {
+        parsed
+        for row in payload
+        if isinstance(row, dict)
+        for parsed in [_parse_tpex_openapi_date(_row_value(row, ("Date", "date", "日期", "資料日期")))]
+        if parsed is not None
+    }
+    if dates:
+        TPEX_OPENAPI_AVAILABLE_DATES[source_key] = dates
+    return dates
+
+
+def _should_try_tpex_openapi(source_key: str, target_date: date) -> bool:
+    known_dates = TPEX_OPENAPI_AVAILABLE_DATES.get(source_key)
+    return not known_dates or target_date in known_dates
 
 
 def _format_price(price: float) -> str:
@@ -303,6 +372,8 @@ def _render_bucket(title: str, industry_groups: dict[str, list[str]]) -> list[st
 
 
 def _load_holiday_dates(target_year: int) -> set[date]:
+    if target_year in _HOLIDAY_DATES_CACHE:
+        return _HOLIDAY_DATES_CACHE[target_year]
     try:
         rows = httpx.get(TWSE_HOLIDAY_URL, timeout=20.0, follow_redirects=True, verify=False).json()
     except Exception:
@@ -313,12 +384,15 @@ def _load_holiday_dates(target_year: int) -> set[date]:
         raw_date = str(row.get("Date") or "").strip()
         if not raw_date:
             continue
-        try:
-            parsed = datetime.strptime(raw_date, "%Y%m%d").date()
-        except ValueError:
+        description_text = f"{row.get('Name') or ''} {row.get('Description') or ''}"
+        if "開始交易" in description_text or "最後交易" in description_text:
+            continue
+        parsed = _parse_tpex_openapi_date(raw_date)
+        if parsed is None:
             continue
         if parsed.year == target_year:
             holidays.add(parsed)
+    _HOLIDAY_DATES_CACHE[target_year] = holidays
     return holidays
 
 
@@ -627,21 +701,168 @@ def _fetch_twse_foreign_ratio_for_date(client: httpx.Client, target_date: date, 
     return pd.DataFrame(rows)
 
 
-def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, sort_key: str, source_key: str) -> dict[str, float]:
-    roc_date = f"{target_date.year - 1911:03d}/{target_date.month:02d}/{target_date.day:02d}"
+def _fetch_tpex_openapi_net_buy_for_date(
+    client: httpx.Client,
+    target_date: date,
+    candidate_codes: set[str],
+) -> pd.DataFrame:
+    source_key = "tpex_openapi_daily_trading"
     payload = _fetch_source_json(
         client,
         source_key,
-        url,
-        params={"date": roc_date, "type": "Daily", sort_key: "buy"},
+        TPEX_OPENAPI_DAILY_TRADING_URL,
     )
-    table = (payload.get("tables") or [{}])[0]
+    if not isinstance(payload, list):
+        return pd.DataFrame()
+    available_dates = _remember_tpex_openapi_dates(source_key, payload)
+    if available_dates and target_date not in available_dates:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        row_date = _parse_tpex_openapi_date(
+            _row_value(row, ("Date", "date", "日期", "資料日期"))
+        )
+        if row_date != target_date:
+            continue
+        code = _normalize_code(
+            _row_value(
+                row,
+                ("SecuritiesCompanyCode", "SecuritiesCode", "Code", "code", "股票代號", "證券代號", "代號"),
+            )
+        )
+        if code not in candidate_codes:
+            continue
+        foreign_net = _to_lots_from_shares(
+            _row_value(
+                row,
+                (
+                    "ForeignNetBuySell",
+                    "ForeignNetBuySellShares",
+                    "NetForeignPurchasesSales",
+                    "ForeignInvestorsInclude MainlandAreaInvestors-Difference",
+                    "ForeignInvestorsIncludeMainlandAreaInvestors-Difference",
+                    "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference",
+                    "外資及陸資買賣超股數",
+                    "外資及陸資買賣超",
+                    "外資買賣超股數",
+                    "外資買賣超",
+                ),
+            )
+        )
+        trust_net = _to_lots_from_shares(
+            _row_value(
+                row,
+                (
+                    "InvestmentTrustNetBuySell",
+                    "InvestmentTrustNetBuySellShares",
+                    "NetInvestmentTrustPurchasesSales",
+                    "SecuritiesInvestmentTrustCompanies-Difference",
+                    "投信買賣超股數",
+                    "投信買賣超",
+                ),
+            )
+        )
+        if foreign_net is None and trust_net is None:
+            continue
+        rows.append(
+            {
+                "date": target_date,
+                "code": code,
+                "market": "TPEX",
+                "foreign_net_lots": foreign_net or 0.0,
+                "trust_net_lots": trust_net or 0.0,
+                "source": "TPEX_OpenAPI",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _fetch_tpex_openapi_foreign_ratio_for_date(
+    client: httpx.Client,
+    target_date: date,
+    candidate_codes: set[str],
+) -> pd.DataFrame:
+    source_key = "tpex_openapi_qfii"
+    payload = _fetch_source_json(
+        client,
+        source_key,
+        TPEX_OPENAPI_QFII_URL,
+    )
+    if not isinstance(payload, list):
+        return pd.DataFrame()
+    available_dates = _remember_tpex_openapi_dates(source_key, payload)
+    if available_dates and target_date not in available_dates:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        row_date = _parse_tpex_openapi_date(
+            _row_value(row, ("Date", "date", "日期", "資料日期"))
+        )
+        if row_date != target_date:
+            continue
+        code = _normalize_code(
+            _row_value(
+                row,
+                ("SecuritiesCompanyCode", "SecuritiesCode", "Code", "code", "股票代號", "證券代號", "代號"),
+            )
+        )
+        if code not in candidate_codes:
+            continue
+        ratio = _to_float(
+            _row_value(
+                row,
+                (
+                    "ForeignHoldingRatio",
+                    "QFIIRatio",
+                    "ForeignInvestmentRatio",
+                    "PercentageOfSharesOC/FMIHeld",
+                    "僑外資及陸資持股比率",
+                    "外資持股比率",
+                    "持股比率",
+                    "比率",
+                ),
+            )
+        )
+        if ratio is None:
+            continue
+        rows.append(
+            {
+                "date": target_date,
+                "code": code,
+                "foreign_ratio_pct": ratio,
+                "source": "TPEX_OpenAPI",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, sort_key: str, source_key: str) -> dict[str, float]:
+    roc_date = f"{target_date.year - 1911:03d}/{target_date.month:02d}/{target_date.day:02d}"
     net_map: dict[str, float] = {}
-    for row in table.get("data", []):
-        code = _normalize_code(row[1])
-        net_value = _to_float(row[-1])
-        if code and net_value is not None:
-            net_map[code] = float(net_value)
+    for search_type in ("buy", "sell"):
+        try:
+            payload = _fetch_source_json(
+                client,
+                source_key,
+                url,
+                params={"date": roc_date, "type": "Daily", sort_key: search_type},
+            )
+        except Exception:
+            if net_map:
+                continue
+            raise
+        table = (payload.get("tables") or [{}])[0]
+        for row in table.get("data", []):
+            code = _normalize_code(row[1])
+            net_value = _to_float(row[-1])
+            if code and net_value is not None:
+                net_map[code] = float(net_value)
     return net_map
 
 
@@ -824,8 +1045,8 @@ def _fetch_recent_daily_chip_data(
     calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
         for checked_index, target_date in enumerate(calendar, start=1):
-            # Extra safety: skip obvious weekends if calendar ever contains them
-            if target_date.weekday() >= 5:
+            # Extra safety: skip weekends and Taiwan market holidays if calendar ever contains them.
+            if not is_possible_trading_day(target_date):
                 _print_chip_progress(progress_label, _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days), f"略過週末非交易日 {target_date.isoformat()}")
                 continue
             progress = _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days)
@@ -859,7 +1080,14 @@ def _fetch_recent_daily_chip_data(
 
             fetched_frames: list[pd.DataFrame] = []
             if missing_twse_codes:
-                if _is_source_available("twse_t86"):
+                if len(missing_twse_codes) <= DAILY_NET_DIRECT_FINMIND_THRESHOLD:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"上市法人買賣超缺口僅 {len(missing_twse_codes)} 檔，略過 TWSE T86 批次查詢，直接改用 FinMind 單檔補資料",
+                    )
+                    twse_net = pd.DataFrame()
+                elif _is_source_available("twse_t86"):
                     _print_chip_progress(
                         progress_label,
                         progress,
@@ -922,7 +1150,41 @@ def _fetch_recent_daily_chip_data(
                     progress,
                     f"嘗試 TPEX 官方法人資料 {target_date.isoformat()}，上櫃缺口 {len(missing_tpex_codes)} 檔",
                 )
-                tpex_net = _fetch_tpex_net_buy_for_date(client, target_date, missing_tpex_codes)
+                if not _should_try_tpex_openapi("tpex_openapi_daily_trading", target_date):
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TPEx OpenAPI 法人資料已知不含 {target_date.isoformat()}，略過 OpenAPI，直接改用舊版 TPEx fallback",
+                    )
+                    tpex_net = pd.DataFrame()
+                else:
+                    try:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"嘗試 TPEx OpenAPI 法人資料 {target_date.isoformat()}，上櫃缺口 {len(missing_tpex_codes)} 檔",
+                        )
+                        tpex_net = _fetch_tpex_openapi_net_buy_for_date(client, target_date, missing_tpex_codes)
+                    except Exception as exc:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TPEx OpenAPI 法人資料 {target_date.isoformat()} 失敗，將改用舊版 TPEx fallback：{exc}",
+                        )
+                        tpex_net = pd.DataFrame()
+                if tpex_net.empty:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TPEx OpenAPI 法人資料 {target_date.isoformat()} 未補到上櫃缺口，改用舊版 TPEx fallback",
+                    )
+                    tpex_net = _fetch_tpex_net_buy_for_date(client, target_date, missing_tpex_codes)
+                else:
+                    _print_chip_progress(
+                        progress_label,
+                        progress,
+                        f"TPEx OpenAPI 法人資料 {target_date.isoformat()} 成功，補到 {len(tpex_net)}/{len(missing_tpex_codes)} 檔",
+                    )
                 if not tpex_net.empty:
                     tpex_net = tpex_net.assign(market="TPEX")
                     fetched_frames.append(tpex_net)
@@ -953,6 +1215,74 @@ def _fetch_recent_daily_chip_data(
                 continue
 
             if include_foreign_ratio:
+                tpex_date_codes = set(date_net.loc[date_net["market"] == "TPEX", "code"].tolist())
+                tpex_cached_ratio_codes = set(
+                    date_net.loc[
+                        (date_net["market"] == "TPEX") & date_net["foreign_ratio_pct"].notna(),
+                        "code",
+                    ].tolist()
+                )
+                tpex_ratio_missing_codes = tpex_date_codes - tpex_cached_ratio_codes
+                if tpex_ratio_missing_codes:
+                    if not _should_try_tpex_openapi("tpex_openapi_qfii", target_date):
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TPEx OpenAPI 外資持股比例已知不含 {target_date.isoformat()}，略過 OpenAPI，保留估算流程",
+                        )
+                        tpex_foreign_ratio = pd.DataFrame()
+                    else:
+                        try:
+                            _print_chip_progress(
+                                progress_label,
+                                progress,
+                                f"嘗試 TPEx OpenAPI 外資持股比例 {target_date.isoformat()}，上櫃缺口 {len(tpex_ratio_missing_codes)} 檔",
+                            )
+                            tpex_foreign_ratio = _fetch_tpex_openapi_foreign_ratio_for_date(
+                                client,
+                                target_date,
+                                tpex_ratio_missing_codes,
+                            )
+                        except Exception as exc:
+                            _print_chip_progress(
+                                progress_label,
+                                progress,
+                                f"TPEx OpenAPI 外資持股比例 {target_date.isoformat()} 失敗，保留估算流程：{exc}",
+                            )
+                            tpex_foreign_ratio = pd.DataFrame()
+                    if not tpex_foreign_ratio.empty:
+                        ratio_update = tpex_foreign_ratio.drop_duplicates(["date", "code"], keep="last").rename(
+                            columns={
+                                "foreign_ratio_pct": "foreign_ratio_pct_update",
+                                "source": "foreign_ratio_source",
+                            }
+                        )
+                        date_net = date_net.merge(
+                            ratio_update[["date", "code", "foreign_ratio_pct_update", "foreign_ratio_source"]],
+                            on=["date", "code"],
+                            how="left",
+                        )
+                        missing_ratio_mask = date_net["foreign_ratio_pct"].isna() & date_net["foreign_ratio_pct_update"].notna()
+                        date_net["foreign_ratio_pct"] = date_net["foreign_ratio_pct"].fillna(
+                            date_net["foreign_ratio_pct_update"]
+                        )
+                        date_net.loc[missing_ratio_mask, "source"] = (
+                            date_net.loc[missing_ratio_mask, "source"].astype(str)
+                            + "+"
+                            + date_net.loc[missing_ratio_mask, "foreign_ratio_source"].astype(str)
+                        )
+                        date_net = date_net.drop(columns=["foreign_ratio_pct_update", "foreign_ratio_source"])
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TPEx OpenAPI 外資持股比例 {target_date.isoformat()} 成功，補到 {len(tpex_foreign_ratio)}/{len(tpex_ratio_missing_codes)} 檔",
+                        )
+                    else:
+                        _print_chip_progress(
+                            progress_label,
+                            progress,
+                            f"TPEx OpenAPI 外資持股比例 {target_date.isoformat()} 未補到上櫃缺口，保留估算流程",
+                        )
                 twse_date_codes = set(date_net.loc[date_net["market"] == "TWSE", "code"].tolist())
                 cached_ratio_codes = set(
                     date_net.loc[
@@ -962,28 +1292,36 @@ def _fetch_recent_daily_chip_data(
                 )
                 ratio_missing_codes = twse_date_codes - cached_ratio_codes
                 if ratio_missing_codes:
-                    if _is_source_available("twse_mi_qfiis"):
+                    if len(ratio_missing_codes) <= TWSE_FOREIGN_RATIO_DIRECT_FINMIND_THRESHOLD:
                         _print_chip_progress(
                             progress_label,
                             progress,
-                            f"嘗試 TWSE MI_QFIIS {target_date.isoformat()}，外資持股比例缺口 {len(ratio_missing_codes)} 檔",
+                            f"外資持股比例缺口僅 {len(ratio_missing_codes)} 檔，略過 TWSE MI_QFIIS 分類掃描，直接改用 FinMind 單檔補資料",
                         )
-                        try:
-                            foreign_ratio = _fetch_twse_foreign_ratio_for_date(client, target_date, ratio_missing_codes)
-                        except Exception as exc:
+                        foreign_ratio = pd.DataFrame()
+                    else:
+                        if _is_source_available("twse_mi_qfiis"):
                             _print_chip_progress(
                                 progress_label,
                                 progress,
-                                f"TWSE MI_QFIIS {target_date.isoformat()} 失敗，將改用 FinMind 補持股比例：{exc}",
+                                f"嘗試 TWSE MI_QFIIS {target_date.isoformat()}，外資持股比例缺口 {len(ratio_missing_codes)} 檔",
+                            )
+                            try:
+                                foreign_ratio = _fetch_twse_foreign_ratio_for_date(client, target_date, ratio_missing_codes)
+                            except Exception as exc:
+                                _print_chip_progress(
+                                    progress_label,
+                                    progress,
+                                    f"TWSE MI_QFIIS {target_date.isoformat()} 失敗，將改用 FinMind 補持股比例：{exc}",
+                                )
+                                foreign_ratio = pd.DataFrame()
+                        else:
+                            _print_chip_progress(
+                                progress_label,
+                                progress,
+                                f"TWSE MI_QFIIS 目前冷卻中，{target_date.isoformat()} 外資持股比例改用 FinMind",
                             )
                             foreign_ratio = pd.DataFrame()
-                    else:
-                        _print_chip_progress(
-                            progress_label,
-                            progress,
-                            f"TWSE MI_QFIIS 目前冷卻中，{target_date.isoformat()} 外資持股比例改用 FinMind",
-                        )
-                        foreign_ratio = pd.DataFrame()
                     fetched_ratio_codes = set(foreign_ratio["code"].tolist()) if not foreign_ratio.empty else set()
                     if fetched_ratio_codes:
                         _print_chip_progress(
@@ -1260,10 +1598,11 @@ def _count_strategy_members(members: dict[str, dict[str, list[str]]]) -> int:
 
 
 def _format_context_sources(context: ChipMarketContext) -> str:
-    source_order = ["cache", "TWSE", "TPEX", "FinMind", "estimated", "TDCC"]
+    source_order = ["cache", "TWSE", "TPEX_OpenAPI", "TPEX", "FinMind", "estimated", "TDCC"]
     source_labels = {
         "cache": "本機快取",
         "TWSE": "TWSE",
+        "TPEX_OpenAPI": "TPEx OpenAPI",
         "TPEX": "TPEX",
         "FinMind": "FinMind",
         "estimated": "估算",

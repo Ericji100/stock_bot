@@ -4,10 +4,26 @@ from urllib.parse import urlparse
 
 from .models import SourceItem
 from .preferred_sources import match_preferred_source, preferred_source_weight
+from .source_date_normalizer import normalize_published_date_with_status
+from .source_text_cleaner import clean_source_text
 
 LEVEL_1_DOMAINS = ("twse.com.tw", "tpex.org.tw", "mops.twse.com.tw", "mopsov.twse.com.tw")
 LEVEL_2_DOMAINS = ("moneydj.com", "cnyes.com", "ctee.com.tw", "udn.com", "digitimes.com", "trendforce.com", "cna.com.tw")
-LEVEL_4_DOMAINS = ("ptt.cc", "dcard.tw", "mobile01.com", "threads.com", "threads.net", "x.com", "twitter.com", "cmoney.tw", "social.cmoney.tw")
+LEVEL_4_DOMAINS = (
+    "ptt.cc",
+    "dcard.tw",
+    "mobile01.com",
+    "threads.com",
+    "threads.net",
+    "x.com",
+    "twitter.com",
+    "facebook.com",
+    "instagram.com",
+    "youtube.com",
+    "youtu.be",
+    "cmoney.tw",
+    "social.cmoney.tw",
+)
 
 
 def rank_source(url: str, title: str = "") -> str:
@@ -28,7 +44,8 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
     seen: set[str] = set()
     for raw in raw_sources:
         url = str(raw.get("url") or "").strip()
-        title = str(raw.get("title") or url or "未命名來源").strip()
+        title = clean_source_text(raw.get("title") or url or "未命名來源")
+        snippet = clean_source_text(raw.get("snippet")) if raw.get("snippet") else raw.get("snippet")
         if not url or url in seen:
             continue
         seen.add(url)
@@ -37,20 +54,36 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
         provider_detail = raw.get("provider_detail") or ""
         if preferred:
             provider_detail = f"[{preferred.get('level')} {preferred.get('name')}] {provider_detail}".strip()
+        published_date, date_status = normalize_published_date_with_status(
+            explicit_values=(
+                raw.get("published_date"),
+                raw.get("published_at"),
+                raw.get("date"),
+                raw.get("datePublished"),
+                raw.get("article:published_time"),
+            ),
+            inferred_values=(title, snippet, raw.get("summary"), raw.get("content"), url),
+        )
+        found_by = list(raw.get("found_by", []))
+        if date_status != "unknown":
+            marker = f"source_date:{date_status}"
+            if marker not in found_by:
+                found_by.append(marker)
         items.append(
             SourceItem(
                 source_id=f"S{len(items) + 1:03d}",
                 title=title,
                 url=url,
                 source_level=source_level,
-                published_date=raw.get("published_date"),
-                snippet=raw.get("snippet"),
+                published_date=published_date,
+                snippet=snippet,
                 provider=raw.get("provider"),
                 provider_detail=provider_detail,
                 fetch_provider=raw.get("fetch_provider"),
                 fetch_status=raw.get("fetch_status"),
+                fetch_quality=raw.get("fetch_quality"),
                 failure_reason=raw.get("failure_reason"),
-                found_by=raw.get("found_by", []),
+                found_by=found_by,
             )
         )
     return items
@@ -206,6 +239,7 @@ def _renumber_sources(sources: list[SourceItem]) -> list[SourceItem]:
             provider_detail=item.provider_detail,
             fetch_provider=item.fetch_provider,
             fetch_status=item.fetch_status,
+            fetch_quality=item.fetch_quality,
             failure_reason=item.failure_reason,
             found_by=item.found_by,
         )

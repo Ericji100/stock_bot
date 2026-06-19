@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from research_center.ai_data_center import build_ai_data_center_bundle
-from research_center.ai_context_policy import select_sources_for_ai_input
+from research_center.ai_context_policy import select_sources_for_ai_input, source_coverage_counts
 from research_center.report_builder import build_report_json, render_html
 from research_center.models import CommandRequest, SourceItem
 
@@ -23,6 +23,20 @@ class AiDataCenterTests(unittest.TestCase):
         self.assertIn("官方重大訊息", selected_titles)
         self.assertIn("毛利下滑風險", selected_titles)
         self.assertEqual(audit["omitted_source_count"], 1)
+
+    def test_source_coverage_counts_date_status(self):
+        sources = [
+            SourceItem("S001", "明確日期", "https://example.com/a", "Level 2", "2026-05-24", found_by=["source_date:explicit"]),
+            SourceItem("S002", "推測日期", "https://example.com/b", "Level 2", "2026-05-25", found_by=["source_date:inferred"]),
+            SourceItem("S003", "無日期", "https://example.com/c", "Level 2"),
+        ]
+
+        coverage = source_coverage_counts(sources)
+
+        self.assertEqual(coverage["dated_sources"], 2)
+        self.assertEqual(coverage["explicit_dated_sources"], 1)
+        self.assertEqual(coverage["inferred_dated_sources"], 1)
+        self.assertEqual(coverage["undated_sources"], 1)
 
     def test_ai_data_center_bundle_contains_audit_confidence_and_three_layers(self):
         request = CommandRequest(command="research", raw_text="/research 2330 --deep", target="2330", mode="deep")
@@ -52,6 +66,24 @@ class AiDataCenterTests(unittest.TestCase):
         self.assertEqual(bundle["three_layer_context"]["source_sufficiency"]["source_count"], 3)
         self.assertGreaterEqual(bundle["report_confidence"]["confidence_score"], 40)
         self.assertEqual(len(bundle["three_layer_context"]["raw_sources"]), 3)
+
+    def test_ai_prompt_context_cleans_source_text_before_ai_input(self):
+        request = CommandRequest(command="macro", raw_text="/macro 台股", market_scope="台股")
+        mojibake_title = "é¦–é  - TWSE è‡ºç£è­‰åˆ¸äº¤æ˜“æ‰€"
+        mojibake_snippet = "é¦–é  - TWSE è‡ºç£è­‰åˆ¸äº¤æ˜“æ‰€"
+        bundle = build_ai_data_center_bundle(
+            request,
+            {"market_scope": "台股"},
+            [SourceItem("S001", mojibake_title, "https://www.twse.com.tw/", "Level 1", snippet=mojibake_snippet)],
+        )
+
+        prompt_sources = bundle["ai_prompt_context"]["入模來源"]
+
+        self.assertEqual(prompt_sources[0]["來源編號"], "S001")
+        self.assertIn("TWSE", prompt_sources[0]["標題"])
+        self.assertIn("臺灣證券交易所", prompt_sources[0]["標題"])
+        self.assertIn("臺灣證券交易所", prompt_sources[0]["摘要"])
+        self.assertNotIn("é¦", prompt_sources[0]["標題"])
 
     def test_report_json_and_html_include_ai_input_audit_tab(self):
         request = CommandRequest(command="research", raw_text="/research 2330 --deep", target="2330", mode="deep")

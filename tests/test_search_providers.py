@@ -103,6 +103,24 @@ class SearchProviderTests(unittest.TestCase):
         self.assertEqual(items[0].provider, "tavily_extract")
         self.assertEqual(items[0].provider_detail, "extract_depth=basic")
 
+    def test_make_source_items_normalizes_explicit_dates(self):
+        items = make_source_items([
+            {
+                "title": "source",
+                "url": "https://example.com/2026/05/24/news.html",
+                "snippet": "ok",
+                "provider": "tavily_search",
+            },
+            {
+                "title": "source",
+                "url": "https://example.com/b",
+                "snippet": "article:published_time content=\"2026-05-25\"",
+                "provider": "tavily_search",
+            },
+        ])
+
+        self.assertEqual([item.published_date for item in items], ["2026-05-24", "2026-05-25"])
+
     def test_merge_sources_prefers_tavily_extract_over_search(self):
         base = [SourceItem("S001", "Search", "https://example.com/a", "Level 3", snippet="short", provider="tavily_search")]
         extra = [SourceItem("S999", "Extract", "https://example.com/a", "Level 3", snippet="full", provider="tavily_extract")]
@@ -168,6 +186,86 @@ class SearchProviderTests(unittest.TestCase):
             snippet = "庫存風險" if i in {2, 3} else "一般產業資料"
             sources.append(SourceItem(f"S{i:03d}", title, f"https://news.example/{i}", "Level 2", snippet=snippet, provider="tavily_extract"))
         self.assertFalse(_should_run_gemini_search_fallback(request, sources, config))
+
+
+    def test_should_run_gemini_fallback_when_social_ratio_too_high(self):
+        request = CommandRequest(command="theme_radar", raw_text="/theme_radar --model minimax", mode="normal")
+        config = ResearchCenterConfig(api_key=None)
+        sources = [
+            SourceItem(f"S{i:03d}", "YouTube market clip", f"https://www.youtube.com/watch?v={i}", "Level 4", provider="minimax_mcp_search")
+            for i in range(1, 20)
+        ]
+        sources.extend(
+            SourceItem(f"N{i:03d}", "Market news", f"https://news.example.com/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 6)
+        )
+        structured_data = {"tavily_search_discovery": {"enabled": False}}
+
+        summary = _source_quality_summary(sources, request, structured_data)
+
+        self.assertGreater(summary["social_or_video_ratio"], 0.4)
+        self.assertIn("social_or_video_ratio_too_high", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config, structured_data=structured_data))
+
+    def test_should_run_gemini_fallback_when_minimax_error_rate_high(self):
+        request = CommandRequest(command="theme_radar", raw_text="/theme_radar --model minimax", mode="normal")
+        config = ResearchCenterConfig(api_key=None)
+        structured_data = {
+            "minimax_search_discovery": {
+                "runs": [{"label": "test", "query_count": 4, "error_count": 2, "source_count": 10}],
+                "error_reasons": ["mcp_parse_error"],
+            },
+            "tavily_search_discovery": {"enabled": False},
+        }
+        sources = [
+            SourceItem(f"S{i:03d}", "Market news", f"https://news.example.com/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 12)
+        ]
+
+        summary = _source_quality_summary(sources, request, structured_data)
+
+        self.assertIn("minimax_error_rate_too_high", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config, structured_data=structured_data))
+
+    def test_should_run_gemini_fallback_when_minimax_sensitive_blocked(self):
+        request = CommandRequest(command="theme_radar", raw_text="/theme_radar --model minimax", mode="normal")
+        config = ResearchCenterConfig(api_key=None)
+        structured_data = {
+            "minimax_search_discovery": {
+                "runs": [{"label": "test", "query_count": 4, "error_count": 1, "source_count": 10}],
+                "error_reasons": ["minimax_sensitive_query_blocked"],
+            },
+            "tavily_search_discovery": {"enabled": False},
+        }
+        sources = [
+            SourceItem(f"S{i:03d}", "Market news", f"https://news.example.com/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 12)
+        ]
+
+        summary = _source_quality_summary(sources, request, structured_data)
+
+        self.assertIn("minimax_sensitive_query_blocked", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config, structured_data=structured_data))
+
+    def test_topic_maintain_skips_gemini_fallback_when_minimax_sources_are_sufficient(self):
+        request = CommandRequest(command="topic_maintain", raw_text="/topic_maintain --model minimax", mode="normal")
+        config = ResearchCenterConfig(api_key=None)
+        structured_data = {
+            "minimax_search_discovery": {
+                "runs": [{"label": "test", "query_count": 20, "error_count": 5, "source_count": 80}],
+                "error_reasons": ["minimax_sensitive_query_blocked"],
+            },
+            "tavily_search_discovery": {"enabled": False},
+        }
+        sources = [
+            SourceItem(f"S{i:03d}", "Market news", f"https://news.example.com/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 90)
+        ]
+
+        summary = _source_quality_summary(sources, request, structured_data)
+
+        self.assertNotIn("minimax_sensitive_query_blocked", summary["fallback_reasons"])
+        self.assertFalse(_should_run_gemini_search_fallback(request, sources, config, structured_data=structured_data))
 
     def test_theme_gemini_fallback_when_sources_many_but_not_relevant(self):
         request = CommandRequest(command="theme", raw_text="/theme AI電源 --deep", theme_scope="AI電源", mode="deep")
@@ -250,6 +348,28 @@ class SearchProviderTests(unittest.TestCase):
         self.assertEqual(log["providers"][0]["provider"], "minimax_mcp_search")
         self.assertEqual(log["providers"][0]["source_count"], 5)
         self.assertEqual(log["providers"][0]["query_count"], 3)
+
+    def test_search_query_log_keeps_query_budget_metadata(self):
+        structured_data: dict = {}
+        tasks = [
+            {
+                "label": "news",
+                "objective": "search",
+                "queries": ["q1", "q2"],
+                "query_budget": {
+                    "schema_version": "discovery_query_budget_v1",
+                    "max_queries_per_task": 6,
+                    "original_query_count": 12,
+                    "final_query_count": 6,
+                },
+            }
+        ]
+        structured_data["search_query_log"] = _build_search_query_log(tasks)
+
+        self.assertEqual(
+            structured_data["search_query_log"]["tasks"][0]["query_budget"]["original_query_count"],
+            12,
+        )
 
 
 class TavilySearchTests(unittest.TestCase):

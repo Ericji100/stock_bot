@@ -94,7 +94,7 @@ class TopicPipelineServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
-        self.assertTrue(any("MiniMax M2.7 資料整理底稿" in prompt for prompt in prompts))
+        self.assertTrue(any("MiniMax M3 資料整理底稿" in prompt for prompt in prompts))
         self.assertTrue(any("候選題材證據" in prompt for prompt in prompts))
 
     def test_pipeline_keeps_pack_when_detail_batch_fails(self):
@@ -123,8 +123,57 @@ class TopicPipelineServiceTests(unittest.TestCase):
             call_ai_json=call_ai_json,
         )
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
-        self.assertEqual(len(pack.actions), 1)
+        self.assertEqual(len(pack.actions), 4)
         self.assertTrue(any("bad json" in warning for warning in pack.warnings))
+        self.assertTrue(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
+
+    def test_pipeline_compacts_large_detail_stage_inputs(self):
+        prompts = {}
+        variables = self._variables()
+        variables["webfetch_evidence_json"] = "E" * 30000
+        variables["web_fetched_sources_json"] = "W" * 30000
+        variables["existing_topic_profiles_json"] = "P" * 12000
+        variables["company_topic_map_json"] = "M" * 12000
+        variables["supply_chain_nodes_json"] = "S" * 12000
+        variables["company_knowledge_json"] = "K" * 12000
+        variables["low_model_digest_json"] = json.dumps(
+            {"status": "success", "facts": [{"fact": "D" * 12000}]},
+            ensure_ascii=False,
+        )
+
+        def load_prompt(name):
+            if name == "topic_candidate_extract":
+                return "{webfetch_evidence_json} {web_fetched_sources_json} {low_model_digest_json}"
+            if name == "topic_detail_expand":
+                return (
+                    "{topic_candidates_json} {webfetch_evidence_json} "
+                    "{web_fetched_sources_json} {existing_topic_profiles_json} "
+                    "{company_topic_map_json} {supply_chain_nodes_json} "
+                    "{company_knowledge_json} {low_model_digest_json}"
+                )
+            return ""
+
+        def call_ai_json(prompt, stage):
+            prompts[stage] = prompt
+            if stage == "candidate_extract":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+
+        pack, _logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=variables,
+            load_prompt=load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertLess(len(prompts["detail_expand_1"]), 24000)
+        self.assertIn("truncated for detail stage", prompts["detail_expand_1"])
 
 
 if __name__ == "__main__":

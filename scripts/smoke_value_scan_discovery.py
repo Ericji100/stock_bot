@@ -107,10 +107,15 @@ def run_smoke(command: str) -> dict[str, Any]:
     ]))
     errors.extend(_assert_contains("roles", roles_text, ["支持重估", "支持反證", "只作情緒", "資料不足"]))
 
-    if "2330" in queries_text and "2308" in queries_text:
-        first_2330_line = next((line for line in queries_text.splitlines() if "2330" in line), "")
-        if "2308" in first_2330_line:
-            errors.append("candidate batching failed: first batch unexpectedly contains 2308")
+    first_task_queries = query_log["tasks"][0]["queries"] if query_log["tasks"] else []
+    stock_lines = [
+        line for line in first_task_queries
+        if any(code in str(line) for code in ("2330", "2454", "6217", "6669", "2308", "3037"))
+    ]
+    if len(stock_lines) < 2:
+        errors.append("candidate batching failed: expected candidates to span multiple query lines")
+    if stock_lines and not any("3037" in str(line) for line in stock_lines[1:]):
+        errors.append("candidate batching failed: later candidate batch missing 3037")
 
     return {
         "status": "ok" if not errors else "failed",

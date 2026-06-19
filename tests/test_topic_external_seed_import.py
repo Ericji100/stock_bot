@@ -9,6 +9,7 @@ from research_center.topic_import_service import import_topic_change_pack
 from research_center.topic_models import TopicChangeStatus
 from research_center.topic_models import TopicChangeMode
 from research_center.topic_models import TopicActionType
+import research_center.topic_seed_service as topic_seed_service
 from research_center.topic_seed_service import build_topic_seed_prompt
 from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
 
@@ -56,19 +57,66 @@ class TopicExternalSeedImportTests(unittest.TestCase):
 
     def test_seed_prompt_is_copyable_json_only_instruction(self):
         prompt = build_topic_seed_prompt()
-        self.assertIn("角色設定", prompt)
-        self.assertIn("高階投研分析 AI", prompt)
-        self.assertIn("只輸出 JSON object", prompt)
-        self.assertIn("actions 至少 12 筆", prompt)
-        self.assertIn("summary、confidence、actions、warnings、sources", prompt)
-        self.assertIn("company_relations", prompt)
-        self.assertIn("revenue_exposure", prompt)
-        self.assertIn("company_knowledge_updates", prompt)
-        self.assertIn("即時外部網路資料搜尋", prompt)
-        self.assertIn("不要捏造百分比", prompt)
-        self.assertIn("theme_id", prompt)
-        self.assertIn("affected_companies", prompt)
-        self.assertIn("supply_chain_nodes", prompt)
+        required_tokens = [
+            "只回傳 JSON object",
+            "/topic_import",
+            "/topic_confirm",
+            "config/theme_profiles.json",
+            "config/company_theme_map.json",
+            "config/supply_chain_nodes.json",
+            "config/company_knowledge.json",
+            '"mode": "initial"',
+            "actions",
+            "company_knowledge_updates",
+            "company_relations",
+            "affected_companies",
+            "supply_chain_nodes",
+            "theme_id",
+            "revenue_exposure",
+            "benefit_logic",
+            "counter_evidence",
+            "update_theme",
+            '不得輸出 `"mode": "initial"`',
+            "verification_status",
+            "verified",
+            "inferred",
+            "product_lines",
+            "evidence_sources",
+            "尚未找到明確反證，需後續追蹤",
+        ]
+        for token in required_tokens:
+            self.assertIn(token, prompt)
+
+    def test_seed_fallback_prompt_matches_current_topic_schema(self):
+        with patch.object(topic_seed_service, "_load_prompt", return_value=""):
+            prompt = topic_seed_service.build_topic_seed_prompt()
+
+        required_tokens = [
+            "JSON object",
+            "config/theme_profiles.json",
+            "config/company_theme_map.json",
+            "config/supply_chain_nodes.json",
+            "config/company_knowledge.json",
+            "mode",
+            "company_relations",
+            "affected_companies",
+            "supply_chain_nodes",
+            "company_knowledge_updates",
+            "revenue_exposure",
+            "benefit_logic",
+            "update_theme",
+            '不得輸出 `"mode": "initial"`',
+            "verification_status",
+            "verified",
+            "inferred",
+            "product_lines",
+            "evidence_sources",
+            "counter_evidence",
+            "尚未找到明確反證，需後續追蹤",
+        ]
+        for token in required_tokens:
+            self.assertIn(token, prompt)
+        self.assertNotIn("\uFFFD", prompt)
 
     def test_parse_topic_import_preserves_json_payload(self):
         payload = '{"summary":"ok","actions":[]}'

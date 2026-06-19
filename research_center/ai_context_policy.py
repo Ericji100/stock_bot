@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from .models import CommandRequest, SourceItem
+from .source_text_cleaner import clean_source_text
 
 
 POLICY_SCHEMA_VERSION = "ai_context_policy_v1"
@@ -105,6 +106,8 @@ def source_coverage_counts(sources: list[SourceItem]) -> dict[str, Any]:
     community = 0
     risk = 0
     dated = 0
+    explicit_dated = 0
+    inferred_dated = 0
     fetched = 0
     for source in sources:
         level = source.source_level or "unknown"
@@ -121,6 +124,11 @@ def source_coverage_counts(sources: list[SourceItem]) -> dict[str, Any]:
             risk += 1
         if source.published_date:
             dated += 1
+            found_by = set(source.found_by or [])
+            if "source_date:explicit" in found_by:
+                explicit_dated += 1
+            elif "source_date:inferred" in found_by:
+                inferred_dated += 1
         if source.fetch_status in {"success", "ok"}:
             fetched += 1
     return {
@@ -130,6 +138,8 @@ def source_coverage_counts(sources: list[SourceItem]) -> dict[str, Any]:
         "community_sources": community,
         "risk_or_counter_sources": risk,
         "dated_sources": dated,
+        "explicit_dated_sources": explicit_dated,
+        "inferred_dated_sources": inferred_dated,
         "undated_sources": max(0, len(sources) - dated),
         "fetched_sources": fetched,
         "by_source_level": by_level,
@@ -148,6 +158,20 @@ def compact_source_for_prompt(entry: dict[str, Any]) -> dict[str, Any]:
         "資料工具": source.get("provider") or source.get("fetch_provider"),
         "入模原因": entry.get("reasons") or [],
         "摘要": source.get("snippet"),
+    }
+
+
+def compact_source_for_prompt(entry: dict[str, Any]) -> dict[str, Any]:
+    source = dict(entry.get("source") or {})
+    return {
+        "來源編號": source.get("source_id"),
+        "標題": clean_source_text(source.get("title")),
+        "連結": source.get("url"),
+        "來源層級": source.get("source_level"),
+        "發布日期": source.get("published_date") or "日期不可驗證",
+        "資料工具": source.get("provider") or source.get("fetch_provider"),
+        "入模原因": entry.get("reasons") or [],
+        "摘要": clean_source_text(source.get("snippet")),
     }
 
 
@@ -221,10 +245,13 @@ def _selection_reasons(source: SourceItem) -> list[str]:
 
 
 def _source_entry(source: SourceItem, reasons: list[str], status: str) -> dict[str, Any]:
+    source_dict = asdict(source)
+    source_dict["title"] = clean_source_text(source_dict.get("title"))
+    source_dict["snippet"] = clean_source_text(source_dict.get("snippet"))
     return {
         "status": status,
         "reasons": reasons,
-        "source": asdict(source),
+        "source": source_dict,
     }
 
 

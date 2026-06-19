@@ -1,8 +1,9 @@
 import asyncio
 import unittest
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import main
 
@@ -83,6 +84,48 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             await main._scheduled_all_scan_push(context)
 
         run_core.assert_not_awaited()
+
+    async def test_1000_topic_maintain_uses_scheduled_queue(self):
+        context = _FakeContext()
+
+        with patch.object(main, "enqueue_scheduled_task", new=AsyncMock()) as enqueue:
+            await main.scheduled_topic_maintain(context)
+
+        enqueue.assert_awaited_once()
+        self.assertIs(enqueue.await_args.args[0], context)
+        self.assertIn("10:00 AI題材庫維護", enqueue.await_args.args[1])
+        self.assertTrue(callable(enqueue.await_args.args[2]))
+
+    async def test_1000_topic_maintain_runs_minimax_command(self):
+        context = _FakeContext()
+        fake_request = SimpleNamespace(command="topic_maintain", ai_model="minimax")
+        fake_result = SimpleNamespace(text="變更包：change_test")
+        parse_command = MagicMock(return_value=fake_request)
+
+        class FakeCenter:
+            def run(self, request, progress):
+                progress("[AI題材庫] /topic_maintain | 測試進度")
+                self.request = request
+                return fake_result
+
+        center = FakeCenter()
+
+        with patch.object(main, "load_config", return_value={"chat_id": 123}), \
+            patch("research_center.command_parser.parse_command_text", parse_command), \
+            patch("research_center.orchestrator.ResearchCenter", return_value=center), \
+            patch.object(main, "safe_send_bot_message", new=AsyncMock()) as send:
+            await main._scheduled_topic_maintain(context)
+
+        parse_command.assert_called_once_with("/topic_maintain --model minimax")
+        self.assertIs(center.request, fake_request)
+        send.assert_awaited_once_with(context.bot, 123, "變更包：change_test")
+
+    def test_main_registers_1000_topic_maintain_job(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+
+        self.assertIn("scheduled_topic_maintain", source)
+        self.assertIn("time(hour=10, minute=0, tzinfo=tw_tz)", source)
+        self.assertIn('name="10:00 AI題材庫維護（MiniMax M3）"', source)
 
     async def test_chip_backfill_runs_in_background_not_scheduled_queue(self):
         context = _FakeContext({"label": "籌碼快取測試", "full_backfill": False})

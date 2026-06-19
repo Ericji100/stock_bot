@@ -36,6 +36,22 @@ class ReportQualityServiceTests(unittest.TestCase):
         self.assertIn("missing_data_policy", quality)
         self.assertEqual(quality["evidence_pack"]["ai_candidate_count"], 1)
 
+    def test_source_coverage_splits_explicit_inferred_and_unknown_dates(self):
+        request = parse_command_text("/theme 功率半導體")
+        sources = [
+            SourceItem("S001", "A", "https://example.com/a", "Level 2", published_date="2026-05-24", found_by=["source_date:explicit"]),
+            SourceItem("S002", "B", "https://example.com/b", "Level 2", published_date="2026-05-25", found_by=["source_date:inferred"]),
+            SourceItem("S003", "C", "https://example.com/c", "Level 2"),
+        ]
+
+        quality = build_report_quality_layer(request, {}, sources)
+        summary = quality["source_coverage_summary"]
+
+        self.assertEqual(summary["dated_sources"], 2)
+        self.assertEqual(summary["explicit_dated_sources"], 1)
+        self.assertEqual(summary["inferred_dated_sources"], 1)
+        self.assertEqual(summary["undated_sources"], 1)
+
     def test_research_evidence_pack_preserves_core_inputs(self):
         request = parse_command_text("/research 2330 --deep")
         structured_data = {

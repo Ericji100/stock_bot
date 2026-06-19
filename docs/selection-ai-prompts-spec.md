@@ -1,4 +1,4 @@
-# 選股相關 AI Prompt 規格與優化建議
+﻿# 選股相關 AI Prompt 規格與優化建議
 
 本文件盤點目前選股相關流程實際會使用的 AI prompt，並整理可優化方向。本文只描述規格與建議，不代表已修改 prompt 或程式邏輯。
 
@@ -333,7 +333,7 @@ prompt/base/base.md
 
 ### AI 任務
 
-MiniMax M2.7 等低階模型只做資料整理：
+MiniMax M3 等低階模型只做資料整理：
 
 - facts
 - events
@@ -427,3 +427,25 @@ MiniMax M2.7 等低階模型只做資料整理：
    - 蹭題材風險偏高
 6. `/research --score` 仍能取得完整評分規則。
 7. 完整 `unittest discover` 通過。
+
+## 目前落地狀態
+
+本文件原本是選股相關 AI prompt 的盤點與優化建議。最新實作已將下列規則落地：
+
+1. `prompt/rules/output_quality_rules.md`：所有報告型 AI 指令共用的輸出品質與穩定性合約。
+2. `prompt/rules/source_quality_rules.md`：清楚定義 Level 1～Level 5 來源可信度、正文完整度與 evidence usage。
+3. `prompt/rules/embedded_market_imagination_rules.md`：分析型指令共用的市場想像力規則，source-only 不載入。
+4. `prompt/discovery/discovery_task.md`：搜尋整理代理改成可維護繁體中文，固定輸出 JSON 與 `evidence_usage`。
+5. `prompt/news/news_summary.md`：新聞分類補強 `credibility`、`page_type`、受影響公司/產業/題材、反證與資料缺口。
+6. `prompt/topic/topic_maintain.md`：題材維護改成清楚繁中規格，保留 `verified` / `inferred` / `candidate` / `missing` 邊界。
+7. `prompt/workflow/low_model_digest.md` 與 `prompt/low_model/*.md`：低階模型只整理資料，不做最終投研判斷。
+
+驗收請以 `tests/test_prompt_contracts.py`、`tests/test_topic_prompt_contracts.py` 與 `tests/test_ai_workflow_service.py` 為準。
+## 2026-06-19 實戰校準更新
+
+本輪優化把「市場想像力」從抽象規則落到最終報告結構與測試：
+
+- `prompt/report/value_scan.md`、`value_scan_deep.md`、`research_deep.md`、`theme_deep.md`、`theme_radar.md` 與 `prompt/radar/radar_ai_comment.md` 皆要求輸出市場故事、早期蛛絲馬跡、催化劑、缺少訊號、失敗條件與想像力結論。
+- `research_center/report_builder.py` 的 `/value_scan` fallback 報告新增「市場推演摘要」，逐檔分析也新增同樣六個欄位。
+- `prompt/scoring/theme_soft_metrics.md`、`rerating_model.md`、`high_growth_gene.md`、`final_research_score.md` 補入市場故事強度、資金點火、催化劑明確度與反證壓力。
+- `tools/ai_report_coverage_check.py` 會檢查同名 Markdown 是否具備推演骨架，並輸出 `narrative_quality_status` 與 `narrative_missing_sections`。

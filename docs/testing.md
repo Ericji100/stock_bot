@@ -87,6 +87,14 @@ python scripts/smoke_value_scan_report_local.py
 python scripts/smoke_value_scan_report_local.py --command "/value_scan 精選選股 --deep --top 3"
 ```
 
+完成後可用報告覆蓋檢查工具確認推演骨架是否存在：
+
+```bash
+python tools/ai_report_coverage_check.py --root reports/_smoke_value_scan --limit 5 --coverage-only --out logs/ai_report_coverage_check/smoke_summary.md
+```
+
+`推演骨架` 欄位應為 `aligned`；若缺少市場故事、早期蛛絲馬跡、催化劑、缺少訊號、失敗條件或想像力結論，會列在 `缺少推演章節`。
+
 ## `/value_scan` Tavily 小流量 live smoke
 
 這個 smoke test 會消耗少量 Tavily Search 額度：只跑 1 個 discovery task、1 條 query、1 個 search result，不呼叫 AI、不執行 Tavily Extract。輸出會寫到 `reports/_smoke_value_scan_live/`：
@@ -119,4 +127,10 @@ rg "^#" README.md docs
 ```bash
 python -m unittest tests.test_prompt_contracts.EmbeddedMarketImaginationPromptTests
 python -m unittest tests.test_topic_prompt_contracts.TopicPromptContracts
+```
+
+同時需確認所有報告型 AI 指令有載入 `output_quality_rules.md`，Discovery prompt、News prompt、Topic prompt、Low model prompt 仍符合可解析與可維護規格：
+
+```bash
+python -m unittest tests.test_prompt_contracts tests.test_topic_prompt_contracts tests.test_ai_workflow_service
 ```

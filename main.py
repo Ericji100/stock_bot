@@ -36,7 +36,7 @@ from monitor_service import (
 )
 from backfill_service import run_full_backfill, parse_backfill_args, format_backfill_health_summary
 from research_center.telegram_handlers import build_research_handlers
-from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d
+from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
 from research_center.news_repository import NewsRepository
 from research_center.news_formatters import format_news_digest, format_news_refresh_result
 from portfolio_manager import (
@@ -1652,6 +1652,64 @@ async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
     await enqueue_scheduled_task(context, "20:30 全部選股", lambda: _scheduled_all_scan_push(context))
 
 
+async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
+    await enqueue_scheduled_task(
+        context,
+        "10:00 AI題材庫維護（MiniMax M3）",
+        lambda: _scheduled_topic_maintain(context),
+    )
+
+
+async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
+    config = load_config()
+    raw_command = "/topic_maintain --model minimax"
+    print(
+        format_cmd_message(
+            f"10:00 AI題材庫維護（MiniMax M3）開始：{raw_command}",
+            "定時任務",
+        ),
+        flush=True,
+    )
+
+    try:
+        from research_center.command_parser import parse_command_text
+        from research_center.orchestrator import ResearchCenter
+
+        center = ResearchCenter()
+        request = parse_command_text(raw_command)
+
+        def progress(message: str) -> None:
+            print(format_cmd_message(message, "AI題材庫定時維護"), flush=True)
+
+        result = await asyncio.to_thread(center.run, request, progress)
+        text = getattr(result, "text", "") or str(result)
+        await safe_send_bot_message(context.bot, config["chat_id"], text)
+        print(
+            format_cmd_message("10:00 AI題材庫維護（MiniMax M3）完成", "定時任務"),
+            flush=True,
+        )
+    except Exception as exc:
+        print(
+            format_cmd_message(f"10:00 AI題材庫維護（MiniMax M3）失敗：{exc}", "定時任務"),
+            flush=True,
+        )
+        traceback.print_exc()
+        try:
+            await safe_send_bot_message(
+                context.bot,
+                config["chat_id"],
+                f"❌ 10:00 AI題材庫維護失敗：{exc}",
+            )
+        except Exception as send_exc:
+            print(
+                format_cmd_message(
+                    f"10:00 AI題材庫維護失敗通知傳送失敗：{send_exc}",
+                    "定時任務",
+                ),
+                flush=True,
+            )
+
+
 async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     target_date = get_tw_today()
@@ -1711,10 +1769,19 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
             config=config,
             progress=progress,
         )
-        await context.bot.send_message(chat_id=config["chat_id"], text=format_radar_report(result))
-        print(f"[{now_timestamp()}] Radar 21:30 推送完成", flush=True)
+        report_text = format_radar_report(result)
+        chunks = split_telegram_message(report_text)
+        print(
+            f"[{now_timestamp()}] Radar 21:30 推播文字長度={len(report_text)} chars，拆分段數={len(chunks)}",
+            flush=True,
+        )
+        for index, chunk in enumerate(chunks, 1):
+            await context.bot.send_message(chat_id=config["chat_id"], text=chunk)
+            print(f"[{now_timestamp()}] Radar 21:30 推播分段 {index}/{len(chunks)} 完成", flush=True)
+        print(f"[{now_timestamp()}] Radar 21:30 推播完成：{len(chunks)}/{len(chunks)} 段", flush=True)
     except Exception as exc:
-        print(f"[{now_timestamp()}] ❌ Radar 21:30 推送失敗：{exc}", flush=True)
+        print(f"[{now_timestamp()}] [ERROR] Radar 21:30 推播失敗：{exc}", flush=True)
+        raise
     finally:
         heartbeat.stop()
 
@@ -1743,7 +1810,41 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
             print(msg)
 
         items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="minimax")
-        digests = run_news_latest(repository)
+        digests = run_news_scheduled_latest(repository)
+        diagnostics = build_scheduled_news_diagnostics(repository, digests)
+        if int(diagnostics.get("primary24", 0) or 0) < 8 or any(
+            int((diagnostics.get("display_categories") or {}).get(category, 0) or 0) <= 0
+            for category in ("market_focus", "sector_rotation", "ai_semiconductor", "supply_chain", "macro_policy", "company_news")
+        ):
+            extra_items, extra_meta = await asyncio.to_thread(
+                run_scheduled_news_lightweight_refresh,
+                center,
+                repository,
+                progress,
+                "minimax",
+                diagnostics,
+            )
+            if extra_meta.get("ran"):
+                print(
+                    f"[{now_timestamp()}] [定時新聞輕量補強] "
+                    f"categories={extra_meta.get('categories', [])} "
+                    f"saved={extra_meta.get('saved', 0)} skipped={extra_meta.get('skipped', 0)}",
+                    flush=True,
+                )
+                digests = run_news_scheduled_latest(repository)
+                diagnostics = build_scheduled_news_diagnostics(repository, digests)
+        print(
+            f"[{now_timestamp()}] [定時新聞診斷] "
+            f"raw48={diagnostics.get('raw48', 0)} "
+            f"pruned48={diagnostics.get('pruned48', 0)} "
+            f"explicit_dates={diagnostics.get('explicit_dates', 0)} "
+            f"missing_dates={diagnostics.get('missing_dates', 0)} "
+            f"primary24={diagnostics.get('primary24', 0)} "
+            f"fallback48={diagnostics.get('fallback48', 0)} "
+            f"display_total={diagnostics.get('display_total', 0)} "
+            f"categories={diagnostics.get('display_categories', {})}",
+            flush=True,
+        )
         text = format_news_digest(digests, period_label="今日")
         await context.bot.send_message(
             chat_id=config["chat_id"],
@@ -2035,6 +2136,11 @@ def main():
         app.job_queue.run_daily(
             scheduled_noon_market_report,
             time=time(hour=13, minute=50, tzinfo=tw_tz),
+        )
+        app.job_queue.run_daily(
+            scheduled_topic_maintain,
+            time=time(hour=10, minute=0, tzinfo=tw_tz),
+            name="10:00 AI題材庫維護（MiniMax M3）",
         )
         # 新增 17:45 庫存籌碼推播排程：與 12:30 策略掃描分離，避免兩種通知混在同一條任務鏈。
         app.job_queue.run_daily(

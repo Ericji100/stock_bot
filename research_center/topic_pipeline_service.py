@@ -22,6 +22,18 @@ from .topic_schema_normalizer import (
 
 AiJsonCall = Callable[[str, str], dict[str, Any] | list[Any]]
 
+DETAIL_PROMPT_LIMITS = {
+    "webfetch_evidence_json": 3500,
+    "web_fetched_sources_json": 1500,
+    "existing_topic_profiles_json": 700,
+    "company_topic_map_json": 700,
+    "supply_chain_nodes_json": 700,
+    "company_knowledge_json": 700,
+    "low_model_digest_json": 1200,
+}
+
+DETAIL_BATCH_SIZE = 2
+
 
 def run_topic_pipeline(
     *,
@@ -62,7 +74,7 @@ def run_topic_pipeline(
     selected = candidates[:max_count]
 
     actions = []
-    for batch_index, batch in enumerate(_chunks(selected, 4), start=1):
+    for batch_index, batch in enumerate(_chunks(selected, DETAIL_BATCH_SIZE), start=1):
         default_types = []
         for candidate in batch:
             action_type, target_theme_id = decide_topic_action_type(candidate, existing_profiles)
@@ -82,6 +94,12 @@ def run_topic_pipeline(
             emit=emit,
         )
         batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
+        if not batch_actions:
+            stage_logs.append({
+                "stage": f"detail_expand_{batch_index}_local_fallback",
+                "count": len(batch),
+            })
+            batch_actions = normalize_topic_detail_actions(batch, fallback_candidates=batch)
         for idx, action in enumerate(batch_actions):
             if idx < len(batch):
                 action.action_type = default_types[idx]
@@ -188,10 +206,14 @@ def _expand_batch(
     if not template:
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "missing prompt"})
         return {}
-    variables = dict(prompt_variables)
+    variables = _compact_detail_prompt_variables(prompt_variables)
     variables["topic_candidates_json"] = json.dumps(batch, ensure_ascii=False, indent=2)
     prompt = render_prompt(template, variables)
-    prompt = _append_low_model_digest_block(prompt, variables)
+    prompt = _append_low_model_digest_block(
+        prompt,
+        variables,
+        max_chars=DETAIL_PROMPT_LIMITS["low_model_digest_json"],
+    )
     try:
         emit(f"AI 補題材細節 batch {batch_index}")
         payload = call_ai_json(prompt, f"detail_expand_{batch_index}")
@@ -267,16 +289,32 @@ def _merge_company_knowledge_updates(base: dict[str, Any], update: dict[str, Any
     return result
 
 
-def _append_low_model_digest_block(prompt: str, variables: dict[str, str]) -> str:
+def _compact_detail_prompt_variables(variables: dict[str, str]) -> dict[str, str]:
+    compacted = dict(variables)
+    for key, max_chars in DETAIL_PROMPT_LIMITS.items():
+        if key in compacted:
+            compacted[key] = _truncate_stage_text(str(compacted.get(key) or ""), max_chars)
+    return compacted
+
+
+def _append_low_model_digest_block(prompt: str, variables: dict[str, str], max_chars: int | None = None) -> str:
     digest = str(variables.get("low_model_digest_json") or "").strip()
     if not digest or digest in {"{}", "null"}:
         return prompt
+    if max_chars is not None:
+        digest = _truncate_stage_text(digest, max_chars)
     return (
         f"{prompt}\n\n"
-        "## MiniMax M2.7 資料整理底稿\n"
+        "## MiniMax M3 資料整理底稿\n"
         "以下底稿只可作為候選題材與證據對照參考；最終變更包仍必須由本階段 AI 重新審查、去重、驗證來源與反證。\n"
         f"{digest}"
     )
+
+
+def _truncate_stage_text(text: str, max_chars: int) -> str:
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    return text[:max_chars] + f"\n... [truncated for detail stage, total {len(text)} chars]"
 
 
 def _chunks(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:

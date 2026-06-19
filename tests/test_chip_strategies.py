@@ -178,6 +178,352 @@ class TestFinMindScopePropagation(unittest.TestCase):
         mock_quota.record_use.assert_called_with(cost=1, scope="backfill")
 
 
+class TestTpexOpenApiSources(unittest.TestCase):
+    def test_tpex_openapi_date_parses_compact_roc_date(self):
+        import chip_strategies
+
+        self.assertEqual(
+            chip_strategies._parse_tpex_openapi_date("1150605"),
+            date(2026, 6, 5),
+        )
+
+    def test_twse_holiday_schedule_parses_compact_roc_date(self):
+        import chip_strategies
+
+        response = MagicMock()
+        response.json.return_value = [
+            {"Name": "勞動節", "Date": "1150501"},
+            {"Name": "國曆新年開始交易日", "Date": "1150102"},
+        ]
+        chip_strategies._HOLIDAY_DATES_CACHE.pop(2026, None)
+        with patch("chip_strategies.httpx.get", return_value=response):
+            holidays = chip_strategies._load_holiday_dates(2026)
+
+        self.assertIn(date(2026, 5, 1), holidays)
+        self.assertNotIn(date(2026, 1, 2), holidays)
+        self.assertFalse(chip_strategies.is_possible_trading_day(date(2026, 5, 1)))
+        chip_strategies._HOLIDAY_DATES_CACHE.pop(2026, None)
+
+    def test_to_float_parses_percent_string(self):
+        import chip_strategies
+
+        self.assertEqual(chip_strategies._to_float("87.81%"), 87.81)
+
+    def test_tpex_openapi_net_buy_parses_target_date_rows(self):
+        import chip_strategies
+
+        sample = [
+            {
+                "Date": "1150605",
+                "SecuritiesCompanyCode": "5425",
+                "ForeignInvestorsInclude MainlandAreaInvestors-Difference": "12,000",
+                "SecuritiesInvestmentTrustCompanies-Difference": "-3,000",
+            }
+        ]
+        with patch("chip_strategies._fetch_source_json", return_value=sample):
+            frame = chip_strategies._fetch_tpex_openapi_net_buy_for_date(
+                MagicMock(),
+                date(2026, 6, 5),
+                {"5425"},
+            )
+
+        self.assertEqual(len(frame), 1)
+        self.assertEqual(frame.iloc[0]["code"], "5425")
+        self.assertEqual(frame.iloc[0]["market"], "TPEX")
+        self.assertEqual(frame.iloc[0]["foreign_net_lots"], 12.0)
+        self.assertEqual(frame.iloc[0]["trust_net_lots"], -3.0)
+        self.assertEqual(frame.iloc[0]["source"], "TPEX_OpenAPI")
+
+    def test_tpex_openapi_net_buy_rejects_non_target_date_rows(self):
+        import chip_strategies
+
+        chip_strategies.TPEX_OPENAPI_AVAILABLE_DATES.pop("tpex_openapi_daily_trading", None)
+        sample = [
+            {
+                "Date": "1150604",
+                "SecuritiesCompanyCode": "5425",
+                "ForeignInvestorsInclude MainlandAreaInvestors-Difference": "12,000",
+                "SecuritiesInvestmentTrustCompanies-Difference": "-3,000",
+            }
+        ]
+        with patch("chip_strategies._fetch_source_json", return_value=sample):
+            frame = chip_strategies._fetch_tpex_openapi_net_buy_for_date(
+                MagicMock(),
+                date(2026, 6, 5),
+                {"5425"},
+            )
+
+        self.assertTrue(frame.empty)
+        self.assertEqual(
+            chip_strategies.TPEX_OPENAPI_AVAILABLE_DATES.get("tpex_openapi_daily_trading"),
+            {date(2026, 6, 4)},
+        )
+        self.assertFalse(chip_strategies._should_try_tpex_openapi("tpex_openapi_daily_trading", date(2026, 6, 5)))
+
+    def test_tpex_openapi_foreign_ratio_parses_target_date_rows(self):
+        import chip_strategies
+
+        sample = [
+            {
+                "Date": "1150605",
+                "SecuritiesCompanyCode": "5425",
+                "PercentageOfSharesOC/FMIHeld": "18.25%",
+            }
+        ]
+        with patch("chip_strategies._fetch_source_json", return_value=sample):
+            frame = chip_strategies._fetch_tpex_openapi_foreign_ratio_for_date(
+                MagicMock(),
+                date(2026, 6, 5),
+                {"5425"},
+            )
+
+        self.assertEqual(len(frame), 1)
+        self.assertEqual(frame.iloc[0]["code"], "5425")
+        self.assertEqual(frame.iloc[0]["foreign_ratio_pct"], 18.25)
+        self.assertEqual(frame.iloc[0]["source"], "TPEX_OpenAPI")
+
+    def test_recent_chip_data_uses_legacy_tpex_when_openapi_empty(self):
+        import chip_strategies
+
+        candidates = pd.DataFrame(
+            [
+                {
+                    "code": "5425",
+                    "market": "TPEX",
+                    "issued_shares": 100_000_000.0,
+                }
+            ]
+        )
+        legacy_frame = pd.DataFrame(
+            [
+                {
+                    "date": date(2026, 5, 29),
+                    "code": "5425",
+                    "market": "TPEX",
+                    "foreign_net_lots": 2.0,
+                    "trust_net_lots": 1.0,
+                    "source": "TPEX",
+                }
+            ]
+        )
+        with patch("chip_strategies._load_daily_chip_cache", return_value=pd.DataFrame()), \
+             patch("chip_strategies._fetch_tpex_openapi_net_buy_for_date", return_value=pd.DataFrame()) as openapi, \
+             patch("chip_strategies._fetch_tpex_net_buy_for_date", return_value=legacy_frame) as legacy, \
+             patch("chip_strategies._save_daily_chip_cache"):
+            daily, latest = chip_strategies._fetch_recent_daily_chip_data(
+                date(2026, 5, 29),
+                candidates,
+                target_trading_days=1,
+                include_foreign_ratio=False,
+            )
+
+        openapi.assert_called_once()
+        legacy.assert_called_once()
+        self.assertEqual(latest, date(2026, 5, 29))
+        self.assertEqual(len(daily), 1)
+        self.assertEqual(daily.iloc[0]["code"], "5425")
+
+    def test_tpex_legacy_payload_reads_buy_and_sell_tables(self):
+        import chip_strategies
+
+        def fake_fetch(_client, _source_key, _url, params=None):
+            if params and params.get("searchType") == "buy":
+                return {
+                    "tables": [
+                        {
+                            "data": [
+                                ["1", "5425", "台半", "1,000", "200", "800"],
+                            ]
+                        }
+                    ]
+                }
+            return {
+                "tables": [
+                    {
+                        "data": [
+                            ["1", "5347", "世界", "100", "500", "-400"],
+                        ]
+                    }
+                ]
+            }
+
+        with patch("chip_strategies._fetch_source_json", side_effect=fake_fetch):
+            result = chip_strategies._fetch_tpex_net_payload(
+                MagicMock(),
+                date(2026, 5, 29),
+                chip_strategies.TPEX_QFII_URL,
+                "searchType",
+                "tpex_qfii",
+            )
+
+        self.assertEqual(result["5425"], 800.0)
+        self.assertEqual(result["5347"], -400.0)
+
+    def test_recent_chip_data_skips_openapi_when_known_date_mismatch(self):
+        import chip_strategies
+
+        candidates = pd.DataFrame(
+            [
+                {
+                    "code": "5425",
+                    "market": "TPEX",
+                    "issued_shares": 100_000_000.0,
+                }
+            ]
+        )
+        chip_strategies.TPEX_OPENAPI_AVAILABLE_DATES["tpex_openapi_daily_trading"] = {date(2026, 6, 5)}
+        legacy_frame = pd.DataFrame(
+            [
+                {
+                    "date": date(2026, 5, 29),
+                    "code": "5425",
+                    "market": "TPEX",
+                    "foreign_net_lots": 2.0,
+                    "trust_net_lots": 1.0,
+                    "source": "TPEX",
+                }
+            ]
+        )
+        with patch("chip_strategies._load_daily_chip_cache", return_value=pd.DataFrame()), \
+             patch("chip_strategies._fetch_tpex_openapi_net_buy_for_date") as openapi, \
+             patch("chip_strategies._fetch_tpex_net_buy_for_date", return_value=legacy_frame) as legacy, \
+             patch("chip_strategies._save_daily_chip_cache"):
+            daily, latest = chip_strategies._fetch_recent_daily_chip_data(
+                date(2026, 5, 29),
+                candidates,
+                target_trading_days=1,
+                include_foreign_ratio=False,
+            )
+
+        openapi.assert_not_called()
+        legacy.assert_called_once()
+        self.assertEqual(latest, date(2026, 5, 29))
+        self.assertEqual(len(daily), 1)
+        chip_strategies.TPEX_OPENAPI_AVAILABLE_DATES.pop("tpex_openapi_daily_trading", None)
+
+    def test_recent_chip_data_small_twse_ratio_gap_skips_mi_qfiis(self):
+        import chip_strategies
+
+        candidates = pd.DataFrame(
+            [
+                {
+                    "code": "2330",
+                    "market": "TWSE",
+                    "issued_shares": 100_000_000.0,
+                }
+            ]
+        )
+        cached_frame = pd.DataFrame(
+            [
+                {
+                    "date": date(2026, 5, 29),
+                    "code": "2330",
+                    "market": "TWSE",
+                    "foreign_net_lots": 2.0,
+                    "trust_net_lots": 1.0,
+                    "foreign_ratio_pct": None,
+                    "source": "cache",
+                }
+            ]
+        )
+        finmind_ratio = pd.DataFrame(
+            [
+                {
+                    "date": date(2026, 5, 29),
+                    "code": "2330",
+                    "foreign_ratio_pct": 42.5,
+                    "source": "FinMind",
+                }
+            ]
+        )
+        with patch("chip_strategies._load_daily_chip_cache", return_value=cached_frame), \
+             patch("chip_strategies._fetch_twse_foreign_ratio_for_date") as mi_qfiis, \
+             patch("chip_strategies._fetch_finmind_foreign_ratio_for_codes", return_value=finmind_ratio) as finmind, \
+             patch("chip_strategies._save_daily_chip_cache"):
+            daily, latest = chip_strategies._fetch_recent_daily_chip_data(
+                date(2026, 5, 29),
+                candidates,
+                target_trading_days=1,
+                include_foreign_ratio=True,
+            )
+
+        mi_qfiis.assert_not_called()
+        finmind.assert_called_once()
+        self.assertEqual(latest, date(2026, 5, 29))
+        self.assertEqual(len(daily), 1)
+        self.assertEqual(daily.iloc[0]["foreign_ratio_pct"], 42.5)
+
+    def test_recent_chip_data_small_twse_net_gap_skips_t86(self):
+        import chip_strategies
+
+        candidates = pd.DataFrame(
+            [
+                {
+                    "code": "2330",
+                    "market": "TWSE",
+                    "issued_shares": 100_000_000.0,
+                }
+            ]
+        )
+        finmind_net = pd.DataFrame(
+            [
+                {
+                    "date": date(2026, 5, 29),
+                    "code": "2330",
+                    "market": "TWSE",
+                    "foreign_net_lots": 2.0,
+                    "trust_net_lots": 1.0,
+                    "source": "FinMind",
+                }
+            ]
+        )
+        with patch("chip_strategies._load_daily_chip_cache", return_value=pd.DataFrame()), \
+             patch("chip_strategies._fetch_twse_net_buy_for_date") as twse_t86, \
+             patch("chip_strategies._fetch_finmind_net_buy_for_codes", return_value=finmind_net) as finmind, \
+             patch("chip_strategies._save_daily_chip_cache"):
+            daily, latest = chip_strategies._fetch_recent_daily_chip_data(
+                date(2026, 5, 29),
+                candidates,
+                target_trading_days=1,
+                include_foreign_ratio=False,
+            )
+
+        twse_t86.assert_not_called()
+        finmind.assert_called_once()
+        self.assertEqual(latest, date(2026, 5, 29))
+        self.assertEqual(len(daily), 1)
+        self.assertEqual(daily.iloc[0]["foreign_net_lots"], 2.0)
+
+    def test_recent_chip_data_skips_taiwan_market_holiday(self):
+        import chip_strategies
+
+        candidates = pd.DataFrame(
+            [
+                {
+                    "code": "2330",
+                    "market": "TWSE",
+                    "issued_shares": 100_000_000.0,
+                }
+            ]
+        )
+        with patch("chip_strategies.is_possible_trading_day", return_value=False), \
+             patch("chip_strategies._load_daily_chip_cache") as load_cache, \
+             patch("chip_strategies._fetch_twse_net_buy_for_date") as twse, \
+             patch("chip_strategies._fetch_tpex_net_buy_for_date") as tpex:
+            daily, latest = chip_strategies._fetch_recent_daily_chip_data(
+                date(2026, 5, 1),
+                candidates,
+                target_trading_days=1,
+                include_foreign_ratio=True,
+            )
+
+        load_cache.assert_not_called()
+        twse.assert_not_called()
+        tpex.assert_not_called()
+        self.assertTrue(daily.empty)
+        self.assertIsNone(latest)
+
+
 class TestExtraCandidatesForBackfill(unittest.TestCase):
     def test_build_market_context_merges_extra_candidates(self):
         import chip_strategies

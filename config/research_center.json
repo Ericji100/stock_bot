@@ -1,8 +1,9 @@
 {
-  "model": "gemini-3-pro-preview",
+  "model": "gemini-3.1-pro-preview",
   "fallback_models": [
-    "gemini-3-flash-preview"
+    "gemini-3.5-flash"
   ],
+  "gemini_discovery_model": "gemini-3.5-flash",
   "enable_grounding": true,
   "report_root": "reports",
   "database_path": "database/stock_research.db",
@@ -14,6 +15,7 @@
     "json"
   ],
   "minimax_model": "MiniMax-M3",
+  "minimax_low_model": "MiniMax-M3",
   "minimax_base_url": "https://api.minimax.io/v1",
   "enable_minimax_search": true,
   "enable_minimax_comparison": false,

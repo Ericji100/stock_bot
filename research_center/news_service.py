@@ -1,4 +1,4 @@
-"""News service — search, fetch, classify, summarize, and store news."""
+﻿"""News service — search, fetch, classify, summarize, and store news."""
 from __future__ import annotations
 
 import json
@@ -6,12 +6,14 @@ import os
 import re
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
 from .config import ROOT_DIR
+from .ai_workflow_service import build_ai_workflow_coverage
 from .models import CommandRequest, SourceItem
 from .news_categories import (
     normalize_news_category,
@@ -20,6 +22,7 @@ from .news_categories import (
 from .news_models import NewsDigest, NewsItem, HoldingNewsGroup, NewsPreference, apply_news_signal_tags
 from .news_repository import NewsRepository
 from .preferred_sources import build_site_queries, match_preferred_source
+from .source_date_normalizer import normalize_published_date
 from .source_rank import sort_sources_by_preferred_weight
 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
 from .web_fetch_service import WebFetchService
@@ -27,6 +30,17 @@ from .web_fetch_service import WebFetchService
 ProgressCallback = Callable[[str], None]
 
 NEWS_CATEGORIES = ordered_news_category_keys()
+
+_NEWS_CATEGORY_TASK_LABELS = {
+    "market_focus": "台股與大盤",
+    "sector_rotation": "題材與族群輪動",
+    "ai_semiconductor": "AI / 半導體",
+    "supply_chain": "供應鏈與產業",
+    "macro_policy": "政策 / 匯率 / 總經",
+    "company_news": "個股利多利空",
+}
+_SCHEDULED_LIGHTWEIGHT_CORE_CATEGORIES = tuple(_NEWS_CATEGORY_TASK_LABELS)
+_SCHEDULED_LIGHTWEIGHT_PRIMARY_MIN = 8
 
 
 def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]:
@@ -38,8 +52,8 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
     recency_terms = "今日 最新 近24小時" if period != "7d" else "最近7天"
     base_queries = [
         {"title": "台股與大盤", "items": [
-            f"台股 今日 大盤 盤勢 法人 買賣超 成交量 {date_hint}".strip(),
-            f"台股 加權指數 櫃買指數 盤中 盤後 焦點 {today_slash}".strip(),
+            f"台股 今日 大盤 盤勢 法人 買賣超 成交量 加權 櫃買 {date_hint}".strip(),
+            f"台股 加權指數 櫃買指數 上市 上櫃 漲跌家數 盤中 盤後 焦點 {today_slash}".strip(),
             f"台股 {recency_terms} 大盤 族群 資金 流向".strip(),
             f"Taiwan stock market TWSE TPEX fund flow {today_dash}".strip(),
         ]},
@@ -68,10 +82,16 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
             f"Taiwan financial high dividend stock news {today_dash}".strip(),
         ]},
         {"title": "政策 / 匯率 / 總經", "items": [
-            f"台灣 財經 政策 匯率 利率 央行 台股 影響 {date_hint}".strip(),
-            f"台幣 匯率 出口 景氣 通膨 台股 新聞 {today_slash}".strip(),
-            f"台股 {recency_terms} 政策 法規 總經 產業影響".strip(),
-            f"Taiwan macro policy interest rate exchange rate stock {today_dash}".strip(),
+            f"台灣 財經 政策 匯率 利率 央行 台股 影響 VIX 美債 美元 {date_hint}".strip(),
+            f"台幣 匯率 出口 景氣 通膨 台股 新聞 Fed 油價 關稅 {today_slash}".strip(),
+            f"台股 {recency_terms} 政策 法規 總經 產業影響 VIX 美債 美元 戰爭".strip(),
+            f"Taiwan macro policy interest rate exchange rate VIX DXY oil tariff stock {today_dash}".strip(),
+        ]},
+        {"title": "台指期與盤前風險", "items": [
+            f"台指期 夜盤 跌停 急跌 盤前風險 VIX {date_hint}".strip(),
+            f"台灣期貨 台指期 夜盤 重挫 跌停 台股 影響 {today_slash}".strip(),
+            f"台股 {recency_terms} 台指期 台指選擇權 Put Call 未平倉 盤前 重挫".strip(),
+            f"Taiwan futures TAIEX options put call open interest VIX night session {today_dash}".strip(),
         ]},
         {"title": "個股利多利空", "items": [
             f"台股 個股 利多 利空 營收 法說會 股價 目標價 {date_hint}".strip(),
@@ -84,6 +104,24 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
             f"台股 營收成長 法人同步加碼 個股 新聞 {today_slash}".strip(),
             f"台股 {recency_terms} 營收創高 法人報告 財測 展望".strip(),
             f"Taiwan stock revenue foreign investor institutional {today_dash}".strip(),
+        ]},
+        {"title": "個股公告 / MOPS", "items": [
+            f"公開資訊觀測站 重大訊息 月營收 法說會 台股 {date_hint}".strip(),
+            f"MOPS 重大訊息 公司公告 月營收 法人說明會 {today_slash}".strip(),
+            f"台股 {recency_terms} 公司公告 法說會 簡報 月營收".strip(),
+            f"Taiwan MOPS material information monthly revenue investor conference {today_dash}".strip(),
+        ]},
+        {"title": "資金與籌碼", "items": [
+            f"台股 三大法人 投信 融資融券 大戶持股 買賣超 {date_hint}".strip(),
+            f"台股 外資 投信 自營商 融資 餘額 大戶 TDCC {today_slash}".strip(),
+            f"台股 {recency_terms} 籌碼 集保 大戶 外資期貨".strip(),
+            f"Taiwan stocks institutional flow margin financing TDCC futures {today_dash}".strip(),
+        ]},
+        {"title": "反證與利空", "items": [
+            f"台股 題材退燒 利空 毛利下滑 庫存 需求轉弱 {date_hint}".strip(),
+            f"台股 個股 營收衰退 砍單 庫存調整 風險 新聞 {today_slash}".strip(),
+            f"台股 {recency_terms} 利空 退燒 轉弱 毛利率 下滑".strip(),
+            f"Taiwan stocks negative news inventory demand slowdown margin decline {today_dash}".strip(),
         ]},
         {"title": "科技與AI供應鏈", "items": [
             f"台股 科技 AI 供應鏈 訂單 伺服器 網通 {date_hint}".strip(),
@@ -129,7 +167,22 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
             task_limit = 2
         if task_limit > 0:
             tasks = tasks[:task_limit]
+    tasks = _filter_news_tasks_by_env(tasks)
     return tasks
+
+
+def _filter_news_tasks_by_env(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    raw = os.environ.get("NEWS_REFRESH_TASK_CATEGORIES", "")
+    requested = {part.strip() for part in raw.split(",") if part.strip()}
+    if not requested:
+        return tasks
+    allowed_labels = set(requested)
+    for key in requested:
+        label = _NEWS_CATEGORY_TASK_LABELS.get(key)
+        if label:
+            allowed_labels.add(label)
+    filtered = [task for task in tasks if str(task.get("label") or "") in allowed_labels]
+    return filtered or tasks
 
 def build_holding_news_discovery_queries(portfolio: dict[str, str]) -> list[dict[str, Any]]:
     """Build focused news queries for portfolio holdings."""
@@ -282,6 +335,30 @@ def _deduplicate_items(items: list[NewsItem]) -> list[NewsItem]:
     return result
 
 
+def _backfill_refresh_item_dates(items: list[NewsItem]) -> list[NewsItem]:
+    now_text = datetime.now().isoformat(timespec="seconds")
+    for item in items:
+        if getattr(item, "news_origin", "refresh") != "refresh":
+            continue
+        if not item.created_at:
+            item.created_at = now_text
+        if item.published_at:
+            normalized = normalize_published_date(item.published_at)
+            if normalized:
+                item.published_at = normalized
+            continue
+        inferred = normalize_published_date(
+            item.title,
+            item.summary,
+            item.full_text,
+            item.url,
+            {"created_at": item.created_at, "news_origin": item.news_origin},
+        )
+        if inferred:
+            item.published_at = inferred
+    return items
+
+
 def _collect_holding_news_sources(
     center: Any,
     portfolio: dict[str, str],
@@ -366,9 +443,16 @@ def _rank_news_for_ai(items: list[NewsItem], portfolio: dict[str, str] | None = 
 
 def _classify_limit() -> int:
     try:
-        return int(os.environ.get("NEWS_AI_CLASSIFY_LIMIT", "50"))
+        return int(os.environ.get("NEWS_AI_CLASSIFY_LIMIT", "18"))
     except ValueError:
-        return 50
+        return 18
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    try:
+        return int(os.environ.get(name, str(default)) or default)
+    except ValueError:
+        return default
 
 
 def _classify_batch_size() -> int:
@@ -521,6 +605,18 @@ def _extract_embedded_news_datetime(item: NewsItem) -> datetime | None:
     return None
 
 
+def _is_trusted_refresh_news(item: NewsItem) -> bool:
+    if getattr(item, "news_origin", "refresh") != "refresh":
+        return False
+    if _is_non_article_page(item):
+        return False
+    matched = match_preferred_source(item.url or "")
+    if not matched:
+        return False
+    level = str(matched.get("level") or "").lower()
+    return level.startswith("l1_") or level.startswith("l2_")
+
+
 def _effective_news_datetime(item: NewsItem) -> datetime | None:
     """Return the display recency timestamp for a news item.
 
@@ -538,7 +634,8 @@ def _effective_news_datetime(item: NewsItem) -> datetime | None:
         embedded = _extract_embedded_news_datetime(item)
         if embedded is not None:
             return embedded
-        return _parse_news_datetime(item.created_at)
+        if _is_trusted_refresh_news(item):
+            return _parse_news_datetime(item.created_at)
     return None
 
 
@@ -710,6 +807,10 @@ def run_news_refresh(
         # Sort by preferred weight and fetch content
         sorted_sources = sort_sources_by_preferred_weight(all_sources)
         total_source_count = len(sorted_sources)
+        refresh_max_sources = _env_int("NEWS_REFRESH_MAX_SOURCES", 0)
+        if refresh_max_sources > 0 and len(sorted_sources) > refresh_max_sources:
+            emit(f"News refresh source limit: {len(sorted_sources)} -> {refresh_max_sources}")
+            sorted_sources = sorted_sources[:refresh_max_sources]
         if smoke_test:
             try:
                 max_sources = int(os.environ.get("NEWS_SMOKE_MAX_SOURCES", "5"))
@@ -749,6 +850,9 @@ def run_news_refresh(
         items = _rank_news_for_ai(items, portfolio)
         filtered_count = len(items)
         classify_limit = _classify_limit()
+        refresh_classify_limit = _env_int("NEWS_REFRESH_CLASSIFY_LIMIT", 0)
+        if refresh_classify_limit > 0:
+            classify_limit = min(classify_limit, refresh_classify_limit) if classify_limit > 0 else refresh_classify_limit
         if classify_limit > 0 and len(items) > classify_limit:
             emit(f"AI classification limit: {len(items)} -> {classify_limit}")
             items = items[:classify_limit]
@@ -762,12 +866,14 @@ def run_news_refresh(
                 items = items[:classify_limit]
 
         # Batch classify with AI
+        primary_classifier = _primary_news_classifier_model(center, ai_model)
         classified = _batch_classify_news(items, center, emit, ai_model=ai_model)
         classified = _tag_portfolio_news_items(classified, portfolio)
 
         for item in classified:
             item.news_origin = "refresh"
             item.category = _correct_news_category(item)
+        classified = _backfill_refresh_item_dates(classified)
 
         category_counts = Counter(normalize_news_category(item.category) for item in classified)
         holding_count = sum(1 for item in classified if _matches_portfolio(item, portfolio))
@@ -789,6 +895,33 @@ def run_news_refresh(
         saved, skipped = repository.save_many(classified)
         emit(f"儲存完成：新增 {saved}，略過 {skipped}")
 
+        low_digest_meta = {
+            "schema_version": "low_model_digest_v1",
+            "status": "success" if primary_classifier == "minimax_low" else "skipped",
+            "model": "MiniMax-M3",
+            "reason": "news_general_classification" if primary_classifier == "minimax_low" else "low_model_news_classifier_not_used",
+        }
+        ai_workflow_coverage = build_ai_workflow_coverage(
+            "news",
+            local_data_package=True,
+            low_model_digest=low_digest_meta,
+            high_model_input_package=True,
+            dedupe_strategy="news_batch_deduped_classification",
+            source_index=True,
+            input_audit=True,
+            html_sections=False,
+            diagnostics={
+                "classified_count": len(classified),
+                "filtered_count": filtered_count,
+                "search_sources": total_source_count,
+                "primary_classifier": primary_classifier,
+                "high_tier_model": ai_model,
+                "high_tier_limit": _news_high_tier_classify_limit(),
+            },
+            notes=["News refresh 是資料維護型 AI 流程，不產出投研 HTML 報告。"],
+            not_applicable=["html_sections"],
+        )
+
         return classified, {
             "saved": saved,
             "skipped": skipped,
@@ -801,6 +934,7 @@ def run_news_refresh(
             "holding_count": holding_count,
             "minimax_diagnostics": minimax_diag,
             "web_fetch_diagnostics": web_fetch_diag,
+            "ai_workflow_coverage": ai_workflow_coverage,
         }
     finally:
         # Restore original MiniMax search limit after smoke test
@@ -843,14 +977,14 @@ def _batch_classify_news(
 
     primary_model = _primary_news_classifier_model(center, ai_model)
     if primary_model != ai_model:
-        emit(f"新聞分類分流：一般分類使用 MiniMax M2.7，高階模型 {ai_model} 僅複核重要新聞")
+        emit(f"新聞分類分流：一般分類使用 MiniMax M3，高階模型 {ai_model} 僅複核重要新聞")
     result_items = _classify_news_batches(
         items,
         center,
         emit,
         ai_model=primary_model,
         prompt_text=prompt_text,
-        label="MiniMax M2.7 一般新聞分類" if primary_model != ai_model else "AI 分類",
+        label="MiniMax M3 一般新聞分類" if primary_model != ai_model else "AI 分類",
     )
     if primary_model == ai_model:
         return result_items
@@ -1028,7 +1162,7 @@ def _call_news_classifier(center: Any, ai_model: str, prompt: str, timeout_secon
     if ai_model == "minimax_low":
         client = getattr(center, "low_model_minimax", None)
         if client is None or not hasattr(client, "generate_json"):
-            raise RuntimeError("MiniMax M2.7 low-model classifier is not available.")
+            raise RuntimeError("MiniMax M3 low-model classifier is not available.")
         return _call_with_temporary_timeout(client, timeout_seconds, lambda: client.generate_json(prompt))
 
     client = center.gemini
@@ -1771,9 +1905,16 @@ def _apply_user_news_preferences(items: list[NewsItem], repository: NewsReposito
 _LATEST_PRIMARY_MIN_ITEMS = 20
 
 _LOW_PRIORITY_DISPLAY_SOURCE_MARKERS = (
+    "cmoney",
     "cmoney.tw/notes",
     "cmnews.com.tw",
     "readmo.cmoney.tw",
+)
+_VERY_LOW_PRIORITY_DISPLAY_TEXT_MARKERS = (
+    "readmo.ai",
+    "投資網誌",
+    "延伸閱讀",
+    "cmoney研究員",
 )
 
 
@@ -1786,7 +1927,10 @@ def _apply_display_source_penalties(items: list[NewsItem]) -> list[NewsItem]:
     """Demote lightweight investment-blog sources without removing them."""
     for item in items:
         if _is_low_priority_display_source(item):
-            item.importance_score = int(item.importance_score or 0) - 120
+            item.importance_score = int(item.importance_score or 0) - 260
+        combined = f"{item.title or ''} {item.summary or ''} {item.source or ''} {item.url or ''}".lower()
+        if any(marker.lower() in combined for marker in _VERY_LOW_PRIORITY_DISPLAY_TEXT_MARKERS):
+            item.importance_score = int(item.importance_score or 0) - 180
     return items
 
 
@@ -1819,6 +1963,136 @@ def run_news_latest(repository: NewsRepository, portfolio: dict[str, str] | None
     items = _apply_display_source_penalties(items)
     market_items, holding_digest = _split_holding_digest(items, portfolio or {})
     return build_news_digests(market_items, include_empty_categories=True) + [holding_digest]
+
+
+def run_news_scheduled_latest(repository: NewsRepository, portfolio: dict[str, str] | None = None) -> list[NewsDigest]:
+    """Return news for scheduled Telegram pushes with stricter freshness rules.
+
+    Scheduled pushes should not treat a newly saved row as fresh unless the
+    article itself has an explicit publish timestamp or an embedded article
+    date. This prevents old undated articles from reappearing in daily pushes
+    just because /news refresh saved them recently.
+    """
+    items = _query_refresh_news(repository, hours=48)
+    items = _filter_and_prune_news_items(items, repository)
+    primary_items = _filter_by_published_window(items, hours=24, keep_unknown_date=False)
+    if len(primary_items) >= _LATEST_PRIMARY_MIN_ITEMS:
+        items = primary_items
+    else:
+        fallback_items = _filter_by_published_window(items, hours=48, keep_unknown_date=False)
+        items = _merge_unique_news_items(primary_items, fallback_items)
+    items = _penalize_implicit_news_dates(items)
+    items = _boost_latest_recency(items, primary_hours=24)
+    items = _apply_user_news_preferences(items, repository)
+    items = _apply_display_source_penalties(items)
+    market_items, holding_digest = _split_holding_digest(items, portfolio or {})
+    return build_news_digests(market_items, include_empty_categories=True) + [holding_digest]
+
+
+def build_scheduled_news_diagnostics(
+    repository: NewsRepository,
+    digests: list[NewsDigest] | None = None,
+) -> dict[str, Any]:
+    raw = _query_refresh_news(repository, hours=48)
+    pruned = _filter_and_prune_news_items(raw, repository)
+    explicit = [item for item in pruned if _has_explicit_news_datetime(item)]
+    primary = _filter_by_published_window(pruned, hours=24, keep_unknown_date=False)
+    fallback = _filter_by_published_window(pruned, hours=48, keep_unknown_date=False)
+    display_items = [item for digest in (digests or run_news_scheduled_latest(repository)) for item in digest.items]
+    missing_dates = [item for item in pruned if not _has_explicit_news_datetime(item)]
+    return {
+        "raw48": len(raw),
+        "pruned48": len(pruned),
+        "explicit_dates": len(explicit),
+        "missing_dates": len(missing_dates),
+        "primary24": len(primary),
+        "fallback48": len(fallback),
+        "display_total": len(display_items),
+        "display_categories": dict(Counter(item.category for item in display_items)),
+    }
+
+
+def scheduled_news_lightweight_refresh_categories(diagnostics: dict[str, Any]) -> list[str]:
+    """Return category keys that should receive one lightweight scheduled-news refill."""
+    display_categories = diagnostics.get("display_categories") or {}
+    missing = [
+        category
+        for category in _SCHEDULED_LIGHTWEIGHT_CORE_CATEGORIES
+        if int(display_categories.get(category, 0) or 0) <= 0
+    ]
+    primary24 = int(diagnostics.get("primary24", 0) or 0)
+    if primary24 < _SCHEDULED_LIGHTWEIGHT_PRIMARY_MIN:
+        low_count = [
+            category
+            for category in _SCHEDULED_LIGHTWEIGHT_CORE_CATEGORIES
+            if int(display_categories.get(category, 0) or 0) < 2
+        ]
+        categories = missing or low_count
+    else:
+        categories = missing
+    return categories[:4]
+
+
+@contextmanager
+def _temporary_env(updates: dict[str, str]):
+    old_values = {key: os.environ.get(key) for key in updates}
+    try:
+        for key, value in updates.items():
+            os.environ[key] = value
+        yield
+    finally:
+        for key, old_value in old_values.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
+
+
+def run_scheduled_news_lightweight_refresh(
+    center: Any,
+    repository: NewsRepository,
+    progress: ProgressCallback | None = None,
+    ai_model: str = "minimax",
+    diagnostics: dict[str, Any] | None = None,
+) -> tuple[list[NewsItem], dict[str, Any]]:
+    """Run at most one lightweight refill for scheduled pushes when 24h news is thin."""
+    diagnostics = diagnostics or build_scheduled_news_diagnostics(repository)
+    categories = scheduled_news_lightweight_refresh_categories(diagnostics)
+    if not categories:
+        return [], {
+            "ran": False,
+            "reason": "scheduled_news_sufficient",
+            "primary24": int(diagnostics.get("primary24", 0) or 0),
+            "categories": [],
+        }
+
+    def emit(message: str) -> None:
+        if progress:
+            progress(message)
+
+    emit(
+        "定時新聞輕量補強："
+        f"primary24={int(diagnostics.get('primary24', 0) or 0)} "
+        f"categories={','.join(categories)}"
+    )
+    env_updates = {
+        "NEWS_REFRESH_TASK_CATEGORIES": ",".join(categories),
+        "NEWS_REFRESH_MAX_SOURCES": "24",
+        "NEWS_REFRESH_WEBFETCH_MAX_URLS": "6",
+        "NEWS_REFRESH_CLASSIFY_LIMIT": "8",
+        "NEWS_AI_CLASSIFY_BATCH_SIZE": "2",
+        "NEWS_AI_CLASSIFY_TEXT_LIMIT": "350",
+    }
+    with _temporary_env(env_updates):
+        items, meta = run_news_refresh(center, repository, progress=progress, ai_model=ai_model)
+    meta = dict(meta)
+    meta.update({
+        "ran": True,
+        "reason": "scheduled_news_lightweight_refill",
+        "categories": categories,
+        "primary24_before": int(diagnostics.get("primary24", 0) or 0),
+    })
+    return items, meta
 
 
 def run_news_7d(repository: NewsRepository, portfolio: dict[str, str] | None = None) -> list[NewsDigest]:
@@ -2398,6 +2672,8 @@ _NON_ARTICLE_URL_SUBSTRINGS = [
     "tw.stock.yahoo.com/quote/",
     "tw.stock.yahoo.com/rank/",
     "tw.stock.yahoo.com/tw-market",
+    "tw.stock.yahoo.com/s/otc.php",
+    "tw.stock.yahoo.com/class-quote",
     "hk.finance.yahoo.com/quote/",
     "msn.com/zh-tw/money/markets",
     "histock.tw/stock/",
@@ -2418,6 +2694,15 @@ _NON_ARTICLE_URL_SUBSTRINGS = [
     "ctee.com.tw/stock/matchplay",
     "sinotrade.com.tw/richclub/daily_livestream/",
     "sinotrade.com.tw/richclub/hotopic/",
+    "statementdog.com/tags/",
+    "wantgoo.com/stock/dividend-yield",
+    "rate.bot.com.tw/xrt",
+    "yuanta.com.tw/eyuanta/securities/news/getapilist",
+    "tw.stock.yahoo.com/institutional-trading",
+    "cmoney.tw/forum/stock/",
+    "ptt.cc/bbs/stock/",
+    "my-finance.com.tw/tw/news_detail/",
+    "vocus.cc/salon/",
     "youtube.com/watch",
 ]
 
@@ -2479,6 +2764,13 @@ _NON_ARTICLE_TITLE_PATTERNS = [
     "台股盤勢",
     "資金流向",
     "新聞日誌",
+    "概念股有哪些",
+    "現金殖利率排行",
+    "Foreign Exchange Rate",
+    "熱門新聞 - 元大證券",
+    "法人進出 - Yahoo股市",
+    "走勢與討論",
+    "股市爆料同學會",
     # Institutional names that are landing pages
     "壯大臺灣資本市場高峰會",
     "公司治理評鑑",
@@ -2559,6 +2851,13 @@ def _is_non_article_page(item: NewsItem) -> bool:
 
     if netloc in _REDIRECT_ONLY_DOMAINS:
         return True
+
+    if netloc == "vertexaisearch.cloud.google.com":
+        clean_title = (item.title or "").strip().lower()
+        if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,}", clean_title):
+            return True
+        if clean_title.startswith("home - ") or clean_title in {"home", "homepage"}:
+            return True
 
     text_for_page_check = f"{item.title} {item.summary} {item.full_text or ''}".lower()
     if any(marker in url or marker in text_for_page_check for marker in _MONEYDJ_INTERNAL_PAGE_MARKERS):

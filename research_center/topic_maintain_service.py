@@ -1,4 +1,4 @@
-"""Topic maintain service - generates topic change packs via AI."""
+﻿"""Topic maintain service - generates topic change packs via AI."""
 from __future__ import annotations
 
 import json
@@ -19,7 +19,7 @@ from .topic_models import (
     TopicChangeStatus,
     TopicSourceLevel,
 )
-from .ai_workflow_service import run_low_model_digest_for_payload
+from .ai_workflow_service import build_ai_workflow_coverage, run_low_model_digest_for_payload
 from .topic_repository import (
     backup_topic_files,
     is_formal_library_empty,
@@ -32,6 +32,9 @@ from .topic_repository import (
 )
 from .topic_quality import normalize_change_pack_quality
 from .topic_pipeline_service import run_topic_pipeline
+
+
+TOPIC_AI_STAGE_TIMEOUT_SECONDS = 240.0
 
 
 def _load_prompt(name: str) -> str:
@@ -268,41 +271,112 @@ def _parse_ai_json_response(raw_response: Any) -> dict[str, Any]:
     if isinstance(raw_response, dict):
         content = _extract_chat_completion_content(raw_response)
         if content is not None:
-            # Parse the extracted content as JSON
-            json_text = content.strip()
-            if json_text.startswith("```"):
-                json_text = re.sub(r"^```(?:json)?\s*", "", json_text)
-                json_text = re.sub(r"\s*```$", "", json_text)
-            return json.loads(json_text)
+            return _parse_ai_json_response(content)
         # Not a chat completion wrapper, return as-is
         return raw_response
 
     if not isinstance(raw_response, str):
         raw_response = _ai_response_to_text(raw_response)
 
+    json_text = _clean_ai_json_text(raw_response)
+    try:
+        return json.loads(json_text)
+    except json.JSONDecodeError:
+        extracted = _extract_outer_json_object(json_text)
+        if extracted:
+            try:
+                return json.loads(extracted)
+            except json.JSONDecodeError:
+                pass
+        salvaged = _salvage_topic_candidate_payload(json_text)
+        if salvaged is not None:
+            return salvaged
+        raise
+
+
+def _clean_ai_json_text(raw_response: str) -> str:
     json_text = raw_response.strip()
-    # Remove <think>... blocks (MiniMax reasoning output)
     json_text = re.sub(r"<think>.*?</think>", "", json_text, flags=re.DOTALL | re.IGNORECASE).strip()
     if json_text.startswith("```"):
         json_text = re.sub(r"^```(?:json)?\s*", "", json_text)
         json_text = re.sub(r"\s*```$", "", json_text)
-    try:
-        return json.loads(json_text)
-    except json.JSONDecodeError:
-        # Fallback: try to extract first { ... } JSON object from text
-        # This handles cases where there's surrounding text or reasoning content remains
-        match = re.search(r"\{[^{}]*\}", json_text, re.DOTALL)
-        if match:
-            # Try to find a more complete JSON object by finding the outermost braces
-            first_brace = json_text.find("{")
-            last_brace = json_text.rfind("}")
-            if first_brace != -1 and last_brace > first_brace:
-                extracted = json_text[first_brace : last_brace + 1]
-                try:
-                    return json.loads(extracted)
-                except json.JSONDecodeError:
-                    pass
-        raise
+    return json_text.strip()
+
+
+def _extract_outer_json_object(text: str) -> str | None:
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        return text[first_brace : last_brace + 1]
+    return None
+
+
+def _salvage_topic_candidate_payload(text: str) -> dict[str, Any] | None:
+    """Recover usable candidates when an AI response has one malformed JSON item.
+
+    Topic maintenance runs in stages. If the candidate-extraction response has
+    one broken candidate object, dropping the whole stage can produce an empty
+    change pack even though most candidates are valid.
+    """
+    match = re.search(r'"(?:candidates|topics|items|actions)"\s*:', text)
+    if not match:
+        return None
+    array_start = text.find("[", match.end())
+    if array_start == -1:
+        return None
+
+    candidates: list[dict[str, Any]] = []
+    for fragment in _iter_balanced_json_objects(text[array_start + 1 :]):
+        try:
+            item = json.loads(fragment)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            candidates.append(item)
+
+    if not candidates:
+        return None
+    return {
+        "candidates": candidates,
+        "parse_warnings": ["partial_candidate_json_salvaged"],
+    }
+
+
+def _iter_balanced_json_objects(text: str) -> list[str]:
+    items: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escape = False
+
+    for index, char in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+            continue
+        if char == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    items.append(text[start : index + 1])
+                    start = None
+            continue
+        if char == "]" and depth == 0:
+            break
+    return items
 
 
 def run_topic_maintain(
@@ -462,11 +536,11 @@ def run_topic_maintain(
             low_model_digest = {
                 "schema_version": "low_model_digest_v1",
                 "status": "failed",
-                "model": "MiniMax-M2.7",
+                "model": "MiniMax-M3",
                 "error": str(exc),
             }
             structured_data["low_model_digest"] = low_model_digest
-            emit(f"MiniMax M2.7 題材資料整理略過：{exc}")
+            emit(f"MiniMax M3 題材資料整理略過：{exc}")
     low_model_digest_json = _json_dumps(low_model_digest, 20000)
 
     emit(f"結構化資料摘要：{len(sd_json)} chars")
@@ -522,7 +596,19 @@ def run_topic_maintain(
                     raise TopicMaintainAIError("MiniMax model not available")
                 if not hasattr(center.minimax, "generate_json"):
                     raise TopicMaintainAIError("MiniMax JSON-only method not available")
-                result = center.minimax.generate_json(stage_prompt)
+                old_timeout = getattr(center.minimax, "timeout_seconds", None)
+                old_retries = getattr(center.minimax, "max_retries", None)
+                if isinstance(old_timeout, (int, float)):
+                    center.minimax.timeout_seconds = min(float(old_timeout), TOPIC_AI_STAGE_TIMEOUT_SECONDS)
+                if isinstance(old_retries, int):
+                    center.minimax.max_retries = 0
+                try:
+                    result = center.minimax.generate_json(stage_prompt)
+                finally:
+                    if isinstance(old_timeout, (int, float)):
+                        center.minimax.timeout_seconds = old_timeout
+                    if isinstance(old_retries, int):
+                        center.minimax.max_retries = old_retries
                 raw_text = _ai_response_to_text(result)
             else:
                 if center is None or not hasattr(center, "gemini"):
@@ -570,6 +656,25 @@ def run_topic_maintain(
             "facts_count": len(low_model_digest.get("facts") or []),
             "warnings_count": len(low_model_digest.get("warnings") or []),
         }
+    pack.extra["ai_workflow_coverage"] = build_ai_workflow_coverage(
+        "topic_maintain",
+        local_data_package=True,
+        low_model_digest=low_model_digest,
+        high_model_input_package=True,
+        dedupe_strategy="topic_change_pack_batches",
+        source_index=True,
+        input_audit=True,
+        html_sections=False,
+        diagnostics={
+            "mode": mode.value,
+            "discovery_source_count": len(discovery_sources or []),
+            "web_fetched_source_count": len(structured_data.get("web_fetched_sources", []) or []),
+            "pipeline_stage_count": len(pipeline_logs or []),
+            "prompt_log_path": str(prompt_log_p),
+        },
+        notes=["Topic maintain 是題材庫維護型 AI 流程，不產出投研 HTML 報告。"],
+        not_applicable=["html_sections"],
+    )
 
     # Validate actions
     if not pack.actions:
@@ -657,6 +762,3 @@ def _validate_initial_change_pack_quality(pack: TopicChangePack) -> None:
             msg = f"theme_id '{action.theme_id}' 建議改為 snake_case 格式。"
             if msg not in set(pack.warnings):
                 pack.warnings.append(msg)
-
-
-

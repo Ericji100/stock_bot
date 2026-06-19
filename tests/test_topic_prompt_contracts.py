@@ -32,6 +32,16 @@ class TopicPromptContracts(unittest.TestCase):
         self.assertIn("市場可能買單故事", prompt_text)
         self.assertIn("失敗條件", prompt_text)
 
+    def test_topic_stage_prompts_are_readable_traditional_chinese(self):
+        from research_center.topic_maintain_service import _load_prompt
+
+        for name in ("topic_maintain", "topic_candidate_extract", "topic_detail_expand"):
+            with self.subTest(prompt=name):
+                prompt_text = _load_prompt(name)
+                self.assertIn("台股題材", prompt_text)
+                for mojibake in ("嚗", "蝑", "銝", "憿", "摨", "�"):
+                    self.assertNotIn(mojibake, prompt_text)
+
 
 if __name__ == "__main__":
     unittest.main()

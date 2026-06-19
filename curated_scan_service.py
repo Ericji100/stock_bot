@@ -38,6 +38,23 @@ def _is_backfill_ready_for_scan(report_date: date) -> bool:
     return bool(data.get("backfill_ready_for_scan"))
 
 
+def _is_curated_cache_ready(report_date: date) -> bool:
+    marker = ROOT_DIR / ".cache" / "backfill" / report_date.isoformat() / "complete.json"
+    if not marker.exists():
+        return False
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if data.get("schema_version") != 2:
+        return False
+    return bool(
+        data.get("curated_scan_cache_ready")
+        or data.get("curated_scan_ready")
+        or data.get("backfill_ready_for_scan")
+    )
+
+
 @dataclass(frozen=True)
 class CuratedScanResult:
     report_date: date
@@ -162,9 +179,10 @@ def build_curated_scan_report(
 
 def find_cached_curated_scan(report_date: date) -> dict[str, Any] | None:
     target = report_date.isoformat()
-    # Only trust cached curated scan if backfill marker indicates readiness
+    # Reading an existing curated list only requires the curated cache marker.
+    # Full scan readiness is checked by callers that rebuild scan data.
     try:
-        if not _is_backfill_ready_for_scan(report_date):
+        if not _is_curated_cache_ready(report_date):
             return None
     except Exception:
         return None
@@ -183,6 +201,40 @@ def find_cached_curated_scan(report_date: date) -> dict[str, Any] | None:
             continue
         return {**record, "codes": codes}
     return None
+
+
+def find_latest_cached_curated_scan(max_date: date | None = None, limit: int = 500) -> dict[str, Any] | None:
+    """Return the latest backfill-ready curated scan not newer than max_date."""
+
+    best_record: dict[str, Any] | None = None
+    best_date: date | None = None
+    for record in _load_recent_scan_results(limit=limit):
+        if str(record.get("scan_type") or "") not in CURATED_SCAN_ALIASES:
+            continue
+        report_date_text = str(record.get("report_date") or "")
+        try:
+            record_date = date.fromisoformat(report_date_text)
+        except ValueError:
+            continue
+        if max_date is not None and record_date > max_date:
+            continue
+        try:
+            if not _is_curated_cache_ready(record_date):
+                continue
+        except Exception:
+            continue
+        if record.get("selected_codes"):
+            codes = _normalise_codes(record.get("selected_codes") or [])
+        else:
+            codes = _extract_curated_codes_from_summary(str(record.get("summary") or ""))
+            if not codes:
+                codes = _normalise_codes(record.get("codes") or [])
+        if not codes:
+            continue
+        if best_date is None or record_date > best_date:
+            best_date = record_date
+            best_record = {**record, "codes": codes}
+    return best_record
 
 
 def _load_recent_scan_results(limit: int = 30) -> list[dict[str, Any]]:

@@ -10,6 +10,8 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
+
 from backfill_service import (
     BackfillCandidate,
     BackfillResult,
@@ -452,12 +454,13 @@ class TestBackfillResultDataclass(unittest.TestCase):
 class TestWarmupMarketScreeningCache(unittest.TestCase):
     """Test warmup_market_screening_cache: market-wide data warmup."""
 
+    @patch("backfill_service._is_technical_history_ready", return_value=False)
     @patch("backfill_service.fetch_daily_history")
     @patch("backfill_service.load_price_metrics")
     @patch("backfill_service.load_recent_revenue_history")
     @patch("backfill_service.load_stock_universe")
     def test_calls_all_market_wide_functions(
-        self, mock_universe, mock_revenue, mock_price, mock_tech
+        self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
         from stock_scanner import StockUniverseEntry
 
@@ -482,12 +485,13 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         self.assertEqual(result["technical_count"], 1)
         self.assertEqual(len(result["warnings"]), 0)
 
+    @patch("backfill_service._is_technical_history_ready", return_value=False)
     @patch("backfill_service.fetch_daily_history")
     @patch("backfill_service.load_price_metrics")
     @patch("backfill_service.load_recent_revenue_history")
     @patch("backfill_service.load_stock_universe")
     def test_single_failure_does_not_abort(
-        self, mock_universe, mock_revenue, mock_price, mock_tech
+        self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
         from stock_scanner import StockUniverseEntry
 
@@ -687,6 +691,17 @@ class TestBuildCoreResearchPool(unittest.TestCase):
         core = build_core_research_pool(candidates, config, progress=None)
         self.assertLessEqual(len(core), 5)
 
+    def test_priority_sources_do_not_exceed_config_limit(self):
+        """Priority sources are ordered, but still capped by config."""
+        candidates = {}
+        for i in range(10):
+            source = "portfolio" if i < 6 else "monitor_list"
+            code = f"{2300 + i}"
+            candidates[code] = BackfillCandidate(code=code, name=f"S{i}", sources={source})
+        core = build_core_research_pool(candidates, {"backfill_core_research_limit": 5}, progress=None)
+        self.assertEqual(len(core), 5)
+        self.assertEqual(list(core), [f"{2300 + i}" for i in range(5)])
+
 
 class TestThreeTierBackfillFlow(unittest.TestCase):
     """Test that warmup_research_structured_data only receives core pool, not all candidates."""
@@ -868,6 +883,37 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
         self.assertTrue(any("逾時" in w for w in warnings))
         self.assertTrue(any("逾時跳過" in m for m in messages))
 
+    @patch("backfill_service.load_research_structured_cache", return_value=None)
+    @patch("backfill_service._call_collect_research_data")
+    def test_total_budget_stops_structured_warmup(self, mock_call, mock_load_cache):
+        import time
+
+        def slow_call(*args, **kwargs):
+            time.sleep(0.05)
+            return (True, None, None)
+
+        mock_call.side_effect = slow_call
+        core_pool = {
+            f"{2300 + i}": BackfillCandidate(code=f"{2300 + i}", symbol=f"{2300 + i}.TW", market="TWSE", name=f"S{i}")
+            for i in range(5)
+        }
+        messages = []
+        count, used_cache, warnings, timeout_count = warmup_research_structured_data(
+            core_pool,
+            date(2026, 5, 15),
+            force_refresh=False,
+            progress=messages.append,
+            timeout_sec=0.2,
+            max_total_sec=0.08,
+        )
+
+        self.assertLess(mock_call.call_count, len(core_pool))
+        self.assertLess(count, len(core_pool))
+        self.assertEqual(timeout_count, 0)
+        self.assertEqual(used_cache, [])
+        self.assertTrue(any("總時間預算" in w for w in warnings))
+        self.assertTrue(any("剩餘留待下次回補" in m for m in messages))
+
 
 class TestBackfillCandidateDataTimeoutWrite(unittest.TestCase):
     """Test backfill_candidate_data writes timeout_count to BackfillResult."""
@@ -904,6 +950,66 @@ class TestBackfillCandidateDataTimeoutWrite(unittest.TestCase):
         self.assertEqual(result.research_structured_count, 2)
         self.assertEqual(result.used_cache, ["2330"])
         self.assertEqual(result.research_structured_timeout_count, 1)
+
+    @patch("backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
+    @patch("backfill_service.load_recent_revenue_history", return_value={})
+    @patch("backfill_service.load_price_metrics", return_value={})
+    @patch("backfill_service._is_technical_history_ready", return_value=True)
+    @patch("backfill_service.fetch_daily_history")
+    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("backfill_service.warmup_chip_data_cache")
+    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    def test_candidate_technical_cache_hit_skips_fetch(
+        self, mock_curated, mock_chip, mock_gm,
+        mock_fetch, mock_ready, mock_price, mock_rev, mock_warmup,
+    ):
+        from backfill_service import BackfillCandidate, backfill_candidate_data
+
+        candidates = {
+            "2330": BackfillCandidate(code="2330", symbol="2330.TW", market="TWSE", name="台積電", sources={"portfolio"}),
+        }
+        universe = [
+            MagicMock(code="2330", symbol="2330.TW", name="台積電", market="TWSE"),
+        ]
+
+        result = backfill_candidate_data(
+            candidates, {}, universe, date(2026, 5, 15), force_refresh=False, progress=None, timeout_sec=30, stop_event=None,
+        )
+
+        self.assertEqual(result.technical_count, 1)
+        mock_ready.assert_called_once_with("2330.TW", date(2026, 5, 15))
+        mock_fetch.assert_not_called()
+
+    @patch("backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
+    @patch("backfill_service.load_recent_revenue_history", return_value={})
+    @patch("backfill_service.load_price_metrics", return_value={})
+    @patch("backfill_service._is_technical_history_ready", return_value=True)
+    @patch("backfill_service.fetch_daily_history")
+    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("backfill_service.warmup_chip_data_cache")
+    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    def test_chip_warmup_uses_priority_candidates_only(
+        self, mock_curated, mock_chip, mock_gm,
+        mock_fetch, mock_ready, mock_price, mock_rev, mock_warmup,
+    ):
+        from backfill_service import BackfillCandidate, backfill_candidate_data
+
+        mock_chip.return_value = MagicMock(candidates=[], daily_data=pd.DataFrame(), latest_trading_date=None)
+        candidates = {
+            "2330": BackfillCandidate(code="2330", symbol="2330.TW", market="TWSE", name="台積電", sources={"portfolio"}),
+            "5425": BackfillCandidate(code="5425", symbol="5425.TWO", market="TPEX", name="台半", sources={"hard_filter_revenue"}),
+        }
+        universe = [
+            MagicMock(code="2330", symbol="2330.TW", name="台積電", market="TWSE"),
+            MagicMock(code="5425", symbol="5425.TWO", name="台半", market="TPEX"),
+        ]
+
+        backfill_candidate_data(
+            candidates, {}, universe, date(2026, 5, 15), force_refresh=False, progress=None, timeout_sec=30, stop_event=None,
+        )
+
+        extra_candidates = mock_chip.call_args.kwargs["extra_candidates"]
+        self.assertEqual([item["code"] for item in extra_candidates], ["2330"])
 
 
 class TestBackfillResultThreeTierFields(unittest.TestCase):
@@ -1136,6 +1242,27 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(reason, "today_data_available")
 
+    @patch("backfill_service.fetch_daily_history")
+    @patch("stock_scanner.load_stock_universe")
+    @patch("stock_scanner.load_price_metrics")
+    def test_today_after_1500_uses_daily_history_when_metrics_date_missing(self, mock_price, mock_universe, mock_history):
+        from backfill_service import is_market_data_available
+        from datetime import datetime
+
+        mock_universe.return_value = [MagicMock(code="2330", market="TWSE", symbol="2330.TW")]
+        mock_price.return_value = {
+            "2330.TW": {"close": 800.0}  # No "date" field
+        }
+        mock_history.return_value = (
+            pd.DataFrame({"date": pd.to_datetime(["2026-05-16"]), "close": [800.0]}),
+            "test",
+        )
+
+        result, reason = is_market_data_available(date(2026, 5, 16), datetime(2026, 5, 16, 16, 0, 0))
+
+        self.assertEqual(result, True)
+        self.assertEqual(reason, "today_daily_history_available")
+
 
 class TestBackfillMarkerGapHealth(unittest.TestCase):
     def test_write_marker_includes_health_and_gap_path(self):
@@ -1154,15 +1281,27 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                 "health": {
                     "technical": {"coverage_pct": 1.0},
                     "revenue": {"coverage_pct": 1.0},
+                    "financial": {"coverage_pct": 1.0},
                     "chip": {"coverage_pct": 1.0},
-                }
+                },
+                "priority_health": {
+                    "chip": {"coverage_pct": 1.0},
+                    "tdcc": {"coverage_pct": 0.5},
+                },
             }
+            result.priority_pool_count = 2
             with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 write_backfill_complete_marker(date(2026, 5, 15), result)
             payload = json.loads((tmp / "2026-05-15" / "complete.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["gap_report_path"], result.gap_report_path)
             self.assertIn("health", payload)
             self.assertEqual(payload["health"]["chip"]["coverage_pct"], 1.0)
+            self.assertTrue(payload["scan_data_ready"])
+            self.assertTrue(payload["curated_scan_cache_ready"])
+            self.assertTrue(payload["backfill_ready_for_scan"])
+            self.assertEqual(payload["priority_pool_count"], 2)
+            self.assertEqual(payload["priority_health"]["tdcc"]["coverage_pct"], 0.5)
+            self.assertEqual(payload["chip_readiness_basis"], "all_candidates")
         finally:
             safe_remove_test_cache("backfill_service/marker_gap_health")
 
@@ -1182,6 +1321,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                 "health": {
                     "technical": {"coverage_pct": 1.0},
                     "revenue": {"coverage_pct": 1.0},
+                    "financial": {"coverage_pct": 1.0},
                     "chip": {"coverage_pct": 0.27},
                 },
             }), encoding="utf-8")
@@ -1191,6 +1331,72 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
             self.assertEqual(reason, "cache_chip_gaps")
         finally:
             safe_remove_test_cache("backfill_service/marker_gap_low_chip")
+
+    def test_write_marker_uses_priority_chip_health_for_scan_readiness(self):
+        from backfill_service import BackfillResult, write_backfill_complete_marker
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("backfill_service/marker_gap_priority_basis")
+        try:
+            result = BackfillResult(report_date=date(2026, 5, 15))
+            result.universe_count = 1500
+            result.candidate_count = 100
+            result.chip_candidate_count = 42
+            result.curated_scan_count = 20
+            result.gap_report = {
+                "health": {
+                    "technical": {"coverage_pct": 1.0},
+                    "revenue": {"coverage_pct": 1.0},
+                    "financial": {"coverage_pct": 1.0},
+                    "chip": {"coverage_pct": 0.42},
+                },
+                "priority_health": {
+                    "chip": {"coverage_pct": 0.92, "candidate_count": 50},
+                    "tdcc": {"coverage_pct": 0.75, "candidate_count": 50},
+                },
+            }
+
+            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+                write_backfill_complete_marker(date(2026, 5, 15), result)
+
+            payload = json.loads((tmp / "2026-05-15" / "complete.json").read_text(encoding="utf-8"))
+            self.assertTrue(payload["scan_data_ready"])
+            self.assertTrue(payload["backfill_ready_for_scan"])
+            self.assertTrue(payload["chip_coverage_ok"])
+            self.assertEqual(payload["chip_readiness_basis"], "priority_pool")
+        finally:
+            safe_remove_test_cache("backfill_service/marker_gap_priority_basis")
+
+    def test_marker_accepts_priority_chip_health_when_all_candidate_chip_low(self):
+        from backfill_service import is_backfill_cache_complete
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("backfill_service/marker_gap_priority_chip")
+        try:
+            marker_dir = tmp / "2026-05-15"
+            marker_dir.mkdir(parents=True, exist_ok=True)
+            (marker_dir / "complete.json").write_text(json.dumps({
+                "universe_count": 1500,
+                "candidate_count": 100,
+                "chip_candidate_count": 100,
+                "curated_scan_count": 20,
+                "backfill_ready_for_scan": True,
+                "scan_data_ready": True,
+                "curated_scan_cache_ready": True,
+                "health": {
+                    "technical": {"coverage_pct": 1.0},
+                    "revenue": {"coverage_pct": 1.0},
+                    "financial": {"coverage_pct": 1.0},
+                    "chip": {"coverage_pct": 0.42},
+                },
+                "priority_health": {
+                    "chip": {"coverage_pct": 0.92, "candidate_count": 50},
+                },
+            }), encoding="utf-8")
+            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+                complete, reason = is_backfill_cache_complete(date(2026, 5, 15))
+            self.assertTrue(complete)
+            self.assertEqual(reason, "cache_complete")
+        finally:
+            safe_remove_test_cache("backfill_service/marker_gap_priority_chip")
 
 
 class TestRunBackfillIfNeeded(unittest.TestCase):

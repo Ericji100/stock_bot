@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
@@ -69,7 +69,7 @@ class RadarDataMaximizationTests(unittest.TestCase):
         self.assertIn("final_context", pack)
         self.assertIn("three_layer_context", pack)
         self.assertEqual(pack["three_layer_context"]["schema_version"], "three_layer_context_v1")
-        self.assertEqual(pack["three_layer_context"]["source_sufficiency"]["source_count"], 3)
+        self.assertEqual(pack["three_layer_context"]["source_sufficiency"]["source_count"], 6)
         self.assertFalse(pack["three_layer_context"]["source_sufficiency"]["sufficient"])
         self.assertEqual(candidate.data_coverage["checks"]["source_sufficiency"], "insufficient")
 
@@ -144,7 +144,102 @@ class RadarDataMaximizationTests(unittest.TestCase):
         self.assertEqual(candidate.ai_comment["reason"], "compact evidence reviewed")
         self.assertEqual(meta["chunks"][0]["status"], "ok")
         self.assertEqual(meta["chunks"][0]["jobs"][0]["profile"], "minimal")
+        self.assertEqual(meta["ai_workflow_coverage"]["schema_version"], "ai_workflow_coverage_v1")
+        self.assertEqual(meta["ai_workflow_coverage"]["status"], "aligned")
         self.assertEqual(len(calls), 1)
+
+
+class RadarAiBudgetAndStabilityTests(unittest.TestCase):
+    def test_ai_enrichment_respects_total_ai_top_budget_unittest(self):
+        a1 = radar.RadarCandidate(code="1111", strategy_codes={"A"}, total_score=80)
+        a2 = radar.RadarCandidate(code="2222", strategy_codes={"A"}, total_score=70)
+        c1 = radar.RadarCandidate(code="3333", strategy_codes={"C"}, total_score=90)
+        self.assertEqual(radar._select_ai_enrichment_codes([a1, a2, c1], 1), ["1111"])
+
+    def test_ai_enrichment_keeps_strategy_diversity_within_budget_unittest(self):
+        a1 = radar.RadarCandidate(code="1111", strategy_codes={"A"}, total_score=80)
+        a2 = radar.RadarCandidate(code="2222", strategy_codes={"A"}, total_score=120)
+        b1 = radar.RadarCandidate(code="3333", strategy_codes={"B"}, total_score=70)
+        c1 = radar.RadarCandidate(code="4444", strategy_codes={"C"}, total_score=60)
+        self.assertEqual(radar._select_ai_enrichment_codes([a1, a2, b1, c1], 3), ["2222", "3333", "4444"])
+
+    def test_attach_chip_scores_uses_lightweight_radar_context_unittest(self):
+        candidate = radar.RadarCandidate(code="2330")
+        captured: dict[str, object] = {}
+
+        def fake_build_market_context(*args, **kwargs):
+            captured.update(kwargs)
+            return object()
+
+        with patch.object(radar, "build_market_context", side_effect=fake_build_market_context), patch.object(
+            radar,
+            "build_chip_grade_maps",
+            return_value={"chip_1": {}, "chip_2": {}, "chip_3": {}, "chip_4": {}},
+        ):
+            radar._attach_chip_scores([candidate], date(2026, 5, 20), None)
+
+        self.assertEqual(captured["target_trading_days"], 5)
+        self.assertIs(captured["include_foreign_ratio"], False)
+        self.assertEqual(captured["scope"], "radar")
+
+    def test_research_center_sources_skip_fallback_when_minimax_has_enough_sources_unittest(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電")
+
+        class FakeRunner:
+            def __init__(self):
+                self.tavily_called = False
+                self.gemini_called = False
+
+            def _run_minimax_mcp(self, request, tasks, sources, structured_data, progress):
+                for idx in range(8):
+                    sources.append(
+                        SourceItem(
+                            source_id=f"S{idx}",
+                            title=f"source {idx}",
+                            url=f"https://example.com/{idx}",
+                            source_level="web",
+                            provider="minimax",
+                            published_date="2026-05-20",
+                        )
+                    )
+
+            def _run_tavily(self, *args, **kwargs):
+                self.tavily_called = True
+
+            def _should_run_gemini(self, *args, **kwargs):
+                return True
+
+            def _run_gemini(self, *args, **kwargs):
+                self.gemini_called = True
+
+        runner = FakeRunner()
+
+        class FakeCenter:
+            _gemini_discovery_runner = runner
+
+        with patch.object(radar, "ResearchCenter", return_value=FakeCenter()), patch.object(
+            radar, "_enrich_sources_with_web_fetch", return_value=None
+        ):
+            radar._attach_research_center_sources([candidate], ["2330"], date(2026, 5, 20), None)
+
+        self.assertFalse(runner.tavily_called)
+        self.assertFalse(runner.gemini_called)
+        self.assertEqual(len(candidate.ai_sources), 8)
+
+    def test_call_ai_comment_model_retries_temporary_overload_unittest(self):
+        calls = {"count": 0}
+
+        def fake_call_once(model, prompt):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("MiniMax API request failed; status=529; overloaded")
+            return '{"comments":[]}'
+
+        with patch.object(radar, "_call_ai_comment_model_once", side_effect=fake_call_once), patch.object(
+            radar.time, "sleep", return_value=None
+        ):
+            self.assertEqual(radar._call_ai_comment_model("minimax", "prompt"), '{"comments":[]}')
+        self.assertEqual(calls["count"], 2)
 
     def test_ai_comment_payload_uses_compact_pack_not_full_evidence_unittest(self):
         candidate = radar.RadarCandidate(
@@ -173,6 +268,26 @@ class RadarDataMaximizationTests(unittest.TestCase):
         self.assertLessEqual(len(compact_payload["news"]["ai_sources"]), radar.RADAR_AI_COMPACT_SOURCE_LIMIT)
         self.assertLessEqual(len(compact_payload["research_summary"]["financial_data"]), 4)
 
+    def test_ai_comment_payload_replaces_internal_truncation_markers_unittest(self):
+        candidate = radar.RadarCandidate(
+            code="2330",
+            name="台積電",
+            technical_signals=[
+                {
+                    "stock_id": "2330",
+                    "ma_context": {"ma5": 1, "ma10": 2, "ma20": 3, "ma60": 4, "extra": {"deep": "x"}},
+                    "features": {"nested": {"deep": {"value": "x"}}},
+                }
+            ],
+        )
+
+        payload = radar._build_ai_comment_payload(candidate, date(2026, 5, 22), compact_profile="minimal")
+        payload_text = json.dumps(payload, ensure_ascii=False)
+
+        self.assertNotIn("<dict truncated>", payload_text)
+        self.assertNotIn("<list truncated>", payload_text)
+        self.assertIn("深層欄位未放入 AI 短評 prompt", payload_text)
+
     def test_ai_prompt_requires_traditional_chinese_unittest(self):
         candidate = radar.RadarCandidate(code="2330", name="台積電")
 
@@ -180,7 +295,7 @@ class RadarDataMaximizationTests(unittest.TestCase):
 
         self.assertIn("繁體中文", prompt)
         self.assertIn("ai_compact_pack", prompt)
-        self.assertIn("MiniMax M2.7 批次資料整理底稿", prompt)
+        self.assertIn("MiniMax M3 批次資料整理底稿", prompt)
         self.assertIn("禁止整段英文分析", prompt)
         self.assertIn("不得新增候選股票", prompt)
         self.assertIn("不得改變本地分數", prompt)
@@ -227,6 +342,7 @@ def test_parse_radar_args_defaults_to_technical_top5():
     assert request.source == "technical"
     assert request.report_date is None
     assert request.ai_top == 5
+    assert request.model == "minimax"
 
 
 def test_parse_radar_args_accepts_source_date_ai_top():
@@ -346,11 +462,20 @@ def test_research_evidence_pack_uses_recent_full_cache(monkeypatch):
     assert candidate.evidence_pack["research_structured_data"]["radar_research_data_date"] == "2026-05-20"
 
 
-def test_ai_enrichment_selects_top_per_strategy():
+def test_ai_enrichment_respects_total_ai_top_budget():
     a1 = radar.RadarCandidate(code="1111", strategy_codes={"A"}, total_score=80)
     a2 = radar.RadarCandidate(code="2222", strategy_codes={"A"}, total_score=70)
     c1 = radar.RadarCandidate(code="3333", strategy_codes={"C"}, total_score=90)
-    assert radar._select_ai_enrichment_codes([a1, a2, c1], 1) == ["1111", "3333"]
+    assert radar._select_ai_enrichment_codes([a1, a2, c1], 1) == ["1111"]
+
+
+def test_ai_enrichment_keeps_strategy_diversity_within_budget():
+    a1 = radar.RadarCandidate(code="1111", strategy_codes={"A"}, total_score=80)
+    a2 = radar.RadarCandidate(code="2222", strategy_codes={"A"}, total_score=120)
+    b1 = radar.RadarCandidate(code="3333", strategy_codes={"B"}, total_score=70)
+    c1 = radar.RadarCandidate(code="4444", strategy_codes={"C"}, total_score=60)
+
+    assert radar._select_ai_enrichment_codes([a1, a2, b1, c1], 3) == ["2222", "3333", "4444"]
 
 
 def test_attach_ai_comments_writes_comment(monkeypatch):
@@ -371,6 +496,22 @@ def test_attach_ai_comments_writes_comment(monkeypatch):
     assert candidate.ai_comment["status"] == "ok"
     assert candidate.ai_comment["priority"] == "高"
     assert candidate.ai_comment["reason"] == "題材與技術同向。"
+
+
+def test_call_ai_comment_model_retries_temporary_overload(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_call_once(model, prompt):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("MiniMax API request failed; status=529; overloaded")
+        return '{"comments":[]}'
+
+    monkeypatch.setattr(radar, "_call_ai_comment_model_once", fake_call_once)
+    monkeypatch.setattr(radar.time, "sleep", lambda seconds: None)
+
+    assert radar._call_ai_comment_model("minimax", "prompt") == '{"comments":[]}'
+    assert calls["count"] == 2
 
 
 def test_attach_ai_comments_runs_in_chunks(monkeypatch):
@@ -543,6 +684,27 @@ def test_build_radar_evidence_pack_includes_full_layers():
     assert candidate.evidence_pack["research_sources"][0]["title"] == "source"
 
 
+def test_radar_evidence_pack_adds_official_basis_sources():
+    candidate = radar.RadarCandidate(
+        code="2330",
+        name="台積電",
+        technical_signals=[{"strategy_code": "A"}],
+        revenue_history=[{"month": "2026-04-01", "revenue": 100}],
+        chip_grades={"chip_1": "A"},
+        score_components={"technical": 1, "revenue": 1, "chip": 1},
+        total_score=3,
+    )
+
+    pack = radar._build_radar_evidence_pack(candidate, date(2026, 5, 22), {})
+    sources = pack["raw_sources"]
+
+    assert any(source.get("source_level") == "L1_official" for source in sources)
+    assert any(source.get("source_id") == "RADAR_OFFICIAL_PRICE_VOLUME" for source in sources)
+    candidate.evidence_pack = pack
+    merged = radar._research_sources_from_item(candidate, date(2026, 5, 22))
+    assert any(source.get("source_id") == "RADAR_OFFICIAL_PRICE_VOLUME" for source in merged)
+
+
 def test_save_radar_artifacts_writes_evidence_pack(monkeypatch):
     output_dir = Path("reports") / "_test_radar_artifacts"
     monkeypatch.setattr(radar, "RADAR_REPORT_DIR", output_dir)
@@ -684,6 +846,116 @@ def test_technical_candidates_from_cache_falls_back_to_scan_signals(monkeypatch)
     assert by_code["2317"].strategy_codes == set()
 
 
+class RadarTechnicalCacheFreshnessTests(unittest.TestCase):
+    def _stock_meta(self):
+        return {
+            "2330": SimpleNamespace(code="2330", name="TSMC", symbol="2330.TW", industry="semi"),
+            "2241": SimpleNamespace(code="2241", name="艾姆勒", symbol="2241.TW", industry="auto"),
+        }
+
+    def _scan_result(self):
+        return SimpleNamespace(
+            strategy_signals={
+                "A": [],
+                "B": [
+                    {
+                        "stock_id": "2241",
+                        "stock_name": "艾姆勒",
+                        "strategy_code": "B",
+                        "sub_signal_type": "B2_short_reclaim_after_break_ma",
+                        "technical_setup_score": 8,
+                        "features": {},
+                    }
+                ],
+                "C": [],
+                "D": [],
+            }
+        )
+
+    def test_technical_cache_before_close_is_ignored_and_scan_regenerated(self):
+        records = [
+            {
+                "scan_type": "技術面選股",
+                "report_date": "2026-05-20",
+                "created_at": "2026-05-20T01:16:39+08:00",
+                "selected_codes": ["2330"],
+                "strategy_signals": {
+                    "A": [{"stock_id": "2330", "strategy_code": "A", "technical_setup_score": 8}],
+                    "B": [],
+                    "C": [],
+                    "D": [],
+                },
+            }
+        ]
+        progress_messages: list[str] = []
+
+        with patch.object(radar, "load_recent_scan_results", return_value=records), patch.object(
+            radar, "_stock_meta_by_code", return_value=self._stock_meta()
+        ), patch.object(radar.ts, "run_technical_scan", return_value=self._scan_result()) as run_scan, patch.object(
+            radar.ts, "format_technical_report", return_value="technical report"
+        ), patch.object(
+            radar, "save_recent_scan_result"
+        ):
+            candidates, policy = radar._technical_candidates_for_radar(
+                date(2026, 5, 20),
+                {},
+                progress_messages.append,
+            )
+
+        self.assertEqual(policy["status"], "generated")
+        self.assertTrue(run_scan.called)
+        self.assertIn("2241", {item.code for item in candidates})
+        self.assertTrue(any("略過收盤前技術面選股快取" in message for message in progress_messages))
+
+    def test_technical_cache_after_close_is_reused(self):
+        records = [
+            {
+                "scan_type": "技術面選股",
+                "report_date": "2026-05-20",
+                "created_at": "2026-05-20T15:01:00+08:00",
+                "selected_codes": ["2330"],
+                "strategy_signals": {
+                    "A": [{"stock_id": "2330", "strategy_code": "A", "technical_setup_score": 8}],
+                    "B": [],
+                    "C": [],
+                    "D": [],
+                },
+            }
+        ]
+
+        with patch.object(radar, "load_recent_scan_results", return_value=records), patch.object(
+            radar, "_stock_meta_by_code", return_value=self._stock_meta()
+        ), patch.object(radar.ts, "run_technical_scan", side_effect=AssertionError("should use cache")):
+            candidates, policy = radar._technical_candidates_for_radar(date(2026, 5, 20), {}, None)
+
+        self.assertEqual(policy["status"], "cached")
+        self.assertEqual([item.code for item in candidates], ["2330"])
+
+    def test_technical_cache_created_next_day_is_reused(self):
+        records = [
+            {
+                "scan_type": "技術面選股",
+                "report_date": "2026-05-20",
+                "created_at": "2026-05-21T06:30:00+08:00",
+                "selected_codes": ["2330"],
+                "strategy_signals": {
+                    "A": [{"stock_id": "2330", "strategy_code": "A", "technical_setup_score": 8}],
+                    "B": [],
+                    "C": [],
+                    "D": [],
+                },
+            }
+        ]
+
+        with patch.object(radar, "load_recent_scan_results", return_value=records), patch.object(
+            radar, "_stock_meta_by_code", return_value=self._stock_meta()
+        ), patch.object(radar.ts, "run_technical_scan", side_effect=AssertionError("should use cache")):
+            candidates, policy = radar._technical_candidates_for_radar(date(2026, 5, 20), {}, None)
+
+        self.assertEqual(policy["status"], "cached")
+        self.assertEqual([item.code for item in candidates], ["2330"])
+
+
 def test_attach_chip_scores_adds_existing_grade_maps(monkeypatch):
     candidate = radar.RadarCandidate(code="2330")
     monkeypatch.setattr(radar, "build_market_context", lambda *args, **kwargs: object())
@@ -697,6 +969,28 @@ def test_attach_chip_scores_adds_existing_grade_maps(monkeypatch):
 
     assert candidate.chip_grades == {"chip_1": "A", "chip_4": "B"}
     assert radar._score_chip(candidate) == 10
+
+
+def test_attach_chip_scores_uses_lightweight_radar_context(monkeypatch):
+    candidate = radar.RadarCandidate(code="2330")
+    captured: dict[str, object] = {}
+
+    def fake_build_market_context(*args, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(radar, "build_market_context", fake_build_market_context)
+    monkeypatch.setattr(
+        radar,
+        "build_chip_grade_maps",
+        lambda context, keys: {"chip_1": {}, "chip_2": {}, "chip_3": {}, "chip_4": {}},
+    )
+
+    radar._attach_chip_scores([candidate], date(2026, 5, 20), None)
+
+    assert captured["target_trading_days"] == 5
+    assert captured["include_foreign_ratio"] is False
+    assert captured["scope"] == "radar"
 
 
 def test_attach_web_sources_filters_with_request_argument_order(monkeypatch):
@@ -747,6 +1041,51 @@ def test_attach_web_sources_filters_with_request_argument_order(monkeypatch):
     radar._attach_web_sources([candidate], ["2330"], date(2026, 5, 20), None)
 
     assert [source["title"] for source in candidate.web_sources] == ["before"]
+
+
+def test_research_center_sources_skip_fallback_when_minimax_has_enough_sources(monkeypatch):
+    candidate = radar.RadarCandidate(code="2330", name="台積電")
+
+    class FakeRunner:
+        def __init__(self):
+            self.tavily_called = False
+            self.gemini_called = False
+
+        def _run_minimax_mcp(self, request, tasks, sources, structured_data, progress):
+            for idx in range(8):
+                sources.append(
+                    SourceItem(
+                        source_id=f"S{idx}",
+                        title=f"source {idx}",
+                        url=f"https://example.com/{idx}",
+                        source_level="web",
+                        provider="minimax",
+                        published_date="2026-05-20",
+                    )
+                )
+
+        def _run_tavily(self, *args, **kwargs):
+            self.tavily_called = True
+
+        def _should_run_gemini(self, *args, **kwargs):
+            return True
+
+        def _run_gemini(self, *args, **kwargs):
+            self.gemini_called = True
+
+    runner = FakeRunner()
+
+    class FakeCenter:
+        _gemini_discovery_runner = runner
+
+    monkeypatch.setattr(radar, "ResearchCenter", lambda: FakeCenter())
+    monkeypatch.setattr(radar, "_enrich_sources_with_web_fetch", lambda *args, **kwargs: None)
+
+    radar._attach_research_center_sources([candidate], ["2330"], date(2026, 5, 20), None)
+
+    assert runner.tavily_called is False
+    assert runner.gemini_called is False
+    assert len(candidate.ai_sources) == 8
 
 
 def test_format_radar_more_reads_saved_cache(monkeypatch):

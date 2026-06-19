@@ -10,7 +10,7 @@ import httpx
 from research_center.command_parser import parse_command_text
 from research_center.config import ResearchCenterConfig, load_research_config
 from research_center.gemini_service import GeminiResult, GeminiService
-from research_center.minimax_search_service import MiniMaxSearchService
+from research_center.minimax_search_service import MiniMaxSearchService, _normalize_search_item
 from research_center.minimax_service import MiniMaxRequestError, MiniMaxResult, MiniMaxService, _extract_minimax_text
 from research_center.models import ReportArtifacts, ResearchCenterResult, SourceItem
 from research_center.orchestrator import ResearchCenter
@@ -18,6 +18,23 @@ from research_center.report_builder import write_report_artifacts
 
 
 class MiniMaxIntegrationTests(unittest.TestCase):
+    def test_minimax_search_item_normalizes_relative_date_from_date_field(self):
+        item = _normalize_search_item({
+            "title": "台股半導體新聞",
+            "link": "https://news.cnyes.com/news/id/123",
+            "snippet": "台股半導體供應鏈新聞",
+            "date": "7 hours ago",
+        })
+        self.assertRegex(item["published_date"], r"^20\d{2}-\d{2}-\d{2}$")
+
+    def test_minimax_search_item_normalizes_date_from_snippet(self):
+        item = _normalize_search_item({
+            "title": "台股半導體新聞",
+            "url": "https://news.cnyes.com/news/id/124",
+            "snippet": "發布時間：2026/06/15 09:10 台股半導體供應鏈新聞",
+        })
+        self.assertEqual(item["published_date"], "2026-06-15")
+
     def test_config_loads_minimax_and_search_keys(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("minimax_integration/test_config_loads_minimax_and_search_keys")
@@ -55,9 +72,9 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertTrue(config.enable_minimax_comparison)
 
 
-    def test_config_defaults_gemini_pro_with_flash_fallback(self):
+    def test_config_defaults_gemini_31_pro_preview_with_35_flash_fallback(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
-        tmp = ensure_test_cache_dir("minimax_integration/test_config_defaults_gemini_pro_with_flash_fallback")
+        tmp = ensure_test_cache_dir("minimax_integration/test_config_defaults_gemini_31_pro_preview_with_35_flash_fallback")
         try:
             root = tmp
             (root / "config").mkdir(parents=True, exist_ok=True)
@@ -65,21 +82,24 @@ class MiniMaxIntegrationTests(unittest.TestCase):
             (root / "config" / "secrets.json").write_text(json.dumps({"gemini_api_key": "gemini"}), encoding="utf-8")
             config = load_research_config(root)
         finally:
-            safe_remove_test_cache("minimax_integration/test_config_defaults_gemini_pro_with_flash_fallback")
-        self.assertEqual(config.model, "gemini-3-pro-preview")
-        self.assertEqual(config.fallback_models, ("gemini-3-flash-preview",))
+            safe_remove_test_cache("minimax_integration/test_config_defaults_gemini_31_pro_preview_with_35_flash_fallback")
+        self.assertEqual(config.model, "gemini-3.1-pro-preview")
+        self.assertEqual(config.fallback_models, ("gemini-3.5-flash",))
+        self.assertEqual(config.gemini_discovery_model, "gemini-3.5-flash")
+        self.assertEqual(config.minimax_model, "MiniMax-M3")
+        self.assertEqual(config.minimax_low_model, "MiniMax-M3")
 
-    def test_gemini_service_keeps_flash_fallback_chain(self):
+    def test_gemini_service_keeps_configured_fallback_chain(self):
         service = GeminiService(
             "key",
-            "gemini-3-pro-preview",
-            fallback_models=("gemini-3-flash-preview", "gemini-3-pro-preview", ""),
+            "gemini-3.1-pro-preview",
+            fallback_models=("gemini-3.5-flash", "gemini-3.1-pro-preview", ""),
         )
-        self.assertEqual(service.model, "gemini-3-pro-preview")
-        self.assertEqual(service.fallback_models, ("gemini-3-flash-preview",))
-    def test_minimax_default_timeout_is_long_for_full_prompt_comparison(self):
+        self.assertEqual(service.model, "gemini-3.1-pro-preview")
+        self.assertEqual(service.fallback_models, ("gemini-3.5-flash",))
+    def test_minimax_default_timeout_is_bounded_for_full_prompt_comparison(self):
         service = MiniMaxService("key")
-        self.assertEqual(service.timeout_seconds, 1200.0)
+        self.assertEqual(service.timeout_seconds, 600.0)
 
     def test_minimax_extract_text_strips_thinking_block(self):
         text = _extract_minimax_text({"choices": [{"message": {"content": "<think>hidden</think>\n# Report"}}]})
@@ -120,6 +140,31 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertIn("prompt is too long", message)
         self.assertEqual(ctx.exception.diagnostics["status_code"], 400)
         self.assertEqual(ctx.exception.diagnostics["provider"], "minimax")
+
+    def test_minimax_timeout_error_keeps_provider_diagnostics(self):
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def post(self, url, headers=None, json=None):
+                raise httpx.ReadTimeout("timed out")
+
+        service = MiniMaxService("key", model="MiniMax-M3", timeout_seconds=1.5, max_retries=0)
+        with patch("research_center.minimax_service.httpx.Client", FakeClient):
+            with self.assertRaises(MiniMaxRequestError) as ctx:
+                service.generate_report("timeout test")
+
+        self.assertIn("status=timeout", str(ctx.exception))
+        self.assertEqual(ctx.exception.diagnostics["status_code"], "timeout")
+        self.assertEqual(ctx.exception.diagnostics["timeout_seconds"], 1.5)
+        self.assertEqual(ctx.exception.diagnostics["provider"], "minimax")
+        self.assertGreater(ctx.exception.diagnostics["prompt_chars"], 0)
 
     def test_minimax_search_discover_builds_sources_without_network(self):
         # Create a service with a mock MCP session
@@ -247,6 +292,30 @@ class MiniMaxIntegrationTests(unittest.TestCase):
                     os.environ["MINIMAX_MCP_COMMAND"] = old_minimax_cmd
         finally:
             safe_remove_test_cache("minimax_integration/test_mcp_env_sets_uv_dirs")
+
+    def test_minimax_mcp_prefers_project_runtime_exe_over_uvx(self):
+        """Verify project .runtime MCP exe is preferred over uvx fallback."""
+        from research_center.minimax_search_service import _build_mcp_startup_params, MCP_PACKAGE
+        import os
+
+        old_cmd = os.environ.pop("MINIMAX_MCP_COMMAND", None)
+        old_cache = os.environ.pop("UV_CACHE_DIR", None)
+        old_tool = os.environ.pop("UV_TOOL_DIR", None)
+        try:
+            cmd, args_list, env = _build_mcp_startup_params("fake-key")
+            runtime_suffix = f".runtime/uv_tools/{MCP_PACKAGE}/Scripts/{MCP_PACKAGE}.exe"
+            if Path(cmd).exists() and cmd.replace("\\", "/").endswith(runtime_suffix):
+                self.assertEqual(args_list, [])
+                self.assertTrue(env["UV_TOOL_DIR"].replace("\\", "/").endswith(".runtime/uv_tools"))
+            else:
+                self.assertNotIn("uvx.exe", cmd.replace("\\", "/"))
+        finally:
+            if old_cmd:
+                os.environ["MINIMAX_MCP_COMMAND"] = old_cmd
+            if old_cache:
+                os.environ["UV_CACHE_DIR"] = old_cache
+            if old_tool:
+                os.environ["UV_TOOL_DIR"] = old_tool
 
     def test_minimax_mcp_command_override_skips_uv(self):
         """Verify MINIMAX_MCP_COMMAND bypasses uvx/uv and uses the given command directly."""
@@ -458,6 +527,20 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         ]
         result = _flatten_task_queries(queries)
         self.assertEqual(result, ["query1", "query2", "direct_query"])
+
+
+    def test_classify_errors_recognizes_minimax_sensitive_block(self):
+        from research_center.minimax_search_service import _classify_errors
+        errors = ["MiniMax MCP returned text response: Failed to perform search: API Error: 1027-output new_sensitive Trace-Id: abc"]
+        reasons = _classify_errors(errors)
+        self.assertIn("minimax_sensitive_query_blocked", reasons)
+        self.assertNotIn("mcp_parse_error", reasons)
+
+    def test_extract_search_items_rejects_plain_text_error(self):
+        from research_center.minimax_search_service import _McpParseError, _extract_search_items
+        with self.assertRaises(_McpParseError) as ctx:
+            _extract_search_items("Failed to perform search: API Error: 1027-output new_sensitive")
+        self.assertIn("MiniMax MCP returned text response", str(ctx.exception))
 
     def test_classify_errors_recognizes_mcp_parse_error(self):
         """Verify parse errors from _McpParseError are classified as mcp_parse_error."""

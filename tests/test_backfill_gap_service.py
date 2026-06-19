@@ -9,6 +9,7 @@ import pandas as pd
 
 from backfill_gap_service import (
     analyze_chip_gaps,
+    analyze_research_structured_gaps,
     analyze_revenue_gaps,
     analyze_tdcc_gaps,
     analyze_technical_gaps,
@@ -139,6 +140,90 @@ class BackfillGapServiceTests(unittest.TestCase):
         payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertIn("health", payload)
         self.assertIn("chip", payload["still_missing"])
+
+    def test_research_structured_gap_uses_compact_date_folder(self):
+        tmp = ensure_test_cache_dir("backfill_gap_service/research_structured")
+        folder = tmp / "20260520"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "2330.json").write_text(
+            json.dumps({
+                "data": {
+                    "stock": {},
+                    "revenue": {},
+                    "chip_backup_data": {},
+                    "free_public_sources": [],
+                }
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        rows = candidates_to_rows({"2330": _Candidate("2330")})
+
+        with patch("backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
+            section = analyze_research_structured_gaps(rows, date(2026, 5, 20))
+
+        self.assertEqual(section.ready_count, 1)
+        self.assertEqual(section.missing_count, 0)
+
+    def test_research_structured_accepts_revenue_data_key(self):
+        tmp = ensure_test_cache_dir("backfill_gap_service/research_structured_revenue_data")
+        folder = tmp / "20260520"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "2330.json").write_text(
+            json.dumps({
+                "data": {
+                    "stock": {},
+                    "revenue_data": {},
+                    "chip_backup_data": {},
+                    "free_public_sources": [],
+                }
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        rows = candidates_to_rows({"2330": _Candidate("2330")})
+
+        with patch("backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
+            section = analyze_research_structured_gaps(rows, date(2026, 5, 20))
+
+        self.assertEqual(section.ready_count, 1)
+        self.assertEqual(section.missing_count, 0)
+
+    def test_gap_report_includes_priority_pool_health(self):
+        candidates = {
+            "2330": _Candidate("2330"),
+            "5425": _Candidate("5425"),
+            "6282": _Candidate("6282"),
+        }
+        daily = pd.DataFrame(
+            [
+                {"date": "2026-05-01", "code": "2330", "foreign_net_lots": 1, "trust_net_lots": 1, "foreign_ratio_pct": 1},
+                {"date": "2026-05-02", "code": "2330", "foreign_net_lots": 1, "trust_net_lots": 1, "foreign_ratio_pct": 1},
+            ]
+        )
+        weekly = pd.DataFrame(
+            [
+                {"snapshot_date": "2026-05-01", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-05-08", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-05-15", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-05-22", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-05-29", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-06-05", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-06-12", "code": "2330", "big_holder_pct": 1},
+                {"snapshot_date": "2026-06-19", "code": "2330", "big_holder_pct": 1},
+            ]
+        )
+
+        report = build_backfill_gap_report(
+            report_date=date(2026, 5, 20),
+            candidates=candidates,
+            core_pool={},
+            revenue_history={},
+            chip_context=_ChipContext(daily_data=daily, weekly_data=weekly),
+            priority_codes=["2330"],
+        )
+
+        self.assertEqual(report["priority_pool"]["candidate_count"], 1)
+        self.assertEqual(report["priority_health"]["chip"]["coverage_pct"], 1.0)
+        self.assertEqual(report["priority_health"]["tdcc"]["coverage_pct"], 1.0)
 
 
 if __name__ == "__main__":

@@ -88,6 +88,7 @@ def build_report_json(
             "high_model_input_mode": data.get("high_model_input_mode"),
             "high_model_input_package": data.get("high_model_input_package"),
             "ai_workflow_policy": data.get("ai_workflow_policy"),
+            "ai_workflow_coverage": data.get("ai_workflow_coverage"),
             "news_context": shared_data_layer.get("news_context"),
             "saved_news_context": shared_data_layer.get("saved_news_context"),
             "news_persistence_status": shared_data_layer.get("news_persistence_status"),
@@ -386,6 +387,12 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
         lines.append("- \u71df\u6536\u8207\u8ca1\u5831\u9a57\u8b49\uff1a" + _financial_validation_summary(row))
         lines.append("- \u6cd5\u4eba\u3001\u7c4c\u78bc\u8207\u6280\u8853\u78ba\u8a8d\uff1a" + _chip_technical_summary(row))
         lines.append("- \u662f\u5426\u53ea\u662f\u8e6d\u984c\u6750\uff1a" + _hype_judgement(row))
+        lines.append("- \u5e02\u5834\u6b63\u5728\u4ea4\u6613\u4ec0\u9ebc\u6545\u4e8b\uff1a" + _market_story_summary(row))
+        lines.append("- \u65e9\u671f\u86db\u7d72\u99ac\u8de1\uff1a" + _early_clue_summary(row))
+        lines.append("- \u4e0b\u4e00\u6ce2\u53ef\u80fd\u767c\u9175\u7684\u50ac\u5316\u5291\uff1a" + _catalyst_summary(row))
+        lines.append("- \u5982\u679c\u8981\u5927\u6f32\uff0c\u9084\u7f3a\u4ec0\u9ebc\u8a0a\u865f\uff1a" + _missing_breakout_signal_summary(row))
+        lines.append("- \u53cd\u5411\u9a57\u8b49\u8207\u5931\u6557\u689d\u4ef6\uff1a" + _failure_condition_summary(row))
+        lines.append("- \u60f3\u50cf\u529b\u7d50\u8ad6\uff1a" + _rerating_hypothesis_summary(row))
         lines.append("- \u672a\u4f86 1\uff5e3 \u500b\u6708\u89c0\u5bdf\u91cd\u9ede\uff1a" + _watch_items_summary(row))
         lines.append("- \u98a8\u96aa\u8207\u53cd\u8b49\uff1a" + _risk_summary(row))
     return "\n".join(lines).strip() + "\n"
@@ -405,7 +412,12 @@ def _append_report_quality_summary(
     lines.append(f"- Report Quality Schema：{quality.get('schema_version')}")
     lines.append(f"- 資料覆蓋分數：{quality.get('data_coverage_score')}/100")
     source_summary = (quality.get("source_coverage_summary") or {})
-    lines.append(f"- 來源總數：{source_summary.get('total_sources', 0)}；有日期來源：{source_summary.get('dated_sources', 0)}；無日期來源：{source_summary.get('undated_sources', 0)}")
+    lines.append(
+        f"- 來源總數：{source_summary.get('total_sources', 0)}；"
+        f"明確日期來源：{source_summary.get('explicit_dated_sources', 0)}；"
+        f"推測日期來源：{source_summary.get('inferred_dated_sources', 0)}；"
+        f"日期不可驗證：{source_summary.get('undated_sources', 0)}"
+    )
     warnings = quality.get("qa_warnings") or []
     lines.append("- QA 提醒：" + ("；".join(str(item) for item in warnings) if warnings else "無"))
     rows = quality.get("data_completeness_matrix") or []
@@ -446,6 +458,11 @@ def _structured_data_report_snapshot(
         "unified_evidence_pack": quality.get("unified_evidence_pack") or data.get("unified_evidence_pack"),
         "news_event_summary": quality.get("news_event_summary") or data.get("news_event_summary"),
         "segmented_ai_analysis": data.get("segmented_ai_analysis"),
+        "required_data_gap_summary": data.get("required_data_gap_summary"),
+        "required_data_gap_backfill_tasks": data.get("required_data_gap_backfill_tasks"),
+        "required_data_gap_remaining_tasks": data.get("required_data_gap_remaining_tasks"),
+        "required_gap_minimax_discovery": data.get("required_gap_minimax_discovery"),
+        "required_gap_tavily_discovery": data.get("required_gap_tavily_discovery"),
     }
     if request.command == "value_scan":
         return {
@@ -582,6 +599,73 @@ def _hype_judgement(row: dict[str, Any]) -> str:
     if score and score >= 70:
         return "\u91cd\u4f30\u5206\u6578\u504f\u9ad8\uff0c\u4f46\u8b49\u64da\u8986\u84cb\u4e0d\u8db3\u6642\u9700\u4fdd\u5b88\u6aa2\u8996\u662f\u5426\u53ea\u662f\u8e6d\u984c\u6750\u3002"
     return "\u76ee\u524d\u8b49\u64da\u4e0d\u8db3\u4ee5\u8b49\u660e\u5df2\u5b8c\u6210\u91cd\u4f30\uff0c\u9700\u4fdd\u5b88\u89e3\u8b80\u3002"
+
+
+def _market_story_summary(row: dict[str, Any]) -> str:
+    old_label = row.get("old_market_label") or "\u820a\u696d\u52d9"
+    new_label = row.get("new_market_label") or row.get("industry") or "\u65b0\u6210\u9577\u984c\u6750"
+    evidence = _inline_list(row.get("rerating_evidence"), 3)
+    return (
+        f"\u5e02\u5834\u82e5\u9858\u610f\u8cb7\u55ae\uff0c\u6838\u5fc3\u6545\u4e8b\u662f\u300c{old_label}\u300d\u88ab\u91cd\u65b0\u8cbc\u6a19\u70ba\u300c{new_label}\u300d\u3002"
+        f"\u76ee\u524d\u53ef\u89c0\u5bdf\u7dda\u7d22\uff1a{evidence}\u3002"
+    )
+
+
+def _early_clue_summary(row: dict[str, Any]) -> str:
+    clues: list[str] = []
+    if row.get("revenue_yoy") not in (None, "", "unknown"):
+        clues.append(f"\u71df\u6536 YoY={_fmt_value(row.get('revenue_yoy'))}%")
+    if row.get("avg_volume_20d") not in (None, "", "unknown"):
+        clues.append(f"20 \u65e5\u5747\u91cf={_fmt_value(row.get('avg_volume_20d'))}")
+    chip = (row.get("chip_backup_data") or {}).get("summary") or {}
+    if chip.get("recent_10d_foreign_net_lots") not in (None, "", "unknown"):
+        clues.append(f"\u8fd1 10 \u65e5\u5916\u8cc7={_fmt_value(chip.get('recent_10d_foreign_net_lots'))}")
+    if row.get("source_events"):
+        clues.append(f"\u4f86\u6e90\u4e8b\u4ef6 {len(row.get('source_events') or [])} \u7b46")
+    return "\uff1b".join(clues) or "\u73fe\u968e\u6bb5\u65e9\u671f\u8a0a\u865f\u4e0d\u8db3\uff0c\u53ea\u80fd\u5148\u5217\u70ba\u89c0\u5bdf\u5047\u8aaa\u3002"
+
+
+def _catalyst_summary(row: dict[str, Any]) -> str:
+    catalysts = []
+    if row.get("new_market_label"):
+        catalysts.append(f"\u65b0\u6a19\u7c64\u300c{row.get('new_market_label')}\u300d\u51fa\u73fe\u516c\u544a\u3001\u5ba2\u6236\u6216\u71df\u6536\u9a57\u8b49")
+    catalysts.extend([
+        "\u6708\u71df\u6536\u6216\u6bdb\u5229\u7387\u9023\u7e8c\u6539\u5584",
+        "\u6cd5\u8aaa\u6703\u91cb\u51fa\u65b0\u7522\u54c1\u6216\u8a02\u55ae\u80fd\u898b\u5ea6",
+        "\u6cd5\u4eba\u8207\u5927\u6236\u7c4c\u78bc\u540c\u6b65\u8f49\u5f37",
+    ])
+    return "\uff1b".join(catalysts[:4])
+
+
+def _missing_breakout_signal_summary(row: dict[str, Any]) -> str:
+    missing = list(row.get("missing_data") or row.get("data_gaps") or [])
+    if row.get("revenue_yoy") is None:
+        missing.append("\u9700\u6700\u65b0\u6708\u71df\u6536 YoY \u652f\u6301")
+    if not row.get("rerating_evidence"):
+        missing.append("\u9700\u53ef\u8ffd\u6eaf\u7684\u984c\u6750\u6216\u7522\u54c1\u8b49\u64da")
+    if not row.get("source_events"):
+        missing.append("\u9700\u5916\u90e8\u4f86\u6e90\u4e8b\u4ef6\u652f\u6301")
+    return _inline_list(missing, 5)
+
+
+def _failure_condition_summary(row: dict[str, Any]) -> str:
+    counter = list(row.get("counter_evidence") or [])
+    base = [
+        "\u71df\u6536\u6216 EPS \u672a\u8ddf\u4e0a\u984c\u6750",
+        "\u65b0\u6a19\u7c64\u53ea\u6709\u65b0\u805e\u6216\u793e\u7fa4\u60c5\u7dd2\uff0c\u7f3a\u5c11\u516c\u544a\u9a57\u8b49",
+        "\u7c4c\u78bc\u8f49\u5f31\u6216\u4f30\u503c\u5df2\u904e\u5ea6\u53cd\u6620",
+    ]
+    return _inline_list(counter + base, 5)
+
+
+def _rerating_hypothesis_summary(row: dict[str, Any]) -> str:
+    score = float(row.get("rerating_score") or 0)
+    verify = float(row.get("verification_score") or 0)
+    if score >= 80 and verify >= 60:
+        return "\u5c6c\u65bc\u6709\u8b49\u64da\u7684\u91cd\u4f30\u5019\u9078\uff0c\u53ef\u9032\u4e00\u6b65\u7528 /research --deep \u9a57\u8b49\u662f\u5426\u5f62\u6210\u6ce2\u6bb5\u4e3b\u7dda\u3002"
+    if score >= 70:
+        return "\u5c6c\u65bc\u984c\u6750\u60f3\u50cf\u8207\u65e9\u671f\u91cd\u4f30\u5047\u8aaa\uff0c\u9700\u88dc\u5b98\u65b9\u71df\u6536\u3001\u7522\u54c1\u6216\u5ba2\u6236\u8b49\u64da\u624d\u80fd\u5347\u7d1a\u3002"
+    return "\u76ee\u524d\u66f4\u50cf\u89c0\u5bdf\u540d\u55ae\uff0c\u9084\u4e0d\u9069\u5408\u628a\u5e02\u5834\u60f3\u50cf\u8f49\u6210\u5f37\u7d50\u8ad6\u3002"
 
 
 def _watch_items_summary(row: dict[str, Any]) -> str:
@@ -890,6 +974,7 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
         analysis_note = "本報告為 source-only 模式，只整理資料與來源，不做主觀分析、不做評分。"
     else:
         analysis_note = "AI 分析目前使用本地 fallback 產生，若資料不足會保守標示。"
+    imagination_block = _fallback_market_imagination_markdown(request, structured_data)
     return f"""# {title}
 
 ## 摘要
@@ -899,6 +984,8 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
 - 模式：{request.mode}
 - 日期：{request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat()}
 - 目標：{request.target or request.market_scope or request.candidate_pool or 'latest'}
+
+{imagination_block}
 
 ## 結構化資料
 ```json
@@ -925,6 +1012,52 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
 
 {DISCLAIMER}
 """
+
+
+def _fallback_market_imagination_markdown(request: CommandRequest, structured_data: dict[str, Any]) -> str:
+    if request.source_only:
+        return ""
+    if request.command == "value_scan":
+        candidates = (structured_data or {}).get("ai_candidates") or (structured_data or {}).get("candidates") or []
+        if not candidates:
+            return ""
+        lines = [
+            "## 市場推演摘要（fallback 版）",
+            "",
+            "這一段不是最終買賣建議，而是在 AI 模型失敗時，用本地底稿保留最低限度的投研推演骨架。",
+            "",
+            "### 市場正在交易什麼故事",
+        ]
+        stories = []
+        clues = []
+        catalysts = []
+        missing = []
+        failures = []
+        for row in candidates[:3]:
+            if not isinstance(row, dict):
+                continue
+            title = " ".join(str(part) for part in (row.get("code"), row.get("name")) if part)
+            stories.append(f"- {title}：{_market_story_summary(row)}")
+            clues.append(f"- {title}：{_early_clue_summary(row)}")
+            catalysts.append(f"- {title}：{_catalyst_summary(row)}")
+            missing.append(f"- {title}：{_missing_breakout_signal_summary(row)}")
+            failures.append(f"- {title}：{_failure_condition_summary(row)}")
+        lines.extend(stories or ["- 目前資料不足，無法形成明確市場故事。"])
+        lines.extend(["", "### 早期蛛絲馬跡", ""])
+        lines.extend(clues or ["- 目前早期訊號不足，需補技術、籌碼、營收、新聞與產業資料。"])
+        lines.extend(["", "### 下一波可能發酵的催化劑", ""])
+        lines.extend(catalysts or ["- 需要補足營收、產品、客戶、法說或籌碼證據。"])
+        lines.extend(["", "### 如果要大漲，還缺什麼訊號", ""])
+        lines.extend(missing or ["- 需要更完整的官方與產業證據。"])
+        lines.extend(["", "### 反向驗證與失敗條件", ""])
+        lines.extend(failures or ["- 若營收、籌碼與題材證據無法延續，應降級為觀察名單。"])
+        lines.extend(["", "### 想像力結論", ""])
+        lines.append("目前只能把市場想像視為候選假說；只有當營收、產品、客戶、供應鏈與籌碼訊號互相支持時，才可升級為高可信度重估。")
+        return "\n".join(lines).strip()
+    return (
+        "## 市場推演摘要（fallback 版）\n\n"
+        "AI 模型失敗時，本地 fallback 僅能保守呈現結構化資料。請優先檢查事實、推論、市場假說、反證與資料缺口是否足夠。"
+    )
 
 
 def _buy_rating_markdown(structured_data: dict[str, Any]) -> str:

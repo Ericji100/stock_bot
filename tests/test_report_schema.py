@@ -1,10 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import json
 import unittest
 from datetime import date
 from pathlib import Path
 
 from research_center.command_parser import parse_command_text
+from research_center.ai_workflow_service import build_ai_workflow_coverage
 from research_center.models import SourceItem
 from research_center.report_builder import build_report_json, fallback_markdown, render_html, write_report_artifacts
 from research_center.report_validator import validate_report
@@ -80,6 +82,45 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         finally:
             safe_remove_test_cache("report_schema/test_write_report_date_objects")
 
+    def test_write_report_artifacts_preserves_ai_workflow_coverage(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+        tmp = ensure_test_cache_dir("report_schema/test_write_report_ai_workflow_coverage")
+        try:
+            request = parse_command_text('/research 2330')
+            coverage = build_ai_workflow_coverage(
+                command="research",
+                local_data_package={"summary": "ok"},
+                low_model_digest={"status": "success", "model": "MiniMax-M3", "facts": [{"finding": "test"}]},
+                high_model_input_package={"input": "ok"},
+                dedupe_strategy="evidence_summary_with_source_index",
+                source_index=[{"source_id": "S001"}],
+                input_audit={"mode": "test"},
+                html_sections={"main": True},
+                diagnostics={"prompt_chars": 1000},
+            )
+            artifacts, report_json = write_report_artifacts(
+                tmp,
+                request,
+                '# 2330 research\n\n## 資料來源\n- [S001] TWSE',
+                'summary',
+                [SourceItem('S001', 'TWSE', 'https://www.twse.com.tw/', 'Level 1')],
+                True,
+                None,
+                {
+                    'analysis_model': 'Gemini',
+                    'ai_workflow_coverage': coverage,
+                    'local_scoring': {'policy': 'test', 'scores': []},
+                },
+            )
+
+            self.assertTrue(artifacts.json_path.exists())
+            self.assertEqual(report_json["metadata"]["ai_workflow_coverage"]["status"], "aligned")
+            saved = json.loads(artifacts.json_path.read_text(encoding="utf-8-sig"))
+            self.assertEqual(saved["metadata"]["ai_workflow_coverage"]["schema_version"], "ai_workflow_coverage_v1")
+            self.assertEqual(saved["metadata"]["ai_workflow_coverage"]["missing_capabilities"], [])
+        finally:
+            safe_remove_test_cache("report_schema/test_write_report_ai_workflow_coverage")
+
 
 
     def test_render_html_defaults_to_main_tab_and_separates_auxiliary_content(self):
@@ -124,6 +165,79 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         self.assertIn('for="tab-quality"', rendered)
         self.assertIn('panel-quality', rendered)
         self.assertNotIn('| 股票 | 分數 | 判斷 |', rendered)
+
+    def test_render_html_includes_required_data_gap_tab(self):
+        sources = [
+            SourceItem(
+                'S001',
+                '台灣證券交易所 VIX proxy',
+                'https://www.twse.com.tw/',
+                'Level 1',
+                snippet='VIX 與市場風險資料',
+            )
+        ]
+        structured_data = {
+            'analysis_model': 'Gemini',
+            'local_scoring': {'scores': []},
+            'required_data_gap_summary': {
+                'status': 'missing_required_data',
+                'requirement_count': 2,
+                'covered_count': 1,
+                'missing_count': 1,
+                'initial_missing_count': 2,
+                'gap_fill_task_count': 1,
+                'backfill_recommended': True,
+                'covered': [
+                    {
+                        'field': 'global_risk_vix',
+                        'label': '國際風險與 VIX 指數',
+                        'tier': 'hard',
+                        'matched_source_count': 1,
+                        'matched_source_ids': ['S001'],
+                    }
+                ],
+                'missing': [
+                    {
+                        'field': 'taiwan_derivatives',
+                        'label': '台指選擇權與 Put/Call',
+                        'tier': 'hard',
+                        'backfill_queries': ['台指選擇權 Put Call Ratio TAIFEX'],
+                    }
+                ],
+            },
+            'required_data_gap_backfill_tasks': {
+                'tasks': [
+                    {
+                        'label': 'required_gap:taiwan_derivatives',
+                        'queries': ['台指選擇權 Put Call Ratio TAIFEX'],
+                    }
+                ]
+            },
+            'required_gap_minimax_discovery': {
+                'status': 'ok',
+                'source_count': 3,
+                'diagnostics': {'error_reasons': []},
+            },
+        }
+        markdown = '# 台股總經市場報告\n\n## 完整資料來源清單\n- [S001] TWSE'
+        report_json = build_report_json(
+            parse_command_text('/macro 台股'),
+            markdown,
+            'summary',
+            sources,
+            True,
+            None,
+            structured_data,
+        )
+        rendered = render_html(report_json, markdown)
+
+        self.assertIn('id="tab-required-gap"', rendered)
+        self.assertIn('for="tab-required-gap"', rendered)
+        self.assertIn('panel-required-gap', rendered)
+        self.assertIn('必備資料檢查', rendered)
+        self.assertIn('國際風險與 VIX 指數', rendered)
+        self.assertIn('台指選擇權與 Put/Call', rendered)
+        self.assertIn('MiniMax MCP Search', rendered)
 
     def test_render_html_splits_bold_lead_sections_into_readable_blocks(self):
         sources = [SourceItem('S001', 'TWSE', 'https://www.twse.com.tw/', 'Level 1')]
@@ -315,6 +429,32 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
 
         self.assertNotIn("必漲", qa["forbidden_hits"])
 
+    def test_macro_validator_accepts_vix_as_volatility_section(self):
+        request = parse_command_text("/macro")
+        markdown = (
+            "# 台股宏觀\n\n"
+            "## 市場總覽\n內容 [S001]\n\n"
+            "## 指數分析\n內容 [S001]\n\n"
+            "## VIX 與市場風險\n內容 [S001]\n\n"
+            "## 資金與籌碼\n內容 [S001]\n\n"
+            "## 風險\n內容 [S001]\n\n"
+            "## 資料來源\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "gemini-test", "local_scoring": {"scores": []}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+
+        self.assertNotIn("波動", qa["missing_sections"])
+
     def test_shared_data_layer_is_preserved_in_report_metadata_for_research_commands(self):
         structured_data = {
             "news_context": {
@@ -379,6 +519,36 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         self.assertIn("news_context", markdown)
         self.assertIn("feature_pack", markdown)
         self.assertIn("data_coverage", markdown)
+
+    def test_value_scan_fallback_markdown_includes_market_imagination_sections(self):
+        request = parse_command_text("/value_scan 精選選股 --deep")
+        structured_data = {
+            "candidate_pool": "精選選股",
+            "ai_candidates": [
+                {
+                    "code": "2330",
+                    "name": "台積電",
+                    "old_market_label": "晶圓代工",
+                    "new_market_label": "AI 先進製程與封裝",
+                    "rerating_score": 82,
+                    "verification_score": 58,
+                    "rerating_evidence": ["AI/HPC 需求支撐"],
+                    "counter_evidence": ["營收占比仍需驗證"],
+                    "missing_data": ["CoWoS 產能與客戶占比"],
+                }
+            ],
+            "local_scoring": {"scores": []},
+        }
+
+        markdown = fallback_markdown(request, structured_data, [], reason="test")
+
+        self.assertIn("市場推演摘要", markdown)
+        self.assertIn("市場正在交易什麼故事", markdown)
+        self.assertIn("早期蛛絲馬跡", markdown)
+        self.assertIn("下一波可能發酵的催化劑", markdown)
+        self.assertIn("如果要大漲，還缺什麼訊號", markdown)
+        self.assertIn("反向驗證與失敗條件", markdown)
+        self.assertIn("想像力結論", markdown)
 
     def test_sector_strength_metadata_keeps_market_movers_summary(self):
         request = parse_command_text("/sector_strength --date 2026-05-24")
@@ -621,7 +791,8 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
             markdown = artifacts.markdown_path.read_text(encoding="utf-8")
             self.assertIn("報告資料完整度與來源品質", markdown)
             self.assertIn("資料覆蓋分數", markdown)
-            self.assertIn("Missing Data Policy", markdown)
+            self.assertIn("缺資料解讀規則", markdown)
+            self.assertNotIn("Missing Data Policy", markdown)
         finally:
             safe_remove_test_cache("report_schema/test_research_quality_summary")
 

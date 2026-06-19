@@ -138,6 +138,9 @@ def build_source_quality_metadata(sources: list[SourceItem]) -> dict[str, Any]:
             "source_level": source.source_level,
             "provider": source.provider,
             "fetch_provider": source.fetch_provider,
+            "fetch_status": source.fetch_status,
+            "fetch_quality": source.fetch_quality,
+            "failure_reason": source.failure_reason,
             "source_quality_score": quality["score"],
             "source_quality_level": quality["level"],
             "usable_for_company_knowledge": quality["usable_for_company_knowledge"],
@@ -150,6 +153,8 @@ def build_source_coverage_summary(sources: list[SourceItem], source_quality: dic
     by_provider: dict[str, int] = {}
     by_level: dict[str, int] = {}
     dated = 0
+    explicit_dated = 0
+    inferred_dated = 0
     for source in sources:
         provider = source.provider or source.fetch_provider or "unknown"
         level = source.source_level or "unknown"
@@ -157,9 +162,16 @@ def build_source_coverage_summary(sources: list[SourceItem], source_quality: dic
         by_level[level] = by_level.get(level, 0) + 1
         if source.published_date:
             dated += 1
+            found_by = set(source.found_by or [])
+            if "source_date:explicit" in found_by:
+                explicit_dated += 1
+            elif "source_date:inferred" in found_by:
+                inferred_dated += 1
     return {
         "total_sources": len(sources),
         "dated_sources": dated,
+        "explicit_dated_sources": explicit_dated,
+        "inferred_dated_sources": inferred_dated,
         "undated_sources": max(0, len(sources) - dated),
         "by_provider": by_provider,
         "by_source_level": by_level,

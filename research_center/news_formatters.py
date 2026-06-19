@@ -78,14 +78,67 @@ def format_holding_news(groups: list[HoldingNewsGroup]) -> str:
     return "\n".join(lines)
 
 
-def format_news_refresh_result(saved: int, skipped: int, total_categories: int) -> str:
+def format_news_refresh_result(
+    saved: int,
+    skipped: int,
+    total_categories: int,
+    items: list[NewsItem] | None = None,
+    meta: dict | None = None,
+) -> str:
     """Format news refresh summary."""
-    return (
-        "📰 新聞整理完成\n"
-        f"新增：{saved} 則\n"
-        f"略過重複：{skipped} 則\n"
-        f"分類數：{total_categories}\n"
+    lines = [
+        "📰 新聞整理完成",
+        f"新增：{saved} 則",
+        f"略過重複：{skipped} 則",
+        f"分類數：{total_categories}",
+    ]
+    meta = meta or {}
+    items = list(items or [])
+    if meta:
+        lines.append(
+            "資料狀態："
+            f"搜尋來源 {meta.get('search_sources', 0)} 筆、"
+            f"篩選後 {meta.get('filtered_count', 0)} 筆、"
+            f"AI分類 {meta.get('total', len(items))} 筆、"
+            f"正文補取成功 {meta.get('webfetch_success', 0)} 筆"
+        )
+    category_counts = meta.get("category_counts") if isinstance(meta, dict) else {}
+    if isinstance(category_counts, dict) and category_counts:
+        ordered = sorted(category_counts.items(), key=lambda item: (-int(item[1] or 0), news_category_label(str(item[0]))))
+        readable = [f"{news_category_label(str(cat))} {count}" for cat, count in ordered[:6]]
+        lines.append("分類分布：" + "、".join(readable))
+    ranked = sorted(
+        items,
+        key=lambda item: (
+            int(item.importance_score or 0),
+            int(item.news_signal_score or 0),
+            int(item.news_heat_risk_score or 0),
+        ),
+        reverse=True,
     )
+    if ranked:
+        lines.append("")
+        lines.append("重點新聞：")
+        for index, item in enumerate(ranked[:5], 1):
+            category = news_category_label(item.category)
+            pub = item.published_at[:10] if item.published_at else "日期不明"
+            symbols = " ".join((item.related_symbols or [])[:4])
+            topics = "、".join((item.related_topics or [])[:3])
+            suffix_parts = [part for part in (symbols, topics) if part]
+            suffix = f"（{'；'.join(suffix_parts)}）" if suffix_parts else ""
+            lines.append(f"{index}. {item.title}{suffix}")
+            lines.append(f"   {category}｜{item.source or '來源不明'}｜{pub}｜重要度 {int(item.importance_score or 0)}")
+            summary = (item.summary or item.full_text or "").strip().replace("\n", " ")
+            if summary:
+                lines.append(f"   摘要：{summary[:140]}")
+            risk = item.news_heat_risk_reason or ""
+            signal = item.news_signal_reason or ""
+            if signal or risk:
+                lines.append(f"   判讀：{signal or '未標示利多/利空'}；{risk or '未標示熱度風險'}")
+    if int(meta.get("webfetch_success", 0) or 0) == 0 and int(meta.get("search_sources", 0) or 0) > 0:
+        lines.append("")
+        lines.append("限制：本次多數來源只有搜尋摘要，缺少正文補取，分類可作快訊參考，重要結論仍需搭配來源原文確認。")
+    return "\n".join(lines)
 
 
 def format_news_detail(item: NewsItem | None) -> str:

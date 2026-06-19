@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T14:54:27",
+  "generated_at": "2026-06-18T20:41:45",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -137,6 +137,13 @@
       "market": "TPEX",
       "name": "生泰",
       "industry": "生技醫療業"
+    },
+    {
+      "code": "1780",
+      "symbol": "1780.TWO",
+      "market": "TPEX",
+      "name": "立弘",
+      "industry": "食品工業"
     },
     {
       "code": "1781",
@@ -1103,13 +1110,6 @@
       "market": "TPEX",
       "name": "漢科",
       "industry": "其他電子業"
-    },
-    {
-      "code": "3426",
-      "symbol": "3426.TWO",
-      "market": "TPEX",
-      "name": "台興",
-      "industry": "電機機械"
     },
     {
       "code": "3430",
@@ -2515,7 +2515,7 @@
       "code": "4953",
       "symbol": "4953.TWO",
       "market": "TPEX",
-      "name": "緯軟",
+      "name": "緯致",
       "industry": "資訊服務業"
     },
     {
@@ -5067,6 +5067,13 @@
       "industry": "生技醫療業"
     },
     {
+      "code": "6945",
+      "symbol": "6945.TWO",
+      "market": "TPEX",
+      "name": "圓祥生技",
+      "industry": "生技醫療業"
+    },
+    {
       "code": "6953",
       "symbol": "6953.TWO",
       "market": "TPEX",
@@ -5401,6 +5408,13 @@
       "market": "TPEX",
       "name": "創新服務",
       "industry": "半導體業"
+    },
+    {
+      "code": "7839",
+      "symbol": "7839.TWO",
+      "market": "TPEX",
+      "name": "達人網",
+      "industry": "數位雲端"
     },
     {
       "code": "7842",

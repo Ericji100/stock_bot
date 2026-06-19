@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL = "gemini-3-pro-preview"
-DEFAULT_FALLBACK_MODELS = ("gemini-3-flash-preview",)
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_FALLBACK_MODELS = ("gemini-3.5-flash",)
+DEFAULT_GEMINI_DISCOVERY_MODEL = "gemini-3.5-flash"
 DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
-DEFAULT_MINIMAX_LOW_MODEL = "MiniMax-M2.7"
+DEFAULT_MINIMAX_LOW_MODEL = "MiniMax-M3"
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_OPENCODE_MODEL = "deepseek-v4-pro"
 DEFAULT_OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"
@@ -20,6 +21,7 @@ DEFAULT_OPENCODE_REASONING_EFFORT = "medium"
 class ResearchCenterConfig:
     model: str = DEFAULT_MODEL
     fallback_models: tuple[str, ...] = DEFAULT_FALLBACK_MODELS
+    gemini_discovery_model: str = DEFAULT_GEMINI_DISCOVERY_MODEL
     enable_grounding: bool = True
     api_key: str | None = None
     minimax_api_key: str | None = None
@@ -73,6 +75,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     secrets = _read_json(root / "config" / "secrets.json")
 
     model = str(public_config.get("model") or secrets.get("gemini_model") or DEFAULT_MODEL)
+    gemini_discovery_model = str(public_config.get("gemini_discovery_model") or secrets.get("gemini_discovery_model") or DEFAULT_GEMINI_DISCOVERY_MODEL)
     fallback_models = tuple(
         str(item).strip()
         for item in (public_config.get("fallback_models") or secrets.get("gemini_fallback_models") or DEFAULT_FALLBACK_MODELS)
@@ -120,6 +123,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     return ResearchCenterConfig(
         model=model,
         fallback_models=fallback_models,
+        gemini_discovery_model=gemini_discovery_model,
         enable_grounding=enable_grounding,
         api_key=str(api_key).strip() if api_key else None,
         minimax_api_key=str(minimax_api_key).strip() if minimax_api_key else None,

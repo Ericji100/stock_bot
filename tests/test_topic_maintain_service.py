@@ -154,6 +154,8 @@ class TestTopicMaintainService(unittest.TestCase):
         pack = run_topic_maintain(mock_request, center=center, progress=lambda m: progress_calls.append(m))
 
         self.assertIsInstance(pack, TopicChangePack)
+        self.assertEqual(pack.extra["ai_workflow_coverage"]["schema_version"], "ai_workflow_coverage_v1")
+        self.assertEqual(pack.extra["ai_workflow_coverage"]["command"], "topic_maintain")
         mock_collect.assert_called_once()
         # Verify flow reached AI call step
         self.assertTrue(any("呼叫 AI" in msg for msg in progress_calls), f"Expected AI call in progress: {progress_calls}")
@@ -925,6 +927,49 @@ class TestTopicMaintainService(unittest.TestCase):
         # generate_json should be called for staged generation, NOT generate_report
         self.assertGreaterEqual(minimax_mock.generate_json.call_count, 1)
 
+    def test_run_topic_maintain_minimax_stage_uses_short_timeout_without_retry(self):
+        """MiniMax topic stages should temporarily cap timeout and disable retries."""
+        self._mock_is_formal_library_empty(False)
+        mock_request = self._mock_request(ai_model="minimax")
+
+        minimax_mock = MagicMock()
+        minimax_mock.timeout_seconds = 600.0
+        minimax_mock.max_retries = 1
+
+        def generate_json(_prompt):
+            self.assertEqual(minimax_mock.timeout_seconds, 240.0)
+            self.assertEqual(minimax_mock.max_retries, 0)
+            if minimax_mock.generate_json.call_count == 1:
+                return MagicMock(raw=json.dumps({
+                    "candidates": [
+                        {"theme_id": "ai_power", "theme_name": "AI電源", "keywords": ["電源"]},
+                    ]
+                }))
+            return MagicMock(raw=json.dumps({
+                "actions": [
+                    {"action_type": "create_theme", "theme_id": "ai_power", "theme_name": "AI電源"},
+                ]
+            }))
+
+        minimax_mock.generate_json.side_effect = generate_json
+
+        center = MagicMock()
+        center.minimax = minimax_mock
+        center._gemini_discovery_runner = MagicMock()
+        center._gemini_discovery_runner.run_discovery_flow.return_value = ([], False)
+
+        self._mock_write_prompt_log("/logs/ai_prompts/test.json")
+        self._mock_raw_response_path(MagicMock())
+        self._mock_save_change_pack()
+        self._mock_collect_structured_data()
+        self._mock_web_fetch()
+
+        pack = run_topic_maintain(mock_request, center=center, progress=None)
+
+        self.assertEqual(pack.status.value, "pending")
+        self.assertEqual(minimax_mock.timeout_seconds, 600.0)
+        self.assertEqual(minimax_mock.max_retries, 1)
+
     def test_run_topic_maintain_minimax_returns_valid_change_pack(self):
         """MiniMax with valid JSON response should produce pending change pack."""
         self._mock_is_formal_library_empty(False)
@@ -1061,6 +1106,29 @@ class TestTopicMaintainService(unittest.TestCase):
         self.assertEqual(result["model"], "minimax")
         self.assertEqual(len(result["actions"]), 1)
         self.assertEqual(result["actions"][0]["theme_id"], "test_theme")
+
+    def test_parse_ai_json_response_salvages_valid_candidates_from_malformed_array(self):
+        """A malformed candidate should not discard all valid topic candidates."""
+        from research_center.topic_maintain_service import _parse_ai_json_response
+
+        raw_response = (
+            "<think>reasoning</think>\n"
+            '{"candidates": ['
+            '{"theme_id": "ai_power", "theme_name": "AI電源", "keywords": ["AI電源"], '
+            '"candidate_companies": [{"company_code": "6282", "company_name": "康舒"}]},'
+            '{"theme_id": "sic_substrate", "theme_name": "SiC基板", "keywords": ["SiC"], '
+            '"candidate_companies": [{"company_code": "5483", "company_name": "中美晶"}]},'
+            '{"theme_id": "broken", "theme_name": "壞掉題材", "candidate_companies": [{"company_code": "3532"]],'
+            '{"theme_id": "after_broken", "theme_name": "後段題材"}'
+            '], "company_knowledge_updates": {}}'
+        )
+
+        result = _parse_ai_json_response(raw_response)
+
+        self.assertEqual(len(result["candidates"]), 2)
+        self.assertEqual(result["candidates"][0]["theme_name"], "AI電源")
+        self.assertEqual(result["candidates"][1]["theme_name"], "SiC基板")
+        self.assertIn("partial_candidate_json_salvaged", result["parse_warnings"])
 
     def test_parse_ai_json_response_handles_gemini_wrapper(self):
         """Gemini wrapper with candidates[0].content.parts[0].text should parse correctly."""

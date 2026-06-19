@@ -18,6 +18,7 @@ database/*.db
 database/
 reports/
 backup/
+backups/
 logs/
 database/*.db-*
 database/*.db-journal
@@ -38,3 +39,7 @@ _debug_*.py
 fix_tests*.py
 tests/sqlite_probe*/
 prompt/*.zip
+manual_*/
+manual_*.txt
+topic_library_fix/
+topic_live_audit/

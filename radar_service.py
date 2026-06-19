@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
@@ -24,7 +24,7 @@ from research_center.date_aware_context import (
 )
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import ResearchCenter
-from research_center.ai_workflow_service import run_low_model_digest_for_payload
+from research_center.ai_workflow_service import build_ai_workflow_coverage, run_low_model_digest_for_payload
 from research_center.data_services import collect_structured_data
 from research_center.evidence_pack_service import build_ai_compact_context, build_three_layer_evidence_context
 from research_center.news_repository import NewsRepository
@@ -57,6 +57,8 @@ RADAR_MIN_EXTERNAL_SOURCES = 8
 RADAR_EVIDENCE_PACK_TIMEOUT_SECONDS = 120.0
 RADAR_FULL_RESEARCH_CACHE_MAX_AGE_DAYS = 5
 RADAR_LIGHT_RESEARCH_CACHE_DIR = ROOT_DIR / ".cache" / "radar_research_light"
+RADAR_TECHNICAL_CACHE_READY_HOUR = 15
+RADAR_TECHNICAL_CACHE_READY_MINUTE = 0
 MAIN_SOURCES = {"technical", "curated", "financial", "chip", "monitor", "portfolio"}
 CHIP_KEYS = ["chip_1", "chip_2", "chip_3", "chip_4"]
 TECHNICAL_STRATEGY_LABELS = {
@@ -92,7 +94,7 @@ class RadarRequest:
     source: str = DEFAULT_SOURCE
     report_date: date | None = None
     ai_top: int = DEFAULT_AI_TOP
-    model: str | None = None
+    model: str | None = "minimax"
     ai_comment_enabled: bool = True
 
 
@@ -132,7 +134,7 @@ def parse_radar_args(args: list[str] | tuple[str, ...] | None) -> RadarRequest:
     source = DEFAULT_SOURCE
     report_date: date | None = None
     ai_top = DEFAULT_AI_TOP
-    model: str | None = None
+    model: str | None = "minimax"
     ai_comment_enabled = True
     index = 0
     while index < len(values):
@@ -502,6 +504,9 @@ def _technical_candidates_for_radar(
     progress: Callable[[str], None] | None,
 ) -> tuple[list[RadarCandidate], dict[str, Any]]:
     cached = _find_technical_scan_cache(target_date)
+    if cached and _is_stale_technical_scan_cache(cached, target_date):
+        _emit(progress, _technical_scan_cache_stale_message(cached, target_date))
+        cached = None
     if cached:
         codes = [str(code) for code in cached.get("selected_codes") or cached.get("codes") or []]
         by_code = _stock_meta_by_code()
@@ -542,6 +547,37 @@ def _find_technical_scan_cache(target_date: date) -> dict[str, Any] | None:
         if "技術" in scan_type and "選股" in scan_type:
             return record
     return None
+
+
+def _parse_scan_created_at(record: dict[str, Any]) -> datetime | None:
+    raw = str(record.get("created_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _is_stale_technical_scan_cache(record: dict[str, Any], target_date: date) -> bool:
+    created_at = _parse_scan_created_at(record)
+    if created_at is None:
+        return False
+    created_date = created_at.date()
+    if created_date < target_date:
+        return True
+    if created_date > target_date:
+        return False
+    ready_time = (RADAR_TECHNICAL_CACHE_READY_HOUR, RADAR_TECHNICAL_CACHE_READY_MINUTE)
+    return (created_at.hour, created_at.minute) < ready_time
+
+
+def _technical_scan_cache_stale_message(record: dict[str, Any], target_date: date) -> str:
+    created_at = str(record.get("created_at") or "未知")
+    return (
+        "Radar：略過收盤前技術面選股快取，"
+        f"資料日期 {target_date.isoformat()}，建立時間 {created_at}，將重新執行技術面掃描"
+    )
 
 
 def _normalise_strategy_signals(value: Any) -> dict[str, list[dict[str, Any]]]:
@@ -675,7 +711,14 @@ def _attach_chip_scores(
     if not candidates:
         return
     try:
-        context = build_market_context(False, target_date, include_daily_data=True, scope="radar")
+        context = build_market_context(
+            False,
+            target_date,
+            include_daily_data=True,
+            include_foreign_ratio=False,
+            target_trading_days=5,
+            scope="radar",
+        )
         grade_maps = build_chip_grade_maps(context, CHIP_KEYS)
     except Exception as exc:
         _emit(progress, f"Radar：籌碼評級補強略過：{exc}")
@@ -863,8 +906,9 @@ def _attach_research_center_sources(
         tasks = [_radar_discovery_task(item, analysis_date)]
         try:
             runner._run_minimax_mcp(request, tasks, sources, structured_data, progress)
-            runner._run_tavily(request, tasks, sources, structured_data, progress)
-            if runner._should_run_gemini(request, sources):
+            if len(sources) < 8:
+                runner._run_tavily(request, tasks, sources, structured_data, progress)
+            if len(sources) < 8 and runner._should_run_gemini(request, sources):
                 discovery_sources: list[SourceItem] = []
                 discovery_runs: list[dict[str, Any]] = []
                 runner._run_gemini(request, tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
@@ -883,19 +927,28 @@ def _radar_discovery_task(item: RadarCandidate, analysis_date: date) -> dict[str
     industry = item.industry or "台股"
     date_text = analysis_date.isoformat()
     queries = [
-        f"{target} 新聞 題材 法人 {date_text}",
-        f"{target} {industry} 營收 籌碼 產業 {date_text}",
-        f"{target} 股價 題材 外資 投信 {analysis_date.year}",
+        f"{target} 新聞 訂單 法說會 新產品 政策題材 {date_text}",
+        f"{target} 月營收 毛利率 EPS 財報 公告 {analysis_date.year}",
+        f"{target} 外資 投信 自營商 融資融券 TDCC 大戶籌碼 {analysis_date.year}",
+        f"{target} 營收衰退 毛利下滑 庫存 砍單 股價過熱 風險",
+        f"{target} {industry} 產業趨勢 供應鏈 關鍵客戶 價值重估",
     ]
     prompt = (
-        "請使用 Google Search 尋找下列台股候選股在分析日期以前的可驗證來源。\n"
-        "只找新聞、公告、法人籌碼、營收、產業題材或市場關注來源；不要新增候選股票。\n"
+        "請使用搜尋工具尋找下列台股候選股在分析日期以前的可驗證來源。\n"
+        "只補 Radar AI 短評來源，不要新增候選股票，不要產生買賣建議。\n"
+        "必須盡量覆蓋五類：催化劑、營收與基本面、籌碼資金、反證退燒、題材想像空間。\n"
+        "題材想像空間只能標示為推論型資料，不能當成已驗證事實。\n"
         f"候選股：{target}\n"
         f"產業：{industry}\n"
         f"analysis_date：{date_text}\n"
         "不得使用晚於 analysis_date 的來源。"
     )
-    return {"label": "radar_ai_sources", "objective": "補充 Radar AI 短評來源", "queries": queries, "prompt": prompt}
+    return {
+        "label": "radar_ai_sources",
+        "objective": "補充 Radar AI 短評來源：催化劑、營收基本面、籌碼資金、反證退燒、題材想像空間",
+        "queries": queries,
+        "prompt": prompt,
+    }
 
 
 def _normalise_ai_sources(sources: list[SourceItem], structured_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1072,7 +1125,7 @@ def _load_or_build_radar_light_research(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     same_day_cache = load_research_structured_cache(item.code, analysis_date)
     if isinstance(same_day_cache, dict):
-        return _with_radar_cache_meta(same_day_cache, "same_day_cache", analysis_date), _research_sources_from_item(item), "same_day_cache"
+        return _with_radar_cache_meta(same_day_cache, "same_day_cache", analysis_date), _research_sources_from_item(item, analysis_date), "same_day_cache"
 
     latest_cache = load_latest_research_structured_cache(
         item.code,
@@ -1081,15 +1134,15 @@ def _load_or_build_radar_light_research(
     )
     if latest_cache is not None:
         cached_data, cache_date = latest_cache
-        return _with_radar_cache_meta(cached_data, "recent_cache", cache_date), _research_sources_from_item(item), "recent_cache"
+        return _with_radar_cache_meta(cached_data, "recent_cache", cache_date), _research_sources_from_item(item, cache_date), "recent_cache"
 
     light_cache = _load_radar_light_cache(item.code, analysis_date)
     if isinstance(light_cache, dict):
-        return light_cache, _research_sources_from_item(item), "light_cache"
+        return light_cache, _research_sources_from_item(item, analysis_date), "light_cache"
 
     light_data = _build_radar_light_research_data(item, analysis_date)
     _save_radar_light_cache(item.code, analysis_date, light_data)
-    return light_data, _research_sources_from_item(item), "light_generated"
+    return light_data, _research_sources_from_item(item, analysis_date), "light_generated"
 
 
 def _with_radar_cache_meta(data: dict[str, Any], mode: str, data_date: date) -> dict[str, Any]:
@@ -1105,10 +1158,14 @@ def _with_radar_cache_meta(data: dict[str, Any], mode: str, data_date: date) -> 
     return result
 
 
-def _research_sources_from_item(item: RadarCandidate) -> list[dict[str, Any]]:
+def _research_sources_from_item(item: RadarCandidate, analysis_date: date | None = None) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     _merge_source_dicts(sources, item.ai_sources[:12])
     _merge_source_dicts(sources, item.web_sources[:12])
+    evidence_pack = item.evidence_pack if isinstance(item.evidence_pack, dict) else {}
+    _merge_source_dicts(sources, list(evidence_pack.get("raw_sources") or [])[:12])
+    if analysis_date is not None and not any(str(source.get("source_level") or "").startswith("L1") or str(source.get("source_level") or "").startswith("Level 1") for source in sources):
+        _merge_source_dicts(sources, _radar_official_basis_sources(analysis_date))
     return sources[:16]
 
 
@@ -1245,7 +1302,7 @@ def _build_radar_evidence_pack(
     }
     if research_structured_data:
         pack["research_structured_data"] = research_structured_data
-    raw_sources = _radar_raw_sources(item, pack)
+    raw_sources = _radar_raw_sources(item, pack, analysis_date)
     pack["raw_sources"] = raw_sources
     pack["final_context"] = _radar_final_context(item, analysis_date, raw_sources)
     pack["three_layer_context"] = build_three_layer_evidence_context(
@@ -1260,7 +1317,7 @@ def _build_radar_evidence_pack(
 def _refresh_radar_three_layer_context(item: RadarCandidate, analysis_date: date) -> None:
     if not isinstance(item.evidence_pack, dict):
         return
-    raw_sources = _radar_raw_sources(item, item.evidence_pack)
+    raw_sources = _radar_raw_sources(item, item.evidence_pack, analysis_date)
     item.evidence_pack["raw_sources"] = raw_sources
     item.evidence_pack["final_context"] = _radar_final_context(item, analysis_date, raw_sources)
     item.evidence_pack["three_layer_context"] = build_three_layer_evidence_context(
@@ -1272,8 +1329,52 @@ def _refresh_radar_three_layer_context(item: RadarCandidate, analysis_date: date
     item.evidence_pack["ai_compact_pack"] = _build_radar_ai_compact_pack(item, analysis_date)
 
 
-def _radar_raw_sources(item: RadarCandidate, pack: dict[str, Any]) -> list[dict[str, Any]]:
+def _radar_official_basis_sources(analysis_date: date) -> list[dict[str, Any]]:
+    published_date = analysis_date.isoformat()
+    return [
+        {
+            "source_id": "RADAR_OFFICIAL_PRICE_VOLUME",
+            "title": "TWSE / TPEx 官方價量與交易資訊快取",
+            "url": "https://www.twse.com.tw/",
+            "source_level": "L1_official",
+            "published_date": published_date,
+            "provider": "local_official_cache",
+            "provider_detail": "radar_price_volume_basis",
+            "source_type": "official_basis",
+            "snippet": "Radar 技術面與價量條件使用本地快取的 TWSE / TPEx 官方交易資料作為基礎；完整逐檔資料保存在本地快取與 Radar evidence pack。",
+            "found_by": ["radar_official_basis"],
+        },
+        {
+            "source_id": "RADAR_OFFICIAL_REVENUE_FINANCIAL",
+            "title": "MOPS 公開資訊觀測站營收與財報快取",
+            "url": "https://mops.twse.com.tw/",
+            "source_level": "L1_official",
+            "published_date": published_date,
+            "provider": "local_official_cache",
+            "provider_detail": "radar_revenue_financial_basis",
+            "source_type": "official_basis",
+            "snippet": "Radar 營收、財報與公司公告相關底稿使用本地快取的 MOPS 公開資訊作為基礎；若個股資料不足，報告會在資料缺口中標示。",
+            "found_by": ["radar_official_basis"],
+        },
+        {
+            "source_id": "RADAR_OFFICIAL_CHIP",
+            "title": "TWSE / TPEx / TDCC 法人籌碼與集保資料快取",
+            "url": "https://www.tpex.org.tw/",
+            "source_level": "L1_official",
+            "published_date": published_date,
+            "provider": "local_official_cache",
+            "provider_detail": "radar_chip_basis",
+            "source_type": "official_basis",
+            "snippet": "Radar 籌碼條件使用 TWSE、TPEx、TDCC 或其本地快取資料作為基礎；FinMind / Fugle 僅作缺口備援時會另行記錄。",
+            "found_by": ["radar_official_basis"],
+        },
+    ]
+
+
+def _radar_raw_sources(item: RadarCandidate, pack: dict[str, Any], analysis_date: date | None = None) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
+    if analysis_date is not None:
+        sources.extend(_radar_official_basis_sources(analysis_date))
     for source_type, items in (
         ("web_sources", item.web_sources),
         ("ai_sources", item.ai_sources),
@@ -1373,6 +1474,13 @@ def _attach_ai_comments(
     chunk_records: list[dict[str, Any]] = []
     comments: dict[str, dict[str, Any]] = {}
     low_model_digest = _attach_radar_low_model_digest(selected, analysis_date, progress)
+    if not low_model_digest:
+        low_model_digest = {
+            "schema_version": "low_model_digest_v1",
+            "status": "skipped",
+            "model": "MiniMax-M3",
+            "reason": "radar_low_model_digest_not_available",
+        }
     for chunk_index, chunk in enumerate(_chunks(selected, RADAR_AI_CHUNK_SIZE), 1):
         prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date, low_model_digest=low_model_digest)
         record: dict[str, Any] = {
@@ -1438,6 +1546,25 @@ def _attach_ai_comments(
             "watch": str(comment.get("watch") or comment.get("watch_point") or ""),
         }
     _emit(progress, f"Radar：AI 短評完成 {sum(1 for item in selected if item.ai_comment.get('status') == 'ok')} 檔")
+    diagnostics = {
+        "chunk_count": len(chunk_records),
+        "prompt_chars": sum(int(record.get("prompt_chars") or 0) for record in chunk_records),
+        "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
+        "candidate_count": len(selected),
+        "prompt_max_chars": RADAR_AI_PROMPT_MAX_CHARS,
+    }
+    coverage = build_ai_workflow_coverage(
+        "radar",
+        local_data_package=True,
+        low_model_digest=low_model_digest,
+        high_model_input_package=True,
+        dedupe_strategy="radar_candidate_compact_pack",
+        source_index=True,
+        input_audit=True,
+        html_sections=True,
+        diagnostics=diagnostics,
+        notes=["Radar 是短評型 AI 流程，使用候選股 compact pack 與分批 prompt。"],
+    )
     return {
         "mode": "radar_compact_ai",
         "model": model,
@@ -1446,6 +1573,7 @@ def _attach_ai_comments(
         "chunk_count": len(chunk_records),
         "chunks": chunk_records,
         "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
+        "ai_workflow_coverage": coverage,
         "low_model_digest": {
             "status": low_model_digest.get("status"),
             "model": low_model_digest.get("model"),
@@ -1498,11 +1626,11 @@ def _attach_radar_low_model_digest(
             depth=6,
         )
     except Exception as exc:
-        _emit(progress, f"Radar：MiniMax M2.7 批次資料整理略過：{exc}")
+        _emit(progress, f"Radar：MiniMax M3 批次資料整理略過：{exc}")
         return {
             "schema_version": "low_model_digest_v1",
             "status": "failed",
-            "model": "MiniMax-M2.7",
+            "model": "MiniMax-M3",
             "error": str(exc),
         }
 
@@ -1576,16 +1704,27 @@ def _select_ai_enrichment_codes(candidates: list[RadarCandidate], ai_top: int) -
     if ai_top <= 0:
         return []
     selected: list[str] = []
+    by_code: set[str] = set()
+
+    def add(item: RadarCandidate) -> None:
+        if len(selected) >= ai_top:
+            return
+        if item.code in by_code:
+            return
+        selected.append(item.code)
+        by_code.add(item.code)
+
+    # Keep strategy diversity, but treat ai_top as the total AI-enrichment budget.
     for strategy in ["A", "B", "C", "D"]:
         group = [item for item in candidates if strategy in item.strategy_codes]
-        group.sort(key=lambda item: item.total_score, reverse=True)
-        for item in group[:ai_top]:
-            if item.code not in selected:
-                selected.append(item.code)
-    if not selected:
-        for item in sorted(candidates, key=lambda item: item.total_score, reverse=True)[:ai_top]:
-            selected.append(item.code)
-    return selected
+        group.sort(key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True)
+        if group:
+            add(group[0])
+    for item in sorted(candidates, key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True):
+        add(item)
+        if len(selected) >= ai_top:
+            break
+    return selected[:ai_top]
 
 
 def _stock_meta_by_code() -> dict[str, Any]:
@@ -1613,6 +1752,8 @@ def _add_label(candidate: RadarCandidate, label: str | None) -> None:
 def _find_recent_scan_by_type(scan_type: str, target_date: date) -> dict[str, Any] | None:
     for record in load_recent_scan_results(limit=30):
         if str(record.get("report_date")) == target_date.isoformat() and scan_type in str(record.get("scan_type") or ""):
+            if "技術" in scan_type and "選股" in scan_type and _is_stale_technical_scan_cache(record, target_date):
+                continue
             return record
     return None
 
@@ -1694,7 +1835,7 @@ def _build_ai_comment_payload(
 ) -> dict[str, Any]:
     components = item.score_components or {}
     compact_pack = _build_radar_ai_compact_pack(item, analysis_date, compact_profile=compact_profile)
-    return {
+    payload = {
         "code": item.code,
         "name": item.name,
         "industry": item.industry,
@@ -1715,6 +1856,25 @@ def _build_ai_comment_payload(
         "ai_compact_pack": compact_pack,
         "full_evidence_pack_location": "local artifacts/cache only; not embedded in AI prompt",
     }
+    return _replace_internal_truncation_markers(payload)
+
+
+def _replace_internal_truncation_markers(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _replace_internal_truncation_markers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_internal_truncation_markers(item) for item in value]
+    if value == "<dict truncated>":
+        return {
+            "資料狀態": "深層欄位未放入 AI 短評 prompt",
+            "原因": "避免 Radar 短評反覆展開龐大巢狀資料；完整細項仍保留於本地證據包與快取。",
+        }
+    if value == "<list truncated>":
+        return {
+            "資料狀態": "長清單未放入 AI 短評 prompt",
+            "原因": "避免 Radar 短評反覆展開龐大清單；完整細項仍保留於本地證據包與快取。",
+        }
+    return value
 
 
 def _build_radar_ai_compact_pack(
@@ -1822,21 +1982,26 @@ def _build_ai_comment_prompt(
 ) -> str:
     payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
     template = _read_radar_prompt("radar_ai_comment.md")
+    candidate_payload_json = json.dumps(_json_safe(payloads), ensure_ascii=False)
     low_digest_json = json.dumps(
         _json_safe(_filter_low_model_digest_for_codes(low_model_digest or {}, [item.code for item in candidates])),
         ensure_ascii=False,
     )
     rendered = template.replace("{analysis_date}", analysis_date.isoformat()).replace(
         "{candidate_payload_json}",
-        json.dumps(_json_safe(payloads), ensure_ascii=False),
+        "候選股資料 JSON 見文末唯一區塊。",
     )
     if "{low_model_digest_json}" in rendered:
-        return rendered.replace("{low_model_digest_json}", low_digest_json)
-    return (
+        final_prompt = rendered.replace("{low_model_digest_json}", low_digest_json)
+    else:
+        final_prompt = (
         rendered
-        + "\n\nMiniMax M2.7 批次資料整理底稿：\n"
+        + "\n\nMiniMax M3 批次資料整理底稿：\n"
         + low_digest_json
-    )
+        )
+    final_prompt = final_prompt.replace("候選股資料：\n", "候選股資料（模板段落）：\n")
+    final_prompt = final_prompt.rstrip() + "\n\n候選股資料：\n" + candidate_payload_json
+    return final_prompt
 
 
 def _read_radar_prompt(name: str) -> str:
@@ -1892,6 +2057,24 @@ def _build_ai_comment_prompt_jobs(
 
 
 def _call_ai_comment_model(model: str, prompt: str) -> str:
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            return _call_ai_comment_model_once(model, prompt)
+        except Exception as exc:
+            last_error = exc
+            if not _is_retryable_ai_error(exc) or attempt >= 2:
+                raise
+            time.sleep(2.0 * (attempt + 1))
+    raise RuntimeError(f"AI 短評呼叫失敗：{last_error}")
+
+
+def _is_retryable_ai_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(token in text for token in ("529", "overloaded", "rate", "timeout", "temporarily", "high load"))
+
+
+def _call_ai_comment_model_once(model: str, prompt: str) -> str:
     center = ResearchCenter()
     selected = _normalise_model(model)
     if selected == "deepseek":

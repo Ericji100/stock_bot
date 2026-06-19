@@ -501,6 +501,38 @@ class ValueScanEvidencePackTests(unittest.TestCase):
         self.assertEqual(policy["source"], "選股雷達")
         self.assertEqual(policy["radar_source"], "technical")
 
+    def test_value_scan_universe_uses_latest_ready_curated_cache_without_rebuild(self):
+        from research_center.data_services import _value_scan_universe
+        from research_center.models import CommandRequest
+
+        universe = [
+            _mock_entry("2330", "TSMC", "2330.TW", "semiconductor"),
+            _mock_entry("5425", "Taiwan Semi", "5425.TWO", "semiconductor"),
+        ]
+        request = CommandRequest(
+            command="value_scan",
+            raw_text="/value_scan curated --deep",
+            candidate_pool="curated",
+            target_type="candidate_pool",
+        )
+        latest_cached = {
+            "scan_id": "curated-20260604",
+            "report_date": "2026-06-04",
+            "codes": ["5425", "2330"],
+        }
+        self.mocks["load_stock_universe"].return_value = universe
+
+        with patch("research_center.data_services.find_cached_curated_scan", return_value=None), \
+             patch("research_center.data_services.find_latest_cached_curated_scan", return_value=latest_cached), \
+             patch("research_center.data_services.build_curated_scan_result") as build_curated:
+            selected, policy = _value_scan_universe(request)
+
+        build_curated.assert_not_called()
+        self.assertEqual([item.code for item in selected], ["5425", "2330"])
+        self.assertEqual(policy["status"], "latest_cached")
+        self.assertEqual(policy["report_date"], "2026-06-04")
+        self.assertEqual(policy["scan_id"], "curated-20260604")
+
     def test_value_scan_universe_uses_monitor_pool(self):
         from research_center.command_parser import parse_command_text
         from research_center.data_services import _value_scan_universe

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import html
 import json
@@ -16,7 +16,7 @@ from .report_display_normalizer import (
 
 
 def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: str = "") -> str:
-    title = html.escape(str(report_json.get("report_title") or "AI 投研報告"))
+    title = html.escape(normalize_report_text(str(report_json.get("report_title") or "AI 投研報告")))
     tabs = _build_tabs(report_json, markdown)
     disclaimer_html = f'<div class="disclaimer">{html.escape(disclaimer)}</div>' if disclaimer else ""
     return f"""<!doctype html>
@@ -64,6 +64,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     #tab-ai-audit:checked ~ .tab-list label[for="tab-ai-audit"],
     #tab-low-model:checked ~ .tab-list label[for="tab-low-model"],
     #tab-quality:checked ~ .tab-list label[for="tab-quality"],
+    #tab-required-gap:checked ~ .tab-list label[for="tab-required-gap"],
     #tab-sources:checked ~ .tab-list label[for="tab-sources"],
     #tab-local-scoring:checked ~ .tab-list label[for="tab-local-scoring"],
     #tab-metadata:checked ~ .tab-list label[for="tab-metadata"],
@@ -72,6 +73,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     #tab-ai-audit:checked ~ .panels #panel-ai-audit,
     #tab-low-model:checked ~ .panels #panel-low-model,
     #tab-quality:checked ~ .panels #panel-quality,
+    #tab-required-gap:checked ~ .panels #panel-required-gap,
     #tab-sources:checked ~ .panels #panel-sources,
     #tab-local-scoring:checked ~ .panels #panel-local-scoring,
     #tab-metadata:checked ~ .panels #panel-metadata,
@@ -99,15 +101,16 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
 
 
 def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
-    title = html.escape(str(report_json.get("report_title") or "AI 投研報告"))
+    title = html.escape(normalize_report_text(str(report_json.get("report_title") or "AI 投研報告")))
     report_date = html.escape(str(report_json.get("report_date") or ""))
-    mode = html.escape(str(report_json.get("mode") or ""))
+    mode = html.escape(display_value(report_json.get("mode") or ""))
     model = html.escape(str((report_json.get("metadata") or {}).get("analysis_model") or ""))
     sections = _split_markdown(markdown)
     main_html = _markdown_to_html(sections.get("main") or markdown)
     ai_audit_html = _ai_audit_html(report_json)
     low_model_html = _low_model_digest_html(report_json)
     quality_html = _quality_html(report_json)
+    required_gap_html = _required_gap_html(report_json)
     sources_html = _sources_html(report_json)
     local_scoring_html = _local_scoring_html(report_json)
     metadata_html = _metadata_html(report_json)
@@ -120,6 +123,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
   <input class="tab-input" type="radio" name="report-tabs" id="tab-ai-audit">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-low-model">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-quality">
+  <input class="tab-input" type="radio" name="report-tabs" id="tab-required-gap">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-sources">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-local-scoring">
   <input class="tab-input" type="radio" name="report-tabs" id="tab-metadata">
@@ -129,6 +133,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     <label class="tab-label" for="tab-ai-audit">入模審計</label>
     <label class="tab-label" for="tab-low-model">資料整理底稿</label>
     <label class="tab-label" for="tab-quality">資料品質</label>
+    <label class="tab-label" for="tab-required-gap">必備資料檢查</label>
     <label class="tab-label" for="tab-sources">完整來源</label>
     <label class="tab-label" for="tab-local-scoring">本地底稿</label>
     <label class="tab-label" for="tab-metadata">技術附錄</label>
@@ -139,6 +144,7 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     <section class="tab-panel" id="panel-ai-audit">{ai_audit_html}</section>
     <section class="tab-panel" id="panel-low-model">{low_model_html}</section>
     <section class="tab-panel" id="panel-quality">{quality_html}</section>
+    <section class="tab-panel" id="panel-required-gap">{required_gap_html}</section>
     <section class="tab-panel" id="panel-sources">{sources_html}</section>
     <section class="tab-panel" id="panel-local-scoring">{local_scoring_html}</section>
     <section class="tab-panel" id="panel-metadata">{metadata_html}</section>
@@ -201,15 +207,19 @@ def _markdown_to_html(markdown: str) -> str:
         if line.startswith("# "):
             flush_paragraph()
             flush_list()
-            output.append(f"<h1>{html.escape(line[2:].strip())}</h1>")
+            output.append(f"<h1>{html.escape(normalize_report_text(line[2:].strip()))}</h1>")
         elif line.startswith("## "):
             flush_paragraph()
             flush_list()
-            output.append(f"<h2>{html.escape(line[3:].strip())}</h2>")
+            output.append(f"<h2>{html.escape(normalize_report_text(line[3:].strip()))}</h2>")
         elif line.startswith("### "):
             flush_paragraph()
             flush_list()
-            output.append(f"<h3>{html.escape(line[4:].strip())}</h3>")
+            output.append(f"<h3>{html.escape(normalize_report_text(line[4:].strip()))}</h3>")
+        elif line.startswith("#### "):
+            flush_paragraph()
+            flush_list()
+            output.append(f'<section class="report-subsection"><h4 class="report-subsection-title">{html.escape(normalize_report_text(line[5:].strip()))}</h4></section>')
         elif line.startswith("- "):
             flush_paragraph()
             list_items.append(line[2:].strip())
@@ -345,8 +355,11 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
         f"<p>官方來源：{html.escape(str(source_coverage.get('official_sources') or 0))}；"
         f"媒體來源：{html.escape(str(source_coverage.get('media_sources') or 0))}；"
         f"反證或風險來源：{html.escape(str(source_coverage.get('risk_or_counter_sources') or 0))}；"
-        f"有日期來源：{html.escape(str(source_coverage.get('dated_sources') or 0))}。</p>",
+        f"明確日期來源：{html.escape(str(source_coverage.get('explicit_dated_sources') or 0))}；"
+        f"推測日期來源：{html.escape(str(source_coverage.get('inferred_dated_sources') or 0))}；"
+        f"日期不可驗證：{html.escape(str(source_coverage.get('undated_sources') or 0))}。</p>",
         "</article>",
+        "<p>這一頁只說明高階模型本次直接收到哪些摘要資料；未直接入模不代表資料遺失，完整原始資料仍保留在 JSON、HTML 附錄與完整來源分頁。</p>",
     ]
     reasons = confidence.get("reasons") or []
     warnings = confidence.get("warnings") or []
@@ -357,12 +370,47 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
         parts.append("</ul>")
     available = structured.get("available_sections") or []
     missing = structured.get("missing_sections") or []
+    core_audit = ((high_package.get("command_specific_data") or {}).get("core_input_audit") or {})
+    core_sections = core_audit.get("sections") or []
+    if core_sections:
+        status_for_list = {
+            "direct": "已直接入模",
+            "appendix_only": "僅保留附錄",
+            "source_missing": "資料源不足",
+            "compression_error": "壓縮異常",
+            "not_required": "本指令不需要",
+        }
+        available = [str(item.get("section")) for item in core_sections if item.get("status") == "direct"]
+        missing = [
+            f"{item.get('section')}（{status_for_list.get(str(item.get('status') or ''), str(item.get('status') or ''))}）"
+            for item in core_sections
+            if item.get("status") != "direct"
+        ]
     rows = ["| 項目 | 內容 |", "|---|---|"]
     rows.append(f"| AI 入模資料大小 | {display_value((audit.get('context_size') or {}).get('prompt_context_chars'))} 字 |")
-    rows.append(f"| 已入模資料類型 | {'、'.join(display_field_label(str(item)) for item in available) or '無'} |")
-    rows.append(f"| 缺少資料類型 | {'、'.join(display_field_label(str(item)) for item in missing) or '無'} |")
+    rows.append(f"| 高階模型已直接收到的資料類型 | {'、'.join(display_value(str(item)) for item in available) or '無'} |")
+    rows.append(f"| 高階模型未直接收到的資料類型（完整資料仍在 JSON / HTML 附錄） | {'、'.join(display_value(str(item)) for item in missing) or '無'} |")
     rows.append(f"| 未直接入模原因 | {_metadata_value_summary(ai_not_received.get('omitted_reason_counts') or {})} |")
     parts.append(_markdown_table_to_html(rows))
+    if core_sections:
+        parts.append("<h3>核心資料入模狀態</h3>")
+        parts.append("<p>這裡檢查每個指令必需的核心資料是否已用可分析摘要送入高階模型；未直接入模不等於資料遺失，需看狀態原因。</p>")
+        status_labels = {
+            "direct": "已直接入模",
+            "appendix_only": "僅保留附錄",
+            "source_missing": "資料源不足",
+            "compression_error": "壓縮異常",
+            "not_required": "本指令不需要",
+        }
+        core_rows = ["| 資料類型 | 入模狀態 | 原始筆數 | 入模筆數 | 說明 |", "|---|---:|---:|---:|---|"]
+        for item in core_sections:
+            section = display_value(str(item.get("section") or ""))
+            status = status_labels.get(str(item.get("status") or ""), display_value(str(item.get("status") or "")))
+            raw_count = display_value(item.get("raw_count"))
+            sent_count = display_value(item.get("sent_count"))
+            note = display_value(str(item.get("note") or ""))
+            core_rows.append(f"| {section} | {status} | {raw_count} | {sent_count} | {note} |")
+        parts.append(_markdown_table_to_html(core_rows))
     selected_sources = ((metadata.get("ai_data_center") or {}).get("source_selection") or {}).get("selected_sources") or []
     if selected_sources:
         parts.append("<h3>AI 實際入模來源</h3>")
@@ -391,7 +439,7 @@ def _low_model_digest_html(report_json: dict[str, Any]) -> str:
         f"<p>模型：<strong>{html.escape(str(model or '未啟用'))}</strong></p>",
         f"<p>狀態：{html.escape(display_value(status))}</p>",
         f"<p>提示詞紀錄：{html.escape(str(prompt_path or '無'))}</p>",
-        "<p>此分頁只呈現 MiniMax M2.7 的資料整理底稿；最終投研判斷仍由主分析模型重新評估。</p>",
+        "<p>此分頁只呈現 MiniMax M3 的資料整理底稿；最終投研判斷仍由主分析模型重新評估。</p>",
         "</article>",
     ]
     if not digest:
@@ -427,6 +475,27 @@ def _low_model_digest_html(report_json: dict[str, Any]) -> str:
                 values.append(display_value(value))
             table.append("| " + " | ".join(values) + " |")
         parts.append(_markdown_table_to_html(table))
+    failed_segments = digest.get("failed_segment_index") or []
+    if failed_segments:
+        parts.append("<h3>低階整理失敗段</h3>")
+        table = ["| 段落 | 狀態 | 錯誤 | 後續處理 | 來源 |", "|---|---|---|---|---|"]
+        for item in failed_segments[:30]:
+            if not isinstance(item, dict):
+                continue
+            table.append(
+                "| "
+                + " | ".join(
+                    [
+                        display_value(item.get("label")),
+                        display_value(item.get("status")),
+                        display_value(item.get("error")),
+                        display_value(item.get("fallback_action")),
+                        display_value(", ".join(str(source_id) for source_id in (item.get("source_ids") or []))),
+                    ]
+                )
+                + " |"
+            )
+        parts.append(_markdown_table_to_html(table))
     missing = digest.get("missing_data") or []
     warnings = digest.get("warnings") or []
     if missing:
@@ -450,7 +519,10 @@ def _quality_html(report_json: dict[str, Any]) -> str:
         "<h2>報告資料完整度與來源品質</h2>",
         '<article class="quality-card">',
         f"<p>資料覆蓋分數：<strong>{html.escape(str(quality.get('data_coverage_score') or metadata.get('data_coverage_score') or 0))}/100</strong></p>",
-        f"<p>來源總數：{html.escape(str(summary.get('total_sources') or 0))}；有日期來源：{html.escape(str(summary.get('dated_sources') or 0))}；無日期來源：{html.escape(str(summary.get('undated_sources') or 0))}</p>",
+        f"<p>來源總數：{html.escape(str(summary.get('total_sources') or 0))}；"
+        f"明確日期來源：{html.escape(str(summary.get('explicit_dated_sources') or 0))}；"
+        f"推測日期來源：{html.escape(str(summary.get('inferred_dated_sources') or 0))}；"
+        f"日期不可驗證：{html.escape(str(summary.get('undated_sources') or 0))}</p>",
         "<p>QA 提醒：" + (html.escape("；".join(str(item) for item in warnings)) if warnings else "無") + "</p>",
         "</article>",
     ]
@@ -464,10 +536,159 @@ def _quality_html(report_json: dict[str, Any]) -> str:
     if policy:
         parts.append("<h3>缺資料解讀規則</h3><ul>")
         parts.extend(
-            f"<li><strong>{html.escape(display_field_label(str(key)))}</strong>：{html.escape(display_value(value))}</li>"
+            f"<li><strong>{html.escape(display_value(key))}</strong>：{html.escape(display_value(value))}</li>"
             for key, value in policy.items()
         )
         parts.append("</ul>")
+    return "\n".join(parts)
+
+
+def _required_gap_html(report_json: dict[str, Any]) -> str:
+    structured = report_json.get("structured_data") or {}
+    metadata = report_json.get("metadata") or {}
+    gap = (
+        structured.get("required_data_gap_summary")
+        or metadata.get("required_data_gap_summary")
+        or (metadata.get("report_quality") or {}).get("required_data_gap_summary")
+        or {}
+    )
+    if not isinstance(gap, dict) or not gap:
+        return "<h2>必備資料檢查</h2><p>本報告沒有必備資料缺口檢查結果。</p>"
+
+    requirement_count = int(gap.get("requirement_count") or 0)
+    covered_count = int(gap.get("covered_count") or 0)
+    missing_count = int(gap.get("missing_count") or 0)
+    coverage = round((covered_count / requirement_count) * 100, 1) if requirement_count else 0
+    status = display_value(gap.get("status") or "")
+    parts = [
+        "<h2>必備資料檢查</h2>",
+        '<article class="quality-card">',
+        f"<p>狀態：<strong>{html.escape(status)}</strong></p>",
+        f"<p>必備項目：{html.escape(str(requirement_count))}；已覆蓋：{html.escape(str(covered_count))}；"
+        f"缺口：{html.escape(str(missing_count))}；覆蓋率：{html.escape(str(coverage))}%</p>",
+        "<p>hard 缺口會直接降低報告可信度；soft 缺口表示仍應追資料，但不一定阻止初步分析。</p>",
+        "</article>",
+    ]
+
+    hard_missing = gap.get("hard_missing") or []
+    soft_missing = gap.get("soft_missing") or []
+    missing = gap.get("missing") or []
+    if missing and not (hard_missing or soft_missing):
+        hard_missing = [item for item in missing if isinstance(item, dict) and item.get("tier") == "hard"]
+        soft_missing = [item for item in missing if isinstance(item, dict) and item.get("tier") != "hard"]
+    covered = gap.get("covered") or []
+    if hard_missing or soft_missing:
+        parts.append("<h3>待補資料</h3>")
+        rows = ["| 等級 | 欄位 | 說明 | 建議補查 query |", "|---|---|---|---|"]
+        for tier, items in (("hard", hard_missing), ("soft", soft_missing)):
+            for item in items[:50]:
+                if not isinstance(item, dict):
+                    continue
+                queries = "；".join(str(q) for q in (item.get("backfill_queries") or [])[:3])
+                rows.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            display_value(tier),
+                            display_value(item.get("field")),
+                            display_value(item.get("label")),
+                            display_value(queries),
+                        ]
+                    )
+                    + " |"
+                )
+        parts.append(_markdown_table_to_html(rows))
+    else:
+        parts.append("<p>沒有必備資料缺口。</p>")
+
+    if covered:
+        parts.append("<h3>已覆蓋項目</h3>")
+        rows = ["| 欄位 | 說明 | 命中來源 |", "|---|---|---|"]
+        for item in covered[:50]:
+            if not isinstance(item, dict):
+                continue
+            source_ids = "、".join(str(sid) for sid in (item.get("matched_source_ids") or []))
+            rows.append(
+                "| "
+                + " | ".join(
+                    [
+                        display_value(item.get("field")),
+                        display_value(item.get("label")),
+                        display_value(source_ids or item.get("matched_source_count") or 0),
+                    ]
+                )
+                + " |"
+            )
+        parts.append(_markdown_table_to_html(rows))
+
+    remaining = structured.get("required_data_gap_remaining_tasks") or {}
+    if isinstance(remaining, dict) and remaining.get("tasks"):
+        parts.append("<h3>剩餘補查任務</h3>")
+        rows = ["| 任務 | Query 數 | 代表 query |", "|---|---:|---|"]
+        for task in (remaining.get("tasks") or [])[:20]:
+            if not isinstance(task, dict):
+                continue
+            queries = task.get("queries") or []
+            rows.append(
+                "| "
+                + " | ".join(
+                    [
+                        display_value(task.get("label") or task.get("index")),
+                        display_value(task.get("query_count") or len(queries)),
+                        display_value(queries[0] if queries else ""),
+                    ]
+                )
+                + " |"
+            )
+        parts.append(_markdown_table_to_html(rows))
+    backfill = structured.get("required_data_gap_backfill_tasks") or {}
+    if isinstance(backfill, dict) and backfill.get("tasks"):
+        parts.append("<h3>補搜任務紀錄</h3>")
+        rows = ["| 任務 | Query 數 | 代表 query |", "|---|---:|---|"]
+        for task in (backfill.get("tasks") or [])[:20]:
+            if not isinstance(task, dict):
+                continue
+            queries = task.get("queries") or []
+            rows.append(
+                "| "
+                + " | ".join(
+                    [
+                        display_value(task.get("label") or task.get("index")),
+                        display_value(task.get("query_count") or len(queries)),
+                        display_value(queries[0] if queries else ""),
+                    ]
+                )
+                + " |"
+            )
+        parts.append(_markdown_table_to_html(rows))
+
+    provider_rows = ["| 補搜工具 | 狀態 | 來源數 | 錯誤 |", "|---|---|---:|---|"]
+    has_provider_rows = False
+    for key, label in (
+        ("required_gap_minimax_discovery", "MiniMax MCP Search"),
+        ("required_gap_tavily_discovery", "Tavily Search"),
+    ):
+        payload = structured.get(key) or {}
+        if not isinstance(payload, dict) or not payload:
+            continue
+        diagnostics = payload.get("diagnostics") or {}
+        errors = diagnostics.get("error_reasons") or payload.get("error_reasons") or []
+        provider_rows.append(
+            "| "
+            + " | ".join(
+                [
+                    label,
+                    display_value(payload.get("status") or diagnostics.get("status") or ""),
+                    display_value(payload.get("source_count") or len(payload.get("sources") or [])),
+                    display_value("；".join(str(item) for item in errors[:6])),
+                ]
+            )
+            + " |"
+        )
+        has_provider_rows = True
+    if has_provider_rows:
+        parts.append("<h3>補搜工具診斷</h3>")
+        parts.append(_markdown_table_to_html(provider_rows))
     return "\n".join(parts)
 
 
@@ -491,6 +712,8 @@ def _sources_html(report_json: dict[str, Any]) -> str:
         date = html.escape(str(item.get("published_date") or ""))
         score = html.escape(str(q.get("source_quality_score") or ""))
         quality_level = html.escape(display_value(q.get("source_quality_level") or ""))
+        fetch_status = html.escape(display_value(item.get("fetch_status") or q.get("fetch_status") or ""))
+        fetch_quality = html.escape(display_value(item.get("fetch_quality") or q.get("fetch_quality") or ""))
         snippet = html.escape(normalize_report_text(str(item.get("snippet") or "")))
         link = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>' if url.startswith(("http://", "https://")) else url
         meta_parts = [
@@ -500,6 +723,8 @@ def _sources_html(report_json: dict[str, Any]) -> str:
             f"發布日期：{date}" if date else "",
             f"品質分數：{score}" if score else "",
             f"品質等級：{quality_level}" if quality_level else "",
+            f"正文狀態：{fetch_status}" if fetch_status else "",
+            f"正文品質：{fetch_quality}" if fetch_quality else "",
         ]
         meta = "；".join(part for part in meta_parts if part)
         cards.append(f'<article class="source-card"><div class="source-title">[{sid}] {title}</div><div class="source-meta">{meta}</div><div>{link}</div>{f"<p>{snippet}</p>" if snippet else ""}</article>')
@@ -628,3 +853,224 @@ def _is_separator_row(row: list[str]) -> bool:
 
 def _looks_numeric(value: str) -> bool:
     return bool(re.fullmatch(r"[-+]?[\d,.]+%?", str(value or "").strip()))
+
+
+def _core_section_label(section: str) -> str:
+    labels = {
+        "quantitative_market": "全市場量化資料",
+        "market_score": "市場分數",
+        "volatility": "波動率與風險指標",
+        "industry_flow": "產業資金流",
+        "fear_greed": "恐懼貪婪指標",
+        "global_public_macro": "全球公開總經資料",
+        "unified_evidence_pack": "統一證據包",
+        "theme": "題材",
+        "matched_companies": "命中公司",
+        "topic_context": "題材脈絡",
+        "supply_chain_profile": "供應鏈輪廓",
+        "theme_rankings": "題材排行",
+        "sector_rankings": "族群排行",
+        "sector_strength": "類股強弱",
+        "news_context": "新聞脈絡",
+        "feature_pack": "特徵資料包",
+        "data_coverage": "資料覆蓋狀態",
+    }
+    return labels.get(section, display_value(section))
+
+
+def _core_status_label(status: str) -> str:
+    labels = {
+        "direct": "已直接入模",
+        "appendix_only": "僅保留附錄",
+        "source_missing": "資料源不足",
+        "compression_error": "入模整理錯誤",
+        "not_required": "本指令不需要",
+    }
+    return labels.get(status, display_value(status))
+
+
+def _ai_audit_html(report_json: dict[str, Any]) -> str:
+    metadata = report_json.get("metadata") or {}
+    audit = metadata.get("ai_input_audit") or {}
+    confidence = metadata.get("report_confidence") or {}
+    prompt_context = metadata.get("ai_prompt_context") or {}
+    high_package = metadata.get("high_model_input_package") or {}
+    ai_received = audit.get("ai_received") or {}
+    ai_not_received = audit.get("ai_not_received_directly") or {}
+    source_coverage = audit.get("source_coverage") or {}
+    structured = audit.get("structured_coverage") or {}
+    core_audit = ((high_package.get("command_specific_data") or {}).get("core_input_audit") or {})
+    core_sections = core_audit.get("sections") or []
+
+    parts = [
+        "<h2>AI 入模審計</h2>",
+        '<article class="quality-card">',
+        f"<p>報告可信度：<strong>{html.escape(str(confidence.get('confidence_label') or '未評估'))}</strong>"
+        f"（{html.escape(str(confidence.get('confidence_score') or 0))}/100）</p>",
+        f"<p>AI 直接入模來源：{html.escape(str(ai_received.get('selected_source_count') or 0))} 筆；"
+        f"未直接入模來源：{html.escape(str(ai_not_received.get('omitted_source_count') or 0))} 筆。</p>",
+        f"<p>官方來源：{html.escape(str(source_coverage.get('official_sources') or 0))}；"
+        f"媒體來源：{html.escape(str(source_coverage.get('media_sources') or 0))}；"
+        f"反證或風險來源：{html.escape(str(source_coverage.get('risk_or_counter_sources') or 0))}；"
+        f"明確日期來源：{html.escape(str(source_coverage.get('explicit_dated_sources') or 0))}；"
+        f"推測日期來源：{html.escape(str(source_coverage.get('inferred_dated_sources') or 0))}；"
+        f"日期不可驗證：{html.escape(str(source_coverage.get('undated_sources') or 0))}。</p>",
+        "</article>",
+        "<p>本頁說明高階模型本次直接收到哪些資料。未直接入模不代表資料遺失；完整原始資料仍保留在 JSON、HTML 附錄與完整來源分頁。</p>",
+    ]
+
+    coverage = metadata.get("ai_workflow_coverage") or high_package.get("ai_workflow_coverage") or {}
+    if isinstance(coverage, dict) and coverage:
+        checks = coverage.get("checks") or {}
+        not_applicable = {str(item) for item in (coverage.get("not_applicable") or [])}
+        labels = {
+            "local_data_package": "本地資料整理包",
+            "low_model_digest": "MiniMax M3 低階整理底稿",
+            "high_model_input_package": "高階模型入模包",
+            "deduped_or_indexed_input": "去重或索引化入模",
+            "source_index": "來源索引",
+            "input_audit": "入模審計",
+            "html_sections": "HTML 分頁",
+            "diagnostics": "Prompt / token 診斷",
+        }
+        coverage_rows = ["| 最佳化項目 | 狀態 |", "|---|---|"]
+        for key in coverage.get("standard_capabilities") or labels:
+            key_text = str(key)
+            if key_text in not_applicable:
+                status_text = "不適用"
+            else:
+                status_text = "已接入" if checks.get(key_text) else "待補強"
+            coverage_rows.append(f"| {labels.get(key_text, display_value(key_text))} | {status_text} |")
+        coverage_rows.append(f"| 整體狀態 | {display_value(coverage.get('status'))} |")
+        coverage_rows.append(f"| 去重策略 | {display_value(coverage.get('dedupe_strategy'))} |")
+        if not_applicable:
+            coverage_rows.append(f"| 不適用項目 | {'、'.join(display_value(x) for x in sorted(not_applicable))} |")
+        if coverage.get("missing_capabilities"):
+            coverage_rows.append(f"| 待補項目 | {'、'.join(display_value(x) for x in coverage.get('missing_capabilities') or [])} |")
+        parts.append("<h3>共用最佳化覆蓋度</h3>")
+        parts.append(_markdown_table_to_html(coverage_rows))
+    reasons = confidence.get("reasons") or []
+    warnings = confidence.get("warnings") or []
+    if reasons or warnings:
+        parts.append("<h3>可信度說明</h3><ul>")
+        parts.extend(f"<li>{html.escape(display_value(item))}</li>" for item in reasons)
+        parts.extend(f"<li>提醒：{html.escape(display_value(item))}</li>" for item in warnings)
+        parts.append("</ul>")
+
+    available = structured.get("available_sections") or []
+    missing = structured.get("missing_sections") or []
+    if core_sections:
+        available = [
+            _core_section_label(str(item.get("section") or ""))
+            for item in core_sections
+            if item.get("status") == "direct"
+        ]
+        missing = [
+            f"{_core_section_label(str(item.get('section') or ''))}（{_core_status_label(str(item.get('status') or ''))}）"
+            for item in core_sections
+            if item.get("status") != "direct"
+        ]
+
+    rows = ["| 項目 | 說明 |", "|---|---|"]
+    rows.append(f"| AI 入模資料大小 | {display_value((audit.get('context_size') or {}).get('prompt_context_chars'))} 字 |")
+    rows.append(f"| 高階模型已直接收到的資料類型 | {'、'.join(display_value(str(item)) for item in available) or '無'} |")
+    rows.append(f"| 高階模型未直接收到的資料類型（完整資料仍在 JSON / HTML 附錄） | {'、'.join(display_value(str(item)) for item in missing) or '無'} |")
+    rows.append(f"| 未直接入模原因 | {display_value(ai_not_received.get('omitted_reason_counts') or '無')} |")
+    parts.append(_markdown_table_to_html(rows))
+
+    if core_sections:
+        parts.append("<h3>核心資料入模狀態</h3>")
+        parts.append("<p>這裡檢查每個指令需要的核心資料是否已送入高階模型；若標示為「本指令不需要」，代表該資料類型不屬於本次指令的必要輸入。</p>")
+        core_rows = ["| 資料類型 | 入模狀態 | 原始筆數 | 入模筆數 | 說明 |", "|---|---:|---:|---:|---|"]
+        for item in core_sections:
+            section = _core_section_label(str(item.get("section") or ""))
+            status = _core_status_label(str(item.get("status") or ""))
+            raw_count = display_value(item.get("raw_count"))
+            sent_count = display_value(item.get("sent_count"))
+            note = display_value(str(item.get("note") or ""))
+            core_rows.append(f"| {section} | {status} | {raw_count} | {sent_count} | {note} |")
+        parts.append(_markdown_table_to_html(core_rows))
+
+    selected_sources = ((metadata.get("ai_data_center") or {}).get("source_selection") or {}).get("selected_sources") or []
+    if selected_sources:
+        parts.append("<h3>AI 實際入模來源</h3>")
+        source_rows = ["| 來源 | 入模原因 |", "|---|---|"]
+        for item in selected_sources[:30]:
+            source = item.get("source") or {}
+            title = display_value(source.get("title") or source.get("url") or "")
+            reasons_text = "、".join(display_value(reason) for reason in (item.get("reasons") or []))
+            source_rows.append(f"| {title} | {reasons_text} |")
+        parts.append(_markdown_table_to_html(source_rows))
+
+    if prompt_context:
+        parts.append("<h3>入模資料說明</h3>")
+        note = prompt_context.get("說明") or prompt_context.get("note") or "完整資料仍保存在報告 JSON。"
+        parts.append(f"<p>{html.escape(display_value(note))}</p>")
+    return "\n".join(parts)
+
+
+def _low_model_digest_html(report_json: dict[str, Any]) -> str:
+    metadata = report_json.get("metadata") or {}
+    digest = metadata.get("low_model_digest") or {}
+    validation = metadata.get("low_model_validation") or {}
+    prompt_path = metadata.get("low_model_prompt_path")
+    model = metadata.get("low_model_model") or digest.get("model") or "MiniMax M3"
+    status = str(digest.get("status") or metadata.get("low_model_status") or "").lower()
+    error = str(digest.get("error") or validation.get("error") or metadata.get("low_model_error") or "")
+
+    if not digest and not validation and not prompt_path:
+        return "<h2>MiniMax M3 資料整理底稿</h2><p>本次沒有產生低階模型資料整理底稿。</p>"
+
+    if status in {"failed", "error"} or error:
+        if "429" in error or "quota" in error.lower() or "usage" in error.lower() or "limit" in error.lower():
+            message = "MiniMax M3 低階資料整理失敗：額度或速率限制。系統已改用本地 AI 資料中心與高階模型繼續產出報告。"
+        else:
+            message = "MiniMax M3 低階資料整理失敗。系統已保留診斷資訊，並改用本地 AI 資料中心與高階模型繼續產出報告。"
+    elif status in {"success", "ok", "completed"}:
+        message = "MiniMax M3 已完成低階資料整理。此底稿只供高階模型參考，不是最終投研結論。"
+    elif status in {"skipped", "skip"}:
+        message = "MiniMax M3 低階資料整理已略過。完整資料仍保留於本地資料包、JSON 與報告附錄。"
+    else:
+        message = "MiniMax M3 低階資料整理狀態未明。請以主報告與入模審計為準。"
+
+    rows = ["| 項目 | 內容 |", "|---|---|"]
+    rows.append(f"| 模型 | {display_value(model)} |")
+    rows.append(f"| 狀態 | {display_value(status or '未標示')} |")
+    rows.append(f"| 說明 | {display_value(message)} |")
+    if prompt_path:
+        rows.append(f"| Prompt 紀錄 | {display_value(prompt_path)} |")
+    prompt_chars = digest.get("prompt_chars") or validation.get("prompt_chars") or metadata.get("low_model_prompt_chars")
+    estimated_tokens = digest.get("estimated_tokens") or validation.get("estimated_tokens") or metadata.get("low_model_estimated_tokens")
+    source_count = digest.get("source_count") or validation.get("source_count") or metadata.get("low_model_source_count")
+    if prompt_chars is not None:
+        rows.append(f"| Prompt 字數 | {display_value(prompt_chars)} |")
+    if estimated_tokens is not None:
+        rows.append(f"| 預估 Token | {display_value(estimated_tokens)} |")
+    if source_count is not None:
+        rows.append(f"| 來源數 | {display_value(source_count)} |")
+    if error:
+        rows.append(f"| 失敗原因 | {display_value(error)} |")
+
+    parts = ["<h2>MiniMax M3 資料整理底稿</h2>", _markdown_table_to_html(rows)]
+    sections = [
+        ("事實整理", digest.get("fact_packets") or digest.get("facts")),
+        ("事件摘要", digest.get("event_summary") or digest.get("events")),
+        ("風險證據", digest.get("risk_evidence")),
+        ("反證資料", digest.get("counter_evidence")),
+        ("資料缺口", digest.get("missing_data")),
+    ]
+    for title, value in sections:
+        if not value:
+            continue
+        parts.append(f"<h3>{html.escape(title)}</h3>")
+        if isinstance(value, list):
+            parts.append("<ul>")
+            for item in value[:40]:
+                parts.append(f"<li>{html.escape(display_value(item))}</li>")
+            if len(value) > 40:
+                parts.append(f"<li>另有 {len(value) - 40} 筆，請見 JSON 附錄。</li>")
+            parts.append("</ul>")
+        else:
+            parts.append(f"<p>{html.escape(display_value(value))}</p>")
+
+    return "\n".join(parts)

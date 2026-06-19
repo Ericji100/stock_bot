@@ -7,6 +7,7 @@ from unittest.mock import patch
 from research_center.command_parser import parse_command_text
 from research_center.config import ResearchCenterConfig
 from research_center.models import SourceItem
+from research_center.ai_workflow_service import build_high_model_input_package
 from research_center.orchestrator import ResearchCenter
 from research_center.segmented_analysis_service import (
     SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
@@ -192,6 +193,39 @@ def test_segmented_theme_analysis_calls_multiple_small_prompts():
     assert "segment 9" in result.markdown
 
 
+def test_segmented_theme_analysis_uses_shared_high_model_packet_when_available():
+    request = parse_command_text("/theme_radar --model minimax")
+    data = _theme_radar_data()
+    sources = _theme_sources(30)
+    data["high_model_input_package"] = build_high_model_input_package(
+        request,
+        data,
+        sources,
+        prompt_chars_estimate=400_000,
+    )
+    client = _FakeMiniMax()
+
+    result = run_segmented_theme_analysis(
+        request=request,
+        structured_data=data,
+        sources=sources,
+        ai_client=client,
+        model_name="MiniMax-M3",
+    )
+
+    self_labels = [run.label for run in result.segment_runs]
+    assert self_labels == [
+        "local_core_packet",
+        "evidence_and_low_model",
+        "sources_and_excerpts",
+        "local_scoring_and_audit",
+    ]
+    assert result.diagnostics["segment_count"] == 4
+    assert len(client.prompts) == 5
+    assert "本地核心資料包" in client.prompts[0]
+    assert "command_specific_data" in client.prompts[0]
+
+
 def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(monkeypatch):
     request = parse_command_text("/theme_radar --model minimax")
     client = _FakeMiniMax()
@@ -213,11 +247,84 @@ def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(mo
     self_counts = logged_source_counts[:-1]
     assert self_counts
     assert max(self_counts) <= 25
-    assert logged_source_counts[-1] <= 30
+    assert logged_source_counts[-1] <= 109
+
+
+def test_segmented_theme_analysis_fallbacks_when_final_prompt_too_large(monkeypatch):
+    request = parse_command_text("/theme_radar --model minimax")
+    client = _FakeMiniMax()
+    monkeypatch.setattr("research_center.segmented_analysis_service.SEGMENTED_ANALYSIS_FINAL_HARD_CHARS", 1000)
+
+    result = run_segmented_theme_analysis(
+        request=request,
+        structured_data=_theme_radar_data(),
+        sources=_theme_sources(20),
+        ai_client=client,
+        model_name="MiniMax-M3",
+    )
+
+    assert result.diagnostics["final_status"] == "fallback"
+    assert result.diagnostics["final_diagnostics"]["final_prompt_too_large"] is True
+    assert len(client.prompts) == result.diagnostics["segment_count"]
+    assert "最終 AI 整合失敗" in result.markdown
+
+
+def test_theme_radar_high_model_package_uses_stock_index_relations():
+    request = parse_command_text("/theme_radar --model minimax")
+    data = _theme_radar_data()
+    package = build_high_model_input_package(
+        request,
+        data,
+        _theme_sources(10),
+        prompt_chars_estimate=400_000,
+    )
+
+    payload = package["command_specific_data"]["payload"]
+    assert payload["schema_version"] == "theme_radar_relation_payload_v1"
+    assert payload["stock_index"]
+    assert payload["theme_rankings"]
+    assert "representative_stocks" not in payload["theme_rankings"][0]
+    assert "representative_stock_codes" in payload["theme_rankings"][0]
+    assert payload["integrity_counts"]["stock_index_count"] >= 60
 
 
 class SegmentedAnalysisSourceFilterTests(unittest.TestCase):
-    def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(self) -> None:
+    def test_segmented_theme_analysis_uses_shared_high_model_packet_when_available(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        data = _theme_radar_data()
+        sources = _theme_sources(30)
+        data["high_model_input_package"] = build_high_model_input_package(
+            request,
+            data,
+            sources,
+            prompt_chars_estimate=400_000,
+        )
+        client = _FakeMiniMax()
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=data,
+            sources=sources,
+            ai_client=client,
+            model_name="MiniMax-M3",
+        )
+
+        labels = [run.label for run in result.segment_runs]
+        self.assertEqual(
+            labels,
+            [
+                "local_core_packet",
+                "evidence_and_low_model",
+                "sources_and_excerpts",
+                "local_scoring_and_audit",
+            ],
+        )
+        self.assertEqual(result.diagnostics["segment_count"], 4)
+        self.assertEqual(len(client.prompts), 5)
+        self.assertIn("本地核心資料包", client.prompts[0])
+        self.assertIn("command_specific_data", client.prompts[0])
+
+    def test_segmented_theme_analysis_keeps_complete_source_index(self) -> None:
         request = parse_command_text("/theme_radar --model minimax")
         client = _FakeMiniMax()
         logged_source_counts: list[int] = []
@@ -238,7 +345,146 @@ class SegmentedAnalysisSourceFilterTests(unittest.TestCase):
         segment_counts = logged_source_counts[:-1]
         self.assertTrue(segment_counts)
         self.assertLessEqual(max(segment_counts), 25)
-        self.assertLessEqual(logged_source_counts[-1], 30)
+        self.assertEqual(logged_source_counts[-1], 109)
+
+
+class SegmentedAnalysisResilienceTests(unittest.TestCase):
+    def test_records_actual_model_from_final_call(self) -> None:
+        request = parse_command_text("/theme_radar --model gemini")
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=build_high_model_input_package(
+                request,
+                _theme_radar_data(),
+                _theme_sources(12),
+                prompt_chars_estimate=200000,
+            ),
+            sources=_theme_sources(12),
+            ai_client=_FakeGemini(),
+            model_name="gemini-default",
+            original_prompt_chars=200000,
+        )
+
+        self.assertEqual(result.diagnostics["actual_model"], "gemini-test")
+        self.assertEqual(result.diagnostics["final_diagnostics"]["actual_model"], "gemini-test")
+
+    def test_oversized_segment_is_split_without_dropping_sources(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        data = _theme_radar_data()
+        large_rows = [
+            {
+                "code": f"{5000 + index}",
+                "name": f"BigStock{index}",
+                "industry": "AI電源",
+                "change_pct": 1.0,
+                "volume_ratio": 1.0,
+                "long_evidence": "完整資料不可刪除。" * 500,
+            }
+            for index in range(420)
+        ]
+        data["market_movers"]["top_gainers"] = large_rows
+        data["market_movers"]["top_volume_surge"] = large_rows
+        client = _FakeMiniMax()
+        logged_source_counts: list[int] = []
+        prompt_lengths: list[int] = []
+
+        def fake_write_prompt_log(*args, **kwargs):
+            prompt_lengths.append(len(args[1]))
+            logged_source_counts.append(len(args[4]))
+            return "logs/ai_prompts/fake.json"
+
+        with patch("research_center.segmented_analysis_service.write_prompt_log", fake_write_prompt_log):
+            result = run_segmented_theme_analysis(
+                request=request,
+                structured_data=data,
+                sources=_theme_sources(109),
+                ai_client=client,
+                model_name="MiniMax-M3",
+            )
+
+        self.assertGreater(result.diagnostics["segment_count"], 8)
+        self.assertLessEqual(max(prompt_lengths[:-1]), 140_000)
+        self.assertLessEqual(max(logged_source_counts[:-1]), 25)
+        self.assertEqual(logged_source_counts[-1], 109)
+
+    def test_prior_segment_state_does_not_resend_full_markdown(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        data = _theme_radar_data()
+        data["high_model_input_package"] = build_high_model_input_package(
+            request,
+            data,
+            _theme_sources(8),
+            prompt_chars_estimate=400_000,
+        )
+
+        class LongOutputClient(_FakeMiniMax):
+            def generate_report(self, prompt: str):
+                self.prompts.append(prompt)
+                return _FakeResult(
+                    markdown=("LONG_SEGMENT_NOTE_" * 1000) + f" call={len(self.prompts)}",
+                    raw={"call": len(self.prompts)},
+                    diagnostics={"call": len(self.prompts)},
+                )
+
+        client = LongOutputClient()
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=data,
+            sources=_theme_sources(8),
+            ai_client=client,
+            model_name="MiniMax-M3",
+        )
+
+        self.assertGreaterEqual(result.diagnostics["segment_count"], 4)
+        self.assertLess(len(client.prompts[1]), 80_000)
+        self.assertIn("processed_segment_count", client.prompts[1])
+        self.assertNotIn("LONG_SEGMENT_NOTE_" * 100, client.prompts[1])
+
+    def test_segmented_ai_call_sets_temporary_timeout(self) -> None:
+        class TimeoutAwareClient(_FakeMiniMax):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout_seconds = 1200.0
+                self.seen_timeouts: list[float] = []
+
+            def generate_report(self, prompt: str):
+                self.seen_timeouts.append(self.timeout_seconds)
+                return super().generate_report(prompt)
+
+        request = parse_command_text("/theme_radar --model minimax")
+        client = TimeoutAwareClient()
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=_theme_radar_data(),
+            sources=[],
+            ai_client=client,
+            model_name="MiniMax-M3",
+            call_timeout_seconds=12.5,
+        )
+
+        self.assertTrue(client.seen_timeouts)
+        self.assertTrue(all(value == 12.5 for value in client.seen_timeouts))
+        self.assertEqual(client.timeout_seconds, 1200.0)
+        self.assertEqual(result.diagnostics["call_timeout_seconds"], 12.5)
+
+    def test_failed_segment_is_recorded_and_following_segments_continue(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        client = _FakeMiniMax(fail_on=2)
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=_theme_radar_data(),
+            sources=[],
+            ai_client=client,
+            model_name="MiniMax-M3",
+        )
+
+        self.assertEqual(result.diagnostics["fallback_count"], 1)
+        self.assertEqual(result.segment_runs[1].status, "fallback")
+        self.assertIn("timeout_seconds", result.segment_runs[1].diagnostics)
+        self.assertIn("segment 9", result.markdown)
 
 
 def test_segmented_theme_analysis_keeps_report_when_one_segment_fails():
@@ -256,6 +502,39 @@ def test_segmented_theme_analysis_keeps_report_when_one_segment_fails():
     assert result.diagnostics["fallback_count"] == 1
     assert result.segment_runs[1].status == "fallback"
     assert "segment 9" in result.markdown
+
+
+def test_theme_radar_final_prompt_stays_bounded_for_large_rankings():
+    request = parse_command_text("/theme_radar --model minimax")
+    data = _theme_radar_data()
+    large_note = "大型資料列" * 1200
+    rows = [
+        {
+            "theme_name": f"題材{idx}",
+            "score": 100 - idx,
+            "description": large_note,
+            "representative_stocks": data["market_movers"]["top_gainers"],
+        }
+        for idx in range(80)
+    ]
+    data["theme_rankings"] = rows
+    data["sector_strength"]["sector_rankings"] = rows
+    data["sector_strength"]["subsector_rankings"] = rows
+    client = _FakeMiniMax()
+
+    result = run_segmented_theme_analysis(
+        request=request,
+        structured_data=data,
+        sources=[],
+        ai_client=client,
+        model_name="MiniMax-M3",
+    )
+
+    assert result.diagnostics["final_status"] == "success"
+    assert result.diagnostics["final_prompt_chars"] < 300_000
+    assert len(client.prompts[-1]) < 300_000
+    assert "omitted_count" in client.prompts[-1]
+    assert "大型資料列" in client.prompts[-1]
 
 
 def test_sector_strength_segmented_analysis_uses_market_and_sector_segments():
@@ -343,8 +622,10 @@ def test_theme_radar_minimax_orchestrator_uses_segmented_flow(monkeypatch):
         assert result.report_json["metadata"]["analysis_provider"] == "minimax_segmented"
         segmented = result.report_json["metadata"]["segmented_ai_analysis"]
         assert segmented["mode"] == "segmented_theme_analysis"
-        assert segmented["segment_count"] == 8
-        assert len(center.minimax.prompts) == 9
+        assert segmented["segment_count"] == 4
+        assert len(center.minimax.prompts) == 5
+        assert "本地核心資料包" in center.minimax.prompts[0]
+        assert "command_specific_data" in center.minimax.prompts[0]
     finally:
         safe_remove_test_cache("segmented_analysis/orchestrator")
 
@@ -381,7 +662,9 @@ def test_theme_radar_deepseek_orchestrator_uses_segmented_flow(monkeypatch):
         assert result.report_json["metadata"]["analysis_provider"] == "opencode_go_segmented"
         segmented = result.report_json["metadata"]["segmented_ai_analysis"]
         assert segmented["original_prompt_chars"] == SEGMENTED_ANALYSIS_PROMPT_THRESHOLD
-        assert len(center.opencode.prompts) == 9
+        assert len(center.opencode.prompts) == 5
+        assert "本地核心資料包" in center.opencode.prompts[0]
+        assert "command_specific_data" in center.opencode.prompts[0]
     finally:
         safe_remove_test_cache("segmented_analysis/orchestrator_deepseek")
 
@@ -416,7 +699,9 @@ def test_theme_radar_gemini_orchestrator_uses_segmented_flow(monkeypatch):
         assert result.report_json["metadata"]["analysis_provider"] == "gemini_segmented"
         segmented = result.report_json["metadata"]["segmented_ai_analysis"]
         assert segmented["original_prompt_chars"] == SEGMENTED_ANALYSIS_PROMPT_THRESHOLD
-        assert len(center.gemini.prompts) == 9
-        assert center.gemini.enable_grounding_values == [False, False, False, False, False, False, False, False, False]
+        assert len(center.gemini.prompts) == 5
+        assert center.gemini.enable_grounding_values == [False, False, False, False, False]
+        assert "本地核心資料包" in center.gemini.prompts[0]
+        assert "command_specific_data" in center.gemini.prompts[0]
     finally:
         safe_remove_test_cache("segmented_analysis/orchestrator_gemini")

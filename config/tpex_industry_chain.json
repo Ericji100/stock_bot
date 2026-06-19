@@ -1,6 +1,6 @@
 {
   "source": "tpex_industry_chain",
-  "updated_at": "2026-05-24T14:09:05+08:00",
+  "updated_at": "2026-06-18T21:18:57+08:00",
   "source_url": "https://ic.tpex.org.tw/",
   "items": [
     {
@@ -439,7 +439,6 @@
     "note": "TPEx cache is an industry-chain reference, not an investment conclusion.",
     "ssl_verify": false,
     "ssl_fallback": true,
-    "ssl_fallback_reason": "HTTPSConnectionPool(host='ic.tpex.org.tw', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Missing Subject Key Identifier (_ssl.c:1081)')))",
-    "mojibake_repaired": true
+    "ssl_fallback_reason": "HTTPSConnectionPool(host='ic.tpex.org.tw', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Missing Subject Key Identifier (_ssl.c:1081)')))"
   }
 }

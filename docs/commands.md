@@ -33,7 +33,7 @@ AI 指令通常支援：
 | 指令 | 用途 |
 |---|---|
 | `/research` | 互動式個股研究 |
-| `/research 2330` | 直接研究個股 |
+| `/research 2330` | 直接深度研究個股，等同 `/research 2330 --deep` |
 | `/research 2330 --score` | 個股評分研究 |
 | `/research 2330 --deep` | 深度個股研究 |
 | `/research 2330 --date 2026-05-22` | 指定日期研究 |

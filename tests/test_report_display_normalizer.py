@@ -157,6 +157,29 @@ class ThemeRadarDisplayNormalizerTests(unittest.TestCase):
         for raw_token in ["C / (V+C)", "V 數", "高 V", "V 仍須以 L1", "候選股（C）", "已驗證股（V）", "L1 official"]:
             self.assertNotIn(raw_token, text)
 
+    def test_normalize_theme_radar_coverage_pct_labels(self):
+        raw = (
+            "financial validation coverage pct = 0%、"
+            "revenue exposure coverage pct = 0%、"
+            "chip validation coverage pct = 0%\n"
+            "| theme mapping coverage pct | 96.8% |\n"
+            "| company relation 證據 coverage pct | 99.64% |\n"
+            "| customer coverage pct | 96.72% |\n"
+            "| supply chain 供應鏈層級 coverage pct | 57.66% |"
+        )
+
+        text = normalize_report_text(raw)
+
+        self.assertIn("財務驗證覆蓋率", text)
+        self.assertIn("營收曝險覆蓋率", text)
+        self.assertIn("籌碼驗證覆蓋率", text)
+        self.assertIn("題材映射覆蓋率", text)
+        self.assertIn("公司關聯證據覆蓋率", text)
+        self.assertIn("客戶資料覆蓋率", text)
+        self.assertIn("供應鏈層級覆蓋率", text)
+        for raw_token in ["financial validation", "revenue exposure", "chip validation", "coverage pct", " pct"]:
+            self.assertNotIn(raw_token, text)
+
 
 def test_report_artifacts_normalize_markdown_html_summary_but_keep_json_structured_data():
     tmp_path = ensure_test_cache_dir("report_display_normalizer/basic_artifacts")

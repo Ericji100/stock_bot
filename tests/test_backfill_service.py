@@ -1289,6 +1289,17 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                     "tdcc": {"coverage_pct": 0.5},
                 },
             }
+            result.backfill_dag_events = [
+                {
+                    "schema_version": "backfill_dag_event_v1",
+                    "node_id": "market_universe",
+                    "status": "completed",
+                    "created_at": "2026-05-15T10:00:00+08:00",
+                    "message": "loaded",
+                    "failure_reason": None,
+                    "metadata": {"universe_count": 1500},
+                }
+            ]
             result.priority_pool_count = 2
             with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 write_backfill_complete_marker(date(2026, 5, 15), result)
@@ -1302,6 +1313,9 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
             self.assertEqual(payload["priority_pool_count"], 2)
             self.assertEqual(payload["priority_health"]["tdcc"]["coverage_pct"], 0.5)
             self.assertEqual(payload["chip_readiness_basis"], "all_candidates")
+            self.assertEqual(payload["backfill_dag_events"][0]["node_id"], "market_universe")
+            self.assertEqual(payload["backfill_dag_event_summary"]["event_count"], 1)
+            self.assertIn("market_universe", payload["backfill_dag_summary"]["ready_nodes"])
         finally:
             safe_remove_test_cache("backfill_service/marker_gap_health")
 

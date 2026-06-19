@@ -6,6 +6,7 @@ import pandas as pd
 
 from data_fetcher import StockDataFetcher
 from stock_scanner import StockUniverseEntry, load_price_metrics
+from .data_source_gateway import run_provider_chain
 
 ProgressCallback = Callable[[str], None]
 
@@ -24,12 +25,16 @@ def load_price_metrics_with_fallback(
     stock-specific official/Fugle/Yahoo chain. Large universes are bounded to
     avoid making Telegram commands look frozen for a long time.
     """
-    try:
-        metrics = load_price_metrics(universe)
-        primary_error = None
-    except Exception as exc:
-        metrics = {}
-        primary_error = str(exc)
+    primary_result = run_provider_chain(
+        [("stock_scanner.load_price_metrics", lambda: load_price_metrics(universe))],
+        operation="load_price_metrics",
+    )
+    metrics = primary_result.data if isinstance(primary_result.data, dict) else {}
+    primary_error = None
+    if primary_result.status != "success":
+        failed = [attempt for attempt in primary_result.attempts if attempt.error]
+        primary_error = (failed[-1].error or {}).get("message") if failed else primary_result.status
+    gateway_attempts = primary_result.to_dict().get("attempts", [])
 
     missing = [entry for entry in universe if entry.symbol not in metrics]
     if not missing:
@@ -41,6 +46,7 @@ def load_price_metrics_with_fallback(
             "fallback_attempted": 0,
             "fallback_covered": 0,
             "primary_error": primary_error,
+            "gateway_attempts": gateway_attempts,
         }
 
     if fallback_limit is None:
@@ -82,6 +88,7 @@ def load_price_metrics_with_fallback(
         "fallback_covered": fallback_covered,
         "fallback_skipped_for_runtime": skipped,
         "primary_error": primary_error,
+        "gateway_attempts": gateway_attempts,
         "sample_errors": fallback_errors[:8],
     }
     if progress:

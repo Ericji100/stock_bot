@@ -81,11 +81,21 @@ class ResearchCenterNewFeatureTests(unittest.TestCase):
         self.assertIn("2330.TW", metrics)
         self.assertEqual(metrics["2330.TW"]["price"], 34.0)
 
-    def test_research_normal_prompt_requires_gemini_search(self):
+    def test_research_manual_default_mode_is_deep(self):
+        request = parse_command_text('/research 5425')
+        self.assertEqual(request.mode, 'deep')
+        self.assertFalse(request.score)
+        self.assertFalse(request.source_only)
+
+    def test_research_explicit_modes_override_manual_deep_default(self):
+        self.assertEqual(parse_command_text('/research 5425 --score').mode, 'score')
+        self.assertEqual(parse_command_text('/research 5425 --source-only').mode, 'source_only')
+
+    def test_research_default_deep_prompt_loads_deep_template(self):
         request = parse_command_text('/research 5425')
         prompt = build_prompt(request, structured_data={}, source_list=[])
-        self.assertIn('Gemini Search 任務', prompt)
-        self.assertIn('公司近期重大消息', prompt)
+        self.assertIn('完整個股深度研究報告', prompt)
+        self.assertIn('AI 最終價值重估評分', prompt)
 
     def test_gemini_grounding_chunks_are_extracted_as_sources(self):
         from research_center.gemini_service import _extract_sources
@@ -109,7 +119,6 @@ class ResearchCenterNewFeatureTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
 
 
 

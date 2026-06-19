@@ -95,7 +95,8 @@ def _build_request(command: str, raw_text: str, positionals: list[str], flags: d
     source_only = bool(flags.get("source_only"))
     score = bool(flags.get("score"))
     brief = bool(flags.get("brief"))
-    deep = bool(flags.get("deep"))
+    default_deep = command in {"research", "topic_maintain"} and not (source_only or score or brief)
+    deep = bool(flags.get("deep")) or default_deep
     mode = "source_only" if source_only else "score" if score else "brief" if brief else "deep" if deep else "normal"
 
     output_formats = _parse_output_formats(flags)

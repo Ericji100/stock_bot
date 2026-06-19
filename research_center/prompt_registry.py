@@ -8,6 +8,7 @@ from typing import Any
 from .config import ROOT_DIR
 from .models import CommandRequest, SourceItem
 from .preferred_sources import build_site_queries
+from .prompt_manifest_service import prompt_bundle_for_request
 from .search_query_service import build_search_discovery_tasks
 
 PROMPT_ROOT = ROOT_DIR / "prompt"
@@ -791,6 +792,7 @@ def prompt_metadata(request: CommandRequest) -> dict[str, Any]:
         "template": template_name,
         "base_prompt": "base.md",
         "scoring_files": scoring,
+        "prompt_bundle": prompt_bundle_for_request(request),
         "strict_sections": True,
         "source_rules": True,
     }

@@ -26,6 +26,9 @@
    - `counter_evidence`
 5. 不要輸出 `change_id`、`status`、`model`、`raw_response_path`、`prompt_log_path`。
 6. 若資料不足，不要省略欄位；請填空 array，並在 `missing_data` 說明缺口。
+7. `risk_notes`、`missing_data`、`counter_evidence` 必須用繁體中文寫具體內容；若沒有資料，請填入「目前未找到具體資料」與需要補查的方向，不要只輸出空陣列。
+8. 每個 action 必須在 `missing_data` 或 `counter_evidence` 中交代下一步驗證方向，例如：後續追蹤月營收、法說會、訂單、客戶、出貨、法人買賣超、族群量價或反證來源。
+9. 不得只寫正向理由；每個題材至少要有一項風險、反證或資料不足說明。
 
 ## 語言與格式
 

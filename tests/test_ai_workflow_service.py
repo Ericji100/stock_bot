@@ -410,6 +410,30 @@ class LowModelDigestTests(unittest.TestCase):
             _digest_fingerprint(_request(), second, purpose="stable"),
         )
 
+    def test_low_model_fingerprint_ignores_order_and_usage_noise(self) -> None:
+        first = {
+            "command": "theme_radar",
+            "prompt_chars": 120000,
+            "estimated_tokens": 30000,
+            "text_evidence": [
+                {"source_id": "S002", "title": "B", "snippet": "second"},
+                {"source_id": "S001", "title": "A", "snippet": "first"},
+            ],
+        }
+        second = {
+            "command": "theme_radar",
+            "prompt_chars": 125000,
+            "estimated_tokens": 31250,
+            "text_evidence": [
+                {"source_id": "S001", "title": "A", "snippet": "first"},
+                {"source_id": "S002", "title": "B", "snippet": "second"},
+            ],
+        }
+        self.assertEqual(
+            _digest_fingerprint(_request_for("theme_radar"), first, purpose="stable"),
+            _digest_fingerprint(_request_for("theme_radar"), second, purpose="stable"),
+        )
+
     def test_html_contains_low_model_tab(self) -> None:
         html = render_report_html(
             {

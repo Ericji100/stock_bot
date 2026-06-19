@@ -70,6 +70,48 @@ class CommandParserTests(unittest.TestCase):
         request = center.parse("/research 5425 --deep --model deepseek")
         self.assertEqual(request.ai_model, "deepseek")
 
+    def test_topic_maintain_defaults_to_deep_mode(self):
+        request = parse_command_text("/topic_maintain --model minimax")
+        self.assertEqual(request.command, "topic_maintain")
+        self.assertEqual(request.mode, "deep")
+        self.assertEqual(request.ai_model, "minimax")
+
+
+class TopicMaintainOrchestratorTests(unittest.TestCase):
+    def test_failed_topic_maintain_summary_does_not_show_success_title(self):
+        from research_center.topic_models import TopicChangeMode, TopicChangePack, TopicChangeStatus
+
+        config = ResearchCenterConfig(
+            api_key=None,
+            minimax_api_key=None,
+            serper_api_key=None,
+            jina_api_key=None,
+            opencode_api_key=None,
+        )
+        center = ResearchCenter(config)
+        request = parse_command_text("/topic_maintain --deep --model minimax")
+        pack = TopicChangePack(
+            change_id="change_failed",
+            parent_change_id=None,
+            mode=TopicChangeMode.UPDATE,
+            status=TopicChangeStatus.FAILED,
+            model="minimax",
+            created_at="2026-06-19T10:00:00+0800",
+            updated_at="2026-06-19T10:00:00+0800",
+            summary="候選 0 筆，產生 0 筆可審核變更。",
+            confidence="medium",
+            actions=[],
+            warnings=["candidate_extract: timeout"],
+            sources=[],
+        )
+
+        with patch("research_center.orchestrator.run_topic_maintain", return_value=pack):
+            result = center._run_topic_management_command(request)
+
+        self.assertIn("⚠️ 變更包產生但未通過檢查", result.summary)
+        self.assertIn("狀態：failed", result.summary)
+        self.assertNotIn("✅ 變更包已產生", result.summary)
+
 
 class AIModelDispatchTests(unittest.TestCase):
     """Test AI model dispatch mapping for Gemini, DeepSeek, and MiniMax."""

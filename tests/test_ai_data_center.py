@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import unittest
 
 from research_center.ai_data_center import build_ai_data_center_bundle
@@ -66,6 +67,25 @@ class AiDataCenterTests(unittest.TestCase):
         self.assertEqual(bundle["three_layer_context"]["source_sufficiency"]["source_count"], 3)
         self.assertGreaterEqual(bundle["report_confidence"]["confidence_score"], 40)
         self.assertEqual(len(bundle["three_layer_context"]["raw_sources"]), 3)
+
+    def test_ai_input_audit_does_not_mutate_structured_data(self):
+        request = CommandRequest(command="research", raw_text="/research 2330 --deep", target="2330", mode="deep")
+        structured = {
+            "stock": {"code": "2330", "name": "TSMC"},
+            "price_data": [{"Close": 1000}],
+            "financial_data": [{"EPS": 10}],
+        }
+        original = copy.deepcopy(structured)
+
+        bundle = build_ai_data_center_bundle(
+            request,
+            structured,
+            [SourceItem("S001", "TWSE official", "https://www.twse.com.tw/a", "Level 1", "2026-05-01")],
+        )
+
+        self.assertEqual(structured, original)
+        self.assertIn("ai_input_audit", bundle)
+        self.assertGreater(bundle["ai_input_audit"]["context_size"]["prompt_context_chars"], 0)
 
     def test_ai_prompt_context_cleans_source_text_before_ai_input(self):
         request = CommandRequest(command="macro", raw_text="/macro 台股", market_scope="台股")

@@ -54,8 +54,13 @@ def build_stock_export_workbook(symbol_or_code: str) -> tuple[BytesIO, str, str]
     return buffer, file_name, meta.display_name
 
 
-def inspect_stock_export(symbol_or_code: str, sample_rows: int = 3) -> dict[str, object]:
-    buffer, file_name, display_name = build_stock_export_workbook(symbol_or_code)
+def inspect_stock_export_workbook(
+    buffer: BytesIO,
+    file_name: str,
+    display_name: str,
+    sample_rows: int = 3,
+) -> dict[str, object]:
+    buffer.seek(0)
     workbook = load_workbook(buffer, data_only=True)
 
     sheets: dict[str, dict[str, object]] = {}
@@ -69,9 +74,16 @@ def inspect_stock_export(symbol_or_code: str, sample_rows: int = 3) -> dict[str,
             "columns": header,
             "preview": preview,
         }
+    workbook.close()
+    buffer.seek(0)
 
     return {
         "file_name": file_name,
         "display_name": display_name,
         "sheets": sheets,
     }
+
+
+def inspect_stock_export(symbol_or_code: str, sample_rows: int = 3) -> dict[str, object]:
+    buffer, file_name, display_name = build_stock_export_workbook(symbol_or_code)
+    return inspect_stock_export_workbook(buffer, file_name, display_name, sample_rows=sample_rows)

@@ -36,6 +36,14 @@ from monitor_service import (
 )
 from backfill_service import run_full_backfill, parse_backfill_args, format_backfill_health_summary
 from research_center.telegram_handlers import build_research_handlers
+from research_center.command_runtime_service import GLOBAL_COMMAND_RUNTIME
+from research_center.scheduled_task_service import (
+    ScheduledJobRegistration,
+    ScheduledTaskService,
+    ScheduledTaskSpec,
+    format_registered_scheduled_jobs,
+)
+from research_center.resource_guard_service import DEFAULT_RESOURCE_GUARD
 from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
 from research_center.news_repository import NewsRepository
 from research_center.news_formatters import format_news_digest, format_news_refresh_result
@@ -77,6 +85,21 @@ ScheduledTaskRunner = Callable[[], Awaitable[None]]
 _SCHEDULED_TASK_QUEUE: asyncio.Queue[tuple[str, ScheduledTaskRunner]] | None = None
 _SCHEDULED_TASK_WORKER: asyncio.Task | None = None
 _SCHEDULED_CHIP_BACKFILL_TASKS: dict[str, asyncio.Task] = {}
+_SCHEDULED_TASK_SERVICE = ScheduledTaskService(runtime=GLOBAL_COMMAND_RUNTIME)
+SCHEDULED_JOB_REGISTRATIONS: tuple[ScheduledJobRegistration, ...] = (
+    ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30"),
+    ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50"),
+    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（MiniMax M3）", "每日 10:00"),
+    ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45"),
+    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45"),
+    ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00"),
+    ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30"),
+    ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30"),
+    ScheduledJobRegistration("scheduled:chip_cache:1630", "16:30 籌碼快取今日回補", "每日 16:30", queued=False),
+    ScheduledJobRegistration("scheduled:chip_cache:1830", "18:30 籌碼快取今日回補", "每日 18:30", queued=False),
+    ScheduledJobRegistration("scheduled:chip_cache:2100", "21:00 籌碼快取完整回補", "每日 21:00", queued=False),
+    ScheduledJobRegistration("scheduled:full_backfill_check", "完整資料回補檢查", "每 2 小時，啟動後 5 分鐘首次檢查", queued=False),
+)
 BOT_COMMAND_SPECS: tuple[tuple[str, str], ...] = (
     ("start", "顯示機器人指令說明"),
     ("stop", "停止目前執行中的任務"),
@@ -172,35 +195,52 @@ async def enqueue_scheduled_task(
 ) -> None:
     """Queue scheduled report/cache jobs so they run one at a time."""
     global _SCHEDULED_TASK_QUEUE, _SCHEDULED_TASK_WORKER
-    if _SCHEDULED_TASK_QUEUE is None:
-        _SCHEDULED_TASK_QUEUE = asyncio.Queue()
-    ahead = _SCHEDULED_TASK_QUEUE.qsize()
-    await _SCHEDULED_TASK_QUEUE.put((label, runner))
-    if ahead:
-        print(format_cmd_message(f"{label} 已排隊，目前前方 {ahead} 個任務", "定時任務"), flush=True)
-    else:
-        print(format_cmd_message(f"{label} 已排入定時任務佇列", "定時任務"), flush=True)
-    if _SCHEDULED_TASK_WORKER is None or _SCHEDULED_TASK_WORKER.done():
-        _SCHEDULED_TASK_WORKER = context.application.create_task(_scheduled_task_worker())
-        _SCHEDULED_TASK_WORKER.set_name("定時任務序列佇列")
+    task_id = _scheduled_task_id_from_label(label)
+    spec = ScheduledTaskSpec(
+        task_id=task_id,
+        label=label,
+        task_type="scheduled_task",
+        schedule=_schedule_text_for_label(label),
+        queued=True,
+        resource_group=_scheduled_resource_group(task_id),
+    )
+    await _SCHEDULED_TASK_SERVICE.enqueue(
+        spec,
+        runner,
+        create_task=context.application.create_task,
+    )
+    _SCHEDULED_TASK_QUEUE = _SCHEDULED_TASK_SERVICE.queue
+    _SCHEDULED_TASK_WORKER = _SCHEDULED_TASK_SERVICE.worker
+
+def _scheduled_task_id_from_label(label: str) -> str:
+    for item in SCHEDULED_JOB_REGISTRATIONS:
+        if item.label == label or label.startswith(item.label.split("｜", 1)[0]):
+            return item.task_id
+    if "16:30" in label:
+        return "scheduled:chip_cache:1630"
+    if "18:30" in label:
+        return "scheduled:chip_cache:1830"
+    if "21:00" in label:
+        return "scheduled:chip_cache:2100"
+    safe = "".join(ch if ch.isalnum() else "_" for ch in str(label)).strip("_").lower()
+    return f"scheduled:{safe or 'task'}"
 
 
-async def _scheduled_task_worker() -> None:
-    global _SCHEDULED_TASK_QUEUE
-    if _SCHEDULED_TASK_QUEUE is None:
-        return
-    while True:
-        label, runner = await _SCHEDULED_TASK_QUEUE.get()
-        try:
-            print(format_cmd_message(f"{label} 開始", "定時任務"), flush=True)
-            await runner()
-            print(format_cmd_message(f"{label} 完成", "定時任務"), flush=True)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            print(format_cmd_message(f"{label} 失敗：{exc}", "定時任務"), flush=True)
-        finally:
-            _SCHEDULED_TASK_QUEUE.task_done()
+def _scheduled_resource_group(task_id: str) -> str | None:
+    if task_id.startswith("scheduled:news:"):
+        return "background_news"
+    if task_id.startswith("scheduled:topic_maintain:") or task_id.startswith("scheduled:radar:"):
+        return "background_ai_maintenance"
+    if task_id.startswith("scheduled:chip_cache:") or task_id == "scheduled:full_backfill_check":
+        return "background_backfill"
+    return None
+
+
+def _schedule_text_for_label(label: str) -> str:
+    for item in SCHEDULED_JOB_REGISTRATIONS:
+        if item.label == label or label.startswith(item.label.split("｜", 1)[0]):
+            return item.schedule
+    return ""
 
 
 def split_telegram_message(text: str, limit: int = 4000) -> list[str]:
@@ -358,12 +398,14 @@ async def stop_running_command(update: Update, context: ContextTypes.DEFAULT_TYP
     stop_event = _USER_BACKFILL_STOP_EVENTS.get(chat_id)
     if stop_event and not stop_event.is_set():
         stop_event.set()
+        GLOBAL_COMMAND_RUNTIME.request_stop(f"backfill:manual:{chat_id}")
         await safe_send_reply(update, "已送出停止指令：完整資料回補\n若任務正在等待外部資料來源，背景執行緒可能需要一點時間才會結束。")
         return
 
     # Also trigger scheduled backfill stop only if it is currently running
     if _SCHEDULED_BACKFILL_RUNNING and not _SCHEDULED_BACKFILL_STOP_EVENT.is_set():
         _SCHEDULED_BACKFILL_STOP_EVENT.set()
+        GLOBAL_COMMAND_RUNTIME.request_stop("backfill:scheduled")
         await safe_send_reply(update, "已送出停止指令：定時回補\n若任務正在等待外部資料來源，背景執行緒可能需要一點時間才會結束。")
         return
 
@@ -837,12 +879,21 @@ async def _manual_backfill_background(
     force_refresh: bool,
     stop_event: threading.Event,
 ) -> None:
+    runtime_task_id = f"backfill:manual:{chat_id}"
+    GLOBAL_COMMAND_RUNTIME.start_task(
+        runtime_task_id,
+        label="/backfill",
+        task_type="manual_backfill",
+        user_id=str(chat_id),
+        stop_event=stop_event,
+    )
     heartbeat = ProgressHeartbeat(
         "/backfill",
         sink=lambda message: print(format_cmd_message(message, "完整回補"), flush=True),
     ).start()
 
     def progress(message: str) -> None:
+        GLOBAL_COMMAND_RUNTIME.update_progress(runtime_task_id, message)
         heartbeat.update(message)
         print(format_cmd_message(message, "完整回補"), flush=True)
 
@@ -856,12 +907,29 @@ async def _manual_backfill_background(
             progress,
             stop_event,
         )
+        if decision.status == "completed":
+            GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status})
+        elif decision.status == "stopped":
+            GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+        else:
+            GLOBAL_COMMAND_RUNTIME.update_progress(runtime_task_id, f"{decision.status}:{decision.reason}")
         await _send_backfill_decision_message(bot, chat_id, decision, "完整資料回補")
     except Exception as exc:
         print(format_cmd_message(f"背景完整回補失敗：{exc}", "完整回補"), flush=True)
         await bot.send_message(chat_id=chat_id, text=f"❌ 完整資料回補失敗：{exc}")
     finally:
         heartbeat.stop()
+        task_state = GLOBAL_COMMAND_RUNTIME.get_task(runtime_task_id)
+        if task_state and task_state.get("status") == "running":
+            if stop_event.is_set():
+                GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+            else:
+                GLOBAL_COMMAND_RUNTIME.fail_task(
+                    runtime_task_id,
+                    "background task exited without explicit completion status",
+                    source="backfill",
+                    operation="manual_backfill",
+                )
         task = asyncio.current_task()
         if _USER_BACKFILL_TASKS.get(chat_id) is task:
             _USER_BACKFILL_TASKS.pop(chat_id, None)
@@ -871,12 +939,20 @@ async def _manual_backfill_background(
 
 async def _scheduled_backfill_background() -> None:
     global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
+    runtime_task_id = "backfill:scheduled"
+    GLOBAL_COMMAND_RUNTIME.start_task(
+        runtime_task_id,
+        label="scheduled_backfill",
+        task_type="scheduled_backfill",
+        stop_event=_SCHEDULED_BACKFILL_STOP_EVENT,
+    )
     heartbeat = ProgressHeartbeat(
         "定時回補檢查",
         sink=lambda message: print(format_cmd_message(message, "定時回補檢查"), flush=True),
     ).start()
 
     def progress(message: str) -> None:
+        GLOBAL_COMMAND_RUNTIME.update_progress(runtime_task_id, message)
         heartbeat.update(message)
         print(format_cmd_message(message, "定時回補檢查"), flush=True)
 
@@ -890,6 +966,14 @@ async def _scheduled_backfill_background() -> None:
             progress,
             _SCHEDULED_BACKFILL_STOP_EVENT,
         )
+        if decision.status == "completed":
+            GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status})
+        elif decision.status == "stopped":
+            GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+        elif decision.status == "skipped":
+            GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status, "reason": decision.reason})
+        else:
+            GLOBAL_COMMAND_RUNTIME.update_progress(runtime_task_id, f"{decision.status}:{decision.reason}")
 
         if decision.status == "skipped":
             print(
@@ -935,6 +1019,17 @@ async def _scheduled_backfill_background() -> None:
         print(format_cmd_message(f"背景定時回補失敗：{exc}", "定時回補檢查"), flush=True)
     finally:
         heartbeat.stop()
+        task_state = GLOBAL_COMMAND_RUNTIME.get_task(runtime_task_id)
+        if task_state and task_state.get("status") == "running":
+            if _SCHEDULED_BACKFILL_STOP_EVENT.is_set():
+                GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+            else:
+                GLOBAL_COMMAND_RUNTIME.fail_task(
+                    runtime_task_id,
+                    "background task exited without explicit completion status",
+                    source="backfill",
+                    operation="scheduled_backfill",
+                )
         _SCHEDULED_BACKFILL_RUNNING = False
         _SCHEDULED_BACKFILL_TASK = None
 
@@ -1662,7 +1757,7 @@ async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
 
 async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
-    raw_command = "/topic_maintain --model minimax"
+    raw_command = "/topic_maintain --deep --model minimax"
     print(
         format_cmd_message(
             f"10:00 AI題材庫維護（MiniMax M3）開始：{raw_command}",
@@ -1674,6 +1769,7 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     try:
         from research_center.command_parser import parse_command_text
         from research_center.orchestrator import ResearchCenter
+        from research_center.telegram_handlers import send_topic_result_to_chat
 
         center = ResearchCenter()
         request = parse_command_text(raw_command)
@@ -1682,8 +1778,7 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
             print(format_cmd_message(message, "AI題材庫定時維護"), flush=True)
 
         result = await asyncio.to_thread(center.run, request, progress)
-        text = getattr(result, "text", "") or str(result)
-        await safe_send_bot_message(context.bot, config["chat_id"], text)
+        await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
             format_cmd_message("10:00 AI題材庫維護（MiniMax M3）完成", "定時任務"),
             flush=True,
@@ -1934,15 +2029,23 @@ async def _scheduled_noon_market_report(context: ContextTypes.DEFAULT_TYPE):
 async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data if context.job and isinstance(context.job.data, dict) else {}
     label = str(job_data.get("label") or "籌碼快取回補")
-    existing_task = _SCHEDULED_CHIP_BACKFILL_TASKS.get(label)
-    if existing_task and not existing_task.done():
-        print(format_cmd_message(f"{label} 仍在背景執行，本次略過", "回補背景任務"), flush=True)
-        return
-    task = context.application.create_task(_scheduled_chip_cache_backfill(job_data))
-    task.set_name(label)
-    _SCHEDULED_CHIP_BACKFILL_TASKS[label] = task
-    task.add_done_callback(lambda done_task, task_label=label: _SCHEDULED_CHIP_BACKFILL_TASKS.pop(task_label, None))
-    print(format_cmd_message(f"{label} 已啟動背景執行", "回補背景任務"), flush=True)
+    schedule = str(job_data.get("schedule") or _schedule_text_for_label(label))
+    status, task = await _SCHEDULED_TASK_SERVICE.start_background(
+        ScheduledTaskSpec(
+            task_id=_scheduled_task_id_from_label(label),
+            label=label,
+            task_type="scheduled_chip_cache_backfill",
+            schedule=schedule,
+            queued=False,
+            category="回補背景任務",
+            resource_group="background_backfill",
+        ),
+        lambda: _scheduled_chip_cache_backfill(job_data),
+        create_task=context.application.create_task,
+    )
+    if status == "started" and task is not None:
+        _SCHEDULED_CHIP_BACKFILL_TASKS[label] = task
+        task.add_done_callback(lambda done_task, task_label=label: _SCHEDULED_CHIP_BACKFILL_TASKS.pop(task_label, None))
 
 
 async def _scheduled_chip_cache_backfill(job_data: dict | None = None):
@@ -1964,6 +2067,11 @@ async def _scheduled_chip_cache_backfill(job_data: dict | None = None):
         print(f"[{now_timestamp()}] ⚠️ 籌碼快取回補失敗：{exc}", flush=True)
 
 
+async def _scheduled_backfill_guarded_background() -> None:
+    async with DEFAULT_RESOURCE_GUARD.acquire("background_backfill"):
+        await _scheduled_backfill_background()
+
+
 async def scheduled_full_backfill_check(context: ContextTypes.DEFAULT_TYPE):
     """Check and run scheduled backfill using policy driver every 2 hours."""
     global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
@@ -1973,7 +2081,7 @@ async def scheduled_full_backfill_check(context: ContextTypes.DEFAULT_TYPE):
 
     _SCHEDULED_BACKFILL_STOP_EVENT.clear()
     _SCHEDULED_BACKFILL_RUNNING = True
-    _SCHEDULED_BACKFILL_TASK = context.application.create_task(_scheduled_backfill_background())
+    _SCHEDULED_BACKFILL_TASK = context.application.create_task(_scheduled_backfill_guarded_background())
     _SCHEDULED_BACKFILL_TASK.set_name("定時完整資料回補")
     print(format_cmd_message("已啟動背景定時回補", "定時回補檢查"), flush=True)
     return
@@ -2152,10 +2260,12 @@ def main():
         app.job_queue.run_daily(
             scheduled_news_refresh,
             time=time(hour=8, minute=45, tzinfo=tw_tz),
+            name="08:45 定時新聞整理",
         )
         app.job_queue.run_daily(
             scheduled_news_refresh,
             time=time(hour=18, minute=0, tzinfo=tw_tz),
+            name="18:00 定時新聞整理",
         )
         # 20:30 交易日執行全部選股；若前一個定時推播任務未完成，會排隊接續執行。
         app.job_queue.run_daily(
@@ -2171,17 +2281,17 @@ def main():
         app.job_queue.run_daily(
             scheduled_chip_cache_backfill,
             time=time(hour=16, minute=30, tzinfo=tw_tz),
-            data={"label": "籌碼快取 16:30 今日回補", "full_backfill": False},
+            data={"label": "籌碼快取 16:30 今日回補", "full_backfill": False, "schedule": "每日 16:30"},
         )
         app.job_queue.run_daily(
             scheduled_chip_cache_backfill,
             time=time(hour=18, minute=30, tzinfo=tw_tz),
-            data={"label": "籌碼快取 18:30 今日回補", "full_backfill": False},
+            data={"label": "籌碼快取 18:30 今日回補", "full_backfill": False, "schedule": "每日 18:30"},
         )
         app.job_queue.run_daily(
             scheduled_chip_cache_backfill,
             time=time(hour=21, minute=0, tzinfo=tw_tz),
-            data={"label": "籌碼快取 21:00 完整回補", "full_backfill": True},
+            data={"label": "籌碼快取 21:00 完整回補", "full_backfill": True, "schedule": "每日 21:00"},
         )
         # 完整資料定時回補：每 2 小時檢查一次，由 policy 判斷目標日期與是否執行。
         from datetime import timedelta
@@ -2253,7 +2363,8 @@ def main():
     app.add_handler(CallbackQueryHandler(research_handlers["ai_menu_callback"], pattern="^ai_menu:"))
     app.add_handler(MessageHandler(filters.Document.ALL, research_handlers["ai_menu_document"]))
 
-    print(f"[{now_timestamp()}] 🚀 策略機器人啟動中，定時設定：12:30 監控掃描、13:50 午報、17:45 庫存推播、16:30/18:30/21:00 籌碼快取回補...")
+    print(format_cmd_message("🚀 策略機器人啟動中", "系統啟動"), flush=True)
+    print(format_cmd_message(format_registered_scheduled_jobs(SCHEDULED_JOB_REGISTRATIONS), "定時任務"), flush=True)
     app.run_polling(bootstrap_retries=-1)
 
 if __name__ == "__main__":

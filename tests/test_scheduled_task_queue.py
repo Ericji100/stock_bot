@@ -99,7 +99,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
     async def test_1000_topic_maintain_runs_minimax_command(self):
         context = _FakeContext()
         fake_request = SimpleNamespace(command="topic_maintain", ai_model="minimax")
-        fake_result = SimpleNamespace(text="變更包：change_test")
+        fake_result = SimpleNamespace(summary="變更包已產生\nID：change_test")
         parse_command = MagicMock(return_value=fake_request)
 
         class FakeCenter:
@@ -116,9 +116,33 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             patch.object(main, "safe_send_bot_message", new=AsyncMock()) as send:
             await main._scheduled_topic_maintain(context)
 
-        parse_command.assert_called_once_with("/topic_maintain --model minimax")
+        parse_command.assert_called_once_with("/topic_maintain --deep --model minimax")
         self.assertIs(center.request, fake_request)
-        send.assert_awaited_once_with(context.bot, 123, "變更包：change_test")
+        send.assert_awaited_once_with(context.bot, 123, "變更包已產生\nID：change_test", reply_markup=None)
+
+    async def test_1000_topic_maintain_does_not_send_result_repr(self):
+        context = _FakeContext()
+        fake_request = SimpleNamespace(command="topic_maintain", ai_model="minimax")
+
+        class FakeResult:
+            summary = "摘要文字"
+            markdown = "markdown 文字"
+
+            def __str__(self):
+                return "ResearchCenterResult(status='success')"
+
+        class FakeCenter:
+            def run(self, request, progress):
+                return FakeResult()
+
+        with patch.object(main, "load_config", return_value={"chat_id": 123}), \
+            patch("research_center.command_parser.parse_command_text", return_value=fake_request), \
+            patch("research_center.orchestrator.ResearchCenter", return_value=FakeCenter()), \
+            patch.object(main, "safe_send_bot_message", new=AsyncMock()) as send:
+            await main._scheduled_topic_maintain(context)
+
+        send.assert_awaited_once_with(context.bot, 123, "摘要文字", reply_markup=None)
+        self.assertNotIn("ResearchCenterResult(", send.await_args.args[2])
 
     def test_main_registers_1000_topic_maintain_job(self):
         source = Path(main.__file__).read_text(encoding="utf-8")
@@ -126,6 +150,51 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("scheduled_topic_maintain", source)
         self.assertIn("time(hour=10, minute=0, tzinfo=tw_tz)", source)
         self.assertIn('name="10:00 AI題材庫維護（MiniMax M3）"', source)
+
+    def test_registered_scheduled_jobs_summary_covers_expected_jobs(self):
+        from research_center.scheduled_task_service import format_registered_scheduled_jobs
+
+        summary = format_registered_scheduled_jobs(main.SCHEDULED_JOB_REGISTRATIONS)
+
+        for expected in (
+            "12:30",
+            "13:50",
+            "17:45",
+            "08:45",
+            "18:00",
+            "20:30",
+            "21:30",
+            "16:30",
+            "18:30",
+            "21:00",
+            "每 2 小時",
+            "10:00",
+        ):
+            self.assertIn(expected, summary)
+        self.assertIn("排隊執行", summary)
+        self.assertIn("背景執行", summary)
+
+    def test_startup_message_uses_registered_scheduled_jobs_summary(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+
+        self.assertIn("format_registered_scheduled_jobs(SCHEDULED_JOB_REGISTRATIONS)", source)
+        self.assertNotIn("定時設定：12:30", source)
+
+    def test_news_jobs_have_stable_names_for_task_ids(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+
+        self.assertIn('name="08:45 定時新聞整理"', source)
+        self.assertIn('name="18:00 定時新聞整理"', source)
+        self.assertIn('ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理"', source)
+        self.assertIn('ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理"', source)
+
+    def test_scheduled_jobs_map_to_background_resource_groups(self):
+        self.assertEqual(main._scheduled_resource_group("scheduled:news:0845"), "background_news")
+        self.assertEqual(main._scheduled_resource_group("scheduled:topic_maintain:1000"), "background_ai_maintenance")
+        self.assertEqual(main._scheduled_resource_group("scheduled:radar:2130"), "background_ai_maintenance")
+        self.assertEqual(main._scheduled_resource_group("scheduled:chip_cache:2100"), "background_backfill")
+        self.assertEqual(main._scheduled_resource_group("scheduled:full_backfill_check"), "background_backfill")
+        self.assertIsNone(main._scheduled_resource_group("scheduled:portfolio:1745"))
 
     async def test_chip_backfill_runs_in_background_not_scheduled_queue(self):
         context = _FakeContext({"label": "籌碼快取測試", "full_backfill": False})

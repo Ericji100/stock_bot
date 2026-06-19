@@ -510,9 +510,7 @@ async def _maybe_start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await safe_send_reply(update, "請輸入股票代號或名稱，例如：2330、台積電")
         return True
     if command == "research" and len(parts) == 2:
-        context.user_data["ai_menu"] = {"command": "research", "target": parts[1]}
-        await safe_send_reply(update, "請選擇研究模式：", reply_markup=_research_mode_keyboard())
-        return True
+        return False
     if command == "macro" and len(parts) == 1:
         context.user_data["ai_menu"] = {"command": "macro"}
         await safe_send_reply(update, "請選擇市場範圍：", reply_markup=_macro_scope_keyboard())
@@ -626,9 +624,11 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 asyncio.create_task(_run_parallel_model_background(update, center, result, raw_text, model_key, safe_send_reply, safe_reply_document))
         return
 
-    status_note = _telegram_status_note(result)
-    summary_text = f"{result.summary}{status_note}"
-    await safe_send_reply(update, summary_text, reply_markup=_topic_action_keyboard_for_text(summary_text))
+    if _is_topic_result(result):
+        await send_topic_result_reply(update, result, safe_send_reply)
+    else:
+        status_note = _telegram_status_note(result)
+        await safe_send_reply(update, f"{result.summary}{status_note}")
     await _send_runtime_document(update, result, safe_reply_document)
     await _send_report_files(update, result, safe_send_reply, safe_reply_document)
     if (result.runtime_context or {}).get("minimax_comparison"):
@@ -802,6 +802,29 @@ def _topic_action_keyboard_for_text(text: str) -> InlineKeyboardMarkup | None:
     return _topic_action_keyboard(change_id)
 
 
+def _is_topic_result(result) -> bool:
+    command = getattr(getattr(result, "request", None), "command", "")
+    return str(command).startswith("topic_")
+
+
+def build_topic_result_message(result) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Build Telegram text and buttons for topic command results."""
+    summary_text = f"{result.summary}{_telegram_status_note(result)}"
+    return summary_text, _topic_action_keyboard_for_text(summary_text)
+
+
+async def send_topic_result_to_chat(bot, chat_id, result, send_bot_message) -> None:
+    """Send a topic result to a chat using the same text/buttons as manual commands."""
+    summary_text, reply_markup = build_topic_result_message(result)
+    await send_bot_message(bot, chat_id, summary_text, reply_markup=reply_markup)
+
+
+async def send_topic_result_reply(update: Update, result, safe_send_reply) -> None:
+    """Send a topic result as a reply using the same text/buttons as scheduled jobs."""
+    summary_text, reply_markup = build_topic_result_message(result)
+    await safe_send_reply(update, summary_text, reply_markup=reply_markup)
+
+
 def _compose_topic_maintain_command(state: dict) -> str:
     model = state.get("model") or "gemini"
 
@@ -948,14 +971,19 @@ async def _send_existing_report_file(update: Update, path: Path, caption: str, s
         await safe_send_reply(update, f"⚠️ {caption} 已產生但傳送失敗：{path}\n原因：{exc}")
 def _telegram_status_note(result) -> str:
     notes: list[str] = []
-    if result.ai_used and result.ai_model:
-        notes.append(f"AI 模型：{result.ai_model}")
-    elif result.request.source_only:
+    ai_used = bool(getattr(result, "ai_used", False))
+    ai_model = getattr(result, "ai_model", None)
+    request = getattr(result, "request", None)
+    source_only = bool(getattr(request, "source_only", False))
+    fallback_reason = getattr(result, "fallback_reason", None)
+    if ai_used and ai_model:
+        notes.append(f"AI 模型：{ai_model}")
+    elif source_only:
         notes.append("AI 模型：未調用（source-only 模式）")
-    elif result.fallback_reason:
+    elif fallback_reason:
         notes.append(f"AI 模型：{_fallback_model_label(result)} 調用失敗，已改用本地 fallback")
-    if result.fallback_reason:
-        notes.append(f"⚠️ {_fallback_model_label(result)} 模型調用或公開來源整合未完整成功，本報告已使用本地資料 fallback。原因：{result.fallback_reason}")
+    if fallback_reason:
+        notes.append(f"⚠️ {_fallback_model_label(result)} 模型調用或公開來源整合未完整成功，本報告已使用本地資料 fallback。原因：{fallback_reason}")
     return "\n\n" + "\n".join(notes) if notes else ""
 
 

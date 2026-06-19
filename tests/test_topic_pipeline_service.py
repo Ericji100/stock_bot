@@ -101,8 +101,16 @@ class TopicPipelineServiceTests(unittest.TestCase):
         def call_ai_json(prompt, stage):
             if stage == "candidate_extract":
                 return {"candidates": [
-                    {"theme_id": "ai_server_cooling", "theme_name": "AI伺服器散熱"},
-                    {"theme_id": "high_speed_networking", "theme_name": "高速網通"},
+                    {
+                        "theme_id": "ai_server_cooling",
+                        "theme_name": "AI伺服器散熱",
+                        "source_refs": [{"source": "測試來源", "content": "AI散熱需求增加"}],
+                    },
+                    {
+                        "theme_id": "high_speed_networking",
+                        "theme_name": "高速網通",
+                        "source_refs": [{"source": "測試來源", "content": "高速傳輸需求增加"}],
+                    },
                     {"theme_id": "memory_recovery", "theme_name": "記憶體復甦"},
                     {"theme_id": "robotics", "theme_name": "機器人"},
                     {"theme_id": "power_grid", "theme_name": "電力基建"},
@@ -124,6 +132,8 @@ class TopicPipelineServiceTests(unittest.TestCase):
         )
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
         self.assertEqual(len(pack.actions), 4)
+        self.assertTrue(pack.actions[0].evidence)
+        self.assertTrue(pack.actions[1].evidence)
         self.assertTrue(any("bad json" in warning for warning in pack.warnings))
         self.assertTrue(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
 
@@ -174,6 +184,104 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
         self.assertLess(len(prompts["detail_expand_1"]), 24000)
         self.assertIn("truncated for detail stage", prompts["detail_expand_1"])
+
+    def test_pipeline_compacts_large_candidate_stage_inputs(self):
+        prompts = {}
+        variables = self._variables()
+        variables["webfetch_evidence_json"] = "E" * 50000
+        variables["web_fetched_sources_json"] = "W" * 50000
+        variables["discovery_sources_json"] = "D" * 50000
+        variables["external_topic_source_caches_json"] = "X" * 50000
+        variables["existing_topic_profiles_json"] = "P" * 50000
+        variables["company_topic_map_json"] = "M" * 50000
+        variables["supply_chain_nodes_json"] = "S" * 50000
+        variables["company_knowledge_json"] = "K" * 50000
+        variables["low_model_digest_json"] = json.dumps(
+            {"status": "success", "facts": [{"fact": "L" * 50000}]},
+            ensure_ascii=False,
+        )
+
+        def load_prompt(name):
+            if name == "topic_candidate_extract":
+                return (
+                    "{webfetch_evidence_json} {web_fetched_sources_json} "
+                    "{discovery_sources_json} {external_topic_source_caches_json} "
+                    "{existing_topic_profiles_json} {company_topic_map_json} "
+                    "{supply_chain_nodes_json} {company_knowledge_json} "
+                    "{low_model_digest_json}"
+                )
+            if name == "topic_detail_expand":
+                return "{topic_candidates_json}"
+            return ""
+
+        def call_ai_json(prompt, stage):
+            prompts[stage] = prompt
+            if stage == "candidate_extract":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+
+        pack, _logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=variables,
+            load_prompt=load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertLess(len(prompts["candidate_extract"]), 75000)
+        self.assertIn("truncated for detail stage", prompts["candidate_extract"])
+
+    def test_pipeline_falls_back_to_local_candidates_when_candidate_extract_fails(self):
+        def call_ai_json(prompt, stage):
+            if stage == "candidate_extract":
+                raise TimeoutError("candidate timeout")
+            return {
+                "actions": [
+                    {"theme_id": "mlcc_passive_components", "theme_name": "MLCC與被動元件"},
+                    {"theme_id": "heavy_electrical_power_grid", "theme_name": "重電與強韌電網"},
+                ]
+            }
+
+        structured_data = {
+            "existing_topic_profiles": [],
+            "webfetch_evidence": {
+                "items": [
+                    {
+                        "title": "MLCC 缺貨帶動被動元件漲價",
+                        "claim": "國巨與華新科受惠 MLCC 缺貨與報價上漲。",
+                        "companies": ["2327", "2492"],
+                    },
+                    {
+                        "title": "AI資料中心推升重電與變壓器需求",
+                        "snippet": "華城、士電受惠強韌電網與變壓器訂單。",
+                        "companies": ["1519", "1503"],
+                    },
+                ]
+            },
+        }
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data=structured_data,
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertGreaterEqual(pack.extra["candidate_count"], 2)
+        self.assertGreaterEqual(len(pack.actions), 2)
+        self.assertTrue(any(log.get("stage") == "candidate_fallback" for log in logs))
+        self.assertTrue(any("candidate timeout" in warning for warning in pack.warnings))
 
 
 if __name__ == "__main__":

@@ -91,3 +91,11 @@ set PYTHONIOENCODING=utf-8
 ```
 
 `啟動機器人.bat` 已包含這些設定。
+
+檢查檔案內容是否混入亂碼 marker：
+
+```text
+python -B tools/encoding_health_check.py
+```
+
+這個工具只做健檢，不會批次修檔。若終端顯示中文亂碼，先確認上述環境設定；若健檢工具回報非 allowlist 檔案有 UTF-8 decode error 或 mojibake marker，再針對該檔案查來源與入口清理邏輯，不要直接做全專案轉碼或批次移除 BOM。

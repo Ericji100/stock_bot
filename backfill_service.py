@@ -45,6 +45,13 @@ from research_center.data_services import collect_research_data
 # Marker root for backfill complete markers
 BACKFILL_MARKER_ROOT = Path(".cache/backfill")
 from research_center.models import CommandRequest
+from research_center.artifact_registry import build_artifact_record, register_artifact
+from research_center.backfill_dag_service import (
+    build_backfill_dag,
+    create_backfill_dag_event,
+    summarize_backfill_dag,
+    summarize_backfill_events,
+)
 from research_center.backfill_scheduler_service import build_backfill_priority_plan
 from research_center.recent_scans import load_recent_scan_results
 from research_center.structured_cache import load_research_structured_cache
@@ -185,6 +192,27 @@ class BackfillResult:
     backfill_ready_for_research: str = "partial"
     gap_report: dict[str, Any] = field(default_factory=dict)
     gap_report_path: str = ""
+    backfill_dag_events: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _record_backfill_dag_event(
+    events: list[dict[str, Any]],
+    node_id: str,
+    status: str,
+    *,
+    message: str | None = None,
+    failure_reason: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    events.append(
+        create_backfill_dag_event(
+            node_id,
+            status,
+            message=message,
+            failure_reason=failure_reason,
+            metadata=metadata,
+        )
+    )
 
 
 def _add_candidate(
@@ -1100,6 +1128,7 @@ def run_full_backfill(
     AI search and model analysis remain real-time during /research.
     """
     target_date = report_date or get_tw_today()
+    dag_events: list[dict[str, Any]] = []
 
     def emit(message: str) -> None:
         if progress:
@@ -1110,6 +1139,8 @@ def run_full_backfill(
     # Check stop before phase 1
     if stop_event and stop_event.is_set():
         result = BackfillResult(report_date=target_date)
+        _record_backfill_dag_event(dag_events, "market_universe", "skipped", message="stopped_before_start")
+        result.backfill_dag_events = dag_events
         result.warnings.append("回補被使用者停止")
         return result
 
@@ -1130,25 +1161,54 @@ def run_full_backfill(
 
     # Phase 1: Market-wide screening data warmup (Tier 1: lightweight)
     emit("5% 載入股票宇宙")
+    _record_backfill_dag_event(dag_events, "market_universe", "started", message="load_stock_universe")
     universe = load_stock_universe(force_refresh=force_refresh)
+    _record_backfill_dag_event(dag_events, "market_universe", "completed", metadata={"universe_count": len(universe)})
 
     # Check stop before phase 1 warmup
     if stop_event and stop_event.is_set():
         result = BackfillResult(report_date=target_date)
+        result.universe_count = len(universe)
+        _record_backfill_dag_event(dag_events, "financial_cache", "skipped", message="stopped_before_market_screening")
+        result.backfill_dag_events = dag_events
         result.warnings.append("回補被使用者停止")
         return result
 
     emit("10% 回補全市場硬篩基礎資料")
+    _record_backfill_dag_event(dag_events, "financial_cache", "started", message="warmup_market_screening_cache")
+    _record_backfill_dag_event(dag_events, "technical_cache", "started", message="warmup_market_screening_cache")
     screening_result = warmup_market_screening_cache(
         universe,
         target_date,
         force_refresh,
         emit,
     )
+    _record_backfill_dag_event(
+        dag_events,
+        "financial_cache",
+        "completed",
+        metadata={
+            "revenue_count": screening_result.get("revenue_count", 0),
+            "price_metric_count": screening_result.get("price_metric_count", 0),
+            "warning_count": len(screening_result.get("warnings", [])),
+        },
+    )
+    _record_backfill_dag_event(
+        dag_events,
+        "technical_cache",
+        "completed",
+        metadata={
+            "technical_count": screening_result.get("technical_count", 0),
+            "warning_count": len(screening_result.get("warnings", [])),
+        },
+    )
 
     # Check stop before phase 2
     if stop_event and stop_event.is_set():
         result = BackfillResult(report_date=target_date)
+        result.universe_count = len(universe)
+        _record_backfill_dag_event(dag_events, "chip_cache", "skipped", message="stopped_before_candidate_pool")
+        result.backfill_dag_events = dag_events
         result.warnings.append("回補被使用者停止")
         return result
 
@@ -1188,6 +1248,37 @@ def run_full_backfill(
     result.screening_technical_count = screening_result.get("technical_count", 0)
     result.screening_warning_count = len(screening_result.get("warnings", []))
     result.warnings.extend(screening_result.get("warnings", []))
+    if result.chip_candidate_count > 0 or result.chip_coverage_ok:
+        _record_backfill_dag_event(
+            dag_events,
+            "chip_cache",
+            "completed",
+            metadata={
+                "chip_candidate_count": result.chip_candidate_count,
+                "chip_coverage_ok": result.chip_coverage_ok,
+                "chip_candidate_coverage_pct": result.chip_candidate_coverage_pct,
+            },
+        )
+    else:
+        _record_backfill_dag_event(dag_events, "chip_cache", "skipped", message="no_chip_cache_data")
+    if result.curated_scan_count > 0:
+        _record_backfill_dag_event(dag_events, "curated_scan_cache", "completed", metadata={"curated_scan_count": result.curated_scan_count})
+    else:
+        _record_backfill_dag_event(dag_events, "curated_scan_cache", "skipped", message="no_curated_scan_cache")
+    if result.research_structured_count > 0:
+        _record_backfill_dag_event(
+            dag_events,
+            "research_feature_pack",
+            "completed",
+            metadata={
+                "research_structured_count": result.research_structured_count,
+                "timeout_count": result.research_structured_timeout_count,
+            },
+        )
+    else:
+        _record_backfill_dag_event(dag_events, "research_feature_pack", "skipped", message="no_research_structured_cache")
+    _record_backfill_dag_event(dag_events, "news_event_store", "skipped", message="not_part_of_current_backfill")
+    result.backfill_dag_events = dag_events
 
     emit("100% 完整回補完成")
     return result
@@ -1371,6 +1462,16 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
         curated_scan_count=int(result.curated_scan_count),
         priority_health=priority_health,
     )
+    backfill_dag_events = list(getattr(result, "backfill_dag_events", []) or [])
+    backfill_dag = build_backfill_dag(
+        report_date,
+        marker={
+            "health": health,
+            "universe_count": int(result.universe_count),
+            "news_event_count": int((getattr(result, "gap_report", {}) or {}).get("news_event_count") or 0),
+            "backfill_dag_events": backfill_dag_events,
+        },
+    )
     payload = {
         "schema_version": 2,
         "report_date": report_date.isoformat(),
@@ -1399,6 +1500,10 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
         "health": health,
         "priority_health": priority_health,
         "backfill_priority_plan": build_backfill_priority_plan(report_date, health=health),
+        "backfill_dag_events": backfill_dag_events,
+        "backfill_dag_event_summary": summarize_backfill_events(backfill_dag_events),
+        "backfill_dag": backfill_dag,
+        "backfill_dag_summary": summarize_backfill_dag(backfill_dag),
         "gap_report_path": str(getattr(result, "gap_report_path", "")),
         # Source quota and health
         "finmind_quota_remaining": finmind_remaining,
@@ -1407,6 +1512,25 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
     }
     with open(marker_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+    try:
+        register_artifact(
+            build_artifact_record(
+                artifact_type="backfill_complete_marker",
+                path=marker_path,
+                schema_version="backfill_marker_v2",
+                data_date=report_date,
+                source="backfill",
+                completeness=1.0 if payload.get("backfill_ready_for_scan") else 0.5,
+                usable=bool(payload.get("backfill_ready_for_scan") or payload.get("scan_data_ready")),
+                metadata={
+                    "candidate_count": payload.get("candidate_count"),
+                    "backfill_ready_for_scan": payload.get("backfill_ready_for_scan"),
+                    "backfill_ready_for_research": payload.get("backfill_ready_for_research"),
+                },
+            )
+        )
+    except Exception:
+        pass
 
 
 def _format_backfill_health_summary_legacy(result: "BackfillResult") -> str:

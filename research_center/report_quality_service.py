@@ -8,6 +8,18 @@ from .company_knowledge_update_service import source_quality_score
 from .models import CommandRequest, SourceItem
 
 REPORT_QUALITY_SCHEMA_VERSION = "report_quality_v1"
+QUALITY_COMMANDS = (
+    "research",
+    "value_scan",
+    "macro",
+    "theme",
+    "theme_radar",
+    "theme_flow",
+    "sector_strength",
+    "radar",
+    "news",
+    "topic_maintain",
+)
 
 
 def build_report_quality_layer(
@@ -209,6 +221,31 @@ def missing_data_policy_summary() -> dict[str, str]:
     }
 
 
+def supported_quality_commands() -> list[str]:
+    return list(QUALITY_COMMANDS)
+
+
+def required_fields_for_command(command: str) -> list[str]:
+    return list(_required_fields_for_command(command))
+
+
+def build_quality_coverage_snapshot(commands: list[str] | None = None) -> dict[str, Any]:
+    selected = commands or list(QUALITY_COMMANDS)
+    rows = [
+        {
+            "command": command,
+            "required_fields": required_fields_for_command(command),
+            "required_field_count": len(required_fields_for_command(command)),
+        }
+        for command in selected
+    ]
+    return {
+        "schema_version": REPORT_QUALITY_SCHEMA_VERSION,
+        "command_count": len(rows),
+        "commands": rows,
+    }
+
+
 def _required_fields_for_command(command: str) -> list[str]:
     common = ["news_context", "feature_pack", "data_coverage"]
     if command == "research":
@@ -278,12 +315,38 @@ def _required_fields_for_command(command: str) -> list[str]:
             "feature_pack",
             "data_coverage",
         ]
+    if command == "radar":
+        return [
+            "candidates",
+            "evidence_pack",
+            "news_context",
+            "feature_pack",
+            "data_coverage",
+        ]
+    if command == "news":
+        return [
+            "news_context",
+            "news_events",
+            "source_coverage",
+            "data_coverage",
+        ]
+    if command == "topic_maintain":
+        return [
+            "topic_context",
+            "discovery_sources",
+            "change_pack",
+            "news_context",
+            "feature_pack",
+            "data_coverage",
+        ]
     return common
 
 
 def _field_value(field: str, data: dict[str, Any], evidence_pack: dict[str, Any]) -> Any:
     if field == "matched_companies":
         return data.get("matched_companies") or data.get("matched_universe") or data.get("related_stocks")
+    if field == "source_coverage":
+        return data.get("source_coverage") or data.get("source_coverage_summary")
     if field == "chip_summary":
         chip = data.get("chip_backup_data") or {}
         return chip.get("summary") if isinstance(chip, dict) else None

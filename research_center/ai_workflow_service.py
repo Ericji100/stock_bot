@@ -54,6 +54,11 @@ VOLATILE_FINGERPRINT_KEYS = {
     "artifact_paths",
     "diagnostics",
     "elapsed_seconds",
+    "prompt_chars",
+    "estimated_tokens",
+    "rough_prompt_tokens",
+    "usage",
+    "token_usage",
 }
 
 ProgressCallback = Callable[[str], None]
@@ -3389,5 +3394,34 @@ def _drop_volatile_fields(value: Any) -> Any:
             result[key_text] = _drop_volatile_fields(item)
         return result
     if isinstance(value, list):
-        return [_drop_volatile_fields(item) for item in value]
+        normalized = [_drop_volatile_fields(item) for item in value]
+        if all(isinstance(item, dict) for item in normalized):
+            return sorted(normalized, key=_fingerprint_sort_key)
+        return normalized
     return value
+
+
+def _fingerprint_sort_key(value: Any) -> str:
+    if isinstance(value, dict):
+        preferred = [
+            "source_id",
+            "id",
+            "url",
+            "title",
+            "path",
+            "text",
+            "snippet",
+            "summary",
+            "fact",
+            "event",
+            "code",
+            "name",
+        ]
+        parts = [str(value.get(key) or "") for key in preferred]
+        if any(parts):
+            return "|".join(parts)
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        except Exception:
+            return str(value)
+    return str(value)

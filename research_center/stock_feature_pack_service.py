@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .artifact_registry import build_artifact_record, register_artifact
 from .models import CommandRequest
 
 FEATURE_PACK_SCHEMA_VERSION = "feature_pack_v2"
@@ -22,6 +23,7 @@ def attach_feature_pack(request: CommandRequest, structured_data: dict[str, Any]
     if request.command not in FEATURE_PACK_COMMANDS:
         return structured_data
     structured_data["feature_pack"] = build_feature_pack(request, structured_data)
+    structured_data["feature_pack_artifact"] = _register_feature_pack_artifact(request, structured_data)
     return structured_data
 
 
@@ -47,6 +49,9 @@ def _with_metadata(request: CommandRequest, data: dict[str, Any], pack: dict[str
         "mode": request.mode,
         "target": request.target or request.market_scope or request.theme_scope or request.candidate_pool,
         "report_date": request.report_date.isoformat() if request.report_date else None,
+        "resolved_entity": data.get("resolved_entity"),
+        "resolved_topic": data.get("resolved_topic"),
+        "event_context_summary": data.get("event_context_summary"),
         "data_gap_summary": data.get("data_gap_summary"),
         "news_event_count": len(data.get("news_events") or []),
         **pack,
@@ -122,3 +127,36 @@ def _compact_news(data: dict[str, Any]) -> dict[str, Any]:
         "usable_count": context.get("usable_count") or len(context.get("items") or []),
         "items": (context.get("items") or [])[:12],
     }
+
+
+def _register_feature_pack_artifact(request: CommandRequest, data: dict[str, Any]) -> dict[str, Any]:
+    try:
+        pack = data.get("feature_pack") or {}
+        completeness = _feature_pack_completeness(pack)
+        target = request.target or request.market_scope or request.theme_scope or request.candidate_pool or request.command
+        virtual_path = f"feature_pack/{request.command}/{target or 'latest'}"
+        record = build_artifact_record(
+            artifact_type="feature_pack",
+            path=virtual_path,
+            schema_version=FEATURE_PACK_SCHEMA_VERSION,
+            data_date=request.report_date,
+            source=request.command,
+            completeness=completeness,
+            usable=completeness > 0,
+            metadata={
+                "command": request.command,
+                "mode": request.mode,
+                "target": target,
+            },
+        )
+        registry_path = register_artifact(record)
+        return {"registered": True, "path": str(registry_path), "artifact_id": record.artifact_id}
+    except Exception as exc:
+        return {"registered": False, "error": str(exc)[:180]}
+
+
+def _feature_pack_completeness(pack: dict[str, Any]) -> float:
+    if not isinstance(pack, dict) or pack.get("status") == "unsupported":
+        return 0.0
+    keys = [key for key, value in pack.items() if key not in {"schema_version", "generated_at"} and value not in (None, "", [], {})]
+    return min(1.0, len(keys) / 8.0)

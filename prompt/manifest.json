@@ -1,0 +1,56 @@
+{
+  "schema_version": "prompt_bundle_v1",
+  "prompt_version": "2026-06-19",
+  "commands": {
+    "research": {
+      "base": ["base/base.md"],
+      "report": ["report/research_summary.md", "report/research_score.md", "report/research_deep.md"],
+      "scoring": [
+        "scoring/financial_hard_metrics.md",
+        "scoring/theme_soft_metrics.md",
+        "scoring/high_growth_gene.md",
+        "scoring/rerating_model.md",
+        "scoring/final_research_score.md"
+      ],
+      "rules": [
+        "rules/local_scoring_and_ai_final_scoring.md",
+        "rules/rerating_snapshot_rules.md",
+        "rules/risk_and_counter_evidence_rules.md",
+        "rules/source_quality_rules.md"
+      ]
+    },
+    "value_scan": {
+      "base": ["base/base.md"],
+      "report": ["report/value_scan.md", "report/value_scan_deep.md"],
+      "scoring": [
+        "scoring/rerating_model.md",
+        "scoring/theme_soft_metrics.md",
+        "scoring/financial_hard_metrics.md"
+      ],
+      "rules": [
+        "rules/local_scoring_and_ai_final_scoring.md",
+        "rules/rerating_snapshot_rules.md",
+        "rules/risk_and_counter_evidence_rules.md",
+        "rules/source_quality_rules.md"
+      ]
+    },
+    "macro": {
+      "base": ["base/base.md"],
+      "report": ["report/macro.md"],
+      "scoring": [],
+      "rules": ["rules/source_quality_rules.md", "rules/historical_rules.md"]
+    },
+    "theme": {
+      "base": ["base/base.md"],
+      "report": ["report/theme.md", "report/theme_deep.md"],
+      "scoring": ["scoring/theme_soft_metrics.md"],
+      "rules": ["rules/source_quality_rules.md", "rules/risk_and_counter_evidence_rules.md"]
+    },
+    "news": {
+      "base": ["base/base.md"],
+      "report": ["news/news_summary.md"],
+      "scoring": [],
+      "rules": ["rules/source_quality_rules.md"]
+    }
+  }
+}

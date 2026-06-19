@@ -1471,10 +1471,34 @@
         "url": "https://www.trendforce.com.tw/presscenter/news/20251127-12803.html",
         "publish_date": "2025-11-27",
         "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
-    "relation_type": "indirect",
+    "relation_strength": "low",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "資料中心電源供應器",
@@ -1590,7 +1614,7 @@
       "AI 電源營收佔比、800V HVDC 客戶驗證進度",
       "主要客戶名單與出貨/量產資料"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_power_equipment",
@@ -1686,6 +1710,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "ai_power_800vdc",
+        "theme_name": "800V DC資料中心電源與BBU",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -2444,11 +2479,35 @@
         "url": "https://www.trendforce.com.tw/presscenter/news/20251127-12803.html",
         "publish_date": "2025-11-27",
         "score_contribution": 0.0
+      },
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "高階散熱模組與液冷零組件",
+    "role": "伺服器散熱與風扇",
     "products": [
       "散熱模組",
       "液冷冷板",
@@ -2505,7 +2564,7 @@
       "液冷出貨量、營收佔比、客戶驗證進度",
       "主要客戶名單與出貨/量產資料"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_server_factory_event",
@@ -2553,6 +2612,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "ai_thermal_cooling",
+        "theme_name": "AI散熱與液冷散熱模組",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "伺服器散熱與風扇",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -2678,11 +2748,35 @@
         "url": "https://www.trendforce.com.tw/presscenter/news/20251127-12803.html",
         "publish_date": "2025-11-27",
         "score_contribution": 0.0
+      },
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
+    "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "AI 伺服器散熱與電源管理零組件節點",
+    "role": "待補題材角色",
     "products": [
       "散熱模組",
       "液冷零組件",
@@ -2734,7 +2828,7 @@
       "液冷相關產品線佔比",
       "液冷產品營收佔比、主要客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_liquid_cooling",
@@ -2787,6 +2881,17 @@
           "不要捏造百分比"
         ],
         "updated_at": "2026-06-18T21:17:40"
+      },
+      {
+        "theme_id": "ai_thermal_cooling",
+        "theme_name": "AI散熱與液冷散熱模組",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -3288,11 +3393,12 @@
         "url": "https://www.moneyweekly.com.tw/Magazine/Info/%E7%90%86%E8%B2%A1%E5%91%A8%E5%88%8A/202832",
         "publish_date": "2025-11-12",
         "score_contribution": 0.0
-      }
+      },
+      "台積電既有公司知識庫含CoWoS/先進封裝產品線，矽光子/CPO製程平台已於技術論壇提及，惟量產時程與客戶名單未取得L1_official證據"
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "待補題材角色",
+    "role": "矽光子製程與CPO平台",
     "products": [
       "CoWoS封裝",
       "SoIC",
@@ -3394,7 +3500,7 @@
       "十年長約的具體產能分配比例",
       "艾克爾美國廠對台系測試廠的直接分包金額"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "advanced_packaging_cowos_soic",
@@ -3449,6 +3555,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "ai_silicon_photonics_cpo",
+        "theme_name": "矽光子與CPO光通訊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "矽光子製程與CPO平台",
+        "evidence": [
+          "台積電既有公司知識庫含CoWoS/先進封裝產品線，矽光子/CPO製程平台已於技術論壇提及，惟量產時程與客戶名單未取得L1_official證據"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -4346,11 +4465,12 @@
         "summary": "市場展望提到 2026 台股可能由景氣回升、AI 資本支出與傳產補庫共同推動。"
       },
       "欣興為 ABF 載板一線供應商，受惠於 AI 晶片封裝需求",
-      "台新投信報告指出台灣在高階 PCB 與 ABF 載板具備領先優勢"
+      "台新投信報告指出台灣在高階 PCB 與 ABF 載板具備領先優勢",
+      "欣興為ABF載板龍頭，既有公司知識庫資料待補；資本支出與AI伺服器載板佔比需年報/法說會驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "待補題材角色",
+    "role": "ABF載板與高階PCB",
     "products": [
       "ABF載板",
       "伺服器PCB",
@@ -4438,7 +4558,7 @@
       "Rubin 平台產品佔營收預估",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -4489,6 +4609,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "ABF載板與高階PCB",
+        "evidence": [
+          "欣興為ABF載板龍頭，既有公司知識庫資料待補；資本支出與AI伺服器載板佔比需年報/法說會驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -4954,7 +5087,7 @@
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "金融股穩健獲利與股利防禦節點",
+    "role": "公股銀行金控，創高",
     "products": [
       "銀行",
       "壽險",
@@ -5000,7 +5133,7 @@
       "外幣資產敏感度",
       "ETF 持有變化"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -5037,6 +5170,17 @@
           "不要捏造百分比"
         ],
         "updated_at": "2026-06-18T21:17:40"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "公股銀行金控，創高",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -5149,7 +5293,7 @@
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "待補題材角色",
+    "role": "銀行為主金控，創高",
     "products": [
       "銀行",
       "壽險",
@@ -5197,7 +5341,7 @@
       "股利政策",
       "外幣資產結構"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -5226,6 +5370,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "銀行為主金控，創高",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -5482,10 +5637,22 @@
         "summary": "重電與變壓器族群在 AI 資料中心與電網升級題材下，華城接單動能受關注。"
       },
       "候選名單列為儲能與重電兼具",
-      "heavy_electrical_grid 主題亦收錄華城為變壓器/重電"
+      "heavy_electrical_grid 主題亦收錄華城為變壓器/重電",
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "華城為重電三雄之一，受惠強韌電網與外銷。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "華城為全球卡位戰代表廠。"
+      }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "變壓器",
@@ -5563,7 +5730,6 @@
       "345kV/161kV 高壓變壓器認證與量產進度",
       "customers: missing verifiable evidence",
       "revenue_exposure: missing verifiable evidence",
-      "產品線營收占比",
       "客戶/訂單佐證",
       "最新法說會或年報來源",
       "AI 資料中心高壓變壓器具體客戶名單與出貨時程",
@@ -5578,7 +5744,7 @@
       "華城在 BYOP 題材中的具體角色",
       "AI 相關訂單具體營收佔比"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -5606,19 +5772,27 @@
       },
       {
         "theme_id": "heavy_electrical_grid",
-        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "theme_name": "重電與強韌電網",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "變壓器與重電外銷供應商",
+        "role": "待補題材角色",
         "evidence": [
-          "Yahoo 與 CMoney 報導點名",
-          "市場普遍視華城為變壓器外銷龍頭",
-          "Yahoo 與 CMoney 報導點名華城為變壓器與重電外銷受惠股",
-          "產業鏈簡介將大同(2371)歸於電機機械，但華城亦屬變壓器/重電主要供應商"
+          {
+            "title": "整理包／賴清德令台電強韌電網計畫加速",
+            "url": "https://money.udn.com/money/story/124512/7887496",
+            "source_level": "L2_media",
+            "summary": "華城為重電三雄之一，受惠強韌電網與外銷。"
+          },
+          {
+            "title": "AI跑太快，電力跟得上嗎？重電三雄",
+            "url": "https://news.cnyes.com/news/id/6224125",
+            "source_level": "L2_media",
+            "summary": "華城為全球卡位戰代表廠。"
+          }
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-19T12:18:48"
       },
       {
         "theme_id": "green_energy_storage",
@@ -6078,11 +6252,17 @@
         "publish_date": "",
         "summary": "社群討論指士電受惠 BYOP 與 AI 資料中心高壓電力設備需求。"
       },
-      "TPEx 電動車輛產業鏈簡介提及士電"
+      "TPEx 電動車輛產業鏈簡介提及士電",
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "士電為重電指標股之一，受惠強韌電網。"
+      }
     ],
-    "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "重電與配電設備供應商",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "變壓器",
       "開關設備",
@@ -6139,7 +6319,6 @@
       "儲能 PCS 與變壓器營收佔比",
       "美系資料中心客戶名單",
       "GIS 與 161kV 級距產品出貨結構",
-      "產品線營收占比",
       "客戶/訂單佐證",
       "最新法說會或年報來源",
       "儲能 PCS 與重電營收佔比",
@@ -6150,7 +6329,7 @@
       "AI 資料中心相關營收",
       "士電與大同重電業務差異"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -6169,19 +6348,21 @@
       },
       {
         "theme_id": "heavy_electrical_grid",
-        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "theme_name": "重電與強韌電網",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "重電與自動化設備供應商",
+        "role": "待補題材角色",
         "evidence": [
-          "CMoney 報導點名",
-          "TPEx 電動車輛產業鏈簡介收錄士電",
-          "CMoney 報導點名士電為重電與自動化受惠股",
-          "TPEx 電動車輛產業鏈簡介亦提及士電(1503)"
+          {
+            "title": "整理包／賴清德令台電強韌電網計畫加速",
+            "url": "https://money.udn.com/money/story/124512/7887496",
+            "source_level": "L2_media",
+            "summary": "士電為重電指標股之一，受惠強韌電網。"
+          }
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -6365,10 +6546,22 @@
         "publish_date": "2025-12-12",
         "summary": "市場展望提及景氣溫和回升與傳產補庫機會，可作為工具機與自動化觀察。"
       },
-      "中興電專注特高壓變壓器與配電設備，受惠於台電電網韌性計畫"
+      "中興電專注特高壓變壓器與配電設備，受惠於台電電網韌性計畫",
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "中興電為重電三雄之一，GIS 與變電所工程受惠。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "中興電受惠台電標案與AI用電。"
+      }
     ],
-    "relation_strength": "high",
-    "relation_type": "indirect",
+    "relation_strength": "low",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "GIS氣體絕緣開關",
@@ -6442,14 +6635,13 @@
       "主要客戶與訂單能見度",
       "最新年報/法說會來源",
       "訂單能見度",
-      "產品線營收占比",
       "客戶/訂單佐證",
       "最新法說會或年報來源",
       "中興電重電與電力工程業務營收佔比",
       "iBuddy 充電樁等非重電業務拆分",
       "AI 資料中心相關工程訂單"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_power_equipment",
@@ -6468,17 +6660,27 @@
       },
       {
         "theme_id": "heavy_electrical_grid",
-        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "theme_name": "重電與強韌電網",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "重電與電力工程供應商",
+        "role": "待補題材角色",
         "evidence": [
-          "CMoney 報導點名",
-          "CMoney 報導點名中興電為重電與電力工程受惠股"
+          {
+            "title": "整理包／賴清德令台電強韌電網計畫加速",
+            "url": "https://money.udn.com/money/story/124512/7887496",
+            "source_level": "L2_media",
+            "summary": "中興電為重電三雄之一，GIS 與變電所工程受惠。"
+          },
+          {
+            "title": "AI跑太快，電力跟得上嗎？重電三雄",
+            "url": "https://news.cnyes.com/news/id/6224125",
+            "source_level": "L2_media",
+            "summary": "中興電受惠台電標案與AI用電。"
+          }
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-19T12:18:48"
       },
       {
         "theme_id": "ai_data_center_grid_infrastructure",
@@ -6600,11 +6802,35 @@
         "source_level": "L2_media",
         "publish_date": "2025-11-27",
         "summary": "TrendForce 追蹤記憶體、AI 晶片與資料中心需求變化，可作為記憶體景氣循環觀察來源。"
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026-05",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "TrendForce",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "https://www.trendforce.com",
+        "publish_date": "2026",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "記憶體製造",
+    "role": "NAND Flash與編碼型快閃記憶體（NOR/NAND）",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -6660,7 +6886,7 @@
       "精確題材營收佔比",
       "精確客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:09",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "memory_recovery",
@@ -6686,6 +6912,17 @@
           "不要捏造百分比"
         ],
         "updated_at": "2026-06-18T21:17:09"
+      },
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "NAND Flash與編碼型快閃記憶體（NOR/NAND）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -6802,11 +7039,35 @@
         "source_level": "L2_media",
         "publish_date": "",
         "summary": "華邦電為記憶體族群代表。"
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026-05",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "TrendForce",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "https://www.trendforce.com",
+        "publish_date": "2026",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "待補題材角色",
+    "role": "DRAM/SLC NAND製造",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -6860,7 +7121,7 @@
       "營收佔比",
       "官方未揭露客戶名單"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "hbm_memory_supply_chain",
@@ -6913,6 +7174,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "DRAM/SLC NAND製造",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -6995,11 +7267,35 @@
         "content": "記憶體景氣復甦，下游需求回升。",
         "publish_date": "2026-02-08",
         "score_contribution": 3.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026-05",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "TrendForce",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "https://www.trendforce.com",
+        "publish_date": "2026",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "DRAM/NAND/NOR/SSD 與記憶體模組景氣循環節點",
+    "role": "DRAM製造",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -7046,7 +7342,7 @@
       "營收佔比",
       "官方未揭露客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:09",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "memory_recovery",
@@ -7072,6 +7368,17 @@
           "不要捏造百分比"
         ],
         "updated_at": "2026-06-18T21:17:09"
+      },
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "DRAM製造",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -8579,6 +8886,9 @@
       "SaaS",
       "ERP"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -8604,9 +8914,6 @@
       "內需消費與廣告景氣波動會影響平台成長",
       "電商競爭激烈",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "5278": {
@@ -8647,6 +8954,9 @@
       "SaaS",
       "ERP"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -8670,9 +8980,6 @@
       "AI 應用服務若缺乏可複製產品，可能只停留在專案收入",
       "內需消費與廣告景氣波動會影響平台成長",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3083": {
@@ -8713,6 +9020,9 @@
       "SaaS",
       "ERP"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -8736,9 +9046,6 @@
       "AI 應用服務若缺乏可複製產品，可能只停留在專案收入",
       "內需消費與廣告景氣波動會影響平台成長",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3491": {
@@ -9575,11 +9882,12 @@
         "url": "https://www.cmoney.tw/",
         "publish_date": "2026-06-12",
         "summary": "5月營收創歷史新高。"
-      }
+      },
+      "台光電為高階CCL主要供應商，受惠AI伺服器高速材料需求；具體產品規格與客戶結構待驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "高階低損耗 CCL 材料供應商",
+    "role": "銅箔基板與高階CCL",
     "products": [
       "CCL",
       "低損耗材料",
@@ -9661,7 +9969,7 @@
       "M8/M9 認證進度與 ASP 變化",
       "毛利率變化量化數據"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "low_orbit_satellite_supply",
@@ -9690,6 +9998,19 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "銅箔基板與高階CCL",
+        "evidence": [
+          "台光電為高階CCL主要供應商，受惠AI伺服器高速材料需求；具體產品規格與客戶結構待驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -9850,11 +10171,12 @@
         "url": "https://www.moneyweekly.com.tw/",
         "publish_date": "2026-05-22",
         "summary": "ABF 與高速 CCL 進入超級循環。"
-      }
+      },
+      "聯茂為銅箔基板廠，AI伺服器高速CCL出貨比重待驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "待補題材角色",
+    "role": "銅箔基板",
     "products": [
       "PCB",
       "HDI",
@@ -9912,9 +10234,9 @@
       "ABF 載板客戶名單",
       "認證進度",
       "毛利率明細",
-      "主要客戶、營收占比與公司層級證據待查證"
+      "主要客戶、營收佔比與公司層級證據待查證"
     ],
-    "updated_at": "2026-06-18T18:37:19",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "advanced_pcb_ccl",
@@ -9948,6 +10270,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "銅箔基板",
+        "evidence": [
+          "聯茂為銅箔基板廠，AI伺服器高速CCL出貨比重待驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -10164,6 +10499,13 @@
       "自研晶片",
       "AI晶片"
     ],
+    "customers": [
+      "PC/週邊供應鏈",
+      "資料中心周邊供應鏈",
+      "雲端服務供應商 (CSP)",
+      "系統廠",
+      "IC 設計公司"
+    ],
     "revenue_exposure": [
       {
         "level": "unknown",
@@ -10238,13 +10580,6 @@
       "客戶集中度風險",
       "專案執行風險",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "PC/週邊供應鏈",
-      "資料中心周邊供應鏈",
-      "雲端服務供應商 (CSP)",
-      "系統廠",
-      "IC 設計公司"
     ]
   },
   "3035": {
@@ -10530,6 +10865,11 @@
       "自研晶片",
       "AI晶片"
     ],
+    "customers": [
+      "晶圓代工廠",
+      "IC 設計公司",
+      "系統廠"
+    ],
     "revenue_exposure": [
       {
         "level": "unknown",
@@ -10600,11 +10940,6 @@
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證",
       "權利金模式成長不確定",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "晶圓代工廠",
-      "IC 設計公司",
-      "系統廠"
     ]
   },
   "3694": {
@@ -10694,6 +11029,9 @@
       "低功耗 SoC",
       "電池"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -10725,9 +11063,6 @@
       "低功耗 AI 晶片、藍牙/Wi-Fi、音訊與電源管理元件競爭激烈",
       "眼鏡產品對重量、續航、散熱與隱私要求高",
       "若品牌採用自研晶片或海外供應商，台股 IC 設計受惠程度可能低於預期"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "4979": {
@@ -10979,11 +11314,12 @@
         "source_level": "L1_official",
         "publish_date": "2026-05-23",
         "summary": "後續應以公司月營收、財報、年報與法說會確認公司層級產品、客戶、營收曝險與量產資料。"
-      }
+      },
+      "經濟日報2026-06-17點名聯鈞為光通訊受惠股；惟具體800G/1.6T產品線與客戶結構需L1/L2補充驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "聯鈞 在「蘋果 AI 終端與 iPhone/Mac 供應鏈」中的擴充供應鏈節點",
+    "role": "光通訊模組封裝與光收發元件",
     "products": [
       "光收發模組",
       "光通訊",
@@ -11006,6 +11342,9 @@
       "1.6T",
       "資料中心"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -11027,7 +11366,7 @@
       "具體客戶",
       "revenue_exposure: missing verifiable evidence"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "high_speed_optical",
@@ -11053,6 +11392,19 @@
           "不要捏造百分比"
         ],
         "updated_at": "2026-06-18T21:17:09"
+      },
+      {
+        "theme_id": "ai_silicon_photonics_cpo",
+        "theme_name": "矽光子與CPO光通訊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "光通訊模組封裝與光收發元件",
+        "evidence": [
+          "經濟日報2026-06-17點名聯鈞為光通訊受惠股；惟具體800G/1.6T產品線與客戶結構需L1/L2補充驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -11073,9 +11425,6 @@
       "光互連標準與供應鏈分工尚未完全定案",
       "部分公司僅具光通訊概念，不一定直接受惠矽光子或 CPO",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "4127": {
@@ -11126,6 +11475,9 @@
       "AI 醫療",
       "醫療電腦",
       "健康照護"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -11182,9 +11534,6 @@
       "智慧醫療導入受醫院預算、法規、個資與驗證流程影響",
       "AI 醫療產品商業化週期長",
       "部分公司與 AI 醫療關聯可能偏間接或概念性"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "4107": {
@@ -11252,6 +11601,9 @@
       "醫療電腦",
       "健康照護"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -11283,9 +11635,6 @@
       "AI 醫療產品商業化週期長",
       "部分公司與 AI 醫療關聯可能偏間接或概念性",
       "醫材取證與臨床驗證失敗會影響商業化"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "4139": {
@@ -11334,6 +11683,9 @@
       "醫療電腦",
       "AI 醫療"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -11362,9 +11714,6 @@
       "AI 醫療產品商業化週期長",
       "部分公司與 AI 醫療關聯可能偏間接或概念性",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2327": {
@@ -13786,6 +14135,10 @@
       "伺服器滑軌",
       "機構件"
     ],
+    "customers": [
+      "伺服器品牌/系統廠",
+      "資料中心供應鏈"
+    ],
     "revenue_exposure": [
       "待查",
       "伺服器零組件",
@@ -13895,10 +14248,6 @@
       "主要客戶集中度需追蹤",
       "Vera Rubin 平台世代交替對營收的影響需觀察",
       "高度依賴 NVIDIA 平台，平台轉換與拉貨週期可能影響營收"
-    ],
-    "customers": [
-      "伺服器品牌/系統廠",
-      "資料中心供應鏈"
     ]
   },
   "8996": {
@@ -13953,6 +14302,9 @@
       "液冷",
       "DLC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -13976,9 +14328,6 @@
       "高階散熱產能擴張後可能導致價格競爭",
       "需要區分實際液冷出貨與一般散熱概念",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2301": {
@@ -14101,6 +14450,9 @@
       "AI 電源",
       "光寶主動控產"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -14163,9 +14515,6 @@
       "AI 電源價格競爭可能加劇",
       "客戶集中度待驗證",
       "與台達電合計供貨比達 7 成，客戶分散風險存在"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6274": {
@@ -14294,11 +14643,12 @@
         "content": "高速 CCL",
         "publish_date": "2026-06-03",
         "score_contribution": 4.0
-      }
+      },
+      "台燿銅箔基板產品線，Low-Dk CCL與AI伺服器關聯需驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "高速 CCL 與伺服器材料供應商",
+    "role": "銅箔基板",
     "products": [
       "高速 CCL",
       "低損耗材料",
@@ -14324,6 +14674,9 @@
       "Mid Loss",
       "AI 伺服器",
       "網通 PCB"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -14353,7 +14706,7 @@
       "客戶與出貨分布",
       "認證進度"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "low_orbit_satellite_supply",
@@ -14376,6 +14729,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "銅箔基板",
+        "evidence": [
+          "台燿銅箔基板產品線，Low-Dk CCL與AI伺服器關聯需驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -14394,9 +14760,6 @@
       "高階材料驗證不確定",
       "高階比重提升但佔比待驗證",
       "下游客戶拉貨波動"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2368": {
@@ -14494,11 +14857,12 @@
         "source_level": "L1_official",
         "publish_date": "2026-03-24",
         "summary": "TASA 指出低軌星系、多軌道通訊、衛星通訊設備與高頻射頻元件需求成長。"
-      }
+      },
+      "金像電伺服器與網通PCB既有產品線，AI伺服器高多層板佔比待驗證"
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "AI 伺服器與交換器 PCB 製造",
+    "role": "伺服器與網通PCB",
     "products": [
       "AI PCB",
       "伺服器板",
@@ -14516,6 +14880,9 @@
       "LEO",
       "直連手機",
       "高層數 PCB"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -14540,7 +14907,7 @@
       "衛星 PCB、射頻元件與地面終端實際出貨量",
       "國際衛星業者採購排程與長約資料"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "risk_notes": [
       "PCB/CCL 仍具景氣循環與庫存調整風險",
       "GPU 平台轉換可能造成短期認證與拉貨空窗",
@@ -14553,9 +14920,22 @@
       "高頻材料與衛星板產品驗證期長，營收認列可能波動",
       "若衛星營收佔比低，股價易受題材情緒波動"
     ],
-    "customers": [
-      "待查證主要客戶"
-    ]
+    "candidate_themes": [
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "伺服器與網通PCB",
+        "evidence": [
+          "金像電伺服器與網通PCB既有產品線，AI伺服器高多層板佔比待驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "2345": {
     "company_name": "智邦",
@@ -14680,11 +15060,12 @@
         "source_level": "L2_media",
         "content": "AI資料中心網路升級。",
         "url": "https://www.trendforce.com/presscenter/news/20251127-12803.html"
-      }
+      },
+      "智邦既有800G交換器產品線已存在，惟其光通訊題材歸屬（系統端vs.光模組端）需釐清，且1.6T時程尚未取得官方公告"
     ],
     "relation_strength": "high",
     "relation_type": "indirect",
-    "role": "資料中心交換器與高速網通設備",
+    "role": "800G/1.6T高速網通交換器",
     "products": [
       "資料中心交換器",
       "800G",
@@ -14762,7 +15143,7 @@
       "客戶名称",
       "營收数据"
     ],
-    "updated_at": "2026-06-18T21:17:09",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "high_speed_networking_switch",
@@ -14811,6 +15192,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-10T23:16:06"
+      },
+      {
+        "theme_id": "ai_silicon_photonics_cpo",
+        "theme_name": "矽光子與CPO光通訊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "800G/1.6T高速網通交換器",
+        "evidence": [
+          "智邦既有800G交換器產品線已存在，惟其光通訊題材歸屬（系統端vs.光模組端）需釐清，且1.6T時程尚未取得官方公告"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -15519,6 +15913,11 @@
       "矽光子磊晶",
       "光通訊磊晶"
     ],
+    "customers": [
+      "國際光模組大廠",
+      "CSP供應鏈",
+      "台灣矽光子新創"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -15551,11 +15950,6 @@
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證",
       "雷射元件認證時間長，CPO營收貢獻可能延後",
       "競爭對手可能提供替代光源方案"
-    ],
-    "customers": [
-      "國際光模組大廠",
-      "CSP供應鏈",
-      "台灣矽光子新創"
     ]
   },
   "8299": {
@@ -15616,11 +16010,35 @@
         "summary": "市場展望提到 2026 台股可能由景氣回升、AI 資本支出與傳產補庫共同推動。"
       },
       "半導體產業鏈簡介：群聯列於 IC 設計公司",
-      "NAND 控制 IC 為其主要產品"
+      "NAND 控制 IC 為其主要產品",
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026-05",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "TrendForce",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "https://www.trendforce.com",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      }
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "NAND 控制晶片與 AI 儲存應用",
+    "role": "NAND控制IC與SSD模組",
     "products": [
       "HBM",
       "DRAM",
@@ -15641,6 +16059,9 @@
       "UFS",
       "記憶卡",
       "模組"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -15666,7 +16087,7 @@
       "精確客戶名單",
       "客戶營收佔比"
     ],
-    "updated_at": "2026-06-18T21:17:09",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
@@ -15716,6 +16137,17 @@
           "2025-2026 年報或法說會揭露"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "NAND控制IC與SSD模組",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -15734,9 +16166,6 @@
       "PCIe Gen5/Gen6 控制 IC 良率與成本控制",
       "與國際大廠(Marvell、Silicon Motion)競爭",
       "HBM 與 DRAM 並非群聯主力，題材關聯偏間接"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6223": {
@@ -15782,6 +16211,9 @@
       "先進封裝設備",
       "CoWoS 設備",
       "測試設備"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -15834,9 +16266,6 @@
       "先進封裝設備受國際大廠競爭與認證門檻影響",
       "若晶圓代工或封測廠擴產遞延，設備供應鏈會同步修正",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3583": {
@@ -15882,6 +16311,9 @@
       "先進封裝設備",
       "CoWoS 設備",
       "測試設備"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -15934,9 +16366,6 @@
       "先進封裝設備受國際大廠競爭與認證門檻影響",
       "若晶圓代工或封測廠擴產遞延，設備供應鏈會同步修正",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "1514": {
@@ -16081,11 +16510,23 @@
         "source_level": "L3_community",
         "publish_date": "",
         "summary": "社群貼文討論亞力受惠 AI 資料中心與電網升級。"
+      },
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "亞力為重電三雄之一。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "亞力受惠配電盤標案。"
       }
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "待補題材角色",
+    "role": "重電配電盤與變壓器",
     "products": [
       "變壓器",
       "重電設備",
@@ -16152,7 +16593,6 @@
       "國產電池芯供應商名單與產能",
       "工業區與科學園區實際申請量",
       "儲能案場 IRR 與維運成本",
-      "產品線營收占比",
       "客戶/訂單佐證",
       "最新法說會或年報來源",
       "AI 資料中心訂單具體進度",
@@ -16161,7 +16601,7 @@
       "台電標案進度",
       "AI 資料中心客戶名單"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -16180,17 +16620,27 @@
       },
       {
         "theme_id": "heavy_electrical_grid",
-        "theme_name": "AI 用電驅動重電、變壓器與電網升級",
+        "theme_name": "重電與強韌電網",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "重電與配電盤供應商",
+        "role": "重電配電盤與變壓器",
         "evidence": [
-          "CMoney 報導點名",
-          "CMoney 報導點名亞力為重電與配電盤受惠股"
+          {
+            "title": "整理包／賴清德令台電強韌電網計畫加速",
+            "url": "https://money.udn.com/money/story/124512/7887496",
+            "source_level": "L2_media",
+            "summary": "亞力為重電三雄之一。"
+          },
+          {
+            "title": "AI跑太快，電力跟得上嗎？重電三雄",
+            "url": "https://news.cnyes.com/news/id/6224125",
+            "source_level": "L2_media",
+            "summary": "亞力受惠配電盤標案。"
+          }
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-19T12:18:48"
       },
       {
         "theme_id": "ai_data_center_grid_infrastructure",
@@ -16307,6 +16757,9 @@
       "觀光餐飲",
       "飛控系統"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -16332,9 +16785,6 @@
       "若未實際得標或交付遞延，題材可能快速降溫",
       "傳產補庫需要營收與訂單驗證",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "5371": {
@@ -16433,6 +16883,9 @@
       "非紅供應鏈",
       "國防預算"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -16511,9 +16964,6 @@
       "AR眼鏡光學規格要求高，驗證週期長",
       "需確認是否取得國際品牌AR眼鏡供應資格",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2634": {
@@ -16569,6 +17019,9 @@
       "非紅供應鏈",
       "國防預算"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -16620,9 +17073,6 @@
       "國防採購受預算、驗收與交付期影響",
       "若未實際得標或交付遞延，題材可能快速降溫",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2882": {
@@ -16714,7 +17164,7 @@
     ],
     "relation_strength": "high",
     "relation_type": "indirect",
-    "role": "待補題材角色",
+    "role": "壽險為主金控",
     "products": [
       "壽險",
       "金控",
@@ -16730,6 +17180,9 @@
       "證券",
       "資產管理",
       "ETF 持股"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -16754,7 +17207,7 @@
       "配息政策可分配盈餘來源",
       "各金控銀行淨利差與放款成長"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -16783,6 +17236,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "壽險為主金控",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -16800,9 +17264,6 @@
       "新台幣升值影響外幣資產評價",
       "股債波動影響投資收益",
       "IFRS17 接軌後獲利結構需觀察"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2881": {
@@ -16894,7 +17355,7 @@
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "待補題材角色",
+    "role": "金控市值王，壽險與銀行並重",
     "products": [
       "壽險",
       "銀行",
@@ -16909,6 +17370,9 @@
       "資產管理",
       "人壽保險",
       "財富管理"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -16935,7 +17399,7 @@
       "各金控最新的避險比率與匯率敏感度",
       "2026 年預估配息率的官方指引"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -16964,6 +17428,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "金控市值王，壽險與銀行並重",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -16979,9 +17454,6 @@
       "外幣資產匯率風險",
       "股債市場波動影響淨值",
       "匯率波動影響避險成本。"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2395": {
@@ -17266,6 +17738,9 @@
       "系統整合",
       "資料中心"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -17313,9 +17788,6 @@
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證",
       "樺漢與 AI 電源供應鏈的直接關聯需驗證",
       "主要業務為工業電腦與系統整合"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3022": {
@@ -17369,6 +17841,9 @@
       "Edge AI",
       "嵌入式系統"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -17392,9 +17867,6 @@
       "AI 功能可能只是附加功能，短期不一定明顯提升毛利率",
       "專案客製化程度高，規模化不易",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3218": {
@@ -17449,6 +17921,9 @@
       "醫材",
       "健康照護"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -17472,9 +17947,6 @@
       "部分公司與 AI 醫療關聯可能偏間接或概念性",
       "醫材取證與臨床驗證失敗會影響商業化",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3008": {
@@ -17608,6 +18080,9 @@
       "組裝",
       "機構件"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -17647,9 +18122,6 @@
       "傳產輪動常受短線資金驅動，缺乏營收驗證時容易退燒",
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3406": {
@@ -17966,6 +18438,9 @@
       "AI 眼鏡",
       "AR 眼鏡"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -17991,9 +18466,6 @@
       "若 Meta、Google、Samsung 或 Apple 上市時程延後，供應鏈拉貨可能延後",
       "多數台股公司尚未明確揭露 AI 眼鏡營收佔比、客戶名稱或量產訂單，短期仍可能偏題材想像",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3504": {
@@ -18122,6 +18594,9 @@
       "光波導",
       "光機模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -18155,9 +18630,6 @@
       "Micro LED 在亮度、良率、轉移、封裝與成本上仍有門檻",
       "若初期 AI 眼鏡以無顯示音訊眼鏡為主，近眼顯示需求可能延後",
       "台灣面板與光學公司是否進入 Meta、Google、Samsung 或 Apple 供應鏈仍缺乏正式揭露"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2454": {
@@ -18315,6 +18787,10 @@
       "無線通訊晶片",
       "智慧裝置晶片"
     ],
+    "customers": [
+      "手機品牌客戶",
+      "智慧裝置客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "智慧型手機",
@@ -18361,10 +18837,6 @@
       "衛星直連手機商業模式、頻譜、法規與資費仍需驗證",
       "高頻材料與衛星板產品驗證期長，營收認列可能波動",
       "若衛星營收佔比低，股價易受題材情緒波動"
-    ],
-    "customers": [
-      "手機品牌客戶",
-      "智慧裝置客戶"
     ]
   },
   "6456": {
@@ -18439,6 +18911,9 @@
       "觀光餐飲",
       "光機模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -18464,9 +18939,6 @@
       "若初期 AI 眼鏡以無顯示音訊眼鏡為主，近眼顯示需求可能延後",
       "台灣面板與光學公司是否進入 Meta、Google、Samsung 或 Apple 供應鏈仍缺乏正式揭露",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2409": {
@@ -18548,6 +19020,9 @@
       "觀光餐飲",
       "光機模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -18587,9 +19062,6 @@
       "若初期 AI 眼鏡以無顯示音訊眼鏡為主，近眼顯示需求可能延後",
       "台灣面板與光學公司是否進入 Meta、Google、Samsung 或 Apple 供應鏈仍缺乏正式揭露",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3481": {
@@ -18689,6 +19161,9 @@
       "FOPLP",
       "先進封裝"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -18745,9 +19220,6 @@
       "MicroLED量產成本仍高，良率待提升",
       "大尺寸MicroLED TV滲透率預估仍低",
       "良率與客戶驗證尚在早期階段；面板本業景氣波動。"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3673": {
@@ -18809,6 +19281,9 @@
       "Micro OLED",
       "光機模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -18832,9 +19307,6 @@
       "Micro LED 在亮度、良率、轉移、封裝與成本上仍有門檻",
       "若初期 AI 眼鏡以無顯示音訊眼鏡為主，近眼顯示需求可能延後",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2379": {
@@ -18961,6 +19433,9 @@
       "企業 AP",
       "Mesh"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19001,9 +19476,6 @@
       "白牌交換器毛利率可能受競爭與客戶議價壓力影響",
       "需區分 AI 資料中心交換器與一般網通設備",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6237": {
@@ -19088,6 +19560,9 @@
       "低功耗晶片",
       "電源管理 IC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19113,9 +19588,6 @@
       "若品牌採用自研晶片或海外供應商，台股 IC 設計受惠程度可能低於預期",
       "AI 眼鏡電子零組件供應鏈尚未正式定案，台股公司多數屬潛在受惠或市場概念",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6558": {
@@ -19188,6 +19660,9 @@
       "低功耗晶片",
       "電源管理 IC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19211,9 +19686,6 @@
       "眼鏡產品對重量、續航、散熱與隱私要求高",
       "若品牌採用自研晶片或海外供應商，台股 IC 設計受惠程度可能低於預期",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3029": {
@@ -19367,6 +19839,9 @@
       "SOC",
       "資安監控"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19411,9 +19886,6 @@
       "台股資安公司規模較小，流動性與估值波動較大",
       "代理銷售毛利率可能低於自有產品或託管服務",
       "AI 資安代理仍處導入早期，企業採用可能先從 POC 開始"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3034": {
@@ -19498,6 +19970,9 @@
       "科研設備",
       "車用DDI"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19532,9 +20007,6 @@
       "TV 與消費電子需求波動",
       "OLED 與 LCD 競爭",
       "AI 題材直接關聯較弱"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6791": {
@@ -19590,6 +20062,9 @@
       "量子通訊",
       "科研設備"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19613,9 +20088,6 @@
       "後量子密碼導入需政府、金融與雲端服務採購推動",
       "科研設備與量子晶片供應鏈尚未形成成熟台股映射",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2049": {
@@ -19749,6 +20221,9 @@
       "線性馬達",
       "機器人關節"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19802,9 +20277,6 @@
       "製造業復甦不明",
       "人形機器人量產時程不確定，需求具想像空間但實質營收認列需時",
       "與日本THK、NSK競爭高階市場"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "1590": {
@@ -19937,6 +20409,9 @@
       "電控元件",
       "自動化模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -19989,9 +20464,6 @@
       "製造業復甦不明",
       "氣動元件在協作機器人滲透率受電動化挑戰",
       "中國市場價格競爭"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2359": {
@@ -20066,6 +20538,9 @@
       "減速機",
       "線性滑軌"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20091,9 +20566,6 @@
       "零組件產品可能與一般工具機/自動化需求混在一起",
       "台股公司是否直接切入 Tesla、NVIDIA 或國際人形機器人供應鏈仍需確認",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "1504": {
@@ -20420,6 +20892,9 @@
       "主權 AI",
       "雲端中心"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20455,9 +20930,6 @@
       "主權 AI 政策效益轉化為個股營收需要時間",
       "AI 算力中心高度依賴電力、散熱與 GPU 供應",
       "軟體與語料庫題材需確認實際採購、授權與商業模式"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "5203": {
@@ -20512,6 +20984,9 @@
       "資安",
       "AI Agent"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20535,9 +21010,6 @@
       "台股資安公司規模較小，流動性與估值波動較大",
       "代理銷售毛利率可能低於自有產品或託管服務",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6690": {
@@ -20624,6 +21096,9 @@
       "主權 AI",
       "雲端中心"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20656,9 +21131,6 @@
       "AI 算力中心高度依賴電力、散熱與 GPU 供應",
       "軟體與語料庫題材需確認實際採購、授權與商業模式",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6140": {
@@ -20713,6 +21185,9 @@
       "資安",
       "AI Agent"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20736,9 +21211,6 @@
       "台股資安公司規模較小，流動性與估值波動較大",
       "代理銷售毛利率可能低於自有產品或託管服務",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2474": {
@@ -20794,6 +21266,9 @@
       "iPhone 17",
       "Apple Intelligence"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -20817,9 +21292,6 @@
       "Apple Intelligence 對硬體換機拉動仍需銷量驗證",
       "供應比重調整可能造成個別台廠受惠程度分化",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2357": {
@@ -21044,6 +21516,9 @@
       "Chromebook",
       "顯示卡"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21079,9 +21554,6 @@
       "PC 市場成熟，AI PC 換機潮實際幅度待驗證",
       "品牌廠毛利低，庫存與通路管理影響獲利",
       "Intel 平台若在 AI PC 市場落後 AMD，可能影響終端需求"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2324": {
@@ -21163,11 +21635,35 @@
         "source_level": "L1_official",
         "publish_date": "2025-05-23",
         "summary": "COMPUTEX 2025 以 AI 部署與創新為核心，展示 AI 終端、PC 與相關生態系。"
+      },
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
+    "relation_strength": "low",
     "relation_type": "direct",
-    "role": "筆電代工與 PC 終端製造",
+    "role": "散熱模組代工(推估)",
     "products": [
       "AI PC",
       "筆電",
@@ -21182,6 +21678,9 @@
       "散熱",
       "PC主機板",
       "商用PC"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -21203,7 +21702,7 @@
       "AI PC 應用",
       "主要客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "intel_concept_rebound",
@@ -21215,6 +21714,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-05-31T22:00:27"
+      },
+      {
+        "theme_id": "ai_thermal_cooling",
+        "theme_name": "AI散熱與液冷散熱模組",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "散熱模組代工(推估)",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -21226,9 +21736,6 @@
       "傳產補庫需要營收與訂單驗證",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證",
       "精英 PC 主機板市場萎縮，主機板佔比與 AI PC 關聯待驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2377": {
@@ -21284,6 +21791,9 @@
       "端側 AI",
       "散熱"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21307,9 +21817,6 @@
       "記憶體與零組件成本上升可能壓縮品牌與代工利潤",
       "端側 AI 應用不足會降低換機誘因",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "4906": {
@@ -21391,6 +21898,9 @@
       "寬頻升級",
       "Mesh"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21422,9 +21932,6 @@
       "低軌衛星訂單受 SpaceX、Eutelsat、SES 等國際業者投資節奏影響",
       "衛星直連手機商業模式、頻譜、法規與資費仍需驗證",
       "高頻材料與衛星板產品驗證期長，營收認列可能波動"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "5388": {
@@ -21492,6 +21999,9 @@
       "寬頻升級",
       "Mesh"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21520,9 +22030,6 @@
       "白牌交換器毛利率可能受競爭與客戶議價壓力影響",
       "需區分 AI 資料中心交換器與一般網通設備",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2002": {
@@ -21595,6 +22102,9 @@
       "減碳製程",
       "低碳水泥"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21620,9 +22130,6 @@
       "低碳產品若無法轉嫁成本，毛利率可能承壓",
       "碳費對高碳產業可能是成本壓力，不必然是利多",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "1303": {
@@ -21686,6 +22193,9 @@
       "碳費",
       "碳定價",
       "ESG"
+    ],
+    "customers": [
+      "待查證主要客戶"
     ],
     "revenue_exposure": [
       "待查",
@@ -21762,9 +22272,6 @@
       "與南亞電路(8046)為不同公司，需區分",
       "AI 應用營收佔比不明",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3708": {
@@ -21860,6 +22367,9 @@
       "ESG",
       "再生能源"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -21944,9 +22454,6 @@
       "離岸風電本土化、成本與工程進度可能影響供應鏈獲利",
       "PPA 價格與合約條件若不佳，收益可能低於預期",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6806": {
@@ -22066,6 +22573,9 @@
       "碳定價",
       "ESG"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -22135,9 +22645,6 @@
       "儲能補助需符合安全驗證與國產電池條件",
       "消防規範與安全事件可能影響導入速度",
       "電價差與儲能投資回收期若不佳，企業建置意願可能不足"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3019": {
@@ -22625,6 +23132,9 @@
       "傳產補庫",
       "景氣復甦"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -22648,9 +23158,6 @@
       "機械設備接單與出貨落差可能導致股價提前反應後修正",
       "中國與歐美製造業 PMI 若轉弱，訂單能見度會下降",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "5425": {
@@ -22725,6 +23232,9 @@
       "GaN",
       "SiC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -22752,9 +23262,6 @@
       "若公司主要營收仍來自消費、工控或車用，AI 伺服器題材可能只是間接受惠",
       "MOSFET 市場競爭激烈",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2481": {
@@ -22857,6 +23364,9 @@
       "整流器",
       "橋式整流器"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -22908,9 +23418,6 @@
       "SiC/GaN 競爭加劇",
       "中國低價競爭壓力",
       "原物料（晶圓、封裝）成本波動"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3675": {
@@ -22987,6 +23494,9 @@
       "車用二極體",
       "SiC 二極體"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23033,9 +23543,6 @@
       "高階 SiC 二極體佔比待驗證",
       "車用認證週期長",
       "市場規模相對小"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "8261": {
@@ -23141,6 +23648,9 @@
       "N-MOSFET",
       "車用功率元件"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23195,9 +23705,6 @@
       "車用與工業認證週期長",
       "中國低價 MOSFET 競爭",
       "原物料成本變動"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6435": {
@@ -23255,6 +23762,9 @@
       "GaN",
       "SiC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23280,9 +23790,6 @@
       "若公司主要營收仍來自消費、工控或車用，AI 伺服器題材可能只是間接受惠",
       "MOSFET 市場競爭激烈",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "6693": {
@@ -23331,6 +23838,9 @@
       "GaN",
       "SiC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23354,9 +23864,6 @@
       "HVDC 架構導入時程仍需 NVIDIA、CSP、ODM 與電源廠正式規格確認",
       "若公司主要營收仍來自消費、工控或車用，AI 伺服器題材可能只是間接受惠",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "7712": {
@@ -23405,6 +23912,9 @@
       "GaN",
       "SiC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23428,9 +23938,6 @@
       "HVDC 架構導入時程仍需 NVIDIA、CSP、ODM 與電源廠正式規格確認",
       "若公司主要營收仍來自消費、工控或車用，AI 伺服器題材可能只是間接受惠",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "2436": {
@@ -23529,6 +24036,9 @@
       "半導體",
       "半導體業"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23567,9 +24077,6 @@
       "需驗證GaN/SiC營收佔比",
       "待後續維護補強公司層級風險",
       "待後續維護補強題材風險"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3588": {
@@ -23625,6 +24132,9 @@
       "半導體",
       "半導體業"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "待查證題材或產品營收占比"
@@ -23644,9 +24154,6 @@
     "risk_notes": [
       "待後續維護補強公司層級風險",
       "待後續維護補強題材風險"
-    ],
-    "customers": [
-      "待查證主要客戶"
     ]
   },
   "3041": {
@@ -23693,6 +24200,10 @@
       "多媒體與影像晶片",
       "智慧機上盒與AI Agent合作方案候選"
     ],
+    "customers": [
+      "機上盒與家庭娛樂設備客戶",
+      "多媒體設備與OTT相關客戶"
+    ],
     "revenue_exposure": [
       "待查",
       "公司年報與新聞可確認揚智為IC設計公司，並曾宣布智慧機上盒AI合作；實際營收貢獻需公司揭露。"
@@ -23714,10 +24225,6 @@
       "機上盒市場成熟，成長需仰賴新產品與合作案放量。",
       "AI Agent題材目前需避免直接視為大量營收。",
       "待後續維護補強題材風險"
-    ],
-    "customers": [
-      "機上盒與家庭娛樂設備客戶",
-      "多媒體設備與OTT相關客戶"
     ]
   },
   "6279": {
@@ -23761,18 +24268,18 @@
       "公司投資人頁與產業資料可確認其屬車用連接器與端子供應商；新能源車占比需由法說或年報補強。"
     ],
     "benefit_logic": "打入中國車廠供應鏈，受惠滲透率提升",
-    "updated_at": "2026-05-23T23:10:01",
-    "risk_notes": [
-      "中國車市價格戰",
-      "車用連接器需求受車市與新能源車滲透率影響。",
-      "客戶集中、匯率與海外產能布局為主要風險。"
-    ],
     "missing_data": [
       "customers: missing verifiable evidence",
       "revenue_exposure: missing verifiable evidence",
       "新能源車產品營收占比",
       "主要車廠客戶與區域銷售",
       "高壓/高頻連接器出貨占比"
+    ],
+    "updated_at": "2026-05-23T23:10:01",
+    "risk_notes": [
+      "中國車市價格戰",
+      "車用連接器需求受車市與新能源車滲透率影響。",
+      "客戶集中、匯率與海外產能布局為主要風險。"
     ]
   },
   "6515": {
@@ -23809,13 +24316,10 @@
       "高階晶片設計與封測客戶",
       "HPC、AI與先進製程測試客戶候選"
     ],
-    "benefit_logic": "AI晶片與HBM整合測試難度提高，帶動高階測試治具需求",
-    "updated_at": "2026-05-23T23:10:01",
-    "risk_notes": [
-      "HBM核心製造掌握在韓廠與美光手中，台廠僅能吃周邊商機",
-      "高階測試介面需求受AI/HPC客戶投片與量產節奏影響。",
-      "客戶集中與資本支出循環需追蹤。"
+    "revenue_exposure": [
+      "公司年報頁與近期報導可確認其聚焦高階晶片測試介面；AI/HPC占比需由公司法說或年報量化。"
     ],
+    "benefit_logic": "AI晶片與HBM整合測試難度提高，帶動高階測試治具需求",
     "missing_data": [
       "customers: missing verifiable evidence",
       "revenue_exposure: missing verifiable evidence",
@@ -23823,8 +24327,11 @@
       "主要客戶與產品認證進度",
       "晶圓測試與最終測試產品組合"
     ],
-    "revenue_exposure": [
-      "公司年報頁與近期報導可確認其聚焦高階晶片測試介面；AI/HPC占比需由公司法說或年報量化。"
+    "updated_at": "2026-05-23T23:10:01",
+    "risk_notes": [
+      "HBM核心製造掌握在韓廠與美光手中，台廠僅能吃周邊商機",
+      "高階測試介面需求受AI/HPC客戶投片與量產節奏影響。",
+      "客戶集中與資本支出循環需追蹤。"
     ]
   },
   "6789": {
@@ -23878,6 +24385,12 @@
       "Micro LED",
       "Micro OLED"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AR 近眼顯示、光波導與 Micro LED需求提升，可能帶動采鈺相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -23898,12 +24411,6 @@
       "AR 眼鏡顯示路線尚未統一，Micro LED、Micro OLED、LCoS 與光波導各有成本與量產挑戰",
       "台灣面板與光學公司是否進入國際品牌供應鏈仍缺乏正式揭露",
       "Micro LED 在亮度、良率、轉移、封裝與成本上仍有門檻"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6239": {
@@ -23960,6 +24467,12 @@
       "SSD",
       "控制晶片"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器代工與整櫃系統需求提升，可能帶動力成相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -23980,12 +24493,6 @@
       "HBM 核心製造主要由海外記憶體大廠主導，台股多為間接受惠",
       "記憶體價格循環波動大，庫存跌價風險高",
       "若 AI 記憶體供給快速擴張，報價可能進入修正"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2441": {
@@ -24013,6 +24520,12 @@
       "測試服務",
       "探針卡"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 先進封裝與 CoWoS 產能擴張需求提升，可能帶動超豐相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24027,12 +24540,6 @@
       "HBM、ABF 載板、矽中介層或設備瓶頸可能拖慢出貨",
       "AI 資本支出若降溫，長約與產能預訂可能調整",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "3680": {
@@ -24072,6 +24579,12 @@
       "測試介面",
       "封裝設備"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 先進封裝與 CoWoS 產能擴張需求提升，可能帶動家登相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24089,12 +24602,6 @@
       "半導體設備訂單受客戶資本支出循環影響大",
       "營收認列可能集中於特定季度，波動較大",
       "先進封裝設備受國際大廠競爭與認證門檻影響"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2360": {
@@ -24167,6 +24674,12 @@
       "車用鏡頭",
       "高壓線束"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器功率半導體與 MOSFET 規格升級需求提升，可能帶動致茂相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24193,12 +24706,6 @@
       "全球電動車需求增速可能放緩，車用電子拉貨波動",
       "車用認證週期長，營收轉換慢",
       "車廠價格戰可能壓縮供應鏈毛利率"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1605": {
@@ -24441,6 +24948,12 @@
       "車用鏡頭",
       "高壓線束"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器功率半導體與 MOSFET 規格升級需求提升，可能帶動新唐相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24461,12 +24974,6 @@
       "全球電動車需求增速可能放緩，車用電子拉貨波動",
       "車用認證週期長，營收轉換慢",
       "車廠價格戰可能壓縮供應鏈毛利率"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2376": {
@@ -24512,6 +25019,15 @@
       "顯示卡",
       "伺服器"
     ],
+    "customers": [
+      "通路客戶",
+      "企業與雲端客戶"
+    ],
+    "revenue_exposure": [
+      "板卡",
+      "伺服器",
+      "網通"
+    ],
     "benefit_logic": "AI 伺服器代工與整櫃系統需求提升，可能帶動技嘉相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24529,15 +25045,6 @@
       "ODM 毛利率可能受客戶議價、料件成本與產品組合影響",
       "AI 伺服器營收快速成長但現金轉換週期與庫存風險同步上升",
       "單一大客戶或單一平台依賴度過高，可能造成出貨波動"
-    ],
-    "customers": [
-      "通路客戶",
-      "企業與雲端客戶"
-    ],
-    "revenue_exposure": [
-      "板卡",
-      "伺服器",
-      "網通"
     ]
   },
   "4958": {
@@ -24596,11 +25103,12 @@
         "url": "https://www.moneyweekly.com.tw/Magazine/Info/%E7%90%86%E8%B2%A1%E5%91%A8%E5%88%8A/202832",
         "publish_date": "2025-11-12",
         "score_contribution": 0.0
-      }
+      },
+      "臻鼎軟板與HDI/SLP產品線既有；AI伺服器佔比偏低，需釐清歸入此題材之比重"
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "臻鼎-KY 在「蘋果 AI 終端與 iPhone/Mac 供應鏈」中的擴充供應鏈節點",
+    "role": "軟板與HDI/類載板",
     "products": [
       "PCB",
       "CCL",
@@ -24616,6 +25124,12 @@
       "HDI",
       "載板"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "蘋果 AI 終端與 iPhone/Mac 供應鏈需求提升，可能帶動臻鼎-KY相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24627,7 +25141,7 @@
       "主要客戶分布",
       "高階材料導入狀況"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "pcb_ccl_supercycle",
@@ -24639,6 +25153,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "軟板與HDI/類載板",
+        "evidence": [
+          "臻鼎軟板與HDI/SLP產品線既有；AI伺服器佔比偏低，需釐清歸入此題材之比重"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -24653,12 +25180,6 @@
       "軟板與伺服器板業務佔比差異大",
       "客戶分散但產品線分散",
       "材料成本波動影響毛利"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "5469": {
@@ -24686,6 +25207,12 @@
       "低損耗材料",
       "高層數板"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器 PCB 與高階 CCL需求提升，可能帶動瀚宇博相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24700,12 +25227,6 @@
       "GPU 平台轉換可能造成短期認證與拉貨空窗",
       "高階材料擴產後可能造成報價壓力",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6409": {
@@ -24762,6 +25283,12 @@
       "快接頭",
       "熱交換器"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 資料中心 800V HVDC 與高功率電源需求提升，可能帶動旭隼相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24782,12 +25309,6 @@
       "液冷產品規格客製化高，驗證與量產時程可能延後",
       "若 GPU 平台轉換或 CSP 採購延遲，短期營收認列可能波動",
       "高階散熱產能擴張後可能導致價格競爭"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "8210": {
@@ -24821,6 +25342,12 @@
       "AI 伺服器機殼",
       "整櫃機架",
       "機構件"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
     ],
     "benefit_logic": "AI 伺服器代工與整櫃系統需求提升，可能帶動勤誠相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -24859,12 +25386,6 @@
       "勤誠 AI 伺服器機殼與整櫃營收佔比需年報驗證",
       "主要客戶（鴻海、廣達、緯穎等 ODM）驗證進度需追蹤",
       "機殼與整櫃毛利率變化需觀察"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "3013": {
@@ -24951,6 +25472,12 @@
       "記憶體模組",
       "AI 散熱"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器代工與整櫃系統需求提升，可能帶動晟銘電相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -24986,12 +25513,6 @@
       "台股公司是否直接切入 Tesla、NVIDIA 或國際機器人供應鏈仍需確認",
       "自動化元件受製造業資本支出循環影響",
       "宜鼎主業為記憶體模組，散熱佔比較低，需驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2354": {
@@ -25035,6 +25556,12 @@
       "組裝",
       "機構件"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "蘋果 AI 終端與 iPhone/Mac 供應鏈需求提升，可能帶動鴻準相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25052,12 +25579,6 @@
       "蘋果鏈受新品週期與匯率影響大，短期波動與季節性明顯",
       "記憶體成本上升可能壓縮 Apple 或供應鏈利潤",
       "Apple Intelligence 對硬體換機拉動仍需銷量驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "3706": {
@@ -25083,11 +25604,43 @@
         "url": "https://www.ndc.gov.tw/en/Content_List.aspx?n=E738D6D7DD31163F",
         "publish_date": "2026-05-06",
         "score_contribution": 8.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "publish_date": "2024-08-09",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "鉅亨網",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "publish_date": "2025-11-08",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2025",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Knowledge Base",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "knowledge_base:heavy_electrical_grid",
+        "publish_date": "2026-06",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "神達 在「AI 伺服器代工與整櫃系統」中的擴充供應鏈節點",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "AI 伺服器",
       "伺服器機殼",
@@ -25099,6 +25652,12 @@
       "主權 AI",
       "雲端中心"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器代工與整櫃系統需求提升，可能帶動神達相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25107,7 +25666,7 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "risk_notes": [
       "ODM 毛利率可能受客戶議價、料件成本與產品組合影響",
       "AI 伺服器營收快速成長但現金轉換週期與庫存風險同步上升",
@@ -25117,12 +25676,20 @@
       "AI 算力中心高度依賴電力、散熱與 GPU 供應",
       "軟體與語料庫題材需確認實際採購、授權與商業模式"
     ],
-    "customers": [
-      "待查證主要客戶"
+    "candidate_themes": [
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "重電與強韌電網",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
     ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ]
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3005": {
     "company_name": "神基",
@@ -25169,6 +25736,12 @@
       "AIoT",
       "嵌入式系統"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "邊緣 AI 與工業電腦需求提升，可能帶動神基相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25189,12 +25762,6 @@
       "邊緣 AI 導入速度可能慢於雲端 AI 基礎建設",
       "工業電腦受全球製造業景氣與客戶資本支出影響",
       "AI 功能可能只是附加功能，短期不一定明顯提升毛利率"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2455": {
@@ -25298,6 +25865,12 @@
       "SiC",
       "CPO雷射"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AR 近眼顯示、光波導與 Micro LED需求提升，可能帶動全新相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25380,12 +25953,6 @@
       "CPO規格與商業化時程風險",
       "雷射磊晶毛利率受規格影響",
       "中國競爭加劇"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2498": {
@@ -25452,6 +26019,12 @@
       "射頻模組",
       "通訊酬載"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "國防無人機與非紅供應鏈需求提升，可能帶動宏達電相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25475,12 +26048,6 @@
       "低軌衛星訂單受國際星系建置與發射排程影響",
       "直連手機商業模式、頻譜與法規仍需驗證",
       "衛星產品驗證期長，接單到營收認列時間可能較久"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "5269": {
@@ -25508,6 +26075,12 @@
       "NRE",
       "矽智財"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI ASIC 設計服務與矽智財需求提升，可能帶動祥碩相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25522,12 +26095,6 @@
       "NRE 與量產營收認列時程波動大",
       "流片失敗、規格變更或客戶取消專案會造成獲利波動",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1102": {
@@ -25581,6 +26148,12 @@
       "再生能源投資",
       "再生能源"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "碳費上路與低碳製程轉型需求提升，可能帶動亞泥相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25619,12 +26192,6 @@
       "綠電營收佔比低",
       "轉投資事業貢獻度有限",
       "L3_community不應作為high confidence之單獨依據"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1722": {
@@ -25652,6 +26219,12 @@
       "碳盤查",
       "ESG"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "碳費上路與低碳製程轉型需求提升，可能帶動台肥相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25666,12 +26239,6 @@
       "減碳投資回收期較長，短期可能壓縮資本支出與現金流",
       "政策費率、優惠係數與碳盤查規範若調整，影響估值模型",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2014": {
@@ -25703,6 +26270,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "碳費上路與低碳製程轉型需求提升，可能帶動中鴻相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25720,12 +26293,6 @@
       "傳產輪動常受短線資金驅動，缺乏營收驗證時容易退燒",
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1304": {
@@ -25753,6 +26320,12 @@
       "碳盤查",
       "ESG"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "碳費上路與低碳製程轉型需求提升，可能帶動台聚相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25767,12 +26340,6 @@
       "減碳投資回收期較長，短期可能壓縮資本支出與現金流",
       "政策費率、優惠係數與碳盤查規範若調整，影響估值模型",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "5483": {
@@ -25816,6 +26383,12 @@
       "太陽光電",
       "離岸風電"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "太陽能、綠電與再生能源需求提升，可能帶動中美晶相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25836,12 +26409,6 @@
       "再生能源受政策、併網、融資與電價機制影響",
       "太陽能產業面臨中國供應鏈價格競爭與庫存壓力",
       "離岸風電本土化、成本與工程進度可能影響供應鏈獲利"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "3687": {
@@ -25883,6 +26450,12 @@
       "企業軟體",
       "SaaS"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "數位雲端、電商與企業軟體服務需求提升，可能帶動歐買尬相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25900,12 +26473,6 @@
       "電商競爭激烈，行銷與物流成本可能侵蝕獲利",
       "雲端與軟體服務需確認訂閱制與高毛利收入佔比",
       "AI 應用服務若缺乏可複製產品，可能只停留在專案收入"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "4977": {
@@ -25938,6 +26505,12 @@
       "光引擎",
       "光模組"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "國防無人機與非紅供應鏈需求提升，可能帶動眾達-KY相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -25955,12 +26528,6 @@
       "CPO 商業化時程仍具不確定性，短期可能停留在驗證或小量出貨",
       "光互連標準與供應鏈分工尚未完全定案",
       "部分公司僅具光通訊概念，不一定直接受惠矽光子或 CPO"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6152": {
@@ -26014,6 +26581,12 @@
       "射頻模組",
       "通訊酬載"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "國防無人機與非紅供應鏈需求提升，可能帶動百一相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26034,12 +26607,6 @@
       "低軌衛星訂單受國際星系建置與發射排程影響",
       "直連手機商業模式、頻譜與法規仍需驗證",
       "衛星產品驗證期長，接單到營收認列時間可能較久"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6579": {
@@ -26072,6 +26639,12 @@
       "醫材",
       "AI 醫療"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "邊緣 AI 與工業電腦需求提升，可能帶動研揚相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26089,12 +26662,6 @@
       "智慧醫療導入受醫院預算、法規、個資與驗證流程影響",
       "AI 醫療產品商業化週期長",
       "部分公司與 AI 醫療關聯可能偏間接或概念性"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "8050": {
@@ -26143,6 +26710,12 @@
       "DC/DC",
       "電源系統"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "邊緣 AI 與工業電腦需求提升，可能帶動廣積相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26185,12 +26758,6 @@
       "與軍用電源大廠(Vicor、SynQor)競爭",
       "無人機 / 反制系統題材關聯偏弱",
       "L3 社群訊號不能單獨支撐高信心"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2880": {
@@ -26218,6 +26785,12 @@
       "證券",
       "股利"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動華南金相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26232,12 +26805,6 @@
       "新台幣大幅升值會影響壽險外幣資產評價與避險成本",
       "股債市場波動會影響投資收益與資本適足率",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2884": {
@@ -26272,7 +26839,7 @@
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "玉山金 在「金融股穩健獲利與股利防禦」中的擴充供應鏈節點",
+    "role": "銀行為主金控，創高",
     "products": [
       "銀行",
       "壽險",
@@ -26281,6 +26848,12 @@
       "信用卡",
       "財管",
       "消金"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
     ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動玉山金相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -26294,7 +26867,7 @@
       "ETF 持有部位變化",
       "財管業務收入結構"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -26312,6 +26885,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "銀行為主金控，創高",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -26324,12 +26908,6 @@
       "聯準會利率政策影響淨利差",
       "財管業務受市場波動影響",
       "中國曝險待查"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2885": {
@@ -26350,12 +26928,18 @@
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "元大金 在「金融股穩健獲利與股利防禦」中的擴充供應鏈節點",
+    "role": "元大高股息等ETF發行",
     "products": [
       "銀行",
       "壽險",
       "證券",
       "股利"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
     ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動元大金相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -26365,19 +26949,38 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "risk_notes": [
       "降息循環可能壓縮銀行淨利差",
       "新台幣大幅升值會影響壽險外幣資產評價與避險成本",
       "股債市場波動會影響投資收益與資本適足率",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
     ],
-    "customers": [
-      "待查證主要客戶"
+    "candidate_themes": [
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "證券為主金控",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "high_dividend_etf_active_etf",
+        "theme_name": "高股息ETF與主動式ETF擴張",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "元大高股息等ETF發行",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
     ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ]
+    "candidate_usage_policy": "hypothesis_only"
   },
   "2887": {
     "company_name": "台新金",
@@ -26411,12 +27014,18 @@
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "台新金 在「金融股穩健獲利與股利防禦」中的擴充供應鏈節點",
+    "role": "金控合併題材",
     "products": [
       "銀行",
       "壽險",
       "證券",
       "股利"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
     ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動台新金相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -26430,7 +27039,7 @@
       "資本適足率",
       "股利政策"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "financial_rerating_dividend",
@@ -26448,6 +27057,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "金控合併題材",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -26461,12 +27081,6 @@
       "IFRS17 接軌影響",
       "新台幣波動風險",
       "資本適足率變化"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2890": {
@@ -26487,12 +27101,18 @@
     ],
     "relation_strength": "medium",
     "relation_type": "direct",
-    "role": "永豐金 在「金融股穩健獲利與股利防禦」中的擴充供應鏈節點",
+    "role": "永豐優息存股等ETF發行",
     "products": [
       "銀行",
       "壽險",
       "證券",
       "股利"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
     ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動永豐金相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
@@ -26502,19 +27122,38 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-19T12:18:48",
     "risk_notes": [
       "降息循環可能壓縮銀行淨利差",
       "新台幣大幅升值會影響壽險外幣資產評價與避險成本",
       "股債市場波動會影響投資收益與資本適足率",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
     ],
-    "customers": [
-      "待查證主要客戶"
+    "candidate_themes": [
+      {
+        "theme_id": "financial_holdings_record_high",
+        "theme_name": "金控股價創高與股市投資收益",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "金控，創高",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "high_dividend_etf_active_etf",
+        "theme_name": "高股息ETF與主動式ETF擴張",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "永豐優息存股等ETF發行",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
     ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ]
+    "candidate_usage_policy": "hypothesis_only"
   },
   "2801": {
     "company_name": "彰銀",
@@ -26541,6 +27180,12 @@
       "證券",
       "股利"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動彰銀相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26555,12 +27200,6 @@
       "新台幣大幅升值會影響壽險外幣資產評價與避險成本",
       "股債市場波動會影響投資收益與資本適足率",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2834": {
@@ -26588,6 +27227,12 @@
       "證券",
       "股利"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "金融股穩健獲利與股利防禦需求提升，可能帶動臺企銀相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26602,12 +27247,6 @@
       "新台幣大幅升值會影響壽險外幣資產評價與避險成本",
       "股債市場波動會影響投資收益與資本適足率",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6441": {
@@ -26648,6 +27287,12 @@
       "國產電池",
       "能源管理"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "產業表後儲能與國產電池需求提升，可能帶動廣錠相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26665,12 +27310,6 @@
       "儲能補助需符合安全驗證與國產電池條件",
       "消防規範與安全事件可能影響導入速度",
       "電價差與儲能投資回收期若不佳，企業建置意願可能不足"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2451": {
@@ -26699,6 +27338,12 @@
       "SSD",
       "控制晶片"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "HBM 與 AI 記憶體供應鏈需求提升，可能帶動創見相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26713,12 +27358,6 @@
       "記憶體價格循環波動大，庫存跌價風險高",
       "若 AI 記憶體供給快速擴張，報價可能進入修正",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6531": {
@@ -26747,6 +27386,12 @@
       "SSD",
       "控制晶片"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "HBM 與 AI 記憶體供應鏈需求提升，可能帶動愛普*相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26761,12 +27406,6 @@
       "記憶體價格循環波動大，庫存跌價風險高",
       "若 AI 記憶體供給快速擴張，報價可能進入修正",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2332": {
@@ -26798,6 +27437,12 @@
       "Mesh",
       "企業 AP"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "Wi-Fi 7 與家庭/企業網通升級需求提升，可能帶動友訊相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26815,12 +27460,6 @@
       "Wi-Fi 7 滲透率受終端裝置支援與電信商採購時程影響",
       "網通設備代工毛利率可能受競爭與客戶議價壓力影響",
       "需區分資料中心高速網通與家庭/企業 Wi-Fi 產品線"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "4540": {
@@ -26852,6 +27491,12 @@
       "自動化",
       "氣動元件"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "工具機、自動化與傳產補庫輪動需求提升，可能帶動全球傳動相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26869,12 +27514,6 @@
       "工具機與自動化需求受全球景氣、匯率與中國市場影響大",
       "傳產補庫題材若無營收 YoY 轉正驗證，容易只是短線輪動",
       "機械設備接單與出貨落差可能導致股價提前反應後修正"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1536": {
@@ -26911,6 +27550,12 @@
       "車用鏡頭",
       "高壓線束"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "智慧車、車用電子與電動車供應鏈需求提升，可能帶動和大相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26931,12 +27576,6 @@
       "全球電動車需求增速可能放緩，車用電子拉貨波動",
       "車用認證週期長，營收轉換慢",
       "車廠價格戰可能壓縮供應鏈毛利率"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1582": {
@@ -26979,6 +27618,12 @@
       "快接頭",
       "熱交換器"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "AI 伺服器液冷與高階散熱需求提升，可能帶動信錦相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -26996,12 +27641,6 @@
       "液冷產品規格客製化高，驗證與量產時程可能延後",
       "若 GPU 平台轉換或 CSP 採購延遲，短期營收認列可能波動",
       "高階散熱產能擴張後可能導致價格競爭"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "6173": {
@@ -27094,6 +27733,12 @@
       "高壓 MLCC",
       "高溫 MLCC"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "被動元件漲價與庫存回補需求提升，可能帶動信昌電相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27184,12 +27829,6 @@
       "高階產品佔比待驗證",
       "客戶集中度待查",
       "原物料波動風險"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "3131": {
@@ -27217,6 +27856,12 @@
       "測試介面",
       "封裝設備"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "先進封裝與 AI 半導體設備需求提升，可能帶動弘塑相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27231,12 +27876,6 @@
       "營收認列可能集中於特定季度，波動較大",
       "先進封裝設備受國際大廠競爭與認證門檻影響",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2467": {
@@ -27264,6 +27903,12 @@
       "測試介面",
       "封裝設備"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "先進封裝與 AI 半導體設備需求提升，可能帶動志聖相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27278,12 +27923,6 @@
       "營收認列可能集中於特定季度，波動較大",
       "先進封裝設備受國際大廠競爭與認證門檻影響",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2027": {
@@ -27310,6 +27949,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "傳產族群輪動補漲需求提升，可能帶動大成鋼相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27324,12 +27969,6 @@
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1476": {
@@ -27356,6 +27995,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "傳產族群輪動補漲需求提升，可能帶動儒鴻相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27370,12 +28015,6 @@
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "1216": {
@@ -27402,6 +28041,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "傳產族群輪動補漲需求提升，可能帶動統一相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27416,12 +28061,6 @@
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2610": {
@@ -27448,6 +28087,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "傳產族群輪動補漲需求提升，可能帶動華航相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27462,12 +28107,6 @@
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2618": {
@@ -27494,6 +28133,12 @@
       "報價循環",
       "內需消費"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "傳產族群輪動補漲需求提升，可能帶動長榮航相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
     "missing_data": [
       "精確營收佔比或業務佔比",
@@ -27508,12 +28153,6 @@
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "2603": {
@@ -27905,6 +28544,32 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "重電與電力系統供應商",
+    "products": [
+      "電力變壓器",
+      "配電設備",
+      "重電設備",
+      "重電",
+      "變壓器",
+      "電力系統",
+      "配電盤",
+      "機電工程",
+      "電力及配電變壓器",
+      "電抗器",
+      "氣體絕緣開關設備",
+      "電線電纜",
+      "智慧電表",
+      "馬達",
+      "商用空調",
+      "能源系統整合"
+    ],
+    "customers": [
+      "台電與電力工程客戶",
+      "再生能源案場",
+      "資料中心與海外電力設備客戶"
+    ],
+    "revenue_exposure": [
+      "電力事業、新能源、資訊系統整合等為重要事業群；AI 電力題材需以訂單與財報認列驗證"
+    ],
     "benefit_logic": "大同具備電力變壓器製造能力，受惠於電網升級與電力基礎建設需求，但需確認其AI資料中心客戶滲透率。",
     "missing_data": [
       "電力變壓器營收佔比",
@@ -27970,24 +28635,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "電力變壓器",
-      "配電設備",
-      "重電設備",
-      "重電",
-      "變壓器",
-      "電力系統",
-      "配電盤",
-      "機電工程",
-      "電力及配電變壓器",
-      "電抗器",
-      "氣體絕緣開關設備",
-      "電線電纜",
-      "智慧電表",
-      "馬達",
-      "商用空調",
-      "能源系統整合"
-    ],
     "risk_notes": [
       "營運體質需改善",
       "AI 資料中心客戶滲透率不明",
@@ -27998,14 +28645,6 @@
       "大型專案交付與認列時程不確定",
       "海外訂單與客戶資訊需官方驗證",
       "重電產能與原物料成本風險"
-    ],
-    "customers": [
-      "台電與電力工程客戶",
-      "再生能源案場",
-      "資料中心與海外電力設備客戶"
-    ],
-    "revenue_exposure": [
-      "電力事業、新能源、資訊系統整合等為重要事業群；AI 電力題材需以訂單與財報認列驗證"
     ]
   },
   "6230": {
@@ -28093,6 +28732,22 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "散熱模組",
+    "products": [
+      "散熱模組",
+      "液冷散熱",
+      "風扇",
+      "散熱片",
+      "AI 散熱",
+      "液冷零組件",
+      "熱導管",
+      "微均熱板"
+    ],
+    "customers": [
+      "筆電、伺服器與電子設備散熱客戶"
+    ],
+    "revenue_exposure": [
+      "公開公司資料列示主要產品為散熱模組、散熱片、熱導管及微均熱板；AI散熱占比需公司揭露或法說資料佐證。"
+    ],
     "benefit_logic": "超眾為散熱模組廠，受惠於 AI 伺服器散熱需求升級與液冷滲透率提升。",
     "missing_data": [
       "AI 伺服器散熱營收佔比",
@@ -28125,16 +28780,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "散熱模組",
-      "液冷散熱",
-      "風扇",
-      "散熱片",
-      "AI 散熱",
-      "液冷零組件",
-      "熱導管",
-      "微均熱板"
-    ],
     "risk_notes": [
       "液冷規格與客戶平台變化快",
       "高階散熱模組資本支出增加",
@@ -28143,12 +28788,6 @@
       "產品組合中 AI 散熱佔比待確認",
       "散熱需求與筆電、伺服器、AI硬體出貨循環高度相關。",
       "若AI散熱產品未明確量產，題材信心需保守。"
-    ],
-    "customers": [
-      "筆電、伺服器與電子設備散熱客戶"
-    ],
-    "revenue_exposure": [
-      "公開公司資料列示主要產品為散熱模組、散熱片、熱導管及微均熱板；AI散熱占比需公司揭露或法說資料佐證。"
     ]
   },
   "3339": {
@@ -28195,6 +28834,21 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "待補題材角色",
+    "products": [
+      "散熱技術",
+      "散熱元件",
+      "熱管理",
+      "III-V族半導體晶圓",
+      "磊晶片",
+      "高功率雷射二極體磊晶片",
+      "晶圓點測與封裝相關製程"
+    ],
+    "customers": [
+      "光通訊與化合物半導體下游客戶"
+    ],
+    "revenue_exposure": [
+      "官方資料可確認公司定位於III-V族半導體與磊晶技術；半導體新產品營收占比仍需年報或法說會量化。"
+    ],
     "benefit_logic": "泰谷從事散熱技術研發，受惠於散熱市場需求成長，但需確認其 AI 應用產品進度。",
     "missing_data": [
       "散熱產品營收佔比",
@@ -28223,26 +28877,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "散熱技術",
-      "散熱元件",
-      "熱管理",
-      "III-V族半導體晶圓",
-      "磊晶片",
-      "高功率雷射二極體磊晶片",
-      "晶圓點測與封裝相關製程"
-    ],
     "risk_notes": [
       "散熱產品營收佔比低，AI 題材影響有限",
       "技術開發與驗證時程不確定",
       "轉型半導體與光通訊題材仍需觀察量產、客戶認證與營收占比。",
       "若主要收入仍受舊產品或產業循環影響，題材受惠程度可能低於市場預期。"
-    ],
-    "customers": [
-      "光通訊與化合物半導體下游客戶"
-    ],
-    "revenue_exposure": [
-      "官方資料可確認公司定位於III-V族半導體與磊晶技術；半導體新產品營收占比仍需年報或法說會量化。"
     ]
   },
   "8927": {
@@ -28273,6 +28912,22 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "待補題材角色",
+    "products": [
+      "能源系統整合",
+      "儲能",
+      "備電",
+      "BBU",
+      "加油站營運",
+      "油品銷售",
+      "能源零售服務"
+    ],
+    "customers": [
+      "加油站與油品零售客戶",
+      "企業車隊與一般消費者"
+    ],
+    "revenue_exposure": [
+      "公司法人說明會頁與財報資料可確認其為北基國際/加油站相關公司；題材主要屬能源零售與油品需求。"
+    ],
     "benefit_logic": "北基從事能源系統整合，可能受惠於資料中心備電需求，但需確認其 BBU 產品進度與客戶滲透率。",
     "missing_data": [
       "BBU/備電產品營收佔比",
@@ -28301,27 +28956,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "能源系統整合",
-      "儲能",
-      "備電",
-      "BBU",
-      "加油站營運",
-      "油品銷售",
-      "能源零售服務"
-    ],
     "risk_notes": [
       "BBU/備電產品營收佔比待確認",
       "AI 資料中心客戶滲透率不明",
       "油品零售受油價、毛利管制與消費需求影響。",
       "與AI、半導體題材關聯低，應作為內需/能源通路管理。"
-    ],
-    "customers": [
-      "加油站與油品零售客戶",
-      "企業車隊與一般消費者"
-    ],
-    "revenue_exposure": [
-      "公司法人說明會頁與財報資料可確認其為北基國際/加油站相關公司；題材主要屬能源零售與油品需求。"
     ]
   },
   "5347": {
@@ -28421,6 +29060,14 @@
       "電源管理IC相關製程",
       "工業、車用與消費性晶片製程"
     ],
+    "customers": [
+      "IC設計公司",
+      "電源管理IC與特殊應用晶片客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人關係頁可確認其提供晶圓代工與財務資訊；近期媒體報導指出法說展望與晶圓出貨改善，但AI直接曝險仍需以公司法說資料確認。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：成熟製程晶圓代工廠、電源管理IC與特殊製程供應鏈",
     "missing_data": [
       "AI 題材直接關聯度",
       "車用/工業用電源管理晶圓佔比",
@@ -28476,15 +29123,7 @@
       "IDM 漲價後對代工價格的傳導力待驗證",
       "成熟製程需求受庫存循環與價格影響。",
       "AI題材多半透過電源管理、工控或資料中心周邊需求間接受惠，需避免誤判為高直接曝險。"
-    ],
-    "customers": [
-      "IC設計公司",
-      "電源管理IC與特殊應用晶片客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人關係頁可確認其提供晶圓代工與財務資訊；近期媒體報導指出法說展望與晶圓出貨改善，但AI直接曝險仍需以公司法說資料確認。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：成熟製程晶圓代工廠、電源管理IC與特殊製程供應鏈"
+    ]
   },
   "6158": {
     "company_name": "精材",
@@ -28522,6 +29161,31 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "先進封裝測試",
+    "products": [
+      "先進封裝測試",
+      "CP 測試",
+      "FT 測試",
+      "晶圓級封裝服務",
+      "感測器封裝",
+      "光學與MEMS封裝",
+      "先進封裝相關服務"
+    ],
+    "customers": [
+      "感測器IC客戶",
+      "光學、MEMS與車用電子客戶"
+    ],
+    "revenue_exposure": [
+      "公司財務報表頁與公開說明資料可確認其為專業晶圓級封裝服務商；AI與車用應用占比需進一步由年報或法說會量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：晶圓級封裝服務商、感測器與先進封裝供應鏈",
+    "missing_data": [
+      "先進封裝測試營收佔比",
+      "主要客戶驗證進度",
+      "量產時程",
+      "主要產品營收占比",
+      "AI/車用/醫療應用占比",
+      "主要客戶與新產品量產進度"
+    ],
     "updated_at": "2026-05-31T17:37:16",
     "candidate_themes": [
       {
@@ -28537,37 +29201,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "先進封裝測試",
-      "CP 測試",
-      "FT 測試",
-      "晶圓級封裝服務",
-      "感測器封裝",
-      "光學與MEMS封裝",
-      "先進封裝相關服務"
-    ],
     "risk_notes": [
       "測試需求與客戶下單節奏高度相關，營收可能波動",
       "若先進封裝技術路線轉換，可能影響測試設備需求",
       "封裝需求受終端應用與客戶新品週期影響。",
       "若AI或車用題材缺少量化營收占比，應維持中等以下信心。"
-    ],
-    "missing_data": [
-      "先進封裝測試營收佔比",
-      "主要客戶驗證進度",
-      "量產時程",
-      "主要產品營收占比",
-      "AI/車用/醫療應用占比",
-      "主要客戶與新產品量產進度"
-    ],
-    "customers": [
-      "感測器IC客戶",
-      "光學、MEMS與車用電子客戶"
-    ],
-    "revenue_exposure": [
-      "公司財務報表頁與公開說明資料可確認其為專業晶圓級封裝服務商；AI與車用應用占比需進一步由年報或法說會量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：晶圓級封裝服務商、感測器與先進封裝供應鏈"
+    ]
   },
   "2486": {
     "company_name": "一詮",
@@ -28615,6 +29254,24 @@
     "relation_strength": "low",
     "relation_type": "direct",
     "role": "太陽能導電漿供應商",
+    "products": [
+      "太陽能導電漿",
+      "銀漿",
+      "正銀漿"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：太陽能導電漿、green_energy_solar",
+    "missing_data": [
+      "一詮太陽能導電漿業務營收佔比",
+      "客戶與訂單集中度",
+      "與綠電/儲能題材的具體關聯",
+      "主要客戶、營收占比與公司層級證據待查證"
+    ],
     "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
@@ -28644,29 +29301,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "太陽能導電漿",
-      "銀漿",
-      "正銀漿"
-    ],
     "risk_notes": [
       "導電漿業務佔一詮整體營收比重需年報驗證",
       "與 AI 資料中心/儲能題材關聯較間接",
       "L3 證據與候選狀態信心度有限"
-    ],
-    "missing_data": [
-      "一詮太陽能導電漿業務營收佔比",
-      "客戶與訂單集中度",
-      "與綠電/儲能題材的具體關聯",
-      "主要客戶、營收占比與公司層級證據待查證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：太陽能導電漿、green_energy_solar"
+    ]
   },
   "6770": {
     "company_name": "力積電",
@@ -28704,6 +29343,28 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "成熟製程與封裝",
+    "products": [
+      "成熟製程",
+      "封裝服務",
+      "AI",
+      "封裝",
+      "半導體",
+      "半導體業"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：supply_chain_upstream_or_material、manufacturing_packaging_testing",
+    "missing_data": [
+      "先進封裝營收佔比",
+      "與 CoWoS 供應鏈具體關聯",
+      "量產客戶",
+      "customers",
+      "revenue_exposure"
+    ],
     "updated_at": "2026-05-31T17:37:16",
     "candidate_themes": [
       {
@@ -28719,33 +29380,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "成熟製程",
-      "封裝服務",
-      "AI",
-      "封裝",
-      "半導體",
-      "半導體業"
-    ],
     "risk_notes": [
       "力積電主要營收來自成熟製程，先進封裝佔比有限",
       "市場定位與台積電 CoWoS 直接供應鏈有所差異",
       "待後續維護補強公司層級風險"
-    ],
-    "missing_data": [
-      "先進封裝營收佔比",
-      "與 CoWoS 供應鏈具體關聯",
-      "量產客戶",
-      "customers",
-      "revenue_exposure"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：supply_chain_upstream_or_material、manufacturing_packaging_testing"
+    ]
   },
   "4953": {
     "company_name": "聯茂",
@@ -28783,6 +29422,34 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "高頻 CCL 材料",
+    "products": [
+      "高頻 CCL",
+      "高速板材",
+      "無鹵素 CCL",
+      "AI PCB 材料",
+      "銅箔基板",
+      "高頻高速材料",
+      "PCB基材",
+      "電子材料"
+    ],
+    "customers": [
+      "PCB廠",
+      "伺服器與網通板供應鏈客戶",
+      "電子材料下游客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人專區與年報入口可確認其為電子材料/CCL廠；AI伺服器高速材料占比需法說會或年報量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：PCB/CCL材料供應商、AI伺服器與高速網通材料供應鏈候選廠商",
+    "missing_data": [
+      "高頻 CCL 營收佔比",
+      "AI 伺服器 PCB 客戶認證進度",
+      "主要客戶名單",
+      "公司年報或法說會直接揭露",
+      "高速材料營收占比",
+      "AI伺服器或網通客戶占比",
+      "主要產品規格與認證進度"
+    ],
     "updated_at": "2026-05-31T17:37:16",
     "candidate_themes": [
       {
@@ -28798,41 +29465,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "高頻 CCL",
-      "高速板材",
-      "無鹵素 CCL",
-      "AI PCB 材料",
-      "銅箔基板",
-      "高頻高速材料",
-      "PCB基材",
-      "電子材料"
-    ],
     "risk_notes": [
       "高頻 CCL 市場競爭激烈，需與日商、松下等競爭",
       "原物料價格波動可能影響毛利率",
       "需確認是否已進入 AI 伺服器 PCB 供應鏈",
       "CCL景氣受PCB庫存循環與銅價影響。",
       "AI伺服器材料需求需區分高階產品占比與一般PCB需求。"
-    ],
-    "missing_data": [
-      "高頻 CCL 營收佔比",
-      "AI 伺服器 PCB 客戶認證進度",
-      "主要客戶名單",
-      "公司年報或法說會直接揭露",
-      "高速材料營收占比",
-      "AI伺服器或網通客戶占比",
-      "主要產品規格與認證進度"
-    ],
-    "customers": [
-      "PCB廠",
-      "伺服器與網通板供應鏈客戶",
-      "電子材料下游客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人專區與年報入口可確認其為電子材料/CCL廠；AI伺服器高速材料占比需法說會或年報量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：PCB/CCL材料供應商、AI伺服器與高速網通材料供應鏈候選廠商"
+    ]
   },
   "8046": {
     "company_name": "南電",
@@ -28879,11 +29518,12 @@
       "南電為 ABF 載板供應商，受惠於 AI 伺服器與高速運算需求",
       "台灣 ABF 載板在全球市場具備領先地位",
       "CMoney PCB 材料族群 5/30 漲 3.94%",
-      "印刷電路板產業鏈簡介：銅箔基板為中游關鍵材料"
+      "印刷電路板產業鏈簡介：銅箔基板為中游關鍵材料",
+      "南電ABF/BT載板產品線需驗證；資本支出與擴產規劃待官方公告"
     ],
     "relation_strength": "high",
     "relation_type": "core",
-    "role": "ABF 載板",
+    "role": "ABF與BT載板",
     "products": [
       "CCL",
       "銅箔基板",
@@ -28896,6 +29536,12 @@
       "IC 載板",
       "先進封裝"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
     "benefit_logic": "銅箔基板（CCL）主要供應商，受惠於 AI 伺服器、800G/1.6T 交換器對高頻高速板材升級。",
     "missing_data": [
       "高速 CCL 產品線營收佔比",
@@ -28907,9 +29553,9 @@
       "主要客戶驗證進度",
       "精確營收佔比",
       "產品量產或出貨數據",
-      "主要客戶、營收占比與公司層級證據待查證"
+      "主要客戶、營收佔比與公司層級證據待查證"
     ],
-    "updated_at": "2026-06-03T08:33:31",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -28928,6 +29574,19 @@
           "出貨量資料"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "ABF與BT載板",
+        "evidence": [
+          "南電ABF/BT載板產品線需驗證；資本支出與擴產規劃待官方公告"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -28943,12 +29602,6 @@
       "AI 需求若修正將影響稼動率",
       "客戶驗證期長",
       "競爭對手擴產加劇"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
     ]
   },
   "4123": {
@@ -28978,6 +29631,19 @@
     "relation_strength": "weak",
     "relation_type": "indirect",
     "role": "醫療設備代理/通路",
+    "products": [
+      "待查證產品線",
+      "生技醫藥",
+      "藥品",
+      "生技轉投資"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "晟德為生技醫藥與轉投資相關公司，納入生技醫藥題材作背景參考，具體產品與轉投資貢獻需後續查證。",
     "missing_data": [
       "承業醫是否代理手術機器人或達文西系統待查",
       "該公司醫療設備營收佔比不明",
@@ -29003,22 +29669,9 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "待查證產品線",
-      "生技醫藥",
-      "藥品",
-      "生技轉投資"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
     "risk_notes": [
       "待後續維護補強公司層級風險"
-    ],
-    "benefit_logic": "晟德為生技醫藥與轉投資相關公司，納入生技醫藥題材作背景參考，具體產品與轉投資貢獻需後續查證。"
+    ]
   },
   "1789": {
     "company_name": "神隆",
@@ -29053,6 +29706,27 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "待補題材角色",
+    "products": [
+      "原料藥",
+      "CDMO",
+      "生技藥品",
+      "製藥代工",
+      "原料藥 API",
+      "CDMO/委託研製",
+      "胜肽產品",
+      "類固醇產品",
+      "細胞毒性產品",
+      "製劑相關服務"
+    ],
+    "customers": [
+      "國際藥廠",
+      "製劑廠",
+      "CDMO 客戶"
+    ],
+    "revenue_exposure": [
+      "API 與委託研製業務受專案進度與客戶需求影響；精確客戶與產品占比需查年報/法說"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：生技製藥 API 與 CDMO 供應鏈、再生醫療/生技醫療題材周邊公司",
     "missing_data": [
       "神隆主要業務為原料藥製造，與手術機器人/AI輔助診斷關聯性待驗證",
       "公司未公告智慧醫療相關產品線",
@@ -29112,34 +29786,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "原料藥",
-      "CDMO",
-      "生技藥品",
-      "製藥代工",
-      "原料藥 API",
-      "CDMO/委託研製",
-      "胜肽產品",
-      "類固醇產品",
-      "細胞毒性產品",
-      "製劑相關服務"
-    ],
     "risk_notes": [
       "CDMO認證與客戶開發需要時間",
       "原料藥景氣波動影響營收",
       "客戶集中與專案遞延風險",
       "法規與 GMP 查核風險",
       "新藥或專案開發時程不確定"
-    ],
-    "customers": [
-      "國際藥廠",
-      "製劑廠",
-      "CDMO 客戶"
-    ],
-    "revenue_exposure": [
-      "API 與委託研製業務受專案進度與客戶需求影響；精確客戶與產品占比需查年報/法說"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：生技製藥 API 與 CDMO 供應鏈、再生醫療/生技醫療題材周邊公司"
+    ]
   },
   "1528": {
     "company_name": "恩德",
@@ -29160,6 +29813,19 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "自動化設備",
+    "products": [
+      "TWSE",
+      "CNC 工具機",
+      "PCB 鑽孔機",
+      "自動化生產設備"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "恩德具 CNC 與 PCB 設備背景，可作為智慧工廠與工業自動化的候選供應鏈節點。",
     "missing_data": [
       "恩德自動化設備具體應用於智慧工廠的比例待查",
       "主要客戶與應用場域不明",
@@ -29187,22 +29853,9 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "TWSE",
-      "CNC 工具機",
-      "PCB 鑽孔機",
-      "自動化生產設備"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
     "risk_notes": [
       "待後續維護補強公司層級風險"
-    ],
-    "benefit_logic": "恩德具 CNC 與 PCB 設備背景，可作為智慧工廠與工業自動化的候選供應鏈節點。"
+    ]
   },
   "4543": {
     "company_name": "萬在",
@@ -29231,6 +29884,20 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "自動化設備",
+    "products": [
+      "自動化設備與機械零組件候選",
+      "工業設備相關產品",
+      "汽車空調模組",
+      "熱交換器",
+      "機電冷卻模組"
+    ],
+    "customers": [
+      "工業設備與自動化客戶"
+    ],
+    "revenue_exposure": [
+      "目前僅找到TDCC IR基本聯絡資料與財報入口；產品線與智慧製造關聯需以公司官網、年報或法說會補強。"
+    ],
+    "benefit_logic": "萬在主要產品為汽車空調與機電冷卻模組，可作為熱管理與散熱題材的候選節點，AI 資料中心直接受惠仍需追蹤。",
     "missing_data": [
       "萬在自動化設備是否切入智慧工廠供應鏈待查",
       "主要產品與應用領域不明",
@@ -29260,24 +29927,10 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "自動化設備與機械零組件候選",
-      "工業設備相關產品",
-      "汽車空調模組",
-      "熱交換器",
-      "機電冷卻模組"
-    ],
-    "customers": [
-      "工業設備與自動化客戶"
-    ],
-    "revenue_exposure": [
-      "目前僅找到TDCC IR基本聯絡資料與財報入口；產品線與智慧製造關聯需以公司官網、年報或法說會補強。"
-    ],
     "risk_notes": [
       "公開資料不足，暫不宜將其高信心歸入智慧製造或機器人題材。",
       "若缺少產品與客戶證據，應維持低到中信心。"
-    ],
-    "benefit_logic": "萬在主要產品為汽車空調與機電冷卻模組，可作為熱管理與散熱題材的候選節點，AI 資料中心直接受惠仍需追蹤。"
+    ]
   },
   "2349": {
     "company_name": "錸德",
@@ -29311,6 +29964,33 @@
     ],
     "relation_strength": "low",
     "role": "待補題材角色",
+    "products": [
+      "MicroLED",
+      "沾鍍代工",
+      "光學膜",
+      "顯示模組",
+      "光學儲存媒體",
+      "光碟片",
+      "媒體儲存",
+      "射出成型",
+      "光學面板"
+    ],
+    "customers": [
+      "儲存媒體通路",
+      "商用儲存客戶",
+      "光學與射出成型客戶"
+    ],
+    "revenue_exposure": [
+      "媒體儲存與相關事業為主，AI 儲存需求題材需以公司營收結構驗證"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：儲存媒體供應鏈、冷資料保存與 AI 儲存題材候選公司",
+    "missing_data": [
+      "MicroLED營收佔比",
+      "主要客戶名單",
+      "量產時程",
+      "儲存新業務營收占比",
+      "AI 儲存題材的官方證據"
+    ],
     "updated_at": "2026-05-31T18:55:22",
     "candidate_themes": [
       {
@@ -29326,40 +30006,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "MicroLED",
-      "沾鍍代工",
-      "光學膜",
-      "顯示模組",
-      "光學儲存媒體",
-      "光碟片",
-      "媒體儲存",
-      "射出成型",
-      "光學面板"
-    ],
     "risk_notes": [
       "轉型效益尚未顯現，MicroLED營收佔比極低",
       "光碟本業衰退，需觀察新事業營收貢獻",
       "光碟產業結構性下滑",
       "AI 儲存題材可能偏市場想像",
       "轉型產品獲利與出貨量不確定"
-    ],
-    "missing_data": [
-      "MicroLED營收佔比",
-      "主要客戶名單",
-      "量產時程",
-      "儲存新業務營收占比",
-      "AI 儲存題材的官方證據"
-    ],
-    "customers": [
-      "儲存媒體通路",
-      "商用儲存客戶",
-      "光學與射出成型客戶"
-    ],
-    "revenue_exposure": [
-      "媒體儲存與相關事業為主，AI 儲存需求題材需以公司營收結構驗證"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：儲存媒體供應鏈、冷資料保存與 AI 儲存題材候選公司"
+    ]
   },
   "2363": {
     "company_name": "矽統",
@@ -29387,6 +30040,20 @@
     ],
     "relation_strength": "low",
     "role": "待補題材角色",
+    "products": [
+      "TWSE"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：industry:TWSE",
+    "missing_data": [
+      "customers",
+      "revenue_exposure"
+    ],
     "updated_at": "2026-05-31T18:55:22",
     "candidate_themes": [
       {
@@ -29402,23 +30069,9 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "TWSE"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
     "risk_notes": [
       "待後續維護補強公司層級風險"
-    ],
-    "missing_data": [
-      "customers",
-      "revenue_exposure"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：industry:TWSE"
+    ]
   },
   "6548": {
     "company_name": "長科*",
@@ -29452,6 +30105,28 @@
     ],
     "relation_strength": "low",
     "role": "待補題材角色",
+    "products": [
+      "導線架",
+      "功率半導體封裝",
+      "散熱封裝",
+      "IC導線架",
+      "LED導線架",
+      "半導體封裝材料"
+    ],
+    "customers": [
+      "半導體封裝與LED封裝客戶"
+    ],
+    "revenue_exposure": [
+      "公司官網可確認其自LED導線架封裝材料起家並於2016年掛牌；IC/LED導線架產品為主要題材。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：導線架與封裝材料供應商、半導體封裝材料供應鏈",
+    "missing_data": [
+      "化合物半導體相關營收佔比",
+      "直接供應客戶名單",
+      "IC與LED導線架營收占比",
+      "主要封裝客戶",
+      "AI或功率元件應用出貨證據"
+    ],
     "updated_at": "2026-05-31T18:55:22",
     "candidate_themes": [
       {
@@ -29467,34 +30142,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "導線架",
-      "功率半導體封裝",
-      "散熱封裝",
-      "IC導線架",
-      "LED導線架",
-      "半導體封裝材料"
-    ],
     "risk_notes": [
       "長科主業為導線架，化合物半導體營收佔比極低",
       "封裝材料景氣波動大",
       "導線架報價與封裝需求循環會影響獲利。",
       "AI電力或功率元件題材需確認IC導線架實際應用。"
-    ],
-    "missing_data": [
-      "化合物半導體相關營收佔比",
-      "直接供應客戶名單",
-      "IC與LED導線架營收占比",
-      "主要封裝客戶",
-      "AI或功率元件應用出貨證據"
-    ],
-    "customers": [
-      "半導體封裝與LED封裝客戶"
-    ],
-    "revenue_exposure": [
-      "公司官網可確認其自LED導線架封裝材料起家並於2016年掛牌；IC/LED導線架產品為主要題材。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：導線架與封裝材料供應商、半導體封裝材料供應鏈"
+    ]
   },
   "5484": {
     "company_name": "慧友",
@@ -29528,6 +30181,32 @@
     ],
     "relation_strength": "low",
     "role": "待補題材角色",
+    "products": [
+      "AI影像辨識",
+      "監視設備",
+      "空間感知",
+      "AI演算法",
+      "CCTV",
+      "DVR",
+      "IP監控設備系統",
+      "門禁系統",
+      "智慧安防與智慧交通解決方案"
+    ],
+    "customers": [
+      "智慧安防、智慧交通與影像監控客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人專區列示主要產品包含CCTV、DVR、IP監控設備系統、門禁系統與周邊設備。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：智慧安防與影像監控設備供應商、AIoT與智慧交通影像解決方案候選廠商",
+    "missing_data": [
+      "AR/VR相關營收佔比",
+      "直接客戶名單",
+      "產品驗證進度",
+      "AIoT與智慧交通營收占比",
+      "主要客戶與專案案例",
+      "軟硬體整合服務收入占比"
+    ],
     "updated_at": "2026-05-31T18:55:22",
     "candidate_themes": [
       {
@@ -29543,38 +30222,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "AI影像辨識",
-      "監視設備",
-      "空間感知",
-      "AI演算法",
-      "CCTV",
-      "DVR",
-      "IP監控設備系統",
-      "門禁系統",
-      "智慧安防與智慧交通解決方案"
-    ],
     "risk_notes": [
       "慧友主業為監視設備，AR眼鏡直接供應關聯性低",
       "AI影像技術轉入AR眼鏡需重新驗證",
       "傳統安控硬體競爭激烈，AIoT轉型需確認產品與訂單。",
       "若智慧交通或AI安防收入占比低，題材信心需保守。"
-    ],
-    "missing_data": [
-      "AR/VR相關營收佔比",
-      "直接客戶名單",
-      "產品驗證進度",
-      "AIoT與智慧交通營收占比",
-      "主要客戶與專案案例",
-      "軟硬體整合服務收入占比"
-    ],
-    "customers": [
-      "智慧安防、智慧交通與影像監控客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人專區列示主要產品包含CCTV、DVR、IP監控設備系統、門禁系統與周邊設備。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：智慧安防與影像監控設備供應商、AIoT與智慧交通影像解決方案候選廠商"
+    ]
   },
   "4164": {
     "company_name": "承業醫",
@@ -29608,6 +30261,30 @@
     ],
     "relation_strength": "low",
     "role": "待補題材角色",
+    "products": [
+      "放療設備",
+      "醫療設備",
+      "醫院儀器",
+      "醫療設備代理與銷售",
+      "醫療管理服務",
+      "放射腫瘤與精準醫療相關服務",
+      "醫療院所設備整合"
+    ],
+    "customers": [
+      "醫療院所",
+      "醫療管理服務客戶"
+    ],
+    "revenue_exposure": [
+      "公司財報與官網可確認其提供醫療設備、技術與醫療管理服務；精準醫療或再生醫療題材關聯仍需產品與投資項目細節。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：醫療設備與服務整合商、精準醫療設備導入與管理服務平台",
+    "missing_data": [
+      "細胞治療相關營收佔比",
+      "醫院客戶名單",
+      "各醫療服務與設備營收占比",
+      "再生醫療相關投資或業務證據",
+      "主要醫療客戶與合約年限"
+    ],
     "updated_at": "2026-05-31T18:55:22",
     "candidate_themes": [
       {
@@ -29623,36 +30300,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "放療設備",
-      "醫療設備",
-      "醫院儀器",
-      "醫療設備代理與銷售",
-      "醫療管理服務",
-      "放射腫瘤與精準醫療相關服務",
-      "醫療院所設備整合"
-    ],
     "risk_notes": [
       "承業醫主業為放療設備，與再生醫療直接關聯性有限",
       "細胞治療設備佔營收比重極低",
       "醫療設備銷售與服務收入可能受醫院資本支出與政策影響。",
       "再生醫療或細胞治療題材關聯需避免過度推論。"
-    ],
-    "missing_data": [
-      "細胞治療相關營收佔比",
-      "醫院客戶名單",
-      "各醫療服務與設備營收占比",
-      "再生醫療相關投資或業務證據",
-      "主要醫療客戶與合約年限"
-    ],
-    "customers": [
-      "醫療院所",
-      "醫療管理服務客戶"
-    ],
-    "revenue_exposure": [
-      "公司財報與官網可確認其提供醫療設備、技術與醫療管理服務；精準醫療或再生醫療題材關聯仍需產品與投資項目細節。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：醫療設備與服務整合商、精準醫療設備導入與管理服務平台"
+    ]
   },
   "1612": {
     "company_name": "宏泰",
@@ -29857,6 +30510,31 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "待補題材角色",
+    "products": [
+      "高階PCB",
+      "多層板",
+      "柔性PCB",
+      "Anylayer",
+      "AI",
+      "伺服器",
+      "電子零組件業"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：ai_server_component_or_system",
+    "missing_data": [
+      "GB300相關PCB營收佔比",
+      "主要客戶名單",
+      "實際出貨數據",
+      "AI 伺服器 PCB 營收佔比",
+      "NVIDIA 平台驗證進度",
+      "customers",
+      "revenue_exposure"
+    ],
     "updated_at": "2026-06-18T21:25:48",
     "candidate_themes": [
       {
@@ -29894,37 +30572,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "高階PCB",
-      "多層板",
-      "柔性PCB",
-      "Anylayer",
-      "AI",
-      "伺服器",
-      "電子零組件業"
-    ],
     "risk_notes": [
       "高階PCB良率挑戰",
       "客戶驗證時程不確定",
       "台郡主要營收來自手機與消費電子 PCB，AI 伺服器 PCB 佔比待驗證",
       "待後續維護補強公司層級風險"
-    ],
-    "missing_data": [
-      "GB300相關PCB營收佔比",
-      "主要客戶名單",
-      "實際出貨數據",
-      "AI 伺服器 PCB 營收佔比",
-      "NVIDIA 平台驗證進度",
-      "customers",
-      "revenue_exposure"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：ai_server_component_or_system"
+    ]
   },
   "3023": {
     "company_name": "信邦",
@@ -29953,6 +30606,27 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "待補題材角色",
+    "products": [
+      "連接器",
+      "線束",
+      "線束與線纜組件",
+      "工業與醫療連接方案",
+      "車用與綠能相關連接產品候選"
+    ],
+    "customers": [
+      "工業、醫療、車用與能源應用客戶"
+    ],
+    "revenue_exposure": [
+      "TDCC IR與財報資料可確認公司投資人資訊；連接器與線束產品結構需由公司年報或法說會補強。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：連接器與線束供應商、工業、醫療、車用與能源設備連接供應鏈",
+    "missing_data": [
+      "AI伺服器相關營收佔比",
+      "主要客戶名單",
+      "各應用別營收占比",
+      "AI散熱或資料中心連接產品證據",
+      "主要客戶與訂單能見度"
+    ],
     "updated_at": "2026-05-31T22:00:27",
     "candidate_themes": [
       {
@@ -29968,33 +30642,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "連接器",
-      "線束",
-      "線束與線纜組件",
-      "工業與醫療連接方案",
-      "車用與綠能相關連接產品候選"
-    ],
     "risk_notes": [
       "連接器與被動元件漲價關聯性較低",
       "需驗證與AI伺服器直接關聯",
       "產品組合多元但需確認各應用別占比。",
       "若AI散熱或資料中心題材缺少公司揭露，應避免過度推論。"
-    ],
-    "missing_data": [
-      "AI伺服器相關營收佔比",
-      "主要客戶名單",
-      "各應用別營收占比",
-      "AI散熱或資料中心連接產品證據",
-      "主要客戶與訂單能見度"
-    ],
-    "customers": [
-      "工業、醫療、車用與能源應用客戶"
-    ],
-    "revenue_exposure": [
-      "TDCC IR與財報資料可確認公司投資人資訊；連接器與線束產品結構需由公司年報或法說會補強。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：連接器與線束供應商、工業、醫療、車用與能源設備連接供應鏈"
+    ]
   },
   "3234": {
     "company_name": "光環",
@@ -30054,6 +30707,19 @@
       "高速雷射",
       "VCSEL"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊主動元件與晶粒、high_speed_optical_cpo",
+    "missing_data": [
+      "AI資料中心客戶",
+      "CPO/矽光子進度",
+      "2025-2026年法說會揭露",
+      "主要客戶、營收占比與公司層級證據待查證"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -30084,20 +30750,7 @@
       "CPO規格升級風險",
       "雷射晶粒毛利受規格影響",
       "客戶集中度"
-    ],
-    "missing_data": [
-      "AI資料中心客戶",
-      "CPO/矽光子進度",
-      "2025-2026年法說會揭露",
-      "主要客戶、營收占比與公司層級證據待查證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊主動元件與晶粒、high_speed_optical_cpo"
+    ]
   },
   "6271": {
     "company_name": "同欣電",
@@ -30121,6 +30774,12 @@
       "基板製造",
       "影像感測器封裝",
       "光電半導體與MEMS相關封裝"
+    ],
+    "customers": [
+      "無線通訊、MEMS、影像感測器、光電半導體與車用電子客戶"
+    ],
+    "revenue_exposure": [
+      "公司年報頁指出封裝服務與基板製造應用於無線通訊、MEMS、影像感測器、光電半導體、汽車電子等領域。"
     ],
     "benefit_logic": "陶瓷基板供應商，受惠於高頻、高功率與光通訊模組之封裝需求。",
     "missing_data": [
@@ -30158,12 +30817,6 @@
       "光通訊與車用需求若放緩將受影響",
       "封裝需求受影像感測器、車用與光電市場週期影響。",
       "低軌衛星或航太題材需確認訂單與產品占比。"
-    ],
-    "customers": [
-      "無線通訊、MEMS、影像感測器、光電半導體與車用電子客戶"
-    ],
-    "revenue_exposure": [
-      "公司年報頁指出封裝服務與基板製造應用於無線通訊、MEMS、影像感測器、光電半導體、汽車電子等領域。"
     ]
   },
   "2374": {
@@ -30215,6 +30868,13 @@
       "光學鏡頭與影像模組",
       "AI影像視覺相關模組候選",
       "機器人與無人機影像應用候選"
+    ],
+    "customers": [
+      "影像模組與光學應用客戶",
+      "AI視覺、機器人與無人機應用客戶候選"
+    ],
+    "revenue_exposure": [
+      "年報可作為公司正式財務與業務資料來源；AI影像、機器人與無人機相關營收占比仍需公司法說或年報量化。"
     ],
     "benefit_logic": "光通訊元件供應商，可承接 800G/1.6T 模組之被動元件或連接器需求。",
     "missing_data": [
@@ -30269,13 +30929,6 @@
       "機器人市場驗證時程較長",
       "AI影像與機器人題材多來自轉型敘事，仍需出貨與客戶驗證。",
       "若新應用放量不如預期，營收成長可能回落。"
-    ],
-    "customers": [
-      "影像模組與光學應用客戶",
-      "AI視覺、機器人與無人機應用客戶候選"
-    ],
-    "revenue_exposure": [
-      "年報可作為公司正式財務與業務資料來源；AI影像、機器人與無人機相關營收占比仍需公司法說或年報量化。"
     ]
   },
   "3163": {
@@ -30297,6 +30950,12 @@
       "光通訊元件",
       "光纖通訊相關產品",
       "資料中心光通訊供應鏈候選產品"
+    ],
+    "customers": [
+      "光通訊設備與資料中心供應鏈客戶候選"
+    ],
+    "revenue_exposure": [
+      "公司年報可確認光通訊相關營運資訊；CPO、矽光子或AI資料中心直接曝險需公司揭露與客戶證據。"
     ],
     "benefit_logic": "光通訊被動元件（如分光器、耦合器）供應商，與 1.6T/CPO 高速模組之關聯為間接。",
     "missing_data": [
@@ -30334,12 +30993,6 @@
       "客戶集中度需評估",
       "光通訊需求與資料中心資本支出高度相關。",
       "若題材主要來自市場預期，需避免將CPO/矽光子視為已量產事實。"
-    ],
-    "customers": [
-      "光通訊設備與資料中心供應鏈客戶候選"
-    ],
-    "revenue_exposure": [
-      "公司年報可確認光通訊相關營運資訊；CPO、矽光子或AI資料中心直接曝險需公司揭露與客戶證據。"
     ]
   },
   "3362": {
@@ -30361,6 +31014,12 @@
       "塑膠光學鏡頭",
       "筆電視訊鏡頭",
       "車用與AI視覺相關鏡頭"
+    ],
+    "customers": [
+      "筆電、車用與消費性電子鏡頭客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人專區與TPEx資料可確認其為光學鏡頭廠；AI PC與車用鏡頭受惠程度需由法說會或年報進一步量化。"
     ],
     "benefit_logic": "光通訊連接器供應商，可承接高速模組與資料中心之連接器需求。",
     "missing_data": [
@@ -30397,12 +31056,6 @@
       "資料中心客戶導入驗證期長",
       "光學鏡頭毛利率與價格競爭壓力可能影響受惠程度。",
       "AI PC或車用鏡頭題材需要客戶與出貨量證據支持。"
-    ],
-    "customers": [
-      "筆電、車用與消費性電子鏡頭客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人專區與TPEx資料可確認其為光學鏡頭廠；AI PC與車用鏡頭受惠程度需由法說會或年報進一步量化。"
     ]
   },
   "6426": {
@@ -30425,6 +31078,12 @@
       "薄膜濾光片",
       "DWDM關鍵元件",
       "光通訊相關元件"
+    ],
+    "customers": [
+      "光通訊模組與設備客戶"
+    ],
+    "revenue_exposure": [
+      "公司年報頁描述其為精密光學元件與DWDM薄膜濾光片專業廠商；光通訊商轉與AI資料中心曝險需以營收與訂單確認。"
     ],
     "benefit_logic": "光通訊濾片（DWDM/CWDM 濾片）供應商，與 1.6T 模組之關聯為間接。",
     "missing_data": [
@@ -30462,12 +31121,6 @@
       "客戶集中度需評估",
       "光通訊題材受客戶導入與量產節奏影響。",
       "若營收翻倍來自低基期或短期訂單，需追蹤延續性。"
-    ],
-    "customers": [
-      "光通訊模組與設備客戶"
-    ],
-    "revenue_exposure": [
-      "公司年報頁描述其為精密光學元件與DWDM薄膜濾光片專業廠商；光通訊商轉與AI資料中心曝險需以營收與訂單確認。"
     ]
   },
   "3189": {
@@ -30552,11 +31205,12 @@
         "publish_date": "2026-06-18",
         "summary": "原資料寫成景碩，但 4952 為凌通；景碩既有正確代號為 3189。"
       },
-      "印刷電路板產業鏈簡介：IC 載板為 PCB 中游"
+      "印刷電路板產業鏈簡介：IC 載板為 PCB 中游",
+      "景碩IC載板與FCBGA產品線已有，惟AI伺服器FCBGA佔比與客戶端認證進度需驗證"
     ],
     "relation_strength": "low",
     "relation_type": "upstream",
-    "role": "待補題材角色",
+    "role": "IC載板與FCBGA",
     "products": [
       "ABF 載板",
       "IC 載板",
@@ -30569,6 +31223,12 @@
       "ABF載板候選",
       "SiP與封裝用載板"
     ],
+    "customers": [
+      "半導體封裝與IC設計供應鏈客戶"
+    ],
+    "revenue_exposure": [
+      "公司股東會與年報頁可作為正式資料來源；AI伺服器載板需求需進一步確認ABF/BT產品組合與客戶。"
+    ],
     "benefit_logic": "ABF 載板供應商，受惠於 AI 晶片對高階載板需求。",
     "missing_data": [
       "ABF 載板 AI 應用營收佔比",
@@ -30580,11 +31240,11 @@
       "主要客戶名單",
       "實際出貨數據",
       "AI/CoWoS 載板營收佔比",
-      "BT/ABF載板營收占比",
+      "BT/ABF載板營收佔比",
       "AI伺服器或高階封裝客戶資料",
       "產能利用率與新產能進度"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -30623,15 +31283,22 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "IC載板與FCBGA",
+        "evidence": [
+          "景碩IC載板與FCBGA產品線已有，惟AI伺服器FCBGA佔比與客戶端認證進度需驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "customers": [
-      "半導體封裝與IC設計供應鏈客戶"
-    ],
-    "revenue_exposure": [
-      "公司股東會與年報頁可作為正式資料來源；AI伺服器載板需求需進一步確認ABF/BT產品組合與客戶。"
-    ],
     "risk_notes": [
       "ABF載板供需狀況影響供應能力",
       "客戶驗證與量產時程可能遞延",
@@ -30669,6 +31336,14 @@
       "玻璃纖維布",
       "電子級玻纖布",
       "高頻高速材料用玻纖布"
+    ],
+    "customers": [
+      "CCL 廠",
+      "PCB 材料供應鏈",
+      "高頻高速材料客戶"
+    ],
+    "revenue_exposure": [
+      "玻纖紗與玻纖布為主要產品，AI 伺服器與高速通訊需求為題材推論；精確占比需查年報/法說"
     ],
     "benefit_logic": "玻纖布供應商，受惠於高速 CCL 對 Low DK/Low Df 玻纖布升級。",
     "missing_data": [
@@ -30709,14 +31384,6 @@
       "玻纖布價格循環波動",
       "AI 高階材料認證與出貨占比不確定",
       "CCL/PCB 景氣循環風險"
-    ],
-    "customers": [
-      "CCL 廠",
-      "PCB 材料供應鏈",
-      "高頻高速材料客戶"
-    ],
-    "revenue_exposure": [
-      "玻纖紗與玻纖布為主要產品，AI 伺服器與高速通訊需求為題材推論；精確占比需查年報/法說"
     ]
   },
   "9958": {
@@ -30762,6 +31429,25 @@
     "relation_strength": "medium",
     "relation_type": "indirect",
     "role": "綠能與離岸風電水下基礎與儲能結構件，屬電廠結構端供應鏈",
+    "products": [
+      "水下基礎",
+      "離岸風電基樁",
+      "儲能貨櫃",
+      "鋼結構",
+      "綠能結構件",
+      "鋼構工程",
+      "離岸風電水下基礎",
+      "風電基樁",
+      "大型鋼構製造"
+    ],
+    "customers": [
+      "離岸風電開發商",
+      "大型工程與鋼構客戶"
+    ],
+    "revenue_exposure": [
+      "世紀風電媒體報導指出世紀鋼離岸風電產能投產並帶動營收，水下基礎訂單為主要題材；需以最新年報確認營收占比。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：離岸風電水下基礎供應商、大型鋼構與綠能工程供應鏈",
     "missing_data": [
       "離岸風電水下基礎營收佔比",
       "儲能貨櫃 / 結構件營收拆分",
@@ -30791,17 +31477,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "水下基礎",
-      "離岸風電基樁",
-      "儲能貨櫃",
-      "鋼結構",
-      "綠能結構件",
-      "鋼構工程",
-      "離岸風電水下基礎",
-      "風電基樁",
-      "大型鋼構製造"
-    ],
     "risk_notes": [
       "離岸風電標案時程延宕風險",
       "與 AI 資料中心電力設備的直接關聯偏弱，屬間接題材",
@@ -30809,15 +31484,7 @@
       "儲能結構件毛利率較低",
       "離岸風電專案收入認列與工程進度波動較大。",
       "政策、案場進度與原物料價格會影響獲利。"
-    ],
-    "customers": [
-      "離岸風電開發商",
-      "大型工程與鋼構客戶"
-    ],
-    "revenue_exposure": [
-      "世紀風電媒體報導指出世紀鋼離岸風電產能投產並帶動營收，水下基礎訂單為主要題材；需以最新年報確認營收占比。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：離岸風電水下基礎供應商、大型鋼構與綠能工程供應鏈"
+    ]
   },
   "8042": {
     "company_name": "金山電",
@@ -30868,6 +31535,14 @@
       "電子零組件",
       "電源模組用被動元件"
     ],
+    "customers": [
+      "電源模組與電子設備客戶",
+      "AI伺服器電源供應鏈候選客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人股東專區可作為正式資料來源；AI伺服器高功率電源需求與電容產品關聯需法說或年報量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：被動元件供應商、AI伺服器電源模組用電容供應鏈候選廠商",
     "missing_data": [
       "AI 伺服器鋁電客戶名單",
       "車用 / 工業鋁電營收佔比",
@@ -30936,15 +31611,7 @@
       "原物料成本波動",
       "電容價格與庫存循環會影響毛利。",
       "AI伺服器題材需確認高功率電源產品出貨與客戶。"
-    ],
-    "customers": [
-      "電源模組與電子設備客戶",
-      "AI伺服器電源供應鏈候選客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人股東專區可作為正式資料來源；AI伺服器高功率電源需求與電容產品關聯需法說或年報量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：被動元件供應商、AI伺服器電源模組用電容供應鏈候選廠商"
+    ]
   },
   "8271": {
     "company_name": "宇瞻",
@@ -30984,21 +31651,45 @@
         "source_level": "L2_media",
         "publish_date": "",
         "summary": "宇瞻為記憶體模組受惠股之一。"
+      },
+      {
+        "title": "經濟日報記憶體循環報導",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "source_level": "L2_media",
+        "summary": "報導指出記憶體缺貨將延續至2027年，模組廠受惠漲價轉嫁。"
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "記憶體模組與工控儲存",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "products": [
+      "DDR4/DDR5 模組",
+      "工控 SSD",
+      "寬溫記憶體",
+      "企業級 SSD",
+      "記憶體模組",
+      "工控儲存",
+      "SSD",
+      "嵌入式儲存產品"
+    ],
+    "customers": [
+      "工控、嵌入式、企業與通路客戶",
+      "記憶體與儲存應用客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人總覽與近期財經報導可確認其屬記憶體模組與儲存族群；AI/伺服器儲存占比需公司揭露。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：記憶體模組與工控儲存供應商、記憶體景氣循環與邊緣運算儲存供應鏈",
     "missing_data": [
       "工控與企業級 SSD 模組營收佔比",
       "AI 伺服器客戶",
       "ASP 與毛利率變化",
       "法說會資料佐證",
-      "工控/消費/企業儲存營收占比",
+      "工控/消費/企業儲存營收佔比",
       "AI伺服器或資料中心客戶證據",
       "記憶體庫存與報價敏感度"
     ],
-    "updated_at": "2026-06-01T19:07:58",
+    "updated_at": "2026-06-19T12:18:48",
     "candidate_themes": [
       {
         "theme_id": "hbm_memory_supply_chain",
@@ -31015,19 +31706,27 @@
           "法說會資料佐證"
         ],
         "updated_at": "2026-06-01T19:07:58"
+      },
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [
+          {
+            "title": "經濟日報記憶體循環報導",
+            "url": "https://money.udn.com/money/story/5607/9573201",
+            "source_level": "L2_media",
+            "summary": "報導指出記憶體缺貨將延續至2027年，模組廠受惠漲價轉嫁。"
+          }
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "DDR4/DDR5 模組",
-      "工控 SSD",
-      "寬溫記憶體",
-      "企業級 SSD",
-      "記憶體模組",
-      "工控儲存",
-      "SSD",
-      "嵌入式儲存產品"
-    ],
     "risk_notes": [
       "工控市場規模相對小，毛利穩定但成長有限",
       "DRAM/NAND 原料成本波動",
@@ -31035,15 +31734,7 @@
       "與一線模組大廠規模差距",
       "記憶體模組獲利高度受DRAM/NAND報價循環影響。",
       "AI或伺服器儲存需求需以產品與客戶占比確認。"
-    ],
-    "customers": [
-      "工控、嵌入式、企業與通路客戶",
-      "記憶體與儲存應用客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人總覽與近期財經報導可確認其屬記憶體模組與儲存族群；AI/伺服器儲存占比需公司揭露。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：記憶體模組與工控儲存供應商、記憶體景氣循環與邊緣運算儲存供應鏈"
+    ]
   },
   "4967": {
     "company_name": "十銓",
@@ -31080,6 +31771,25 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "記憶體模組與電競/工控儲存",
+    "products": [
+      "DDR5 模組",
+      "電競 SSD",
+      "RGB 模組",
+      "T-FORCE",
+      "工控儲存",
+      "記憶體模組",
+      "SSD",
+      "電競與消費性儲存產品"
+    ],
+    "customers": [
+      "消費性通路客戶",
+      "工控與嵌入式儲存客戶",
+      "電競與高階記憶體客戶"
+    ],
+    "revenue_exposure": [
+      "公司年報與近期財經報導可確認其為記憶體模組與儲存產品廠；AI伺服器直接供應關聯需更多客戶與產品證據。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：記憶體模組與儲存產品供應商、工控/電競/高階記憶體供應鏈",
     "missing_data": [
       "電競與工控儲存營收結構",
       "AI 伺服器模組實績",
@@ -31109,16 +31819,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "DDR5 模組",
-      "電競 SSD",
-      "RGB 模組",
-      "T-FORCE",
-      "工控儲存",
-      "記憶體模組",
-      "SSD",
-      "電競與消費性儲存產品"
-    ],
     "risk_notes": [
       "電競市場競爭激烈，價格戰壓力大",
       "AI 伺服器與企業級 SSD 直接實績需驗證",
@@ -31126,16 +31826,7 @@
       "規模相對較小，品牌溢價有限",
       "記憶體價格循環會造成獲利大幅波動。",
       "AI伺服器題材若缺乏出貨或客戶證據，應避免過度加分。"
-    ],
-    "customers": [
-      "消費性通路客戶",
-      "工控與嵌入式儲存客戶",
-      "電競與高階記憶體客戶"
-    ],
-    "revenue_exposure": [
-      "公司年報與近期財經報導可確認其為記憶體模組與儲存產品廠；AI伺服器直接供應關聯需更多客戶與產品證據。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：記憶體模組與儲存產品供應商、工控/電競/高階記憶體供應鏈"
+    ]
   },
   "3704": {
     "company_name": "合勤控",
@@ -31156,6 +31847,26 @@
     "relation_strength": "low",
     "relation_type": "direct",
     "role": "無人機反制與國防通訊",
+    "products": [
+      "無人機反制系統",
+      "C-UAS",
+      "軍用通訊",
+      "國防網通",
+      "電子戰",
+      "寬頻網路設備",
+      "無線與有線通訊設備",
+      "資安與企業網路設備",
+      "網通相關解決方案"
+    ],
+    "customers": [
+      "電信營運商",
+      "企業網路客戶",
+      "通路與系統整合客戶"
+    ],
+    "revenue_exposure": [
+      "年報與IR資料可確認公司屬網通設備控股集團；國防通訊或無人機反制題材需更多產品與合約佐證。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：網通設備供應商、企業與電信網路設備供應鏈",
     "missing_data": [
       "無人機反制系統具體產品線與客戶",
       "國防通訊營收佔比",
@@ -31194,17 +31905,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "無人機反制系統",
-      "C-UAS",
-      "軍用通訊",
-      "國防網通",
-      "電子戰",
-      "寬頻網路設備",
-      "無線與有線通訊設備",
-      "資安與企業網路設備",
-      "網通相關解決方案"
-    ],
     "risk_notes": [
       "軍工產品認證週期長，營收認列具時差",
       "無人機反制市場規模與標案時程未明",
@@ -31213,16 +31913,7 @@
       "L3 社群訊號不能單獨支撐高信心",
       "網通設備需求受電信資本支出與企業IT支出循環影響。",
       "若國防或無人機反制題材缺少公開合約，應維持候選關聯。"
-    ],
-    "customers": [
-      "電信營運商",
-      "企業網路客戶",
-      "通路與系統整合客戶"
-    ],
-    "revenue_exposure": [
-      "年報與IR資料可確認公司屬網通設備控股集團；國防通訊或無人機反制題材需更多產品與合約佐證。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：網通設備供應商、企業與電信網路設備供應鏈"
+    ]
   },
   "8034": {
     "company_name": "榮群",
@@ -31259,6 +31950,30 @@
     "relation_strength": "low",
     "relation_type": "direct",
     "role": "國防與網通",
+    "products": [
+      "軍用通訊",
+      "國防網通",
+      "軍工模組",
+      "網通設備",
+      "電信局用級傳輸設備",
+      "接取設備",
+      "DLC",
+      "IP DSLAM",
+      "MSAN",
+      "G.SHDSL",
+      "VoIP Gateway",
+      "GPON/EPON",
+      "光傳輸設備"
+    ],
+    "customers": [
+      "電信營運商",
+      "交通運輸事業單位",
+      "軍方單位"
+    ],
+    "revenue_exposure": [
+      "公司官網明確列示主要產品與客戶群，屬通訊網路設備供應商；實際營收占比需年報或財報補強。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：通訊網路設備供應商、電信接取與光傳輸設備供應鏈",
     "missing_data": [
       "軍工產品線營收佔比",
       "國防通訊客戶與合約實績",
@@ -31288,21 +32003,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "軍用通訊",
-      "國防網通",
-      "軍工模組",
-      "網通設備",
-      "電信局用級傳輸設備",
-      "接取設備",
-      "DLC",
-      "IP DSLAM",
-      "MSAN",
-      "G.SHDSL",
-      "VoIP Gateway",
-      "GPON/EPON",
-      "光傳輸設備"
-    ],
     "risk_notes": [
       "軍工產品線營收佔比未明",
       "與一線軍工通訊大廠規模差距",
@@ -31311,16 +32011,7 @@
       "L3 社群訊號不能單獨支撐高信心",
       "電信設備需求受營運商資本支出與專案採購影響。",
       "軍方或交通案源若未持續，營收波動可能較大。"
-    ],
-    "customers": [
-      "電信營運商",
-      "交通運輸事業單位",
-      "軍方單位"
-    ],
-    "revenue_exposure": [
-      "公司官網明確列示主要產品與客戶群，屬通訊網路設備供應商；實際營收占比需年報或財報補強。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：通訊網路設備供應商、電信接取與光傳輸設備供應鏈"
+    ]
   },
   "5381": {
     "company_name": "光譜",
@@ -31357,6 +32048,19 @@
     "relation_strength": "low",
     "relation_type": "direct",
     "role": "軍工與通訊",
+    "products": [
+      "軍工通訊",
+      "國防模組",
+      "通訊設備",
+      "軍用網通"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：軍工與通訊、defense_drone_uav",
     "missing_data": [
       "軍工產品線具體定位",
       "國防通訊客戶與合約",
@@ -31384,26 +32088,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "軍工通訊",
-      "國防模組",
-      "通訊設備",
-      "軍用網通"
-    ],
     "risk_notes": [
       "軍工產品線具體定位未明",
       "軍工營收佔比與客戶結構需驗證",
       "與一線軍工大廠競爭壓力",
       "標案時程不確定",
       "L3 社群訊號不能單獨支撐高信心"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：軍工與通訊、defense_drone_uav"
+    ]
   },
   "2303": {
     "company_name": "聯電",
@@ -31440,6 +32131,14 @@
       "22/28 奈米製程",
       "12 奈米合作製程"
     ],
+    "customers": [
+      "IC 設計公司",
+      "車用/工業/通訊/消費電子晶片客戶"
+    ],
+    "revenue_exposure": [
+      "成熟製程與特殊製程為主要業務，22/28 奈米與特殊應用為重要觀察；精確應用別營收需查法說"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：晶圓代工、成熟製程與特殊製程供應商、半導體景氣循環與 AI 周邊晶片題材",
     "missing_data": [
       "AI 題材直接營收佔比",
       "主要客戶名單與產品線營收拆分",
@@ -31456,15 +32155,7 @@
       "產能利用率波動",
       "中國成熟製程競爭",
       "新製程合作時程不確定"
-    ],
-    "customers": [
-      "IC 設計公司",
-      "車用/工業/通訊/消費電子晶片客戶"
-    ],
-    "revenue_exposure": [
-      "成熟製程與特殊製程為主要業務，22/28 奈米與特殊應用為重要觀察；精確應用別營收需查法說"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：晶圓代工、成熟製程與特殊製程供應商、半導體景氣循環與 AI 周邊晶片題材"
+    ]
   },
   "8358": {
     "company_name": "金居",
@@ -31510,6 +32201,14 @@
       "PCB用銅箔",
       "高頻高速銅箔候選產品"
     ],
+    "customers": [
+      "銅箔基板廠",
+      "PCB供應鏈客戶"
+    ],
+    "revenue_exposure": [
+      "公司官網明確說明生產電解銅箔，提供銅箔基板、多層PCB與高密度連接板等關鍵材料。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電解銅箔供應商、PCB/CCL上游材料供應鏈、AI伺服器高頻高速板材供應鏈候選廠商",
     "missing_data": [
       "AI 高速材料客戶認證",
       "高階銅箔營收佔比",
@@ -31526,15 +32225,7 @@
       "車用與 AI 題材並存，歸類需謹慎",
       "銅價、加工費與產品組合會影響毛利。",
       "高階HVLP銅箔與AI伺服器關聯需確認量產與客戶占比。"
-    ],
-    "customers": [
-      "銅箔基板廠",
-      "PCB供應鏈客戶"
-    ],
-    "revenue_exposure": [
-      "公司官網明確說明生產電解銅箔，提供銅箔基板、多層PCB與高密度連接板等關鍵材料。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電解銅箔供應商、PCB/CCL上游材料供應鏈、AI伺服器高頻高速板材供應鏈候選廠商"
+    ]
   },
   "6282": {
     "company_name": "康舒",
@@ -31589,6 +32280,29 @@
     "relation_strength": "low",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "電源供應器",
+      "資料中心電源",
+      "衛星電源(待驗證)",
+      "PSU",
+      "TWSE"
+    ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：industry:TWSE",
+    "missing_data": [
+      "康舒衛星電源業務具體產品線",
+      "與 SpaceX 或衛星客戶的合約資料",
+      "衛星業務營收佔比",
+      "AI 電源營收佔比",
+      "客戶名單",
+      "customers",
+      "revenue_exposure"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -31615,13 +32329,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "電源供應器",
-      "資料中心電源",
-      "衛星電源(待驗證)",
-      "PSU",
-      "TWSE"
-    ],
     "risk_notes": [
       "康舒與衛星/國防業務的具體關聯性需驗證",
       "現有資料多為資料中心電源，衛星電源待確認",
@@ -31629,23 +32336,7 @@
       "AI 伺服器電源營收佔比待驗證",
       "與台達電、光寶科競爭壓力",
       "待後續維護補強公司層級風險"
-    ],
-    "missing_data": [
-      "康舒衛星電源業務具體產品線",
-      "與 SpaceX 或衛星客戶的合約資料",
-      "衛星業務營收佔比",
-      "AI 電源營收佔比",
-      "客戶名單",
-      "customers",
-      "revenue_exposure"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：industry:TWSE"
+    ]
   },
   "3030": {
     "company_name": "德律",
@@ -31682,6 +32373,32 @@
     "relation_strength": "low",
     "relation_type": "indirect",
     "role": "檢測設備（衛星應用待驗證）",
+    "products": [
+      "AOI 檢測",
+      "光學檢測",
+      "X-ray 檢測",
+      "半導體檢測(待驗證)",
+      "AOI自動光學檢測設備",
+      "SPI錫膏檢測設備",
+      "X-Ray檢測設備",
+      "ICT電路測試設備"
+    ],
+    "customers": [
+      "SMT與PCB製造客戶",
+      "電子製造與半導體封測相關客戶候選"
+    ],
+    "revenue_exposure": [
+      "公司股東會年報頁可作為正式年報與財務資料來源；AI伺服器/高階PCB檢測設備占比需法說會量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電子製造檢測設備供應商、SMT/PCB/X-Ray檢測設備供應鏈",
+    "missing_data": [
+      "德律衛星檢測設備業務具體應用",
+      "與衛星 PCB/IC 客戶的供應關係",
+      "衛星檢測業務營收佔比",
+      "各檢測設備營收占比",
+      "AI伺服器/高階PCB檢測訂單證據",
+      "主要客戶與出貨區域"
+    ],
     "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
@@ -31697,39 +32414,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "AOI 檢測",
-      "光學檢測",
-      "X-ray 檢測",
-      "半導體檢測(待驗證)",
-      "AOI自動光學檢測設備",
-      "SPI錫膏檢測設備",
-      "X-Ray檢測設備",
-      "ICT電路測試設備"
-    ],
     "risk_notes": [
       "德律與衛星檢測業務的具體關聯需驗證",
       "檢測設備應用廣泛，衛星業務佔比需公司揭露",
       "L3_community 證據不足以支撐高信心度",
       "設備需求受電子製造資本支出循環影響。",
       "股價或題材熱度需與訂單、出貨與產品別收入分開判斷。"
-    ],
-    "missing_data": [
-      "德律衛星檢測設備業務具體應用",
-      "與衛星 PCB/IC 客戶的供應關係",
-      "衛星檢測業務營收佔比",
-      "各檢測設備營收占比",
-      "AI伺服器/高階PCB檢測訂單證據",
-      "主要客戶與出貨區域"
-    ],
-    "customers": [
-      "SMT與PCB製造客戶",
-      "電子製造與半導體封測相關客戶候選"
-    ],
-    "revenue_exposure": [
-      "公司股東會年報頁可作為正式年報與財務資料來源；AI伺服器/高階PCB檢測設備占比需法說會量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電子製造檢測設備供應商、SMT/PCB/X-Ray檢測設備供應鏈"
+    ]
   },
   "6873": {
     "company_name": "泓德能源",
@@ -31747,6 +32438,33 @@
     "relation_strength": "medium",
     "relation_type": "direct",
     "role": "綠電與儲能整合商",
+    "products": [
+      "綠電交易",
+      "PPA",
+      "儲能系統",
+      "案場開發",
+      "太陽能整合",
+      "太陽能案場開發",
+      "售電服務",
+      "智慧能源管理"
+    ],
+    "customers": [
+      "再生能源案場客戶",
+      "企業用電戶",
+      "儲能與電力交易客戶"
+    ],
+    "revenue_exposure": [
+      "公司財務概況頁指出事業涵蓋發電、售電與儲能，定位為智慧能源服務商；海外案場與儲能收入占比仍需財報量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：再生能源開發商、售電與儲能服務商、智慧能源平台供應商",
+    "missing_data": [
+      "泓德能源綠電交易、儲能、案場營收佔比",
+      "主要 PPA 客戶名單",
+      "BYOP 相關訂單細節",
+      "發電、售電、儲能營收占比",
+      "案場容量與在建案進度",
+      "海外投資與儲能服務獲利模式"
+    ],
     "updated_at": "2026-06-03T08:33:31",
     "candidate_themes": [
       {
@@ -31766,40 +32484,13 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "綠電交易",
-      "PPA",
-      "儲能系統",
-      "案場開發",
-      "太陽能整合",
-      "太陽能案場開發",
-      "售電服務",
-      "智慧能源管理"
-    ],
     "risk_notes": [
       "綠電交易與儲能業務佔比需年報驗證",
       "案場開發與電廠收入的認列時程",
       "BYOP 題材具新聞性，實際 PPA 合約與客戶需驗證",
       "能源專案收入認列與案場開發進度波動較大。",
       "儲能與電力交易題材需追蹤政策、台電制度與資本支出。"
-    ],
-    "missing_data": [
-      "泓德能源綠電交易、儲能、案場營收佔比",
-      "主要 PPA 客戶名單",
-      "BYOP 相關訂單細節",
-      "發電、售電、儲能營收占比",
-      "案場容量與在建案進度",
-      "海外投資與儲能服務獲利模式"
-    ],
-    "customers": [
-      "再生能源案場客戶",
-      "企業用電戶",
-      "儲能與電力交易客戶"
-    ],
-    "revenue_exposure": [
-      "公司財務概況頁指出事業涵蓋發電、售電與儲能，定位為智慧能源服務商；海外案場與儲能收入占比仍需財報量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：再生能源開發商、售電與儲能服務商、智慧能源平台供應商"
+    ]
   },
   "5299": {
     "company_name": "杰力",
@@ -31814,6 +32505,28 @@
     "relation_strength": "low",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "MOSFET",
+      "功率元件",
+      "功率半導體元件",
+      "電源管理IC",
+      "電源相關半導體產品"
+    ],
+    "customers": [
+      "電源供應器與消費性電子客戶",
+      "筆電、電視與電源系統客戶"
+    ],
+    "revenue_exposure": [
+      "官方財報入口與公開公司資料可確認其屬功率元件與電源管理IC設計公司；AI伺服器電源鏈曝險需產品與客戶證據。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：功率半導體與電源管理IC設計商、AI伺服器電源供應鏈候選廠商",
+    "missing_data": [
+      "功率元件營收佔比",
+      "客戶與產品線分布",
+      "電源管理IC與MOSFET營收占比",
+      "AI伺服器或高功率應用出貨證據",
+      "主要客戶與通路占比"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -31831,34 +32544,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "MOSFET",
-      "功率元件",
-      "功率半導體元件",
-      "電源管理IC",
-      "電源相關半導體產品"
-    ],
     "risk_notes": [
       "台廠 MOSFET 與德儀/英飛凌產品定位差異需驗證",
       "實際轉單效應不確定",
       "功率元件價格與庫存循環可能影響毛利。",
       "AI伺服器受惠需確認產品規格是否切入高功率應用。"
-    ],
-    "missing_data": [
-      "功率元件營收佔比",
-      "客戶與產品線分布",
-      "電源管理IC與MOSFET營收占比",
-      "AI伺服器或高功率應用出貨證據",
-      "主要客戶與通路占比"
-    ],
-    "customers": [
-      "電源供應器與消費性電子客戶",
-      "筆電、電視與電源系統客戶"
-    ],
-    "revenue_exposure": [
-      "官方財報入口與公開公司資料可確認其屬功率元件與電源管理IC設計公司；AI伺服器電源鏈曝險需產品與客戶證據。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：功率半導體與電源管理IC設計商、AI伺服器電源供應鏈候選廠商"
+    ]
   },
   "6719": {
     "company_name": "力智",
@@ -31873,6 +32564,27 @@
     "relation_strength": "low",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "PMIC",
+      "功率元件",
+      "電源管理IC",
+      "MOSFET",
+      "半導體功率元件"
+    ],
+    "customers": [
+      "PC、消費性電子、電源系統與半導體應用客戶",
+      "AI伺服器電源管理客戶候選"
+    ],
+    "revenue_exposure": [
+      "上市業績發表會簡報可確認主要產品為PMIC與MOSFET；AI伺服器電源管理題材需公司最新法說與客戶資料佐證。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源管理IC設計商、功率半導體供應商、AI伺服器電源管理供應鏈候選廠商",
+    "missing_data": [
+      "功率元件營收佔比",
+      "AI伺服器PMIC/MOSFET營收占比",
+      "主要客戶與產品規格",
+      "最新法說會對AI電源管理進度說明"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -31890,32 +32602,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "PMIC",
-      "功率元件",
-      "電源管理IC",
-      "MOSFET",
-      "半導體功率元件"
-    ],
     "risk_notes": [
       "PMIC 與功率元件產品線區隔",
       "PMIC與MOSFET需求受PC、消費性電子與伺服器週期影響。",
       "AI伺服器客戶與出貨若未公開，應維持候選關聯。"
-    ],
-    "missing_data": [
-      "功率元件營收佔比",
-      "AI伺服器PMIC/MOSFET營收占比",
-      "主要客戶與產品規格",
-      "最新法說會對AI電源管理進度說明"
-    ],
-    "customers": [
-      "PC、消費性電子、電源系統與半導體應用客戶",
-      "AI伺服器電源管理客戶候選"
-    ],
-    "revenue_exposure": [
-      "上市業績發表會簡報可確認主要產品為PMIC與MOSFET；AI伺服器電源管理題材需公司最新法說與客戶資料佐證。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源管理IC設計商、功率半導體供應商、AI伺服器電源管理供應鏈候選廠商"
+    ]
   },
   "5439": {
     "company_name": "高技",
@@ -31936,6 +32627,29 @@
     "relation_strength": "low",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "PCB",
+      "散熱基板(待驗證)",
+      "印刷電路板",
+      "厚銅板",
+      "盲埋孔板",
+      "高層板",
+      "散熱鋁基板"
+    ],
+    "customers": [
+      "網通、電源供應器、自動控制、工業電腦、醫療與汽車電子客戶"
+    ],
+    "revenue_exposure": [
+      "公司官網描述PCB製造產品包含厚銅板、盲埋孔板、高層板與散熱鋁基板，應用於網通、電源、工業電腦、醫療與汽車等產業。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：PCB製造商、AI伺服器、網通與工業控制PCB供應鏈候選廠商",
+    "missing_data": [
+      "是否切入功率元件封裝或散熱基板",
+      "客戶驗證",
+      "AI伺服器或網通PCB營收占比",
+      "主要客戶與產品規格",
+      "產能利用率與產品組合"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -31951,34 +32665,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "PCB",
-      "散熱基板(待驗證)",
-      "印刷電路板",
-      "厚銅板",
-      "盲埋孔板",
-      "高層板",
-      "散熱鋁基板"
-    ],
     "risk_notes": [
       "高技主要為 PCB 廠商，與功率半導體題材關聯性待驗證",
       "PCB需求受網通與伺服器景氣循環影響。",
       "AI伺服器題材需確認高階板材與客戶占比。"
-    ],
-    "missing_data": [
-      "是否切入功率元件封裝或散熱基板",
-      "客戶驗證",
-      "AI伺服器或網通PCB營收占比",
-      "主要客戶與產品規格",
-      "產能利用率與產品組合"
-    ],
-    "customers": [
-      "網通、電源供應器、自動控制、工業電腦、醫療與汽車電子客戶"
-    ],
-    "revenue_exposure": [
-      "公司官網描述PCB製造產品包含厚銅板、盲埋孔板、高層板與散熱鋁基板，應用於網通、電源、工業電腦、醫療與汽車等產業。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：PCB製造商、AI伺服器、網通與工業控制PCB供應鏈候選廠商"
+    ]
   },
   "5285": {
     "company_name": "界霖",
@@ -32007,6 +32698,27 @@
     "relation_strength": "low",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "功率元件封裝(待驗證)",
+      "半導體導線架",
+      "功率元件導線架",
+      "車用與伺服器相關導線架候選產品"
+    ],
+    "customers": [
+      "半導體封測與功率元件客戶",
+      "車用與工業用功率元件供應鏈客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人資料可確認其為半導體導線架製造商；AI伺服器功率元件關聯需以法說會與產品出貨資料補強。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體導線架供應商、功率元件封裝材料供應鏈",
+    "missing_data": [
+      "是否切入液冷散熱",
+      "客戶驗證",
+      "車用與AI應用產品營收占比",
+      "主要封測或IDM客戶",
+      "產能利用率與產品組合變化"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32022,33 +32734,12 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "功率元件封裝(待驗證)",
-      "半導體導線架",
-      "功率元件導線架",
-      "車用與伺服器相關導線架候選產品"
-    ],
     "risk_notes": [
       "界霖主要為功率元件封裝，與液冷散熱直接關聯性待驗證",
       "可能為散熱模組或功率封裝分類誤歸",
       "導線架需求受功率元件、車用與工業景氣影響。",
       "AI伺服器題材需確認是否為實際量產應用。"
-    ],
-    "missing_data": [
-      "是否切入液冷散熱",
-      "客戶驗證",
-      "車用與AI應用產品營收占比",
-      "主要封測或IDM客戶",
-      "產能利用率與產品組合變化"
-    ],
-    "customers": [
-      "半導體封測與功率元件客戶",
-      "車用與工業用功率元件供應鏈客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人資料可確認其為半導體導線架製造商；AI伺服器功率元件關聯需以法說會與產品出貨資料補強。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體導線架供應商、功率元件封裝材料供應鏈"
+    ]
   },
   "1532": {
     "company_name": "勤美",
@@ -32095,6 +32786,21 @@
       "生活創新事業",
       "飯店與商場"
     ],
+    "customers": [
+      "汽車與工業金屬零組件客戶",
+      "住宅與商場消費客群"
+    ],
+    "revenue_exposure": [
+      "事業體包含金屬成型、建設住宅與生活創新；精確比重需查年報"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：金屬成型與機構件供應鏈、內需消費與建設資產題材",
+    "missing_data": [
+      "機器人結構件直接客戶與出貨",
+      "公司是否切入人型機器人供應鏈之法說會或年報揭露",
+      "各事業體營收比重",
+      "主要金屬成型客戶",
+      "與機器人零組件題材的直接證據"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32117,22 +32823,7 @@
       "房地產循環風險",
       "金屬原料成本波動",
       "消費與商場人流波動"
-    ],
-    "missing_data": [
-      "機器人結構件直接客戶與出貨",
-      "公司是否切入人型機器人供應鏈之法說會或年報揭露",
-      "各事業體營收比重",
-      "主要金屬成型客戶",
-      "與機器人零組件題材的直接證據"
-    ],
-    "customers": [
-      "汽車與工業金屬零組件客戶",
-      "住宅與商場消費客群"
-    ],
-    "revenue_exposure": [
-      "事業體包含金屬成型、建設住宅與生活創新；精確比重需查年報"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：金屬成型與機構件供應鏈、內需消費與建設資產題材"
+    ]
   },
   "6166": {
     "company_name": "凌華",
@@ -32179,6 +32870,22 @@
       "邊緣運算平台",
       "工業自動化解決方案"
     ],
+    "customers": [
+      "工業自動化客戶",
+      "交通、醫療、通訊與邊緣AI應用客戶"
+    ],
+    "revenue_exposure": [
+      "公司財務資訊頁提供年報與財報資料；邊緣AI與工業電腦應用占比需由公司財報或法說會補強。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：工業電腦與邊緣運算供應商、智慧製造與AIoT硬體供應鏈",
+    "missing_data": [
+      "機器人控制器客戶名單與營收佔比",
+      "邊緣AI模組於人形機器人之直接應用",
+      "2025-2026年法說會對機器人題材之揭露",
+      "邊緣AI產品營收占比",
+      "主要客戶與應用別營收",
+      "專案訂單能見度"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32199,23 +32906,7 @@
       "機器人控制器客戶認證時程",
       "工業電腦需求受客戶資本支出循環影響。",
       "邊緣AI題材需確認實際訂單與產品出貨。"
-    ],
-    "missing_data": [
-      "機器人控制器客戶名單與營收佔比",
-      "邊緣AI模組於人形機器人之直接應用",
-      "2025-2026年法說會對機器人題材之揭露",
-      "邊緣AI產品營收占比",
-      "主要客戶與應用別營收",
-      "專案訂單能見度"
-    ],
-    "customers": [
-      "工業自動化客戶",
-      "交通、醫療、通訊與邊緣AI應用客戶"
-    ],
-    "revenue_exposure": [
-      "公司財務資訊頁提供年報與財報資料；邊緣AI與工業電腦應用占比需由公司財報或法說會補強。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：工業電腦與邊緣運算供應商、智慧製造與AIoT硬體供應鏈"
+    ]
   },
   "3088": {
     "company_name": "艾訊",
@@ -32263,6 +32954,22 @@
       "邊緣運算平台",
       "工業自動化與物聯網設備"
     ],
+    "customers": [
+      "工業自動化客戶",
+      "智慧製造、交通、醫療與邊緣運算客戶"
+    ],
+    "revenue_exposure": [
+      "公司財務業務資訊頁可確認其為工業電腦IPC設計製造商；AI邊緣運算曝險需產品別與客戶資料補強。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：工業電腦供應商、AI邊緣運算與智慧製造硬體供應鏈",
+    "missing_data": [
+      "機器人與AI邊緣應用營收佔比",
+      "主要客戶與出貨資料",
+      "2025-2026年法說會揭露",
+      "AI邊緣運算產品營收占比",
+      "主要客戶與應用別收入",
+      "專案訂單能見度"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32283,23 +32990,7 @@
       "機器人應用認證週期長",
       "工業電腦需求受資本支出與專案遞延影響。",
       "AI邊緣運算題材需確認產品出貨和客戶。"
-    ],
-    "missing_data": [
-      "機器人與AI邊緣應用營收佔比",
-      "主要客戶與出貨資料",
-      "2025-2026年法說會揭露",
-      "AI邊緣運算產品營收占比",
-      "主要客戶與應用別收入",
-      "專案訂單能見度"
-    ],
-    "customers": [
-      "工業自動化客戶",
-      "智慧製造、交通、醫療與邊緣運算客戶"
-    ],
-    "revenue_exposure": [
-      "公司財務業務資訊頁可確認其為工業電腦IPC設計製造商；AI邊緣運算曝險需產品別與客戶資料補強。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：工業電腦供應商、AI邊緣運算與智慧製造硬體供應鏈"
+    ]
   },
   "3036": {
     "company_name": "文曄",
@@ -32339,6 +33030,22 @@
       "技術支援與加值服務",
       "電子零組件代理銷售"
     ],
+    "customers": [
+      "IC設計與電子製造供應鏈客戶",
+      "AI資料中心、車用、工控與通訊相關客戶候選"
+    ],
+    "revenue_exposure": [
+      "公司投資人關係頁可確認文曄為半導體元件通路商；AI資料中心動能需以法說會與應用別營收佐證。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體元件通路商、AI、車用、工控與通訊供應鏈服務平台",
+    "missing_data": [
+      "文曄代理產品線中是否含衛星通訊晶片",
+      "文曄與低軌衛星客戶之直接業務關係",
+      "2025-2026年法說會或年報對衛星題材之揭露",
+      "AI資料中心相關營收占比",
+      "主要代理產品線與客戶結構",
+      "庫存與應收帳款風險"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32360,23 +33067,7 @@
       "L3_community不應作為high confidence之單獨依據",
       "通路業毛利率與庫存風險需追蹤。",
       "大型併購、匯率與供應鏈庫存會影響獲利品質。"
-    ],
-    "missing_data": [
-      "文曄代理產品線中是否含衛星通訊晶片",
-      "文曄與低軌衛星客戶之直接業務關係",
-      "2025-2026年法說會或年報對衛星題材之揭露",
-      "AI資料中心相關營收占比",
-      "主要代理產品線與客戶結構",
-      "庫存與應收帳款風險"
-    ],
-    "customers": [
-      "IC設計與電子製造供應鏈客戶",
-      "AI資料中心、車用、工控與通訊相關客戶候選"
-    ],
-    "revenue_exposure": [
-      "公司投資人關係頁可確認文曄為半導體元件通路商；AI資料中心動能需以法說會與應用別營收佐證。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體元件通路商、AI、車用、工控與通訊供應鏈服務平台"
+    ]
   },
   "6244": {
     "company_name": "茂迪",
@@ -32414,6 +33105,22 @@
       "太陽能發電模組",
       "太陽能發電系統設備"
     ],
+    "customers": [
+      "太陽能模組與系統客戶",
+      "再生能源案場客戶"
+    ],
+    "revenue_exposure": [
+      "公司股務資料明確列示主要業務為太陽能電池、模組及發電系統設備製造買賣。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：太陽能電池與模組供應商、再生能源供應鏈",
+    "missing_data": [
+      "AI綠電相關客戶",
+      "電池與模組營收佔比",
+      "2025-2026年法說會揭露",
+      "電池、模組、系統設備營收占比",
+      "主要客戶與區域銷售結構",
+      "產能利用率與報價趨勢"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32435,23 +33142,7 @@
       "台灣案場需求不確定",
       "太陽能產業受報價、政策補貼與海外競爭影響。",
       "若僅由能源政策推動，仍需檢查公司營收與毛利改善。"
-    ],
-    "missing_data": [
-      "AI綠電相關客戶",
-      "電池與模組營收佔比",
-      "2025-2026年法說會揭露",
-      "電池、模組、系統設備營收占比",
-      "主要客戶與區域銷售結構",
-      "產能利用率與報價趨勢"
-    ],
-    "customers": [
-      "太陽能模組與系統客戶",
-      "再生能源案場客戶"
-    ],
-    "revenue_exposure": [
-      "公司股務資料明確列示主要業務為太陽能電池、模組及發電系統設備製造買賣。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：太陽能電池與模組供應商、再生能源供應鏈"
+    ]
   },
   "4582": {
     "company_name": "聚恆-創",
@@ -32492,6 +33183,23 @@
       "光儲整合",
       "再生能源維運服務"
     ],
+    "customers": [
+      "太陽能案場業主",
+      "用電大戶與儲能系統客戶",
+      "電網端與發電端儲能案場"
+    ],
+    "revenue_exposure": [
+      "TWSE與年報資料可確認聚恆深耕太陽能EPC、儲能與光儲整合；儲能營收占比仍需後續財報量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：再生能源EPC與維運服務商、儲能系統建置與光儲整合供應商",
+    "missing_data": [
+      "AI資料中心或大型PPA案場客戶",
+      "儲能與EPC營收佔比",
+      "2025-2026年法說會揭露",
+      "儲能與EPC收入占比",
+      "在手案量與案場進度",
+      "主要客戶與標案資訊"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32514,24 +33222,7 @@
       "營收規模相對小",
       "專案型收入認列波動較大。",
       "儲能政策、台電標案與案場建置進度會影響成長節奏。"
-    ],
-    "missing_data": [
-      "AI資料中心或大型PPA案場客戶",
-      "儲能與EPC營收佔比",
-      "2025-2026年法說會揭露",
-      "儲能與EPC收入占比",
-      "在手案量與案場進度",
-      "主要客戶與標案資訊"
-    ],
-    "customers": [
-      "太陽能案場業主",
-      "用電大戶與儲能系統客戶",
-      "電網端與發電端儲能案場"
-    ],
-    "revenue_exposure": [
-      "TWSE與年報資料可確認聚恆深耕太陽能EPC、儲能與光儲整合；儲能營收占比仍需後續財報量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：再生能源EPC與維運服務商、儲能系統建置與光儲整合供應商"
+    ]
   },
   "6442": {
     "company_name": "光聖",
@@ -32592,6 +33283,24 @@
       "光收發模組元件/次模組",
       "高頻連接器"
     ],
+    "customers": [
+      "資料中心、5G基地台、有線電視與網通設備客戶",
+      "低軌衛星與高頻連接器應用客戶候選"
+    ],
+    "revenue_exposure": [
+      "公開產業資料指出光聖產品含光通訊與高頻連接器；營收占比與AI資料中心直接曝險需以公司年報或法說會確認。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊元件與連接器供應商、AI資料中心高速傳輸與低軌衛星供應鏈候選廠商",
+    "missing_data": [
+      "光纖通訊產品營收佔比",
+      "主要客戶名單",
+      "800G/1.6T產品進度",
+      "AI資料中心客戶與營收佔比",
+      "2025-2026年法說會揭露",
+      "光通訊與高頻連接器營收占比",
+      "資料中心/CPO/低軌衛星客戶證據",
+      "主要產品規格與出貨量"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32615,25 +33324,7 @@
       "客戶集中度",
       "光通訊需求與資料中心資本支出波動相關。",
       "高頻連接器與低軌衛星題材需確認實際客戶與出貨。"
-    ],
-    "missing_data": [
-      "光纖通訊產品營收佔比",
-      "主要客戶名單",
-      "800G/1.6T產品進度",
-      "AI資料中心客戶與營收佔比",
-      "2025-2026年法說會揭露",
-      "光通訊與高頻連接器營收占比",
-      "資料中心/CPO/低軌衛星客戶證據",
-      "主要產品規格與出貨量"
-    ],
-    "customers": [
-      "資料中心、5G基地台、有線電視與網通設備客戶",
-      "低軌衛星與高頻連接器應用客戶候選"
-    ],
-    "revenue_exposure": [
-      "公開產業資料指出光聖產品含光通訊與高頻連接器；營收占比與AI資料中心直接曝險需以公司年報或法說會確認。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊元件與連接器供應商、AI資料中心高速傳輸與低軌衛星供應鏈候選廠商"
+    ]
   },
   "3383": {
     "company_name": "新世紀",
@@ -32668,6 +33359,19 @@
       "光通訊模組",
       "高速雷射"
     ],
+    "customers": [
+      "待查證主要客戶"
+    ],
+    "revenue_exposure": [
+      "待查證題材或產品營收占比"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊與雷射元件、high_speed_optical_cpo",
+    "missing_data": [
+      "AI資料中心客戶",
+      "光通訊營收佔比",
+      "2025-2026年法說會揭露",
+      "主要客戶、營收占比與公司層級證據待查證"
+    ],
     "updated_at": "2026-06-10T23:16:06",
     "candidate_themes": [
       {
@@ -32687,20 +33391,7 @@
       "光通訊規格升級風險",
       "客戶集中",
       "毛利率波動"
-    ],
-    "missing_data": [
-      "AI資料中心客戶",
-      "光通訊營收佔比",
-      "2025-2026年法說會揭露",
-      "主要客戶、營收占比與公司層級證據待查證"
-    ],
-    "customers": [
-      "待查證主要客戶"
-    ],
-    "revenue_exposure": [
-      "待查證題材或產品營收占比"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊與雷射元件、high_speed_optical_cpo"
+    ]
   },
   "6412": {
     "company_name": "群電",
@@ -32745,6 +33436,27 @@
     "relation_strength": "low",
     "relation_type": "upstream",
     "role": "待補題材角色",
+    "products": [
+      "電源供應器",
+      "AI 電源",
+      "交換式電源供應器",
+      "LED照明產品",
+      "電源相關解決方案"
+    ],
+    "customers": [
+      "PC、消費性電子與電源應用客戶",
+      "伺服器與資料中心電源客戶候選"
+    ],
+    "revenue_exposure": [
+      "公司投資人服務頁列示主要產品為交換式電源供應器及LED照明產品；資料中心或AI電源曝險需法說會量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源供應器供應商、AI伺服器與電子設備電源供應鏈候選廠商",
+    "missing_data": [
+      "AI 電源營收佔比",
+      "伺服器/資料中心電源營收占比",
+      "主要客戶與產品規格",
+      "LED照明與電源產品占比"
+    ],
     "updated_at": "2026-06-18T18:37:19",
     "candidate_themes": [
       {
@@ -32760,32 +33472,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "電源供應器",
-      "AI 電源",
-      "交換式電源供應器",
-      "LED照明產品",
-      "電源相關解決方案"
-    ],
     "risk_notes": [
       "AI 電源營收佔比與客戶驗證待查",
       "電源供應器需求受終端PC、伺服器與消費性電子景氣影響。",
       "AI伺服器電源題材需確認產品規格與客戶認證。"
-    ],
-    "missing_data": [
-      "AI 電源營收佔比",
-      "伺服器/資料中心電源營收占比",
-      "主要客戶與產品規格",
-      "LED照明與電源產品占比"
-    ],
-    "customers": [
-      "PC、消費性電子與電源應用客戶",
-      "伺服器與資料中心電源客戶候選"
-    ],
-    "revenue_exposure": [
-      "公司投資人服務頁列示主要產品為交換式電源供應器及LED照明產品；資料中心或AI電源曝險需法說會量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源供應器供應商、AI伺服器與電子設備電源供應鏈候選廠商"
+    ]
   },
   "2457": {
     "company_name": "飛宏",
@@ -32830,6 +33521,30 @@
     "relation_strength": "low",
     "relation_type": "upstream",
     "role": "待補題材角色",
+    "products": [
+      "AI 電源模組",
+      "電源供應器",
+      "外接式電源",
+      "醫療電源",
+      "工業電源",
+      "乙太網路PoE",
+      "電動車充電樁",
+      "GaN技術電源"
+    ],
+    "customers": [
+      "醫療、工業、PoE與電動車充電客戶",
+      "電源供應器應用客戶"
+    ],
+    "revenue_exposure": [
+      "公司官網投資人與產品資訊可確認其為電源供應器廠；AI資料中心或伺服器電源曝險需公司明確揭露。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源供應器供應商、工業電源、PoE與EV充電電源供應鏈",
+    "missing_data": [
+      "AI 電源模組營收佔比、客戶名單",
+      "各電源產品營收占比",
+      "AI伺服器或資料中心電源客戶",
+      "EV充電與GaN產品出貨占比"
+    ],
     "updated_at": "2026-06-18T18:37:19",
     "candidate_themes": [
       {
@@ -32845,35 +33560,11 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "AI 電源模組",
-      "電源供應器",
-      "外接式電源",
-      "醫療電源",
-      "工業電源",
-      "乙太網路PoE",
-      "電動車充電樁",
-      "GaN技術電源"
-    ],
     "risk_notes": [
       "AI 電源模組客戶與營收佔比待查",
       "電源產品需求受終端設備與EV充電建置速度影響。",
       "AI資料中心題材需區分一般電源與高功率伺服器電源實際出貨。"
-    ],
-    "missing_data": [
-      "AI 電源模組營收佔比、客戶名單",
-      "各電源產品營收占比",
-      "AI伺服器或資料中心電源客戶",
-      "EV充電與GaN產品出貨占比"
-    ],
-    "customers": [
-      "醫療、工業、PoE與電動車充電客戶",
-      "電源供應器應用客戶"
-    ],
-    "revenue_exposure": [
-      "公司官網投資人與產品資訊可確認其為電源供應器廠；AI資料中心或伺服器電源曝險需公司明確揭露。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：電源供應器供應商、工業電源、PoE與EV充電電源供應鏈"
+    ]
   },
   "3702": {
     "company_name": "大聯大",
@@ -32902,6 +33593,35 @@
     "relation_strength": "medium",
     "relation_type": "candidate",
     "role": "待補題材角色",
+    "products": [
+      "功率元件代理",
+      "MOSFET",
+      "二極體",
+      "IGBT",
+      "模組",
+      "電子零組件通路",
+      "半導體元件代理銷售",
+      "供應鏈服務",
+      "系統整合與加值服務"
+    ],
+    "customers": [
+      "電子製造服務商",
+      "品牌廠與系統廠",
+      "半導體與電子零組件採購客戶"
+    ],
+    "revenue_exposure": [
+      "公司年報可確認其為電子零組件通路與供應鏈服務商；AI/車用/工控等應用曝險需由年報分項或法說會量化。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體與電子零組件通路商、AI、車用、工控與通訊供應鏈服務平台",
+    "missing_data": [
+      "功率元件代理營收佔比",
+      "主要代理品牌結構",
+      "AI 與車用客戶結構",
+      "庫存與周轉天數",
+      "AI/車用/工控應用營收占比",
+      "主要代理產品線與客戶結構",
+      "庫存天數與周轉風險"
+    ],
     "updated_at": "2026-06-18T18:37:19",
     "candidate_themes": [
       {
@@ -32917,17 +33637,6 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "功率元件代理",
-      "MOSFET",
-      "二極體",
-      "IGBT",
-      "模組",
-      "電子零組件通路",
-      "半導體元件代理銷售",
-      "供應鏈服務",
-      "系統整合與加值服務"
-    ],
     "risk_notes": [
       "通路商毛利率受品牌廠擠壓",
       "代理線變動風險",
@@ -32935,25 +33644,7 @@
       "IDM 漲價後通路順價能力待驗證",
       "通路商毛利率通常較低，題材熱度不一定直接轉化為高獲利彈性。",
       "庫存循環、匯率與終端需求變化會影響營運。"
-    ],
-    "missing_data": [
-      "功率元件代理營收佔比",
-      "主要代理品牌結構",
-      "AI 與車用客戶結構",
-      "庫存與周轉天數",
-      "AI/車用/工控應用營收占比",
-      "主要代理產品線與客戶結構",
-      "庫存天數與周轉風險"
-    ],
-    "customers": [
-      "電子製造服務商",
-      "品牌廠與系統廠",
-      "半導體與電子零組件採購客戶"
-    ],
-    "revenue_exposure": [
-      "公司年報可確認其為電子零組件通路與供應鏈服務商；AI/車用/工控等應用曝險需由年報分項或法說會量化。"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：半導體與電子零組件通路商、AI、車用、工控與通訊供應鏈服務平台"
+    ]
   },
   "2375": {
     "company_name": "凱美",
@@ -32973,6 +33664,25 @@
     ],
     "relation_strength": "medium",
     "role": "待補題材角色",
+    "products": [
+      "鋁質電容",
+      "塑膠薄膜電容",
+      "被動元件",
+      "電容器材料與相關零組件"
+    ],
+    "customers": [
+      "電源模組與電子設備客戶",
+      "通訊、電機電子與工業應用客戶"
+    ],
+    "revenue_exposure": [
+      "年報可確認凱美與電容器/被動元件產品；AI伺服器高階被動元件需求屬可能受惠題材，需公司揭露或客戶資料佐證。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：被動元件供應商、AI伺服器電源與電子零組件供應鏈候選廠商",
+    "missing_data": [
+      "AI伺服器或高階電容營收占比",
+      "主要客戶與應用別占比",
+      "漲價循環與庫存水位"
+    ],
     "updated_at": "2026-06-18T21:25:48",
     "candidate_themes": [
       {
@@ -32988,29 +33698,10 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "鋁質電容",
-      "塑膠薄膜電容",
-      "被動元件",
-      "電容器材料與相關零組件"
-    ],
-    "customers": [
-      "電源模組與電子設備客戶",
-      "通訊、電機電子與工業應用客戶"
-    ],
-    "revenue_exposure": [
-      "年報可確認凱美與電容器/被動元件產品；AI伺服器高階被動元件需求屬可能受惠題材，需公司揭露或客戶資料佐證。"
-    ],
     "risk_notes": [
       "被動元件報價循環與庫存調整會影響毛利。",
       "AI伺服器用量增加不等於公司直接拿到高占比訂單。"
-    ],
-    "missing_data": [
-      "AI伺服器或高階電容營收占比",
-      "主要客戶與應用別占比",
-      "漲價循環與庫存水位"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：被動元件供應商、AI伺服器電源與電子零組件供應鏈候選廠商"
+    ]
   },
   "3042": {
     "company_name": "晶技",
@@ -33030,6 +33721,25 @@
     ],
     "relation_strength": "medium",
     "role": "待補題材角色",
+    "products": [
+      "石英晶體",
+      "振盪器",
+      "SAW濾波器",
+      "感測元件",
+      "頻率元件"
+    ],
+    "customers": [
+      "行動通訊、穿戴、物聯網、伺服器儲存、車用與電信客戶"
+    ],
+    "revenue_exposure": [
+      "公司投資人專區明確列示石英晶體、振盪器等頻率元件與伺服器儲存、車用、電信等應用。"
+    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：頻率元件供應商、車用、通訊、伺服器儲存與AI硬體周邊供應鏈",
+    "missing_data": [
+      "車用/伺服器/AI相關營收占比",
+      "主要客戶與產品規格",
+      "高階產品毛利率"
+    ],
     "updated_at": "2026-06-18T21:25:48",
     "candidate_themes": [
       {
@@ -33045,35 +33755,17 @@
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
-    "products": [
-      "石英晶體",
-      "振盪器",
-      "SAW濾波器",
-      "感測元件",
-      "頻率元件"
-    ],
-    "customers": [
-      "行動通訊、穿戴、物聯網、伺服器儲存、車用與電信客戶"
-    ],
-    "revenue_exposure": [
-      "公司投資人專區明確列示石英晶體、振盪器等頻率元件與伺服器儲存、車用、電信等應用。"
-    ],
     "risk_notes": [
       "低階手機與消費性應用可能有價格壓力。",
       "高頻、小型化、車用與AI應用轉型進度需追蹤。"
-    ],
-    "missing_data": [
-      "車用/伺服器/AI相關營收占比",
-      "主要客戶與產品規格",
-      "高階產品毛利率"
-    ],
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：頻率元件供應商、車用、通訊、伺服器儲存與AI硬體周邊供應鏈"
+    ]
   },
   "3540": {
     "company_name": "曜越",
     "themes": [
       "bbu_battery_backup_unit"
     ],
+    "primary_theme": "bbu_battery_backup_unit",
     "evidence": [
       {
         "source": "Yahoo股市",
@@ -33113,18 +33805,17 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "BBU/備電產品營收佔比低",
-      "AI 資料中心客戶滲透率不明"
-    ],
+    "benefit_logic": "曜越專注電競與高階電源供應器，受惠於高功率電源需求成長，但需確認 AI 資料中心應用佔比。",
     "missing_data": [
       "高階電源供應器營收佔比",
       "AI 應用產品進度",
       "主要客戶與認證狀態",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "benefit_logic": "曜越專注電競與高階電源供應器，受惠於高功率電源需求成長，但需確認 AI 資料中心應用佔比。",
-    "primary_theme": "bbu_battery_backup_unit"
+    "risk_notes": [
+      "BBU/備電產品營收佔比低",
+      "AI 資料中心客戶滲透率不明"
+    ]
   },
   "4968": {
     "company_name": "立積",
@@ -33132,6 +33823,7 @@
       "advanced_packaging_cowos_soic",
       "mlcc_passive_upcycle"
     ],
+    "primary_theme": "advanced_packaging_cowos_soic",
     "evidence": [
       {
         "source": "Instagram鄭淯仁",
@@ -33203,14 +33895,7 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "射頻元件與先進封裝關聯性較低",
-      "需驗證實際供應關係",
-      "晶片電阻競爭激烈，台廠毛利率受壓",
-      "下游客戶拉貨波動",
-      "原物料（陶瓷基板、漿料）成本變動",
-      "車用電阻認證週期"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：射頻元件、advanced_packaging_cowos_soic、晶片電阻、mlcc_passive_upcycle",
     "missing_data": [
       "與CoWoS/SoIC相關營收佔比",
       "主要客戶名單",
@@ -33220,14 +33905,21 @@
       "ASP 變化",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "advanced_packaging_cowos_soic",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：射頻元件、advanced_packaging_cowos_soic、晶片電阻、mlcc_passive_upcycle"
+    "risk_notes": [
+      "射頻元件與先進封裝關聯性較低",
+      "需驗證實際供應關係",
+      "晶片電阻競爭激烈，台廠毛利率受壓",
+      "下游客戶拉貨波動",
+      "原物料（陶瓷基板、漿料）成本變動",
+      "車用電阻認證週期"
+    ]
   },
   "3526": {
     "company_name": "凡甲",
     "themes": [
       "passive_component_price_hike"
     ],
+    "primary_theme": "passive_component_price_hike",
     "evidence": [
       {
         "source": "GoRich",
@@ -33263,22 +33955,22 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "連接器與被動元件漲價關聯性較低"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：連接器、passive_component_price_hike",
     "missing_data": [
       "AI伺服器相關營收佔比",
       "主要客戶名單",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "passive_component_price_hike",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：連接器、passive_component_price_hike"
+    "risk_notes": [
+      "連接器與被動元件漲價關聯性較低"
+    ]
   },
   "6530": {
     "company_name": "創威",
     "themes": [
       "silicon_photonics_cpo"
     ],
+    "primary_theme": "silicon_photonics_cpo",
     "evidence": [
       {
         "source": "CMoney",
@@ -33317,24 +34009,24 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "CPO/矽光子商業化時程仍不確定",
-      "光模組價格競爭激烈"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊模組、silicon_photonics_cpo",
     "missing_data": [
       "800G/1.6T/CPO產品營收佔比",
       "主要客戶名單",
       "精確出貨數據",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "silicon_photonics_cpo",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：光通訊模組、silicon_photonics_cpo"
+    "risk_notes": [
+      "CPO/矽光子商業化時程仍不確定",
+      "光模組價格競爭激烈"
+    ]
   },
   "2427": {
     "company_name": "三商電",
     "themes": [
       "advanced_packaging_cowos_soic"
     ],
+    "primary_theme": "advanced_packaging_cowos_soic",
     "evidence": [
       {
         "source": "Instagram鄭淯仁",
@@ -33371,23 +34063,23 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "需確認是否直接供應先進封裝設備",
-      "設備驗證週期長"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：設備供應商、advanced_packaging_cowos_soic",
     "missing_data": [
       "先進封裝設備營收佔比",
       "主要客戶名單",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "advanced_packaging_cowos_soic",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：設備供應商、advanced_packaging_cowos_soic"
+    "risk_notes": [
+      "需確認是否直接供應先進封裝設備",
+      "設備驗證週期長"
+    ]
   },
   "5457": {
     "company_name": "宣德",
     "themes": [
       "ai_cooling_liquidcooling"
     ],
+    "primary_theme": "ai_cooling_liquidcooling",
     "evidence": [
       {
         "source": "TEEMA / TrendForce",
@@ -33442,24 +34134,24 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "散熱元件營收佔比待確認",
-      "AI 應用產品進度不明"
-    ],
+    "benefit_logic": "宣德從事連接器與散熱元件，受惠於 AI 伺服器散熱需求，但需確認其散熱產品佔比與客戶滲透率。",
     "missing_data": [
       "散熱元件營收佔比",
       "主要客戶與訂單狀態",
       "AI 應用產品進度",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "benefit_logic": "宣德從事連接器與散熱元件，受惠於 AI 伺服器散熱需求，但需確認其散熱產品佔比與客戶滲透率。",
-    "primary_theme": "ai_cooling_liquidcooling"
+    "risk_notes": [
+      "散熱元件營收佔比待確認",
+      "AI 應用產品進度不明"
+    ]
   },
   "3483": {
     "company_name": "力致",
     "themes": [
       "liquid_cooling_thermal_management"
     ],
+    "primary_theme": "liquid_cooling_thermal_management",
     "evidence": [
       {
         "source": "TrendForce 2026年AI重構科技新格局",
@@ -33521,23 +34213,23 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "需確認 AI 伺服器散熱實際營收佔比"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：散熱解決方案、liquid_cooling_thermal_management",
     "missing_data": [
       "AI 散熱營收佔比",
       "液冷產品線",
       "主要客戶名單",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "liquid_cooling_thermal_management",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：散熱解決方案、liquid_cooling_thermal_management"
+    "risk_notes": [
+      "需確認 AI 伺服器散熱實際營收佔比"
+    ]
   },
   "6725": {
     "company_name": "矽科宏晟",
     "themes": [
       "advanced_packaging_cowos_soic"
     ],
+    "primary_theme": "advanced_packaging_cowos_soic",
     "evidence": [
       {
         "source": "Instagram鄭淯仁",
@@ -33575,18 +34267,17 @@
     "revenue_exposure": [
       "待查證題材或產品營收占比"
     ],
-    "risk_notes": [
-      "CoWoS供應鏈分工尚未完全確認",
-      "營收佔比不明"
-    ],
+    "benefit_logic": "公司與題材的關聯來自供應鏈角色：CoWoS相關供應、advanced_packaging_cowos_soic",
     "missing_data": [
       "CoWoS相關產品營收佔比",
       "主要客戶名單",
       "實際出貨數據",
       "主要客戶、營收占比與公司層級證據待查證"
     ],
-    "primary_theme": "advanced_packaging_cowos_soic",
-    "benefit_logic": "公司與題材的關聯來自供應鏈角色：CoWoS相關供應、advanced_packaging_cowos_soic"
+    "risk_notes": [
+      "CoWoS供應鏈分工尚未完全確認",
+      "營收佔比不明"
+    ]
   },
   "6924": {
     "company_name": "榮惠-KY",
@@ -33632,15 +34323,15 @@
       }
     ],
     "benefit_logic": "公司與題材的關聯來自供應鏈角色：{'theme_id': 'pcb_material', 'role': '利基型PCB整合服務', 'status': 'inferred', 'evidence': [{'source': '證交所', 'source_level': 'L1_official', 'content': '榮惠-KY為上市櫃公司中少數以輕資產營運模式，提供利基型PCB及電子零組件整合服務為主。', 'url': 'https://www.twse.com.tw/market_insights/zh/detail/8a8216d6933460a40193717592f40205', 'publish_date': '2025-12-03'}]}",
-    "risk_notes": [
-      "新產品線驗證不確定性",
-      "營收佔比尚未形成規模",
-      "客戶集中度風險"
-    ],
     "missing_data": [
       "AI伺服器液冷PCB營收佔比",
       "主要客戶驗證",
       "量產時程"
+    ],
+    "risk_notes": [
+      "新產品線驗證不確定性",
+      "營收佔比尚未形成規模",
+      "客戶集中度風險"
     ]
   },
   "3587": {
@@ -33664,15 +34355,380 @@
       "待查證題材或產品營收占比"
     ],
     "benefit_logic": "公司與題材的關聯來自供應鏈角色：材料分析、cowos_advanced_packaging",
-    "risk_notes": [
-      "材料分析市場規模相對有限，營收貢獻可能有限",
-      "需確認是否直接參與 CoWoS 供應鏈"
-    ],
     "missing_data": [
       "材料分析營收佔比",
       "主要客戶名單",
       "實際參與程度",
       "主要客戶、營收占比與公司層級證據待查證"
+    ],
+    "risk_notes": [
+      "材料分析市場規模相對有限，營收貢獻可能有限",
+      "需確認是否直接參與 CoWoS 供應鏈"
     ]
+  },
+  "2329": {
+    "company_name": "華泰",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      "華泰為IC封測廠，光通訊封裝業務比重與產品規格待驗證"
+    ],
+    "relation_strength": "medium",
+    "role": "IC封測與光通訊封裝",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_silicon_photonics_cpo",
+        "theme_name": "矽光子與CPO光通訊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "IC封測與光通訊封裝",
+        "evidence": [
+          "華泰為IC封測廠，光通訊封裝業務比重與產品規格待驗證"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "3044": {
+    "company_name": "健鼎",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      "健鼎伺服器PCB既有產品線，AI伺服器純度與車用業務佔比需釐清"
+    ],
+    "relation_strength": "medium",
+    "role": "伺服器與車用PCB",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_server_pcb_substrate",
+        "theme_name": "AI伺服器PCB與載板擴產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "伺服器與車用PCB",
+        "evidence": [
+          "健鼎伺服器PCB既有產品線，AI伺服器純度與車用業務佔比需釐清"
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "3338": {
+    "company_name": "泰碩",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_thermal_cooling",
+        "theme_name": "AI散熱與液冷散熱模組",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "3211": {
+    "company_name": "順達",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_power_800vdc",
+        "theme_name": "800V DC資料中心電源與BBU",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "6931": {
+    "company_name": "新盛力",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "role": "儲能與電池模組",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "ai_power_800vdc",
+        "theme_name": "800V DC資料中心電源與BBU",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "儲能與電池模組",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "006205": {
+    "company_name": "元大台灣50",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "市值型ETF代表",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "high_dividend_etf_active_etf",
+        "theme_name": "高股息ETF與主動式ETF擴張",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "市值型ETF代表",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "6488": {
+    "company_name": "環球晶",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "title": "環球晶5月EPS 7.33元",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "source_level": "L2_media",
+        "summary": "5月EPS 7.33元，受惠記憶體與AI相關晶圓拉貨。"
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [
+          {
+            "title": "環球晶5月EPS 7.33元",
+            "url": "https://money.udn.com/money/story/5607/9573201",
+            "source_level": "L2_media",
+            "summary": "5月EPS 7.33元，受惠記憶體與AI相關晶圓拉貨。"
+          }
+        ],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "4972": {
+    "company_name": "頎邦",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "publish_date": "2026-05",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "TrendForce",
+        "source_level": "L1_official",
+        "content": "",
+        "url": "https://www.trendforce.com",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "medium",
+    "role": "記憶體封測（凸塊/晶圓級封裝）",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "memory_hbm_demand",
+        "theme_name": "記憶體與HBM供需吃緊",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "記憶體封測（凸塊/晶圓級封裝）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "1517": {
+    "company_name": "利奇",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "publish_date": "2024-08-09",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "鉅亨網",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "publish_date": "2025-11-08",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2025",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Knowledge Base",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "knowledge_base:heavy_electrical_grid",
+        "publish_date": "2026-06",
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "high",
+    "role": "（候選清單誤標為士電，實際為利奇，機械/自行車/金屬零件）",
+    "updated_at": "2026-06-19T12:18:48",
+    "candidate_themes": [
+      {
+        "theme_id": "heavy_electrical_grid",
+        "theme_name": "重電與強韌電網",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "（候選清單誤標為士電，實際為利奇，機械/自行車/金屬零件）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   }
 }

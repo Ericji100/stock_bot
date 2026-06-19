@@ -6,8 +6,11 @@ from research_center.command_parser import parse_command_text
 from research_center.models import SourceItem
 from research_center.report_quality_service import (
     build_data_completeness_matrix,
+    build_quality_coverage_snapshot,
     build_report_evidence_pack,
     build_report_quality_layer,
+    required_fields_for_command,
+    supported_quality_commands,
 )
 
 
@@ -146,6 +149,26 @@ class ReportQualityServiceTests(unittest.TestCase):
         self.assertFalse(fields["supply_chain_profile"]["available"])
         self.assertIn("company_knowledge_summary", fields)
         self.assertFalse(fields["company_knowledge_summary"]["available"])
+
+    def test_quality_command_manifest_covers_news_radar_and_topic_maintain(self):
+        commands = supported_quality_commands()
+
+        self.assertIn("news", commands)
+        self.assertIn("radar", commands)
+        self.assertIn("topic_maintain", commands)
+        self.assertIn("news_events", required_fields_for_command("news"))
+        self.assertIn("evidence_pack", required_fields_for_command("radar"))
+        self.assertIn("change_pack", required_fields_for_command("topic_maintain"))
+
+    def test_quality_coverage_snapshot_lists_required_fields(self):
+        snapshot = build_quality_coverage_snapshot(["news", "radar"])
+        rows = {row["command"]: row for row in snapshot["commands"]}
+
+        self.assertEqual(snapshot["schema_version"], "report_quality_v1")
+        self.assertEqual(snapshot["command_count"], 2)
+        self.assertGreater(rows["news"]["required_field_count"], 0)
+        self.assertIn("source_coverage", rows["news"]["required_fields"])
+        self.assertIn("candidates", rows["radar"]["required_fields"])
 
 
 if __name__ == "__main__":

@@ -63,7 +63,12 @@ def normalize_topic_detail_action(
     if not theme_name:
         theme_name = theme_id
 
-    evidence = _normalize_evidence(data.get("evidence") or data.get("sources"))
+    evidence = _normalize_evidence(
+        data.get("evidence")
+        or data.get("sources")
+        or data.get("source_refs")
+        or fallback_candidate.get("source_refs")
+    )
     affected_companies = _normalize_company_items(
         data.get("affected_companies") or fallback_candidate.get("candidate_companies")
     )

@@ -11,6 +11,7 @@ from data_fetcher import StockExportError
 
 from .command_parser import parse_command_text
 from .config import ROOT_DIR, ResearchCenterConfig, load_research_config
+from .command_runtime_service import GLOBAL_COMMAND_RUNTIME
 from .data_services import collect_structured_data
 from .data_gap_service import attach_data_gap_summary
 from .database import ResearchDatabase
@@ -42,6 +43,7 @@ from .segmented_analysis_service import (
 )
 from .source_rank import select_theme_sources_for_prompt, theme_source_relevance
 from .evidence_pack_service import attach_unified_evidence_pack
+from .error_classification_service import classify_error
 from .ai_data_center import attach_ai_data_center
 from .ai_workflow_service import attach_high_model_input_package, attach_low_model_digest
 from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
@@ -150,10 +152,29 @@ class ResearchCenter:
             data["gemini_search_diagnostics"] = diagnostics
 
     def run_text_command(self, raw_text: str, user_id: str | None = None, progress: ProgressCallback | None = None) -> ResearchCenterResult:
+        runtime_task_id = f"ai:{user_id or 'anonymous'}:{abs(hash(raw_text))}"
+        GLOBAL_COMMAND_RUNTIME.start_task(
+            runtime_task_id,
+            label=raw_text,
+            task_type="ai_research_command",
+            user_id=user_id,
+        )
         _emit_progress(progress, "解析 AI 投研指令")
-        request = self.parse(raw_text, user_id=user_id)
-        _emit_progress(progress, f"指令解析完成：/{request.command} mode={request.mode}")
-        return self.run(request, progress=progress)
+        try:
+            request = self.parse(raw_text, user_id=user_id)
+            _emit_progress(progress, f"指令解析完成：/{request.command} mode={request.mode}")
+
+            def runtime_progress(message: str) -> None:
+                GLOBAL_COMMAND_RUNTIME.update_progress(runtime_task_id, message)
+                _emit_progress(progress, message)
+
+            result = self.run(request, progress=runtime_progress)
+            report_path = getattr(result.artifacts, "json_path", None) if result and result.artifacts else None
+            GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, report_path=report_path)
+            return result
+        except Exception as exc:
+            GLOBAL_COMMAND_RUNTIME.fail_task(runtime_task_id, exc, source="ai_research", operation="run_text_command")
+            raise
 
     def should_use_parallel_model_reports(self, raw_text: str, user_id: str | None = None) -> bool:
         try:
@@ -359,7 +380,14 @@ class ResearchCenter:
             return _model_job_entry("gemini", str(actual_model), "success", artifacts, prompt_log_path, summary, report_json, diagnostics=model_data.get("gemini_search_diagnostics"))
         except Exception as exc:
             _emit_progress(progress, f"Parallel AI model report failed: {self.config.model}: {exc}")
-            return {"model_key": "gemini", "model": self.config.model, "status": "failed", "error": str(exc), "prompt_path": prompt_log_path}
+            return {
+                "model_key": "gemini",
+                "model": self.config.model,
+                "status": "failed",
+                "error": str(exc),
+                "error_classification": classify_error(exc, source="gemini", operation="parallel_model_report").to_dict(),
+                "prompt_path": prompt_log_path,
+            }
 
     def _run_minimax_model_job(self, request: CommandRequest, prompt: str, sources: list[SourceItem], structured_data: dict[str, Any], shared_prompt_path: str, progress: ProgressCallback | None) -> dict[str, Any]:
         minimax_prompt_log_path = ""
@@ -408,7 +436,14 @@ class ResearchCenter:
             return _model_job_entry("minimax", self.config.minimax_model, "success", artifacts, minimax_prompt_log_path, summary, report_json, diagnostics=model_data.get("minimax_diagnostics"))
         except Exception as exc:
             _emit_progress(progress, f"Parallel AI model report failed: {self.config.minimax_model}: {exc}")
-            return {"model_key": "minimax", "model": self.config.minimax_model, "status": "failed", "error": str(exc), "prompt_path": minimax_prompt_log_path}
+            return {
+                "model_key": "minimax",
+                "model": self.config.minimax_model,
+                "status": "failed",
+                "error": str(exc),
+                "error_classification": classify_error(exc, source="minimax", operation="parallel_model_report").to_dict(),
+                "prompt_path": minimax_prompt_log_path,
+            }
     def run(self, request: CommandRequest, progress: ProgressCallback | None = None) -> ResearchCenterResult:
         if request.command == "report":
             _emit_progress(progress, "查詢歷史報告")
@@ -631,6 +666,11 @@ class ResearchCenter:
                     prompt,
                     sources,
                 )
+                structured_data["ai_error_classification"] = classify_error(
+                    exc,
+                    source=selected_ai_model,
+                    operation="final_report_generation",
+                ).to_dict()
                 _emit_progress(progress, f"AI 模型失敗，改用本地 fallback：{fallback_reason}")
                 markdown = fallback_markdown(request, structured_data, sources, fallback_reason)
 
@@ -762,10 +802,16 @@ class ResearchCenter:
                 _emit_progress(progress, f"[AI題材庫] /topic_maintain | 判斷模式")
                 pack = run_topic_maintain(request, center=self, progress=progress)
                 _emit_progress(progress, f"[AI題材庫] /topic_maintain | 任務完成")
+                title = (
+                    "✅ 變更包已產生"
+                    if pack.status == TopicChangeStatus.PENDING
+                    else "⚠️ 變更包產生但未通過檢查"
+                )
                 summary = (
-                    f"✅ 變更包已產生\n"
+                    f"{title}\n"
                     f"ID：{pack.change_id}\n"
                     f"模式：{pack.mode.value}\n"
+                    f"狀態：{pack.status.value}\n"
                     f"信心度：{pack.confidence}\n"
                     f"摘要：{pack.summary}\n"
                     f"動作數：{len(pack.actions)}\n"

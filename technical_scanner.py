@@ -449,7 +449,9 @@ def run_technical_scan(scan_settings: dict[str, float] | None = None, report_dat
             _add_signal(bearish, signal, candidate)
 
         # --- Strategy detection (四大策略 A/B/C/D) ---
-        _print_progress(label, 80.0, f"偵測四大策略 {index}/{len(candidates)} {candidate.code}")
+        strategy_progress = 90.0 + index / max(1, len(candidates)) * 5.0
+        if index == 1 or index % 10 == 0 or index == len(candidates):
+            _print_progress(label, strategy_progress, f"偵測四大策略 {index}/{len(candidates)} {candidate.code}")
         if history.empty or "close" not in history.columns:
             continue
         frame_with_indicators = apply_indicators(history).dropna(subset=["close"]).reset_index(drop=True)

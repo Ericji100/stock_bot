@@ -12,6 +12,7 @@ from research_center.telegram_handlers import (
     _compose_topic_maintain_command,
     _date_keyboard,
     _extract_topic_change_id,
+    build_topic_result_message,
     _macro_scope_keyboard,
     _maybe_start_menu,
     _topic_action_keyboard,
@@ -20,6 +21,7 @@ from research_center.telegram_handlers import (
     _topic_import_confirm_text,
     _telegram_status_note,
     _value_source_keyboard,
+    send_topic_result_to_chat,
     TOPIC_IMPORT_MAX_FILE_SIZE_BYTES,
     TOPIC_IMPORT_MAX_FILE_SIZE_MB,
 )
@@ -321,6 +323,16 @@ class TelegramMenuTests(unittest.TestCase):
         self.assertIn("股票代號或名稱", sent["text"])
         self.assertIsNone(sent["reply_markup"])
 
+    def test_research_target_command_runs_directly_with_parser_default_deep(self):
+        async def fake_send_reply(update, text, reply_markup=None):
+            raise AssertionError("direct /research target should not open mode menu")
+
+        context = SimpleNamespace(user_data={})
+        handled = asyncio.run(_maybe_start_menu(SimpleNamespace(), context, "/research 2330", fake_send_reply))
+
+        self.assertFalse(handled)
+        self.assertNotIn("ai_menu", context.user_data)
+
     def test_theme_empty_command_prompts_for_query(self):
         sent = {}
 
@@ -430,6 +442,62 @@ class TelegramMenuTests(unittest.TestCase):
         )
         self.assertIsNotNone(_topic_action_keyboard_for_text(text))
         self.assertIsNone(_topic_action_keyboard_for_text("ID：change_20260522_083953_import"))
+
+    def test_build_topic_result_message_uses_action_keyboard(self):
+        result = SimpleNamespace(
+            summary=(
+                "✅ 變更包已產生\n"
+                "ID：change_20260619_114256\n\n"
+                "下一步：/topic_review change_20260619_114256 查看詳情\n"
+                "• /topic_confirm change_20260619_114256 - 確認套用\n"
+                "• /topic_reject change_20260619_114256 - 拒絕"
+            ),
+            request=SimpleNamespace(command="topic_maintain", ai_model="minimax", source_only=False),
+            ai_used=True,
+            ai_model="minimax",
+            fallback_reason=None,
+            report_json={},
+        )
+
+        text, keyboard = build_topic_result_message(result)
+        callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+        self.assertIn("change_20260619_114256", text)
+        self.assertIn("ai_menu:topic_action:review:change_20260619_114256", callbacks)
+        self.assertIn("ai_menu:topic_action:confirm:change_20260619_114256", callbacks)
+        self.assertIn("ai_menu:topic_action:reject:change_20260619_114256", callbacks)
+        self.assertNotIn("ResearchCenterResult(", text)
+        self.assertNotIn("raw_response_path", text)
+        self.assertNotIn("prompt_log_path", text)
+
+    def test_send_topic_result_to_chat_uses_same_keyboard(self):
+        sent = {}
+
+        async def fake_send_bot_message(bot, chat_id, text, **kwargs):
+            sent["bot"] = bot
+            sent["chat_id"] = chat_id
+            sent["text"] = text
+            sent["reply_markup"] = kwargs.get("reply_markup")
+
+        result = SimpleNamespace(
+            summary=(
+                "✅ 變更包已產生\n"
+                "ID：change_20260619_114256\n"
+                "下一步：/topic_review change_20260619_114256 查看詳情"
+            ),
+            request=SimpleNamespace(command="topic_maintain", ai_model="minimax", source_only=False),
+            ai_used=True,
+            ai_model="minimax",
+            fallback_reason=None,
+            report_json={},
+        )
+
+        asyncio.run(send_topic_result_to_chat("bot", "chat", result, fake_send_bot_message))
+
+        self.assertEqual(sent["bot"], "bot")
+        self.assertEqual(sent["chat_id"], "chat")
+        callbacks = [button.callback_data for row in sent["reply_markup"].inline_keyboard for button in row]
+        self.assertIn("ai_menu:topic_action:review:change_20260619_114256", callbacks)
 
     def test_topic_profiles_parser(self):
         from research_center.command_parser import parse_command_text
@@ -846,6 +914,17 @@ class ScanMenuTests(unittest.TestCase):
                     if "theme_refresh" in content or "theme_draft" in content:
                         violations.append(path)
         self.assertEqual(violations, [], f"theme_refresh references found: {violations}")
+
+    def test_scheduled_topic_maintain_uses_shared_topic_sender(self):
+        text = Path("main.py").read_text(encoding="utf-8")
+        start = text.index("async def _scheduled_topic_maintain")
+        end = text.index("async def _scheduled_all_scan_push", start)
+        body = text[start:end]
+
+        self.assertIn("send_topic_result_to_chat", body)
+        self.assertNotIn("str(result)", body)
+        self.assertNotIn('getattr(result, "summary"', body)
+        self.assertNotIn("ResearchCenterResult(", body)
 
     def test_topic_maintain_compose_default_is_full_mode(self):
         # /topic_maintain defaults to full maintenance, so --deep is no longer emitted.

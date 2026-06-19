@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import ROOT_DIR
 from .models import CommandRequest
+from .system_health_service import build_system_health_snapshot, format_system_health_snapshot
 
 
 def attach_data_inventory(request: CommandRequest, structured_data: dict[str, Any]) -> dict[str, Any]:
@@ -66,6 +67,7 @@ def build_backfill_status(report_date: date | None = None) -> dict[str, Any]:
         "marker_exists": bool(marker_path and marker_path.exists()),
         "marker_path": str(marker_path) if marker_path else "",
         "marker": marker or {},
+        "system_health": build_system_health_snapshot(),
     }
 
 
@@ -90,6 +92,10 @@ def format_backfill_status(status: dict[str, Any]) -> str:
         for key in ("universe_count", "candidate_count", "curated_scan_count", "research_structured_count"):
             if key in marker:
                 lines.append(f"- {key}: {marker.get(key)}")
+    system_health = status.get("system_health")
+    if isinstance(system_health, dict):
+        lines.append("")
+        lines.append(format_system_health_snapshot(system_health))
     return "\n".join(lines)
 
 

@@ -222,8 +222,8 @@ def test_segmented_theme_analysis_uses_shared_high_model_packet_when_available()
     ]
     assert result.diagnostics["segment_count"] == 4
     assert len(client.prompts) == 5
-    assert "本地核心資料包" in client.prompts[0]
-    assert "command_specific_data" in client.prompts[0]
+    assert "本地核心資料包" in "\n".join(client.prompts)
+    assert "command_specific_data" in "\n".join(client.prompts)
 
 
 def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(monkeypatch):
@@ -321,8 +321,9 @@ class SegmentedAnalysisSourceFilterTests(unittest.TestCase):
         )
         self.assertEqual(result.diagnostics["segment_count"], 4)
         self.assertEqual(len(client.prompts), 5)
-        self.assertIn("本地核心資料包", client.prompts[0])
-        self.assertIn("command_specific_data", client.prompts[0])
+        joined_prompts = "\n".join(client.prompts)
+        self.assertIn("本地核心資料包", joined_prompts)
+        self.assertIn("command_specific_data", joined_prompts)
 
     def test_segmented_theme_analysis_keeps_complete_source_index(self) -> None:
         request = parse_command_text("/theme_radar --model minimax")
@@ -403,10 +404,35 @@ class SegmentedAnalysisResilienceTests(unittest.TestCase):
                 model_name="MiniMax-M3",
             )
 
-        self.assertGreater(result.diagnostics["segment_count"], 8)
-        self.assertLessEqual(max(prompt_lengths[:-1]), 140_000)
+        self.assertGreaterEqual(result.diagnostics["segment_count"], 4)
+        self.assertLessEqual(result.diagnostics["segment_count"], 8)
+        self.assertLessEqual(max(prompt_lengths[:-1]), 180_000)
         self.assertLessEqual(max(logged_source_counts[:-1]), 25)
         self.assertEqual(logged_source_counts[-1], 109)
+
+    def test_theme_radar_segments_use_controlled_parallel_workers(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        client = _FakeMiniMax()
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=_theme_radar_data(),
+            sources=[],
+            ai_client=client,
+            model_name="MiniMax-M3",
+        )
+
+        self.assertEqual(result.diagnostics["parallel_workers"], 2)
+        self.assertEqual([run.label for run in result.segment_runs], [
+            "market_price_rankings",
+            "market_sector_movers",
+            "sector_strength",
+            "subsector_strength",
+            "theme_rankings",
+            "theme_strong_stocks",
+            "theme_news_stats",
+            "extension_path",
+        ])
 
     def test_prior_segment_state_does_not_resend_full_markdown(self) -> None:
         request = parse_command_text("/theme_radar --model minimax")
@@ -437,9 +463,51 @@ class SegmentedAnalysisResilienceTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(result.diagnostics["segment_count"], 4)
-        self.assertLess(len(client.prompts[1]), 80_000)
-        self.assertIn("processed_segment_count", client.prompts[1])
-        self.assertNotIn("LONG_SEGMENT_NOTE_" * 100, client.prompts[1])
+        self.assertLess(len(client.prompts[-1]), 80_000)
+        self.assertIn("segment_count", client.prompts[-1])
+        self.assertNotIn("LONG_SEGMENT_NOTE_" * 100, client.prompts[-1])
+
+    def test_oversized_high_model_core_packet_is_split(self) -> None:
+        request = parse_command_text("/theme_radar --model minimax")
+        data = _theme_radar_data()
+        huge_rows = [
+            {
+                "code": f"{6100 + index}",
+                "name": f"CoreStock{index}",
+                "industry": "AI電源",
+                "evidence": "核心資料必須保留，不可刪除。" * 700,
+            }
+            for index in range(80)
+        ]
+        data["high_model_input_package"] = {
+            "command_specific_data": {
+                "schema_version": "test",
+                "input_mode": "full",
+                "core_input_audit": {"required": True},
+                "payload": {
+                    "schema_version": "theme_radar_relation_payload_v1",
+                    "stock_index": {row["code"]: row for row in huge_rows},
+                    "strong_stocks": huge_rows,
+                    "theme_rankings": [{"theme": "AI電源", "stock_codes": [row["code"] for row in huge_rows]}],
+                },
+            },
+            "selected_sources": [],
+            "complete_source_index": [],
+        }
+        client = _FakeMiniMax()
+
+        result = run_segmented_theme_analysis(
+            request=request,
+            structured_data=data,
+            sources=_theme_sources(40),
+            ai_client=client,
+            model_name="MiniMax-M3",
+        )
+
+        labels = [run.label for run in result.segment_runs]
+        self.assertTrue(any(label.startswith("local_core_packet_part_") for label in labels))
+        self.assertLessEqual(max(len(prompt) for prompt in client.prompts[:-1]), 180_000)
+        self.assertIn("核心資料必須保留", "\n".join(client.prompts))
 
     def test_segmented_ai_call_sets_temporary_timeout(self) -> None:
         class TimeoutAwareClient(_FakeMiniMax):
@@ -482,8 +550,9 @@ class SegmentedAnalysisResilienceTests(unittest.TestCase):
         )
 
         self.assertEqual(result.diagnostics["fallback_count"], 1)
-        self.assertEqual(result.segment_runs[1].status, "fallback")
-        self.assertIn("timeout_seconds", result.segment_runs[1].diagnostics)
+        fallback_runs = [run for run in result.segment_runs if run.status == "fallback"]
+        self.assertEqual(len(fallback_runs), 1)
+        self.assertIn("timeout_seconds", fallback_runs[0].diagnostics)
         self.assertIn("segment 9", result.markdown)
 
 
@@ -500,7 +569,7 @@ def test_segmented_theme_analysis_keeps_report_when_one_segment_fails():
     )
 
     assert result.diagnostics["fallback_count"] == 1
-    assert result.segment_runs[1].status == "fallback"
+    assert len([run for run in result.segment_runs if run.status == "fallback"]) == 1
     assert "segment 9" in result.markdown
 
 

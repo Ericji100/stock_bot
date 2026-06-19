@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -15,11 +16,14 @@ ProgressCallback = Callable[[str], None]
 
 THEME_ANALYSIS_COMMANDS = {"theme_radar", "theme_flow", "sector_strength"}
 SEGMENTED_ANALYSIS_PROMPT_THRESHOLD = 120_000
-SEGMENTED_ANALYSIS_TARGET_CHARS = 80_000
-SEGMENTED_ANALYSIS_HARD_CHARS = 120_000
-SEGMENTED_ANALYSIS_FINAL_HARD_CHARS = 300_000
+SEGMENTED_ANALYSIS_TARGET_CHARS = 110_000
+SEGMENTED_ANALYSIS_HARD_CHARS = 160_000
+SEGMENTED_ANALYSIS_FINAL_HARD_CHARS = 180_000
 SEGMENTED_ANALYSIS_CALL_TIMEOUT_SECONDS = 900.0
-SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS = 12
+SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS = 8
+SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS = 110_000
+SEGMENTED_ANALYSIS_PARALLEL_MIN_SEGMENTS = 4
+SEGMENTED_ANALYSIS_MAX_PARALLEL_CALLS = 2
 
 
 class ReportGenerator(Protocol):
@@ -108,8 +112,9 @@ def run_segmented_theme_analysis(
     _emit(progress, f"分段 AI 分析開始：segments={len(plans)} model={model_name} timeout={int(call_timeout_seconds)}s")
 
     _emit(progress, f"分段 AI 分析啟動：{len(plans)} 個分析段，model={model_name}")
-    for index, plan in enumerate(plans, 1):
-        prompt = _build_segment_prompt(request, structured_data, plan, outputs)
+
+    def execute_segment(index: int, plan: dict[str, Any], prior_outputs: list[dict[str, Any]]) -> tuple[int, str, SegmentRun, dict[str, Any]]:
+        prompt = _build_segment_prompt(request, structured_data, plan, prior_outputs)
         segment_sources = _sources_for_segment_plan(plan, sources)
         prompt_path = write_prompt_log(
             request,
@@ -129,7 +134,6 @@ def run_segmented_theme_analysis(
                 "call_timeout_seconds": call_timeout_seconds,
             },
         )
-        prompt_paths.append(str(prompt_path))
         _emit(
             progress,
             f"分段 AI 呼叫 {index}/{len(plans)}：{plan['title']} prompt={len(prompt)} chars est_tokens={max(1, len(prompt) // 4)} sources={len(segment_sources)} timeout={int(call_timeout_seconds)}s",
@@ -152,7 +156,6 @@ def run_segmented_theme_analysis(
                 markdown=markdown,
                 diagnostics=diagnostics,
             )
-            outputs.append(_segment_output(plan, markdown, run))
             _emit(progress, f"分段 AI 完成 {index}/{len(plans)}：{plan['title']} output={len(markdown)} chars elapsed={elapsed:.1f}s")
             _emit(progress, f"分段 AI 完成：{plan['title']}，output={len(markdown)} chars")
         except Exception as exc:
@@ -169,10 +172,40 @@ def run_segmented_theme_analysis(
                 error=str(exc),
                 diagnostics={"elapsed_seconds": round(elapsed, 2), "timeout_seconds": call_timeout_seconds},
             )
-            outputs.append(_segment_output(plan, fallback, run))
             _emit(progress, f"分段 AI 失敗 {index}/{len(plans)}：{plan['title']}，已保留該段並繼續；elapsed={elapsed:.1f}s error={exc}")
             _emit(progress, f"分段 AI 失敗，改用本地段落摘要：{plan['title']}，原因：{exc}")
-        segment_runs.append(run)
+        return index, str(prompt_path), run, _segment_output(plan, run.markdown, run)
+
+    parallel_workers = _segment_parallel_workers(request, plans)
+    if parallel_workers > 1:
+        _emit(progress, f"分段 AI 受控並行啟動：workers={parallel_workers} segments={len(plans)}")
+        old_timeout = getattr(ai_client, "timeout_seconds", None) if hasattr(ai_client, "timeout_seconds") else None
+        if hasattr(ai_client, "timeout_seconds"):
+            setattr(ai_client, "timeout_seconds", call_timeout_seconds)
+        result_rows: dict[int, tuple[str, SegmentRun, dict[str, Any]]] = {}
+        try:
+            with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+                futures = {
+                    executor.submit(execute_segment, index, plan, []): index
+                    for index, plan in enumerate(plans, 1)
+                }
+                for future in as_completed(futures):
+                    index, prompt_path, run, output = future.result()
+                    result_rows[index] = (prompt_path, run, output)
+        finally:
+            if hasattr(ai_client, "timeout_seconds") and old_timeout is not None:
+                setattr(ai_client, "timeout_seconds", old_timeout)
+        for index in sorted(result_rows):
+            prompt_path, run, output = result_rows[index]
+            prompt_paths.append(prompt_path)
+            segment_runs.append(run)
+            outputs.append(output)
+    else:
+        for index, plan in enumerate(plans, 1):
+            _, prompt_path, run, output = execute_segment(index, plan, outputs)
+            prompt_paths.append(prompt_path)
+            segment_runs.append(run)
+            outputs.append(output)
 
     final_sources = _sources_for_segment_outputs(outputs, sources)
     final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources)
@@ -236,6 +269,7 @@ def run_segmented_theme_analysis(
         "target_segment_chars": SEGMENTED_ANALYSIS_TARGET_CHARS,
         "hard_segment_chars": SEGMENTED_ANALYSIS_HARD_CHARS,
         "call_timeout_seconds": call_timeout_seconds,
+        "parallel_workers": parallel_workers,
         "segment_count": len(segment_runs),
         "success_count": sum(1 for item in segment_runs if item.status == "success"),
         "fallback_count": sum(1 for item in segment_runs if item.status != "success"),
@@ -265,7 +299,32 @@ def _split_oversized_plans(
     result: list[dict[str, Any]] = []
     for plan in plans:
         if plan.get("no_auto_split"):
-            result.append(plan)
+            probe_prompt = _build_segment_prompt(request, structured_data, plan, [])
+            if len(probe_prompt) <= SEGMENTED_ANALYSIS_HARD_CHARS:
+                result.append(plan)
+                continue
+            chunks = _split_payload_for_segment(plan.get("payload") or {}, target_chars=SEGMENTED_ANALYSIS_TARGET_CHARS)
+            if len(chunks) <= 1:
+                result.append(plan)
+                continue
+            total = len(chunks)
+            for index, chunk in enumerate(chunks, 1):
+                result.append(
+                    {
+                        **plan,
+                        "label": f"{plan.get('label', 'segment')}_part_{index}",
+                        "title": f"{plan.get('title', '核心入模資料')} {index}/{total}",
+                        "payload": {
+                            "segment_split": {
+                                "source_label": plan.get("label"),
+                                "part_index": index,
+                                "part_total": total,
+                                "policy": "大型核心入模包依 JSON 結構切段；只切段不刪資料，完整原始資料仍保留於報告 JSON、來源檔與 HTML 附錄。",
+                            },
+                            **chunk,
+                        },
+                    }
+                )
             continue
         probe_prompt = _build_segment_prompt(request, structured_data, plan, [])
         if len(probe_prompt) <= SEGMENTED_ANALYSIS_HARD_CHARS:
@@ -309,10 +368,82 @@ def _bounded_integration_plans(
     audit metadata. Full raw data remains in report JSON and HTML appendices.
     """
 
+    if any(isinstance(plan.get("payload"), dict) and plan["payload"].get("segment_split") for plan in plans):
+        return _merge_small_segment_plans(request, structured_data, plans)
     packet_plans = _high_model_packet_plans(structured_data)
     if packet_plans:
         return packet_plans[:SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS]
     return plans[:SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS]
+
+
+def _segment_parallel_workers(request: CommandRequest, plans: list[dict[str, Any]]) -> int:
+    if request.command not in {"theme_radar", "sector_strength"}:
+        return 1
+    if len(plans) < SEGMENTED_ANALYSIS_PARALLEL_MIN_SEGMENTS:
+        return 1
+    return min(SEGMENTED_ANALYSIS_MAX_PARALLEL_CALLS, len(plans))
+
+
+def _merge_small_segment_plans(
+    request: CommandRequest,
+    structured_data: dict[str, Any],
+    plans: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge tiny adjacent segments to reduce API calls without dropping data."""
+
+    merged: list[dict[str, Any]] = []
+    buffer: list[dict[str, Any]] = []
+
+    def flush_buffer() -> None:
+        nonlocal buffer
+        if not buffer:
+            return
+        if len(buffer) == 1:
+            merged.append(buffer[0])
+        else:
+            merged.append(_combined_segment_plan(buffer, len(merged) + 1))
+        buffer = []
+
+    for plan in plans:
+        candidate = [*buffer, plan]
+        candidate_plan = _combined_segment_plan(candidate, len(merged) + 1) if len(candidate) > 1 else plan
+        candidate_prompt = _build_segment_prompt(request, structured_data, candidate_plan, [])
+        if len(candidate_prompt) <= SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS:
+            buffer = candidate
+            continue
+        flush_buffer()
+        single_prompt = _build_segment_prompt(request, structured_data, plan, [])
+        if len(single_prompt) <= SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS:
+            buffer = [plan]
+        else:
+            merged.append(plan)
+
+    flush_buffer()
+    return merged or plans
+
+
+def _combined_segment_plan(plans: list[dict[str, Any]], index: int) -> dict[str, Any]:
+    labels = [str(plan.get("label") or f"segment_{idx}") for idx, plan in enumerate(plans, 1)]
+    titles = [str(plan.get("title") or label) for plan, label in zip(plans, labels)]
+    return {
+        "label": f"merged_segment_{index}",
+        "title": "合併小型分段：" + "、".join(titles[:3]) + (" 等" if len(titles) > 3 else ""),
+        "payload": {
+            "merged_segment": {
+                "part_count": len(plans),
+                "labels": labels,
+                "policy": "多個小型分段合併以減少高階模型呼叫次數；只合併不刪資料，原分段 payload 完整保留於 sections。",
+            },
+            "sections": [
+                {
+                    "label": plan.get("label"),
+                    "title": plan.get("title"),
+                    "payload": plan.get("payload"),
+                }
+                for plan in plans
+            ],
+        },
+    }
 
 
 def _split_payload_for_segment(payload: Any, *, target_chars: int) -> list[dict[str, Any]]:
@@ -599,7 +730,7 @@ def _segment_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
                 "status": status,
                 "error": item.get("error"),
                 "output_chars": len(markdown),
-                "note_excerpt": _truncate_segment_text(markdown, 2200),
+                "note_excerpt": _truncate_segment_text(markdown, 900),
             }
         )
     return {
@@ -1123,11 +1254,11 @@ def _final_local_summary(data: dict[str, Any]) -> dict[str, Any]:
         "command_role": data.get("command_role"),
         "report_date": data.get("report_date"),
         "market_data_date": data.get("market_data_date") or sector_data.get("market_data_date"),
-        "sector_rankings": _final_top_rows(sector_data.get("sector_rankings") or data.get("sector_rankings") or [], limit=6),
-        "subsector_rankings": _final_top_rows(sector_data.get("subsector_rankings") or data.get("subsector_rankings") or [], limit=8),
-        "theme_rankings": _final_top_rows(data.get("theme_rankings") or [], limit=8),
-        "strong_stocks": _stock_refs(data.get("strong_stocks") or data.get("market_movers") or [], 15),
-        "data_quality": _final_compact(data.get("data_quality") or sector_data.get("data_quality") or {}, depth=3, max_list=12, max_keys=40),
+        "sector_rankings": _final_top_rows(sector_data.get("sector_rankings") or data.get("sector_rankings") or [], limit=4),
+        "subsector_rankings": _final_top_rows(sector_data.get("subsector_rankings") or data.get("subsector_rankings") or [], limit=5),
+        "theme_rankings": _final_top_rows(data.get("theme_rankings") or [], limit=5),
+        "strong_stocks": _stock_refs(data.get("strong_stocks") or data.get("market_movers") or [], 10),
+        "data_quality": _final_compact(data.get("data_quality") or sector_data.get("data_quality") or {}, depth=2, max_list=6, max_keys=20, max_string=420),
     }
 
 
@@ -1185,25 +1316,25 @@ def _final_ranking_row(row: dict[str, Any]) -> dict[str, Any]:
     for key in ("description", "summary", "reason"):
         value = row.get(key)
         if isinstance(value, str) and value.strip():
-            item[key] = _truncate_segment_text(value.strip(), 1200)
+            item[key] = _truncate_segment_text(value.strip(), 420)
     for key in ("representative_stocks", "candidate_stocks", "strong_samples", "sector_strong_samples"):
-        stocks = _stock_refs(row.get(key), 3)
+        stocks = _stock_refs(row.get(key), 2)
         if stocks:
             item[key] = stocks
     nodes = row.get("strong_nodes") or row.get("nodes") or []
     if isinstance(nodes, list) and nodes:
-        item["key_nodes"] = [_final_compact(node, depth=2, max_list=3, max_keys=12, max_string=220) for node in nodes[:5]]
-        if len(nodes) > 5:
-            item["omitted_node_count"] = len(nodes) - 5
+        item["key_nodes"] = [_final_compact(node, depth=2, max_list=2, max_keys=8, max_string=160) for node in nodes[:2]]
+        if len(nodes) > 2:
+            item["omitted_node_count"] = len(nodes) - 2
     score_breakdown = row.get("score_breakdown")
     if isinstance(score_breakdown, dict):
         item["score_breakdown"] = _final_compact(score_breakdown, depth=2, max_list=6, max_keys=12, max_string=160)
     display_groups = row.get("display_stock_groups")
     if isinstance(display_groups, dict):
         item["display_stock_groups"] = {
-            "verified_representatives": _stock_refs(display_groups.get("verified_representatives"), 3),
-            "inferred_representatives": _stock_refs(display_groups.get("inferred_representatives"), 3),
-            "candidate_watchlist": _stock_refs(display_groups.get("candidate_watchlist"), 3),
+            "verified_representatives": _stock_refs(display_groups.get("verified_representatives"), 2),
+            "inferred_representatives": _stock_refs(display_groups.get("inferred_representatives"), 2),
+            "candidate_watchlist": _stock_refs(display_groups.get("candidate_watchlist"), 2),
             "candidate_label": display_groups.get("candidate_label"),
         }
     return item
@@ -1293,16 +1424,16 @@ def _stocks(rows: Any, limit: int) -> list[dict[str, Any]]:
 
 
 def _source_refs(sources: list[SourceItem]) -> list[dict[str, Any]]:
+    selected = sources[:60]
     return [
         {
             "source_id": source.source_id,
-            "title": source.title,
-            "url": source.url,
+            "title": _truncate_segment_text(source.title, 160),
             "source_level": source.source_level,
             "published_date": source.published_date,
             "provider": source.provider,
         }
-        for source in sources
+        for source in selected
     ]
 
 

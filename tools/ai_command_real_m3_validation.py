@@ -18,8 +18,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from radar_service import format_radar_report, parse_radar_args, run_radar  # noqa: E402
+from research_center.command_parser import parse_command_text  # noqa: E402
 from research_center.config import load_research_config  # noqa: E402
-from research_center.models import ResearchCenterResult, SourceItem  # noqa: E402
+from research_center.models import CommandParseError, ResearchCenterResult, SourceItem  # noqa: E402
 from research_center.orchestrator import ResearchCenter  # noqa: E402
 from research_center.report_display_normalizer import normalize_report_text  # noqa: E402
 
@@ -37,6 +38,177 @@ DEFAULT_COMMANDS: list[str] = [
     "/radar --source technical --ai-top 5 --model minimax",
     "/news refresh --model minimax",
     "/topic_maintain --model minimax",
+]
+
+PARAMETER_MATRIX_CASES: list[dict[str, Any]] = [
+    {
+        "name": "research_default_deep",
+        "command": "/research 凌陽 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--model"],
+        "expected": {"command": "research", "mode": "deep", "ai_model": "minimax"},
+        "execution_scope": "default_mode_smoke",
+    },
+    {
+        "name": "research_deep_model_date",
+        "command": "/research 凌陽 --deep --model minimax --date 2026-06-18",
+        "parser": "research_center",
+        "parameters": ["--deep", "--model", "--date"],
+        "expected": {"command": "research", "mode": "deep", "ai_model": "minimax", "report_date": "2026-06-18"},
+        "execution_scope": "full_m3_representative",
+    },
+    {
+        "name": "research_source_only",
+        "command": "/research 凌陽 --source-only --model minimax",
+        "parser": "research_center",
+        "parameters": ["--source-only", "--model"],
+        "expected": {"command": "research", "mode": "source_only", "source_only": True, "ai_model": "minimax"},
+        "execution_scope": "source_only_smoke",
+    },
+    {
+        "name": "research_score",
+        "command": "/research 凌陽 --score --model minimax",
+        "parser": "research_center",
+        "parameters": ["--score", "--model"],
+        "expected": {"command": "research", "mode": "score", "score": True, "ai_model": "minimax"},
+        "execution_scope": "score_smoke",
+    },
+    {
+        "name": "research_output_formats",
+        "command": "/research 凌陽 --model minimax --no-html --no-json",
+        "parser": "research_center",
+        "parameters": ["--no-html", "--no-json", "--model"],
+        "expected": {"command": "research", "output_formats": ["md"], "ai_model": "minimax"},
+        "execution_scope": "artifact_smoke",
+    },
+    {
+        "name": "research_reject_top",
+        "command": "/research 凌陽 --top 5 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--top"],
+        "expected_error_contains": "不支援 --top",
+        "execution_scope": "parser_rejection",
+    },
+    {
+        "name": "value_scan_deep_top",
+        "command": "/value_scan 我的持股 --deep --top 30 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--deep", "--top", "--model"],
+        "expected": {"command": "value_scan", "mode": "deep", "top": 30, "candidate_pool": "我的持股", "ai_model": "minimax"},
+        "execution_scope": "full_m3_representative",
+    },
+    {
+        "name": "value_scan_single_stock_date_output",
+        "command": "/value_scan 2330 --date 2026-06-18 --top 5 --model minimax --no-md",
+        "parser": "research_center",
+        "parameters": ["--date", "--top", "--model", "--no-md"],
+        "expected": {"command": "value_scan", "target_type": "stock", "report_date": "2026-06-18", "top": 5, "output_formats": ["html", "json"]},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "macro_brief",
+        "command": "/macro 台股 --brief --model minimax",
+        "parser": "research_center",
+        "parameters": ["--brief", "--model"],
+        "expected": {"command": "macro", "mode": "brief", "brief": True, "ai_model": "minimax"},
+        "execution_scope": "brief_smoke",
+    },
+    {
+        "name": "macro_source_only_date",
+        "command": "/macro 台股 --source-only --date 2026-06-18 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--source-only", "--date", "--model"],
+        "expected": {"command": "macro", "mode": "source_only", "report_date": "2026-06-18", "ai_model": "minimax"},
+        "execution_scope": "source_only_smoke",
+    },
+    {
+        "name": "theme_top_deep",
+        "command": "/theme AI電源 --top 5 --deep --model minimax",
+        "parser": "research_center",
+        "parameters": ["--top", "--deep", "--model"],
+        "expected": {"command": "theme", "mode": "deep", "top": 5, "target": "AI電源", "ai_model": "minimax"},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "theme_flow_days_source",
+        "command": "/theme_flow AI電源 --days 14 --source news --top 5 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--days", "--source", "--top", "--model"],
+        "expected": {"command": "theme_flow", "lookback_days": 14, "source": "news", "top": 5, "ai_model": "minimax"},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "theme_radar_days_source_date",
+        "command": "/theme_radar --days 7 --source technical --top 5 --date 2026-06-18 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--days", "--source", "--top", "--date", "--model"],
+        "expected": {"command": "theme_radar", "lookback_days": 7, "source": "technical", "top": 5, "report_date": "2026-06-18"},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "sector_strength_days_source",
+        "command": "/sector_strength --days 7 --source technical --top 5 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--days", "--source", "--top", "--model"],
+        "expected": {"command": "sector_strength", "lookback_days": 7, "source": "technical", "top": 5, "ai_model": "minimax"},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "topic_maintain_default_deep",
+        "command": "/topic_maintain --model minimax",
+        "parser": "research_center",
+        "parameters": ["--model"],
+        "expected": {"command": "topic_maintain", "mode": "deep", "ai_model": "minimax"},
+        "execution_scope": "full_m3_representative",
+    },
+    {
+        "name": "topic_maintain_from_radar",
+        "command": "/topic_maintain --from-radar radar_20260618 --model minimax",
+        "parser": "research_center",
+        "parameters": ["--from-radar", "--model"],
+        "expected": {"command": "topic_maintain", "target": "__from_radar__:radar_20260618", "mode": "deep", "ai_model": "minimax"},
+        "execution_scope": "parameter_smoke",
+    },
+    {
+        "name": "news_refresh_model",
+        "command": "/news refresh --model minimax",
+        "parser": "research_center",
+        "parameters": ["--model"],
+        "expected": {"command": "news", "target": "refresh", "ai_model": "minimax"},
+        "execution_scope": "full_m3_representative",
+    },
+    {
+        "name": "news_reject_deep",
+        "command": "/news refresh --deep --model minimax",
+        "parser": "research_center",
+        "parameters": ["--deep"],
+        "expected_error_contains": "/help",
+        "execution_scope": "parser_rejection",
+    },
+    {
+        "name": "radar_source_ai_top_model_date",
+        "command": "/radar --source technical --ai-top 5 --date 2026-06-18 --model minimax",
+        "parser": "radar",
+        "parameters": ["--source", "--ai-top", "--date", "--model"],
+        "expected": {"source": "technical", "ai_top": 5, "report_date": "2026-06-18", "model": "minimax", "ai_comment_enabled": True},
+        "execution_scope": "full_m3_representative",
+    },
+    {
+        "name": "radar_no_ai_comment",
+        "command": "/radar --source chip --ai-top 3 --no-ai-comment",
+        "parser": "radar",
+        "parameters": ["--source", "--ai-top", "--no-ai-comment"],
+        "expected": {"source": "chip", "ai_top": 3, "model": "minimax", "ai_comment_enabled": False},
+        "execution_scope": "no_ai_smoke",
+    },
+    {
+        "name": "radar_reject_unsupported",
+        "command": "/radar --brief --model minimax",
+        "parser": "radar",
+        "parameters": ["--brief"],
+        "expected_error_contains": "不支援的 Radar 參數",
+        "execution_scope": "parser_rejection",
+    },
 ]
 
 def _now_id() -> str:
@@ -240,6 +412,34 @@ def _quality_review(
     }
 
 
+def _refresh_quality_review(record: dict[str, Any], output_text: str) -> None:
+    """Re-run the lightweight quality review after command-specific enrichment."""
+
+    review = _quality_review(
+        command=str(record.get("command") or ""),
+        output_text=output_text,
+        source_count=int(record.get("source_count") or 0),
+        prompt_chars=int(record.get("prompt_chars") or 0),
+        elapsed_seconds=float(record.get("elapsed_seconds") or 0),
+        status=str(record.get("status") or ""),
+        error=record.get("error") or record.get("fallback_reason"),
+    )
+    record["quality_review"] = review
+
+
+def _update_quality_metrics(record: dict[str, Any]) -> None:
+    review = record.get("quality_review")
+    if not isinstance(review, dict):
+        return
+    metrics = dict(review.get("metrics") or {})
+    metrics["prompt_chars"] = int(record.get("prompt_chars") or 0)
+    metrics["rough_prompt_tokens"] = round(int(record.get("prompt_chars") or 0) / 4)
+    metrics["source_count"] = int(record.get("source_count") or 0)
+    metrics["elapsed_seconds"] = float(record.get("elapsed_seconds") or 0)
+    review["metrics"] = metrics
+    record["quality_review"] = review
+
+
 def _runtime_issue_patterns() -> list[tuple[str, str]]:
     return [
         ("高階模型 context window 超限", r"context window exceeds limit|prompt too large|payload bytes|狀態=400|status=400"),
@@ -292,6 +492,11 @@ def _augment_special_artifacts(record: dict[str, Any], joined_log_text: str) -> 
     paths = dict(record.get("report_paths") or {})
     command_dir_text = str(record.get("stdout_path") or "")
     command_dir = Path(command_dir_text).parent if command_dir_text else None
+    progress_log_text = joined_log_text
+    if command_dir:
+        progress_log = command_dir / "progress.log"
+        if progress_log.exists():
+            progress_log_text = _read_text(progress_log)
     if command.startswith("/news"):
         if command_dir:
             for key, filename in (
@@ -308,27 +513,52 @@ def _augment_special_artifacts(record: dict[str, Any], joined_log_text: str) -> 
         prompt_matches = [int(item) for item in re.findall(r"AI 分類 \d+/\d+ prompt=(\d+)\s*chars", joined_log_text)]
         if prompt_matches:
             record["prompt_chars"] = sum(prompt_matches)
-            review = record.get("quality_review")
-            if isinstance(review, dict):
-                metrics = dict(review.get("metrics") or {})
-                metrics["prompt_chars"] = record["prompt_chars"]
-                metrics["rough_prompt_tokens"] = round(record["prompt_chars"] / 4)
-                metrics["source_count"] = record.get("source_count", metrics.get("source_count", 0))
-                review["metrics"] = metrics
-                record["quality_review"] = review
+            _update_quality_metrics(record)
+    if command.startswith("/radar"):
+        prompt_matches = [int(item) for item in re.findall(r"(?<!original_)prompt=(\d+)\s*chars", progress_log_text)]
+        if prompt_matches:
+            record["prompt_chars"] = sum(prompt_matches)
+            _refresh_quality_review(record, str(record.get("summary") or ""))
     if command.startswith("/topic_maintain"):
         topic_raw = _latest_topic_raw_path(joined_log_text)
+        output_text = ""
         if topic_raw:
             paths["topic_raw"] = str(topic_raw)
             if not paths.get("json") or str(paths.get("json")).startswith("__no_"):
                 paths["json"] = str(topic_raw)
             record["report_paths"] = paths
+            output_text = "\n\n".join([
+                str(record.get("summary") or ""),
+                _topic_quality_probe_text(topic_raw),
+            ]).strip()
+            _write_text((command_dir or topic_raw.parent) / "topic_quality_probe.md", output_text)
         source_match = re.search(r"Discovery來源：(\d+)\s*筆", joined_log_text)
         if source_match and not record.get("source_count"):
             record["source_count"] = int(source_match.group(1))
-        prompt_match = re.search(r"MiniMax M[23](?:\.7)? .*?prompt=(\d+)\s*chars", joined_log_text)
-        if prompt_match and not record.get("prompt_chars"):
-            record["prompt_chars"] = int(prompt_match.group(1))
+        prompt_matches = [int(item) for item in re.findall(r"(?<!original_)prompt=(\d+)\s*chars", progress_log_text)]
+        if prompt_matches:
+            record["prompt_chars"] = sum(prompt_matches)
+        if output_text:
+            _refresh_quality_review(record, output_text)
+        else:
+            _update_quality_metrics(record)
+
+
+def _topic_quality_probe_text(topic_raw: Path) -> str:
+    raw = _read_text(topic_raw)
+    markers: list[str] = []
+    if re.search(r"\brisk_notes\b|風險|不確定", raw, re.IGNORECASE):
+        markers.append("風險：題材更新包包含 risk_notes 或風險相關內容，需於人工審核時確認是否具體。")
+    if re.search(r"\bcounter_evidence\b|反證", raw, re.IGNORECASE):
+        markers.append("反證：題材更新包包含 counter_evidence 或反證相關內容，需於人工審核時確認是否具體。")
+    if re.search(r"\bmissing_data\b|資料不足|資料缺口", raw, re.IGNORECASE):
+        markers.append("資料不足：題材更新包包含 missing_data 或資料缺口。")
+    if re.search(r"\bverification\b|\bnext\b|後續|催化|情境|推演|預期|驗證|觀察", raw, re.IGNORECASE):
+        markers.append("後續驗證：題材更新包包含後續驗證、觀察或推演相關欄位。")
+    if not markers:
+        markers.append("題材更新包未偵測到風險、反證、資料缺口或後續驗證欄位。")
+    excerpt = raw[:8000]
+    return "\n".join(["# 題材庫更新包品質探針", *markers, "", "## 原始更新包節錄", excerpt])
 
 
 def _latest_topic_raw_path(joined_log_text: str) -> Path | None:
@@ -389,6 +619,8 @@ def _has_internal_field_leak(text: str) -> bool:
         r"\blow_model_digest\b",
         r"\bunified_evidence_pack\b",
         r"\bsource_id\b",
+        r"\b(?:financial|revenue|chip|theme|company|customer|supply\s+chain)\b[^\n|。]{0,60}\bcoverage\s+pct\b",
+        r"\bpct\b",
     ]
     return any(re.search(pattern, text) for pattern in patterns)
 
@@ -650,6 +882,151 @@ def _load_commands(args: argparse.Namespace) -> list[str]:
     return list(DEFAULT_COMMANDS)
 
 
+def _request_parameter_summary(command: str, request: Any) -> dict[str, Any]:
+    if command.strip().startswith("/radar"):
+        return {
+            "source": request.source,
+            "report_date": request.report_date.isoformat() if request.report_date else None,
+            "ai_top": request.ai_top,
+            "model": request.model,
+            "ai_comment_enabled": request.ai_comment_enabled,
+        }
+    return {
+        "command": request.command,
+        "target": request.target,
+        "target_type": request.target_type,
+        "candidate_pool": request.candidate_pool,
+        "market_scope": request.market_scope,
+        "theme_scope": request.theme_scope,
+        "mode": request.mode,
+        "source_only": request.source_only,
+        "score": request.score,
+        "brief": request.brief,
+        "top": request.top,
+        "ai_model": request.ai_model,
+        "source": request.source,
+        "lookback_days": request.lookback_days,
+        "report_date": request.report_date.isoformat() if request.report_date else None,
+        "output_formats": list(request.output_formats),
+    }
+
+
+def _parse_parameter_case(case: dict[str, Any]) -> dict[str, Any]:
+    command = str(case["command"])
+    parser_name = str(case.get("parser") or "research_center")
+    expected_error = case.get("expected_error_contains")
+    try:
+        if parser_name == "radar":
+            request = parse_radar_args(command.strip().split()[1:])
+        else:
+            request = parse_command_text(command)
+        parsed = _request_parameter_summary(command, request)
+    except (CommandParseError, ValueError) as exc:
+        error = str(exc)
+        passed = bool(expected_error and str(expected_error) in error)
+        return {
+            **case,
+            "status": "expected_error" if passed else "failed",
+            "pass": passed,
+            "error": error,
+            "parsed": {},
+            "mismatches": [] if passed else [f"unexpected parse error: {error}"],
+        }
+    except Exception as exc:
+        error = str(exc)
+        return {
+            **case,
+            "status": "failed",
+            "pass": False,
+            "error": error,
+            "parsed": {},
+            "mismatches": [f"unexpected exception: {type(exc).__name__}: {error}"],
+        }
+
+    if expected_error:
+        return {
+            **case,
+            "status": "failed",
+            "pass": False,
+            "error": "",
+            "parsed": parsed,
+            "mismatches": [f"expected error containing {expected_error!r}, but parse succeeded"],
+        }
+
+    expected = dict(case.get("expected") or {})
+    mismatches: list[str] = []
+    for key, expected_value in expected.items():
+        actual = parsed.get(key)
+        if actual != expected_value:
+            mismatches.append(f"{key}: expected {expected_value!r}, got {actual!r}")
+    return {
+        **case,
+        "status": "success" if not mismatches else "failed",
+        "pass": not mismatches,
+        "error": "",
+        "parsed": parsed,
+        "mismatches": mismatches,
+    }
+
+
+def _run_parameter_matrix(cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    selected = cases or PARAMETER_MATRIX_CASES
+    results = [_parse_parameter_case(case) for case in selected]
+    covered: dict[str, list[str]] = {}
+    for result in results:
+        for parameter in result.get("parameters") or []:
+            covered.setdefault(str(parameter), []).append(str(result.get("name") or ""))
+    command_coverage: dict[str, int] = {}
+    for result in results:
+        command = str(result.get("command") or "").split()[0].lstrip("/")
+        command_coverage[command] = command_coverage.get(command, 0) + 1
+    return {
+        "status": "success" if all(item.get("pass") for item in results) else "failed",
+        "case_count": len(results),
+        "passed_count": sum(1 for item in results if item.get("pass")),
+        "failed_count": sum(1 for item in results if not item.get("pass")),
+        "covered_parameters": covered,
+        "command_coverage": command_coverage,
+        "results": results,
+    }
+
+
+def _parameter_matrix_markdown(matrix: dict[str, Any]) -> str:
+    lines = [
+        "# AI 指令參數覆蓋檢查",
+        "",
+        f"- 狀態：{matrix.get('status')}",
+        f"- 案例數：{matrix.get('case_count')}",
+        f"- 通過：{matrix.get('passed_count')}",
+        f"- 失敗：{matrix.get('failed_count')}",
+        "",
+        "## 指令覆蓋",
+        "",
+    ]
+    for command, count in sorted((matrix.get("command_coverage") or {}).items()):
+        lines.append(f"- `/{command}`：{count} 個參數案例")
+    lines.extend(["", "## 參數覆蓋", ""])
+    for parameter, names in sorted((matrix.get("covered_parameters") or {}).items()):
+        lines.append(f"- `{parameter}`：{len(names)} 個案例")
+    lines.extend(["", "## 案例明細", "", "| 案例 | 指令 | 範圍 | 結果 | 問題 |", "|---|---|---|---|---|"])
+    for result in matrix.get("results") or []:
+        issues = "；".join(result.get("mismatches") or ([result.get("error")] if result.get("error") and not result.get("pass") else []))
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(result.get("name") or "").replace("|", "\\|"),
+                    str(result.get("command") or "").replace("|", "\\|"),
+                    str(result.get("execution_scope") or "").replace("|", "\\|"),
+                    "通過" if result.get("pass") else "失敗",
+                    str(issues or "").replace("|", "\\|"),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run real MiniMax M3 validation for AI commands.")
     parser.add_argument("--command", action="append", help="Command text to run. Can be repeated.")
@@ -662,6 +1039,8 @@ def main() -> int:
     parser.add_argument("--worker-command-file", help=argparse.SUPPRESS)
     parser.add_argument("--worker-dir", help=argparse.SUPPRESS)
     parser.add_argument("--check-config", action="store_true", help="Only verify MiniMax M3 configuration.")
+    parser.add_argument("--include-parameter-matrix", action="store_true", help="Also validate supported parameter parsing/coverage.")
+    parser.add_argument("--parameter-matrix-only", action="store_true", help="Only validate parameter matrix; do not run real AI commands.")
     args = parser.parse_args()
 
     worker_command = args.worker_command
@@ -690,12 +1069,20 @@ def main() -> int:
         )
         return 0 if center.minimax.is_configured() else 2
 
+    run_dir = _new_run_dir(Path(args.run_dir) if args.run_dir else None)
+    if args.include_parameter_matrix or args.parameter_matrix_only:
+        matrix = _run_parameter_matrix()
+        _write_json(run_dir / "parameter_matrix.json", matrix)
+        _write_text(run_dir / "parameter_matrix.md", _parameter_matrix_markdown(matrix))
+        if args.parameter_matrix_only:
+            print(f"Parameter matrix: {run_dir / 'parameter_matrix.md'}", flush=True)
+            return 0 if matrix.get("status") == "success" else 1
+
     commands = _load_commands(args)
     if args.start_at > 1:
         commands = commands[args.start_at - 1 :]
     if args.max_commands > 0:
         commands = commands[: args.max_commands]
-    run_dir = _new_run_dir(Path(args.run_dir) if args.run_dir else None)
     _write_json(run_dir / "commands.json", {"commands": commands})
     print(f"Validation run dir: {run_dir}", flush=True)
 

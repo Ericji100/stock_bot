@@ -14,6 +14,7 @@ from .report_display_normalizer import normalize_report_text
 from .report_validator import append_qa_notes, validate_report
 from .company_knowledge_update_service import source_quality_score
 from .report_quality_service import build_report_quality_layer
+from .artifact_registry import build_artifact_record, register_artifact
 
 DISCLAIMER = "本報告為研究輔助資訊，不構成任何投資建議。投資決策仍需自行判斷並承擔風險。"
 
@@ -138,12 +139,19 @@ def _shared_data_layer_summary(data: dict[str, Any]) -> dict[str, Any]:
         "saved_news_context",
         "news_persistence_status",
         "feature_pack",
+        "feature_pack_artifact",
         "data_coverage",
         "data_gap_summary",
         "unified_evidence_pack",
         "news_events",
         "news_event_summary",
         "search_query_log",
+        "resolved_entity",
+        "resolved_topic",
+        "event_context",
+        "event_context_summary",
+        "prompt_bundle",
+        "ai_error_classification",
     )
     summary = {
         key: _compact_for_metadata(data.get(key))
@@ -252,6 +260,7 @@ def write_report_artifacts(
     if "json" in request.output_formats:
         json_path.write_text(json.dumps(report_json, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     sources_path.write_text(json.dumps([asdict(item) for item in sources], ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    _register_report_artifacts(request, structured_data or {}, report_id, json_path, sources_path)
 
     return (
         ReportArtifacts(
@@ -264,6 +273,37 @@ def write_report_artifacts(
         ),
         report_json,
     )
+
+
+def _register_report_artifacts(
+    request: CommandRequest,
+    data: dict[str, Any],
+    report_id: str,
+    json_path: Path,
+    sources_path: Path,
+) -> None:
+    data_date = request.report_date.isoformat() if request.report_date else data.get("market_data_date") or data.get("report_date")
+    for path, artifact_type in ((json_path, "report_json"), (sources_path, "report_sources")):
+        if not path.exists() or path.name.startswith("__no_"):
+            continue
+        try:
+            register_artifact(
+                build_artifact_record(
+                    path=path,
+                    artifact_type=artifact_type,
+                    source=request.command,
+                    schema_version="report_artifact_v1",
+                    data_date=str(data_date) if data_date else None,
+                    completeness=data.get("report_confidence") or data.get("data_coverage_score"),
+                    metadata={
+                        "report_id": report_id,
+                        "command": request.command,
+                        "mode": request.mode,
+                    },
+                )
+            )
+        except Exception:
+            pass
 
 
 def sanitize_report_markdown(markdown: str) -> str:
@@ -463,6 +503,11 @@ def _structured_data_report_snapshot(
         "required_data_gap_remaining_tasks": data.get("required_data_gap_remaining_tasks"),
         "required_gap_minimax_discovery": data.get("required_gap_minimax_discovery"),
         "required_gap_tavily_discovery": data.get("required_gap_tavily_discovery"),
+        "resolved_entity": data.get("resolved_entity"),
+        "resolved_topic": data.get("resolved_topic"),
+        "event_context_summary": data.get("event_context_summary"),
+        "prompt_bundle": data.get("prompt_bundle") or (data.get("prompt_policy") or {}).get("prompt_bundle"),
+        "ai_error_classification": data.get("ai_error_classification"),
     }
     if request.command == "value_scan":
         return {

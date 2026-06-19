@@ -21349,16 +21349,16 @@
         "score_contribution": 8
       }
     ],
+    "risk_notes": [
+      "待後續維護補強題材風險"
+    ],
     "missing_data": [
       "電源管理 IC 各產品營收佔比",
       "AI/伺服器/消費快充終端應用佔比"
     ],
     "layer": 3,
     "updated_at": "2026-05-23T00:35:42",
-    "verification_status": "verified",
-    "risk_notes": [
-      "待後續維護補強題材風險"
-    ]
+    "verification_status": "verified"
   },
   {
     "node_id": "power_management_ic_3588_AC_DC_電源管理_IC",
@@ -21405,16 +21405,16 @@
         "score_contribution": 8.5
       }
     ],
+    "risk_notes": [
+      "待後續維護補強題材風險"
+    ],
     "missing_data": [
       "電源管理 IC 各產品營收佔比",
       "AI/伺服器/消費快充終端應用佔比"
     ],
     "layer": 3,
     "updated_at": "2026-05-23T00:35:42",
-    "verification_status": "verified",
-    "risk_notes": [
-      "待後續維護補強題材風險"
-    ]
+    "verification_status": "verified"
   },
   {
     "node_id": "multimedia_soc_set_top_box_3041_多媒體影音_SoC",
@@ -21453,16 +21453,16 @@
         "score_contribution": 8
       }
     ],
+    "risk_notes": [
+      "待後續維護補強題材風險"
+    ],
     "missing_data": [
       "機上盒 SoC 營收佔比",
       "主要客戶與區域市場"
     ],
     "layer": 2,
     "updated_at": "2026-05-23T00:35:42",
-    "verification_status": "verified",
-    "risk_notes": [
-      "待後續維護補強題材風險"
-    ]
+    "verification_status": "verified"
   },
   {
     "node_id": "pcb_material_2383",
@@ -31429,6 +31429,9 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31446,10 +31449,7 @@
     },
     "benefit_logic": "電網、綠電與資料中心供電建設放大時，線材需求與交付量可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "electric_wire_cable_grid_1609",
@@ -31485,6 +31485,9 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31502,10 +31505,7 @@
     },
     "benefit_logic": "電網、綠電與資料中心供電建設放大時，線材需求與交付量可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "electric_wire_cable_grid_1612",
@@ -31541,6 +31541,9 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31558,10 +31561,7 @@
     },
     "benefit_logic": "電網、綠電與資料中心供電建設放大時，線材需求與交付量可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "electric_wire_cable_grid_1615",
@@ -31597,6 +31597,9 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31614,10 +31617,7 @@
     },
     "benefit_logic": "電網、綠電與資料中心供電建設放大時，線材需求與交付量可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "heavy_electric_power_equipment_1513",
@@ -31654,6 +31654,15 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "AI 電力需求增速可能低於預期",
+      "電網建置時程不確定",
+      "原物料（銅、鋼）價格波動影響毛利率",
+      "CSP 客戶議價可能壓縮零組件廠毛利",
+      "液冷與電力設備整合可能出現規格競爭",
+      "中國重電廠商競爭加劇",
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31672,16 +31681,7 @@
     },
     "benefit_logic": "強韌電網與用電基建投資提升時，重電設備訂單與出貨需求可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "AI 電力需求增速可能低於預期",
-      "電網建置時程不確定",
-      "原物料（銅、鋼）價格波動影響毛利率",
-      "CSP 客戶議價可能壓縮零組件廠毛利",
-      "液冷與電力設備整合可能出現規格競爭",
-      "中國重電廠商競爭加劇",
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "heavy_electric_power_equipment_1514",
@@ -31718,6 +31718,15 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "AI 電力需求增速可能低於預期",
+      "電網建置時程不確定",
+      "原物料（銅、鋼）價格波動影響毛利率",
+      "CSP 客戶議價可能壓縮零組件廠毛利",
+      "液冷與電力設備整合可能出現規格競爭",
+      "中國重電廠商競爭加劇",
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31736,16 +31745,7 @@
     },
     "benefit_logic": "強韌電網與用電基建投資提升時，重電設備訂單與出貨需求可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "AI 電力需求增速可能低於預期",
-      "電網建置時程不確定",
-      "原物料（銅、鋼）價格波動影響毛利率",
-      "CSP 客戶議價可能壓縮零組件廠毛利",
-      "液冷與電力設備整合可能出現規格競爭",
-      "中國重電廠商競爭加劇",
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "heavy_electric_power_equipment_1519",
@@ -31782,6 +31782,15 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "AI 電力需求增速可能低於預期",
+      "電網建置時程不確定",
+      "原物料（銅、鋼）價格波動影響毛利率",
+      "CSP 客戶議價可能壓縮零組件廠毛利",
+      "液冷與電力設備整合可能出現規格競爭",
+      "中國重電廠商競爭加劇",
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31800,16 +31809,7 @@
     },
     "benefit_logic": "強韌電網與用電基建投資提升時，重電設備訂單與出貨需求可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "AI 電力需求增速可能低於預期",
-      "電網建置時程不確定",
-      "原物料（銅、鋼）價格波動影響毛利率",
-      "CSP 客戶議價可能壓縮零組件廠毛利",
-      "液冷與電力設備整合可能出現規格競爭",
-      "中國重電廠商競爭加劇",
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "heavy_electric_power_equipment_1503",
@@ -31846,6 +31846,15 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "AI 電力需求增速可能低於預期",
+      "電網建置時程不確定",
+      "原物料（銅、鋼）價格波動影響毛利率",
+      "CSP 客戶議價可能壓縮零組件廠毛利",
+      "液冷與電力設備整合可能出現規格競爭",
+      "中國重電廠商競爭加劇",
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31864,16 +31873,7 @@
     },
     "benefit_logic": "強韌電網與用電基建投資提升時，重電設備訂單與出貨需求可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "AI 電力需求增速可能低於預期",
-      "電網建置時程不確定",
-      "原物料（銅、鋼）價格波動影響毛利率",
-      "CSP 客戶議價可能壓縮零組件廠毛利",
-      "液冷與電力設備整合可能出現規格競爭",
-      "中國重電廠商競爭加劇",
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "heavy_electric_power_equipment_1504",
@@ -31910,6 +31910,15 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "AI 電力需求增速可能低於預期",
+      "電網建置時程不確定",
+      "原物料（銅、鋼）價格波動影響毛利率",
+      "CSP 客戶議價可能壓縮零組件廠毛利",
+      "液冷與電力設備整合可能出現規格競爭",
+      "中國重電廠商競爭加劇",
+      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31928,16 +31937,7 @@
     },
     "benefit_logic": "強韌電網與用電基建投資提升時，重電設備訂單與出貨需求可能提高。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "AI 電力需求增速可能低於預期",
-      "電網建置時程不確定",
-      "原物料（銅、鋼）價格波動影響毛利率",
-      "CSP 客戶議價可能壓縮零組件廠毛利",
-      "液冷與電力設備整合可能出現規格競爭",
-      "中國重電廠商競爭加劇",
-      "題材與公司關聯需持續以公司公告、法說會與營收占比驗證，避免僅因股價同漲而誤歸類。"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "smart_ev_electronics_6605",
@@ -31974,6 +31974,12 @@
         "score_contribution": 2.0
       }
     ],
+    "risk_notes": [
+      "全球電動車需求增速可能放緩，車用電子拉貨波動",
+      "車用認證週期長，營收轉換慢",
+      "車廠價格戰可能壓縮供應鏈毛利率",
+      "車用客戶集中度與平台轉換可能影響個股表現"
+    ],
     "missing_data": [
       "產品線營收占比",
       "客戶/訂單佐證",
@@ -31992,13 +31998,7 @@
     },
     "benefit_logic": "智慧車、ADAS、電動車與 AM 維修需求提升時，車用零組件與電子模組可能受惠。",
     "updated_at": "2026-05-31T00:00:00+08:00",
-    "verification_status": "inferred",
-    "risk_notes": [
-      "全球電動車需求增速可能放緩，車用電子拉貨波動",
-      "車用認證週期長，營收轉換慢",
-      "車廠價格戰可能壓縮供應鏈毛利率",
-      "車用客戶集中度與平台轉換可能影響個股表現"
-    ]
+    "verification_status": "inferred"
   },
   {
     "node_id": "ai_server_gb200_gb300_upgrade_3189_ABF載板供應商",
@@ -42641,6 +42641,1349 @@
       "AI 伺服器專用 MLCC 營收佔比"
     ],
     "updated_at": "2026-06-18T21:25:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_silicon_photonics_cpo_3450_光通訊模組封裝與光收發元件供應商",
+    "company_code": "3450",
+    "company_name": "聯鈞",
+    "role": "光通訊模組封裝與光收發元件供應商",
+    "upstream": [],
+    "downstream": [],
+    "product_keywords": [],
+    "theme_id": "ai_silicon_photonics_cpo",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "經濟日報2026-06-17點名聯鈞受惠黃仁勳光通訊言論"
+    ],
+    "risk_notes": [
+      "待後續維護補強"
+    ],
+    "missing_data": [
+      "待補供應鏈節點證據"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_silicon_photonics_cpo_2345_800G_1_6T高速網通交換器廠商",
+    "company_code": "2345",
+    "company_name": "智邦",
+    "role": "800G/1.6T高速網通交換器廠商",
+    "upstream": [],
+    "downstream": [],
+    "product_keywords": [],
+    "theme_id": "ai_silicon_photonics_cpo",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "智邦既有高速交換器產品線，800G產品已出貨；惟1.6T與CPO整合進度未取得官方確認"
+    ],
+    "risk_notes": [
+      "待後續維護補強"
+    ],
+    "missing_data": [
+      "待補供應鏈節點證據"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_silicon_photonics_cpo_2329_IC封測與光通訊封裝服務商",
+    "company_code": "2329",
+    "company_name": "華泰",
+    "role": "IC封測與光通訊封裝服務商",
+    "upstream": [],
+    "downstream": [],
+    "product_keywords": [],
+    "theme_id": "ai_silicon_photonics_cpo",
+    "confidence": "low",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選提出華泰具光通訊封裝角色，惟無具體產品規格或客戶端證據"
+    ],
+    "risk_notes": [
+      "待後續維護補強"
+    ],
+    "missing_data": [
+      "待補供應鏈節點證據"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_silicon_photonics_cpo_2330_矽光子製程與CPO平台",
+    "company_code": "2330",
+    "company_name": "台積電",
+    "role": "矽光子製程與CPO平台",
+    "upstream": [],
+    "downstream": [],
+    "product_keywords": [],
+    "theme_id": "ai_silicon_photonics_cpo",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "台積電技術論壇與先進封裝生態系已含CoWoS/矽光子佈局；具體CPO量產時程待L1_official驗證"
+    ],
+    "risk_notes": [
+      "待後續維護補強"
+    ],
+    "missing_data": [
+      "待補供應鏈節點證據"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_3037_ABF載板與高階PCB指標廠",
+    "company_code": "3037",
+    "company_name": "欣興",
+    "role": "ABF載板與高階PCB指標廠",
+    "upstream": [
+      "銅箔基板(台光電/聯茂/台燿)",
+      "玻纖布",
+      "銅箔",
+      "樹脂"
+    ],
+    "downstream": [
+      "AI伺服器ODM(廣達/緯創/英業達)",
+      "資料中心",
+      "雲端服務商",
+      "IC設計公司"
+    ],
+    "product_keywords": [
+      "ABF載板",
+      "FCBGA",
+      "高階PCB",
+      "HDI",
+      "高多層板",
+      "伺服器板"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述欣興為ABF載板與高階PCB指標廠，資本支出計畫上千億；惟具體金額與AI伺服器載板佔比需年報驗證"
+    ],
+    "risk_notes": [
+      "ABF載板競爭加劇，需留意資本支出回收期",
+      "產能擴充幅度大，若AI需求放緩將有產能過剩風險"
+    ],
+    "missing_data": [
+      "欣興AI伺服器載板營收佔比",
+      "資本支出明細與投產時程",
+      "與NVIDIA/AMD等AI晶片客戶的載板供應份額"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_2383_高階銅箔基板_CCL_供應商",
+    "company_code": "2383",
+    "company_name": "台光電",
+    "role": "高階銅箔基板(CCL)供應商",
+    "upstream": [
+      "玻纖布",
+      "銅箔",
+      "樹脂",
+      "電子級玻纖"
+    ],
+    "downstream": [
+      "PCB廠(欣興/南電/金像電/健鼎)",
+      "伺服器ODM"
+    ],
+    "product_keywords": [
+      "銅箔基板",
+      "CCL",
+      "高階CCL",
+      "Low-Dk CCL",
+      "高速材料",
+      "HDI CCL"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述台光電為高階CCL指標廠，受惠AI伺服器高速材料升級"
+    ],
+    "risk_notes": [
+      "CCL競爭對手聯茂/台燿積極擴產Low-Dk產品，價格競爭升溫",
+      "原材料(玻纖布/銅箔)價格波動影響毛利"
+    ],
+    "missing_data": [
+      "台光電AI伺服器CCL出貨比重",
+      "Low-Dk產品線的全球市佔率",
+      "與GPU板廠的供應關係"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_3189_IC載板與FCBGA供應商",
+    "company_code": "3189",
+    "company_name": "景碩",
+    "role": "IC載板與FCBGA供應商",
+    "upstream": [
+      "銅箔基板",
+      "玻纖布",
+      "銅箔"
+    ],
+    "downstream": [
+      "IC設計公司",
+      "AI晶片客戶"
+    ],
+    "product_keywords": [
+      "IC載板",
+      "FCBGA",
+      "BT載板",
+      "ABF載板"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述景碩為IC載板與FCBGA廠"
+    ],
+    "risk_notes": [
+      "FCBGA市場規模有限，需與欣興/南電競爭高階訂單",
+      "資本支出強度低於ABF載板同業"
+    ],
+    "missing_data": [
+      "景碩AI伺服器FCBGA客戶結構",
+      "資本支出與擴產規劃"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_8046_ABF與BT載板供應商",
+    "company_code": "8046",
+    "company_name": "南電",
+    "role": "ABF與BT載板供應商",
+    "upstream": [
+      "銅箔基板(台光電等)",
+      "玻纖布",
+      "銅箔"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "資料中心",
+      "IC設計公司"
+    ],
+    "product_keywords": [
+      "ABF載板",
+      "BT載板",
+      "高密度連接板",
+      "伺服器板"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述南電為ABF與BT載板廠，資本支出計畫上千億"
+    ],
+    "risk_notes": [
+      "與欣興直接競爭ABF載板市佔",
+      "擴產時程與良率爬坡風險"
+    ],
+    "missing_data": [
+      "南電AI伺服器載板營收佔比",
+      "資本支出明細"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_4958_軟板與HDI_類載板供應商",
+    "company_code": "4958",
+    "company_name": "臻鼎-KY",
+    "role": "軟板與HDI/類載板供應商",
+    "upstream": [
+      "軟板材料",
+      "銅箔",
+      "銅箔基板"
+    ],
+    "downstream": [
+      "Apple",
+      "通訊設備",
+      "伺服器ODM"
+    ],
+    "product_keywords": [
+      "軟板",
+      "FPC",
+      "HDI",
+      "SLP",
+      "類載板",
+      "mSAP"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述臻鼎為軟板與HDI/類載板廠，資本支出計畫上千億"
+    ],
+    "risk_notes": [
+      "臻鼎主要營收來自Apple與消費電子，AI伺服器題材歸屬純度偏低",
+      "類載板/SLP製程投資金額大，需觀察產能利用率"
+    ],
+    "missing_data": [
+      "臻鼎AI伺服器相關營收比重",
+      "HDI/SLP產能擴充計畫"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_6213_銅箔基板供應商",
+    "company_code": "6213",
+    "company_name": "聯茂",
+    "role": "銅箔基板供應商",
+    "upstream": [
+      "玻纖布",
+      "銅箔",
+      "樹脂"
+    ],
+    "downstream": [
+      "PCB廠",
+      "伺服器板廠"
+    ],
+    "product_keywords": [
+      "銅箔基板",
+      "CCL",
+      "Low-Dk CCL",
+      "高速CCL"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述聯茂為銅箔基板廠"
+    ],
+    "risk_notes": [
+      "與台光電/台燿競爭高階CCL市場",
+      "Low-Dk產品認證週期長"
+    ],
+    "missing_data": [
+      "聯茂AI伺服器CCL出貨比重",
+      "Low-Dk產品客戶認證進度"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_6274_銅箔基板供應商",
+    "company_code": "6274",
+    "company_name": "台燿",
+    "role": "銅箔基板供應商",
+    "upstream": [
+      "玻纖布",
+      "銅箔",
+      "樹脂"
+    ],
+    "downstream": [
+      "PCB廠",
+      "伺服器板廠"
+    ],
+    "product_keywords": [
+      "銅箔基板",
+      "CCL",
+      "Low-Dk CCL"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述台燿為銅箔基板廠"
+    ],
+    "risk_notes": [
+      "與台光電/聯茂競爭，產品差異化程度待釐清"
+    ],
+    "missing_data": [
+      "台燿AI伺服器CCL營收佔比",
+      "Low-Dk產品技術指標"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_2368_伺服器與網通PCB供應商",
+    "company_code": "2368",
+    "company_name": "金像電",
+    "role": "伺服器與網通PCB供應商",
+    "upstream": [
+      "銅箔基板(台光電等)",
+      "玻纖布"
+    ],
+    "downstream": [
+      "伺服器ODM",
+      "網通設備廠",
+      "資料中心"
+    ],
+    "product_keywords": [
+      "伺服器PCB",
+      "網通PCB",
+      "高多層板",
+      "HDI"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述金像電為伺服器與網通PCB廠"
+    ],
+    "risk_notes": [
+      "伺服器PCB市場競爭激烈，毛利波動大",
+      "客戶集中度風險"
+    ],
+    "missing_data": [
+      "金像電AI伺服器PCB營收佔比",
+      "客戶結構(NVIDIA/AMD直接供應或ODM轉單)"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_server_pcb_substrate_3044_伺服器與車用PCB供應商",
+    "company_code": "3044",
+    "company_name": "健鼎",
+    "role": "伺服器與車用PCB供應商",
+    "upstream": [
+      "銅箔基板(台光電等)",
+      "玻纖布"
+    ],
+    "downstream": [
+      "伺服器ODM",
+      "車用電子",
+      "網通設備"
+    ],
+    "product_keywords": [
+      "伺服器PCB",
+      "車用PCB",
+      "高多層板",
+      "HDI"
+    ],
+    "theme_id": "ai_server_pcb_substrate",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      "候選描述健鼎為伺服器與車用PCB廠"
+    ],
+    "risk_notes": [
+      "車用PCB佔比高，AI伺服器題材歸屬需釐清",
+      "需區分AI伺服器與傳統伺服器PCB營收"
+    ],
+    "missing_data": [
+      "健鼎AI伺服器PCB營收佔比",
+      "車用與伺服器業務結構"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_thermal_cooling_3338_AI散熱模組與先進封裝散熱材料供應商",
+    "company_code": "3338",
+    "company_name": "泰碩",
+    "role": "AI散熱模組與先進封裝散熱材料供應商",
+    "upstream": [
+      "銅材",
+      "鋁擠型",
+      "塑膠件",
+      "石墨/TIM材料",
+      "均熱板毛坯"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "CoWoS/OSAT封裝鏈",
+      "CSP資料中心",
+      "GPU板卡廠"
+    ],
+    "product_keywords": [
+      "AI散熱模組",
+      "水冷板",
+      "均熱板",
+      "熱管",
+      "先進封裝散熱材料",
+      "TIM",
+      "3D VC"
+    ],
+    "theme_id": "ai_thermal_cooling",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "先進封裝散熱材料驗證週期長，2026年實際出貨佔比與良率仍待追蹤"
+    ],
+    "missing_data": [
+      "缺具體客戶/訂單金額/產能數字"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_thermal_cooling_3017_伺服器散熱風扇與模組供應商",
+    "company_code": "3017",
+    "company_name": "奇鋐",
+    "role": "伺服器散熱風扇與模組供應商",
+    "upstream": [
+      "馬達",
+      "軸承",
+      "塑膠件",
+      "銅材"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "CSP資料中心",
+      "機櫃整合廠"
+    ],
+    "product_keywords": [
+      "散熱風扇",
+      "散熱模組",
+      "伺服器散熱",
+      "氣冷模組"
+    ],
+    "theme_id": "ai_thermal_cooling",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "風扇ASP低，毛利受銅/馬達材料成本影響"
+    ],
+    "missing_data": [
+      "缺液冷模組/水冷板直接出貨佔比資料"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_thermal_cooling_2421_AI伺服器散熱與電源管理零組件節點",
+    "company_code": "2421",
+    "company_name": "建準",
+    "role": "AI伺服器散熱與電源管理零組件節點",
+    "upstream": [
+      "功率半導體",
+      "磁性元件",
+      "散熱材料",
+      "馬達",
+      "塑膠件"
+    ],
+    "downstream": [
+      "AI伺服器",
+      "資料中心",
+      "伺服器ODM",
+      "散熱模組廠",
+      "雲端服務商"
+    ],
+    "product_keywords": [
+      "散熱模組",
+      "液冷零組件",
+      "電源管理",
+      "BBU",
+      "液冷",
+      "CDU",
+      "散熱風扇"
+    ],
+    "theme_id": "ai_thermal_cooling",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "液冷佔比拉升速度、風扇ASP壓力"
+    ],
+    "missing_data": [
+      "缺液冷/CDU產品線營收佔比細項"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_thermal_cooling_2324_散熱模組代工_推估",
+    "company_code": "2324",
+    "company_name": "仁寶",
+    "role": "散熱模組代工(推估)",
+    "upstream": [
+      "散熱模組廠(泰碩/奇鋐/建準)",
+      "機殼/機構件"
+    ],
+    "downstream": [
+      "AI伺服器客戶",
+      "品牌伺服器廠"
+    ],
+    "product_keywords": [
+      "伺服器代工",
+      "散熱模組(推估)"
+    ],
+    "theme_id": "ai_thermal_cooling",
+    "confidence": "low",
+    "source_level": "L3_community",
+    "evidence": [
+      {
+        "source": "Yahoo股市",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://tw.stock.yahoo.com/",
+        "publish_date": "2026-04-21",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://udn.com/news/story/7251/9255975",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "仁寶主要業務為NB/伺服器ODM，散熱模組非核心，角色定位不明確"
+    ],
+    "missing_data": [
+      "缺乏仁寶散熱模組業務的直接報導或法說揭露"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_power_800vdc_2308_800VDC_HVDC電源供應器與資料中心配電系",
+    "company_code": "2308",
+    "company_name": "台達電",
+    "role": "800VDC/HVDC電源供應器與資料中心配電系統整合商",
+    "upstream": [
+      "功率半導體(SiC/GaN)",
+      "磁性元件",
+      "電容",
+      "連接器",
+      "散熱模組"
+    ],
+    "downstream": [
+      "CSP資料中心",
+      "Colo機房",
+      "AI伺服器ODM",
+      "GPU板卡廠"
+    ],
+    "product_keywords": [
+      "PSU",
+      "HVDC",
+      "800VDC",
+      "SST",
+      "資料中心配電",
+      "電源管理"
+    ],
+    "theme_id": "ai_power_800vdc",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "800VDC實際導入時程具不確定性(媒體提及延後傳聞)，CSP端驗證與標準未定"
+    ],
+    "missing_data": [
+      "缺台達電800VDC PS出貨金額與客戶佔比細項"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_power_800vdc_3211_BBU電池模組與備援電力供應商",
+    "company_code": "3211",
+    "company_name": "順達",
+    "role": "BBU電池模組與備援電力供應商",
+    "upstream": [
+      "鋰鐵/鋰三元電芯",
+      "BMS晶片",
+      "PCM",
+      "連接器",
+      "散熱材料"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "CSP資料中心",
+      "機櫃整合廠",
+      "台達電等系統廠"
+    ],
+    "product_keywords": [
+      "BBU",
+      "電池模組",
+      "備援電力",
+      "鋰鐵模組",
+      "儲能"
+    ],
+    "theme_id": "ai_power_800vdc",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "BBU實際導入比例與ASP變化待驗證；筆電/平板非AI業務仍占大宗，AI BBU佔比拉升速度為關鍵"
+    ],
+    "missing_data": [
+      "缺順達BBU營收佔比與具體CSP客戶名單"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_power_800vdc_6931_儲能與電池模組_新興",
+    "company_code": "6931",
+    "company_name": "新盛力",
+    "role": "儲能與電池模組(新興)",
+    "upstream": [
+      "鋰鐵電芯",
+      "BMS",
+      "PCM",
+      "連接器"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "中小型CSP",
+      "儲能系統廠"
+    ],
+    "product_keywords": [
+      "BBU",
+      "儲能",
+      "電池模組",
+      "備援電力"
+    ],
+    "theme_id": "ai_power_800vdc",
+    "confidence": "low",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2026-02-04",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "L2_media",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/",
+        "publish_date": "2026",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "既有知識庫",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "internal://theme/ai_power_cooling",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "公司基期小，AI BBU實質貢獻待驗證；與既有儲能題材可能有重疊"
+    ],
+    "missing_data": [
+      "缺新盛力BBU/儲能業務具體營收佔比與客戶名單"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "memory_hbm_demand_8271_記憶體模組廠_受惠DRAM_NAND漲價與企業級",
+    "company_code": "8271",
+    "company_name": "宇瞻",
+    "role": "記憶體模組廠，受惠DRAM/NAND漲價與企業級SSD需求",
+    "upstream": [
+      "DRAM顆粒廠（南亞科、華邦、Samsung、SK Hynix、Micron）",
+      "NAND顆粒廠（旺宏、Kioxia、Samsung、Micron、SK）",
+      "記憶體控制IC（群聯、慧榮）",
+      "PCB/基板"
+    ],
+    "downstream": [
+      "AI伺服器ODM",
+      "資料中心/雲端服務商",
+      "工業電腦",
+      "消費電子品牌"
+    ],
+    "product_keywords": [
+      "DRAM模組",
+      "DDR4/DDR5模組",
+      "SSD",
+      "企業級SSD",
+      "NAND模組",
+      "工控記憶體",
+      "記憶卡"
+    ],
+    "theme_id": "memory_hbm_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "經濟日報記憶體循環報導",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "source_level": "L2_media",
+        "summary": "記憶體缺貨將延續至2027年，模組廠為漲價轉嫁受惠者。"
+      }
+    ],
+    "risk_notes": [
+      "工控/消費比重高，企業級與AI伺服器營收佔比需逐季追蹤",
+      "記憶體循環反轉風險高，模組廠毛利率波動大",
+      "與HBM/DDR5直接關聯度較低，主要受惠於一般DRAM/NAND漲價"
+    ],
+    "missing_data": [
+      "企業級SSD與AI伺服器用模組營收佔比",
+      "主要DRAM/NAND顆粒來源（Samsung/SK/Micron/南亞科/華邦）",
+      "與HBM供應鏈的直接關聯度"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "memory_hbm_demand_4972_記憶體封測_凸塊_晶圓級封裝",
+    "company_code": "4972",
+    "company_name": "頎邦",
+    "role": "記憶體封測（凸塊/晶圓級封裝）",
+    "upstream": [
+      "DDI晶片廠",
+      "記憶體顆粒廠",
+      "封裝材料（凸塊、基板）",
+      "晶圓"
+    ],
+    "downstream": [
+      "顯示器模組廠",
+      "記憶體模組廠",
+      "手機/面板品牌"
+    ],
+    "product_keywords": [
+      "凸塊（Bumping）",
+      "晶圓級封裝（WLCSP）",
+      "COF/COG",
+      "DDI封測",
+      "DRAM封測"
+    ],
+    "theme_id": "memory_hbm_demand",
+    "confidence": "low",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "經濟日報記憶體循環報導",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "source_level": "L2_media",
+        "summary": "記憶體鏈受惠封測段。"
+      }
+    ],
+    "risk_notes": [
+      "頎邦主力為顯示驅動IC（DDI）封測，記憶體封測為次要業務",
+      "HBM封測技術門檻高（TSV），頎邦未直接切入HBM先進封裝",
+      "對記憶體景氣敏感度低於DDI景氣"
+    ],
+    "missing_data": [
+      "頎邦記憶體封測營收佔比",
+      "是否承接HBM相關driver IC封測",
+      "客戶結構（記憶體廠佔比）"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "memory_hbm_demand_6488_12吋_8吋矽晶圓_記憶體與邏輯晶片上游材料",
+    "company_code": "6488",
+    "company_name": "環球晶",
+    "role": "12吋/8吋矽晶圓（記憶體與邏輯晶片上游材料）",
+    "upstream": [
+      "多晶矽（矽晶圓原料）",
+      "石英坩堝",
+      "矽晶圓切磨拋設備",
+      "磊晶設備"
+    ],
+    "downstream": [
+      "DRAM廠（南亞科、華邦、Samsung、SK Hynix、Micron）",
+      "NAND廠（旺宏、Samsung、Kioxia）",
+      "晶圓代工廠（台積電、聯電、世界先進）",
+      "IDM（Intel、TI）"
+    ],
+    "product_keywords": [
+      "12吋矽晶圓",
+      "8吋矽晶圓",
+      "SOI晶圓",
+      "磊晶晶圓",
+      "矽晶圓"
+    ],
+    "theme_id": "memory_hbm_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "環球晶5月EPS 7.33元",
+        "url": "https://money.udn.com/money/story/5607/9573201",
+        "source_level": "L2_media",
+        "summary": "5月EPS 7.33元，受惠記憶體與AI相關晶圓拉貨。"
+      }
+    ],
+    "risk_notes": [
+      "環球晶屬上游材料，記憶體報價傳導有時間遞延",
+      "客戶涵蓋記憶體與邏輯晶圓代工，記憶體佔比需釐清",
+      "12吋矽晶圓ASP仍處低檔，需觀察後續報價回升動能"
+    ],
+    "missing_data": [
+      "記憶體客戶營收佔比",
+      "12吋/8吋產能利用率",
+      "與HBM相關磊晶片供應實質關聯"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_1519_重電變壓器與配電設備指標廠",
+    "company_code": "1519",
+    "company_name": "華城",
+    "role": "重電變壓器與配電設備指標廠",
+    "upstream": [
+      "矽鋼片",
+      "銅材（銅線/銅箔）",
+      "變壓器鐵芯",
+      "絕緣油",
+      "儀表與監控元件"
+    ],
+    "downstream": [
+      "台電",
+      "半導體廠（台積電、美光等）",
+      "資料中心/AI 伺服器",
+      "離岸風電升壓站",
+      "美國/東南亞基建"
+    ],
+    "product_keywords": [
+      "電力變壓器",
+      "161kV變壓器",
+      "345kV變壓器",
+      "配電盤",
+      "GIS開關",
+      "太陽能升壓站",
+      "風電升壓站",
+      "資料中心配電"
+    ],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "華城為重電三雄，受惠強韌電網5,645億元計畫提前至2028年。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "華城於全球卡位戰具領先地位。"
+      }
+    ],
+    "risk_notes": [
+      "原物料（矽鋼片、銅材）成本上漲壓力",
+      "美國關稅與外銷匯率波動風險",
+      "台電標案入帳時程不確定性"
+    ],
+    "missing_data": [
+      "美國外銷在手訂單金額",
+      "345kV與161kV變壓器產能利用率",
+      "北美資料中心客戶名單"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_1513_重電_GIS_開關_變電所工程",
+    "company_code": "1513",
+    "company_name": "中興電",
+    "role": "重電、GIS 開關、變電所工程",
+    "upstream": [
+      "銅材",
+      "矽鋼片",
+      "GIS 開關元件",
+      "儀表與監控",
+      "工程承包商"
+    ],
+    "downstream": [
+      "台電",
+      "半導體/科技園區變電所",
+      "火力/燃氣電廠更新",
+      "離岸風電升壓站",
+      "東南亞/北美外銷"
+    ],
+    "product_keywords": [
+      "345kV GIS",
+      "161kV GIS",
+      "重電",
+      "配電盤",
+      "變電所工程",
+      "氫能",
+      "儲能系統"
+    ],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "中興電為重電三雄之一，GIS與變電所工程受惠。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "中興電GIS 345kV受惠台電標案。"
+      }
+    ],
+    "risk_notes": [
+      "GIS 訂單能見度高但毛利受銅價影響",
+      "嘟嘟房停車場本業與重電題材關聯度低需區分",
+      "氫能與儲能新事業尚在早期階段"
+    ],
+    "missing_data": [
+      "345kV GIS 在手訂單",
+      "氫能與儲能營收貢獻",
+      "外銷佔比明細"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_1514_重電配電盤與變壓器",
+    "company_code": "1514",
+    "company_name": "亞力",
+    "role": "重電配電盤與變壓器",
+    "upstream": [
+      "銅材",
+      "矽鋼片",
+      "配電盤元件",
+      "自動化控制元件"
+    ],
+    "downstream": [
+      "台電",
+      "工業用戶",
+      "科技廠房",
+      "資料中心"
+    ],
+    "product_keywords": [
+      "配電盤",
+      "變壓器",
+      "161kV",
+      "69kV",
+      "重電",
+      "資料中心配電"
+    ],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "亞力為重電三雄之一。"
+      },
+      {
+        "title": "AI跑太快，電力跟得上嗎？重電三雄",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "source_level": "L2_media",
+        "summary": "亞力受惠配電盤標案。"
+      }
+    ],
+    "risk_notes": [
+      "配電盤單價較低，營收彈性受限",
+      "原物料成本波動",
+      "北美資料中心訂單入帳時程不確定"
+    ],
+    "missing_data": [
+      "北美資料中心在手訂單",
+      "161kV/69kV配電盤市占率",
+      "外銷營收佔比"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_1503_重電_馬達_變壓器_配電盤",
+    "company_code": "1503",
+    "company_name": "士電",
+    "role": "重電、馬達、變壓器、配電盤",
+    "upstream": [
+      "矽鋼片",
+      "銅材",
+      "馬達鐵芯",
+      "絕緣材料",
+      "電子控制元件"
+    ],
+    "downstream": [
+      "台電",
+      "工業馬達用戶",
+      "電動車/車電",
+      "東南亞/北美基建",
+      "工具機/自動化"
+    ],
+    "product_keywords": [
+      "重電",
+      "低壓/高壓馬達",
+      "變壓器",
+      "配電盤",
+      "車用馬達",
+      "EV動力系統"
+    ],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "士電為重電指標股之一，受惠強韌電網。"
+      }
+    ],
+    "risk_notes": [
+      "馬達本業與重電題材關聯度需區分",
+      "EV/車電馬達營收波動大",
+      "北美外銷關稅風險"
+    ],
+    "missing_data": [
+      "重電與馬達營收佔比",
+      "美國變壓器外銷訂單",
+      "車用馬達客戶結構"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_3706_離岸風電葉片樹脂與複合材料",
+    "company_code": "3706",
+    "company_name": "上緯投控",
+    "role": "離岸風電葉片樹脂與複合材料",
+    "upstream": [
+      "環氧樹脂原料",
+      "硬化劑",
+      "碳纖維",
+      "玻纖",
+      "添加劑"
+    ],
+    "downstream": [
+      "離岸風電葉片廠（西門子歌美颯、LM、台灣葉片廠）",
+      "風機塔架",
+      "海事工程",
+      "半導體/PCB 銅箔基板"
+    ],
+    "product_keywords": [
+      "風電葉片樹脂",
+      "環氧樹脂",
+      "碳纖維複合材料",
+      "回收樹脂",
+      "離岸風電材料"
+    ],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "title": "整理包／賴清德令台電強韌電網計畫加速（含離岸風電併網）",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "source_level": "L2_media",
+        "summary": "強韌電網涵蓋離岸風電併網工程，上緯為材料端受惠者。"
+      }
+    ],
+    "risk_notes": [
+      "離岸風電第三階段區塊開發時程不確定",
+      "樹脂市場競爭與國際大廠（西門子歌美颯、LM等）採用策略",
+      "風場開發商國產化要求變動風險",
+      "碳纖維與上游環氧樹脂原料成本波動"
+    ],
+    "missing_data": [
+      "離岸風電葉片樹脂市占率",
+      "第三階段區塊開發訂單",
+      "碳纖維複合材料營收貢獻",
+      "回收材料（rPET/rPA）事業進度"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "heavy_electrical_grid_1517_資料品質問題_誤標為士電",
+    "company_code": "1517",
+    "company_name": "利奇",
+    "role": "（資料品質問題，誤標為士電）",
+    "upstream": [],
+    "downstream": [],
+    "product_keywords": [],
+    "theme_id": "heavy_electrical_grid",
+    "confidence": "low",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/124512/7887496",
+        "publish_date": "2024-08-09",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "鉅亨網",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://news.cnyes.com/news/id/6224125",
+        "publish_date": "2025-11-08",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/7727/9306319",
+        "publish_date": "2025",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Knowledge Base",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "knowledge_base:heavy_electrical_grid",
+        "publish_date": "2026-06",
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "候選清單將 1517 標為「士電」不正確，士電正確代碼為 1503；1517 為利奇，屬機械/金屬零件業，與重電強韌電網題材關聯性低。"
+    ],
+    "missing_data": [
+      "1517 利奇與強韌電網題材的實質關聯需釐清"
+    ],
+    "updated_at": "2026-06-19T12:18:48",
     "verification_status": "inferred"
   }
 ]

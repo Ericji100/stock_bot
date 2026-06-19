@@ -35,6 +35,7 @@ def normalize_report_text(text: str) -> str:
     normalized = _replace_theme_radar_relation_codes(normalized)
     normalized = _replace_truncation_placeholders(normalized)
     normalized = _replace_terms(normalized, terms)
+    normalized = _replace_coverage_pct_labels(normalized)
     normalized = _replace_internal_reference_paths(normalized)
     normalized = _replace_unknown_snake_case(normalized, terms)
     normalized = _cleanup_display_artifacts(normalized)
@@ -147,6 +148,25 @@ def _replace_internal_reference_paths(text: str) -> str:
         flags=re.I,
     )
     result = re.sub(r"\bsource[_ ]ids?\b\s*[:=]\s*", "來源編號：", result, flags=re.I)
+    return result
+
+
+def _replace_coverage_pct_labels(text: str) -> str:
+    """Rewrite mixed English coverage labels that models often echo in reports."""
+    result = text
+    replacements = [
+        (r"\bfinancial\s+validation\s+coverage\s+pct\b", "財務驗證覆蓋率"),
+        (r"\brevenue\s+exposure\s+coverage\s+pct\b", "營收曝險覆蓋率"),
+        (r"\bchip\s+validation\s+coverage\s+pct\b", "籌碼驗證覆蓋率"),
+        (r"\btheme\s+mapping\s+coverage\s+pct\b", "題材映射覆蓋率"),
+        (r"(?:\btheme\s+|題材\s*)?mapping\s+coverage\s+pct\b", "題材映射覆蓋率"),
+        (r"\bcompany\s+relation\b[^\n|]{0,30}\bcoverage\s+pct\b", "公司關聯證據覆蓋率"),
+        (r"\bcustomer\s+coverage\s+pct\b", "客戶資料覆蓋率"),
+        (r"\bsupply\s+chain\b[^\n|]{0,40}\bcoverage\s+pct\b", "供應鏈層級覆蓋率"),
+        (r"(?<=覆蓋率)\s+pct\b", ""),
+    ]
+    for pattern, replacement in replacements:
+        result = re.sub(pattern, replacement, result, flags=re.I)
     return result
 
 

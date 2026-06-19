@@ -2,6 +2,23 @@
 
 本專案使用 pytest。一般修改完成後先跑相關 focused tests，再視影響範圍跑完整測試。
 
+## 測試分層 Manifest
+
+`tools/test_suite_manifest.py` 是機器可讀的測試分層清單，固定四層：
+
+- `fast_unit`：本機快速單元測試，適合日常修改後先跑。
+- `integration`：完整本機回歸測試。
+- `live_source`：需要網路與外部資料來源的手動驗收。
+- `ai_smoke`：可能消耗 AI / MCP 額度的手動 smoke test。
+
+查詢分層內容：
+
+```bash
+python -c "from tools.test_suite_manifest import format_test_suite_manifest; print(format_test_suite_manifest())"
+```
+
+`live_source` 與 `ai_smoke` 必須維持 manual，不要放進一般 CI 或日常完整回歸。
+
 ## 基本測試
 
 ```bash

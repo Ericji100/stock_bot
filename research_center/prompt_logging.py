@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from .models import CommandRequest, SourceItem
+from .prompt_manifest_service import prompt_bundle_for_request
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PROMPT_LOG_DIR = ROOT_DIR / "logs" / "ai_prompts"
@@ -17,6 +18,8 @@ def write_prompt_log(request: CommandRequest, prompt: str, model: str, grounding
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     target = _safe(request.target or request.market_scope or request.candidate_pool or request.command)
     path = PROMPT_LOG_DIR / f"{stamp}_{request.command}_{target}_{uuid4().hex[:6]}.json"
+    metadata_payload = dict(metadata or {})
+    metadata_payload.setdefault("prompt_bundle", prompt_bundle_for_request(request))
     payload = {
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "command": request.command,
@@ -27,7 +30,7 @@ def write_prompt_log(request: CommandRequest, prompt: str, model: str, grounding
         "grounding_enabled": grounding_enabled,
         "prompt_length": len(prompt),
         "source_count": len(sources),
-        "metadata": metadata or {},
+        "metadata": metadata_payload,
         "prompt": prompt,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")

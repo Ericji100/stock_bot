@@ -27,7 +27,10 @@ from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot
 from .company_knowledge_update_service import attach_company_knowledge_autofill
 from .date_aware_context import attach_date_aware_context
 from .data_gap_service import attach_data_gap_summary
+from .data_gap_refill_service import refill_data_gaps
 from .data_inventory_service import attach_data_inventory
+from .entity_resolver import resolve_entity, resolve_topic_alias
+from .event_context_service import build_event_context, summarize_event_context
 from .evidence_pack_service import attach_unified_evidence_pack
 from .forum_service import fetch_forum_sources
 from .free_sources import build_free_macro_sources, build_free_research_sources
@@ -42,6 +45,7 @@ from .rerating_snapshot_service import build_rerating_snapshot_for_stock
 from .models import CommandRequest
 from .news_context_service import attach_news_context
 from .news_event_service import attach_news_events
+from .prompt_manifest_service import prompt_bundle_for_request
 from .sector_alias_service import (
     build_topic_maintain_sector_queries,
     rerating_label_for_industry,
@@ -133,11 +137,18 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     attach_date_aware_context(request, data, progress=progress)
     attach_news_context(request, data, progress=progress)
     attach_news_events(request, data)
+    attach_shared_entity_context(request, data)
+    attach_shared_event_context(request, data)
     attach_company_knowledge_autofill(request, data, progress=progress)
+    attach_data_inventory(request, data)
+    attach_feature_pack(request, data)
+    attach_data_gap_summary(request, data)
+    refill_data_gaps(request, data, progress=progress)
+    attach_data_inventory(request, data)
     attach_feature_pack(request, data)
     attach_data_gap_summary(request, data)
     attach_unified_evidence_pack(request, data)
-    attach_data_inventory(request, data)
+    data.setdefault("prompt_bundle", prompt_bundle_for_request(request))
 
     sources = _official_sources()
     if request.command == "macro":
@@ -164,6 +175,38 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     }
     sources.extend(forum_result.sources)
     return data, sources
+
+
+def attach_shared_entity_context(request: CommandRequest, data: dict[str, Any]) -> dict[str, Any]:
+    target = request.target or request.candidate_pool
+    if request.command == "research" and target:
+        data["resolved_entity"] = resolve_entity(str(target)).to_dict()
+    elif request.command == "value_scan" and target and target.isdigit():
+        data["resolved_entity"] = resolve_entity(str(target)).to_dict()
+    if request.command in {"theme", "theme_radar", "theme_flow", "sector_strength", "macro", "value_scan"}:
+        topic = request.theme_scope or request.target or request.market_scope or data.get("theme")
+        if topic:
+            data["resolved_topic"] = resolve_topic_alias(str(topic))
+    return data
+
+
+def attach_shared_event_context(request: CommandRequest, data: dict[str, Any]) -> dict[str, Any]:
+    events = []
+    for key in ("news_events", "source_events"):
+        value = data.get(key)
+        if isinstance(value, list):
+            events.extend(item for item in value if isinstance(item, dict))
+    if not events:
+        return data
+    target = request.target or request.theme_scope or request.market_scope or request.candidate_pool
+    context = build_event_context(
+        target=str(target) if target else None,
+        events=events,
+        days=60 if request.mode == "deep" else 30,
+    )
+    data["event_context"] = context
+    data["event_context_summary"] = summarize_event_context(context)
+    return data
 
 
 def collect_topic_maintain_data(request: CommandRequest, progress: Callable[[str], None] | None = None) -> dict[str, Any]:

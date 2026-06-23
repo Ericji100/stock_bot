@@ -3,8 +3,96 @@ from __future__ import annotations
 
 from typing import Any
 
-from .topic_models import TopicApplyResult, TopicChangePack
+from .topic_models import TopicApplyResult, TopicChangePack, TopicChangeStatus
 from .topic_repository import load_topic_profiles
+
+
+def _mode_label(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return {
+        "initial": "初始化",
+        "update": "更新",
+        "adjust": "調整",
+    }.get(str(raw), str(raw))
+
+
+def _status_label(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return {
+        "pending": "待審核",
+        "confirmed": "已套用",
+        "rejected": "已拒絕",
+        "failed": "未通過檢查",
+    }.get(str(raw), str(raw))
+
+
+def _confidence_label(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return {
+        "high": "高",
+        "medium": "中",
+        "low": "低",
+    }.get(str(raw), str(raw))
+
+
+def _action_label(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return {
+        "create_theme": "新增題材",
+        "update_theme": "更新題材",
+        "merge_theme": "合併題材",
+        "deprecate_theme": "退場題材",
+        "add_company": "新增公司關聯",
+        "update_company": "更新公司關聯",
+        "add_supply_chain_node": "新增供應鏈節點",
+        "update_supply_chain_node": "更新供應鏈節點",
+    }.get(str(raw), str(raw).replace("_", " "))
+
+
+def _source_level_label(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return {
+        "L1_official": "官方來源",
+        "L2_media": "媒體來源",
+        "L3_community": "社群來源",
+    }.get(str(raw), str(raw).replace("_", " "))
+
+
+def _satisfaction_label(value: Any) -> str:
+    raw = str(value or "")
+    return {
+        "satisfied": "已滿足",
+        "partial": "部分滿足",
+        "not_satisfied": "未滿足",
+    }.get(raw, raw.replace("_", " "))
+
+
+def _pack_data_date(pack: TopicChangePack) -> str:
+    extra = pack.extra if isinstance(pack.extra, dict) else {}
+    command_result = extra.get("command_result") if isinstance(extra.get("command_result"), dict) else {}
+    report_metadata = extra.get("report_metadata") if isinstance(extra.get("report_metadata"), dict) else {}
+    for key in ("data_date", "report_date", "analysis_date", "created_at"):
+        value = command_result.get(key) or report_metadata.get(key)
+        if value:
+            return str(value)[:10]
+    return str(pack.created_at or "")[:10]
+
+
+def format_change_pack_created_summary(pack: TopicChangePack) -> str:
+    """Format a newly generated topic change pack for Telegram display."""
+    title = "✅ 變更包已產生" if pack.status == TopicChangeStatus.PENDING else "⚠️ 變更包產生但未通過檢查"
+    return "\n".join([
+        title,
+        f"變更包代號：{pack.change_id}",
+        f"資料日期：{_pack_data_date(pack)}",
+        f"維護模式：{_mode_label(pack.mode)}",
+        f"審核狀態：{_status_label(pack.status)}",
+        f"信心度：{_confidence_label(pack.confidence)}",
+        f"摘要：{pack.summary}",
+        f"變更動作數：{len(pack.actions)}",
+        "",
+        f"下一步：/topic_review {pack.change_id} 查看詳情",
+    ])
 
 
 def format_change_pack_list(packs: list[TopicChangePack]) -> str:
@@ -15,7 +103,7 @@ def format_change_pack_list(packs: list[TopicChangePack]) -> str:
     lines = [f"📦 變更包列表（共 {len(packs)} 個）", ""]
     for pack in packs:
         status_icon = {"pending": "⏳", "confirmed": "✅", "rejected": "❌", "failed": "⚠️"}.get(pack.status.value, "❓")
-        lines.append(f"{status_icon} `{pack.change_id}` | {pack.mode.value} | {pack.summary[:30]}")
+        lines.append(f"{status_icon} `{pack.change_id}` | {_mode_label(pack.mode)} | {pack.summary[:30]}")
     lines.append("")
     lines.append("使用 /topic_review <change_id> 查看詳情")
     return "\n".join(lines)
@@ -26,11 +114,12 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
     status_icon = {"pending": "⏳", "confirmed": "✅", "rejected": "❌", "failed": "⚠️"}.get(pack.status.value, "❓")
     lines = [
         f"📋 變更包詳情",
-        f"ID：{pack.change_id}",
-        f"模式：{pack.mode.value}",
-        f"狀態：{status_icon} {pack.status.value}",
+        f"變更包代號：{pack.change_id}",
+        f"資料日期：{_pack_data_date(pack)}",
+        f"維護模式：{_mode_label(pack.mode)}",
+        f"審核狀態：{status_icon} {_status_label(pack.status)}",
         f"模型：{pack.model}",
-        f"信心度：{pack.confidence}",
+        f"信心度：{_confidence_label(pack.confidence)}",
         f"摘要：{pack.summary}",
         "",
         "📌 變更動作：",
@@ -38,13 +127,13 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
 
     for i, action in enumerate(pack.actions, 1):
         conf_icon = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(action.confidence.value, "⚪")
-        lines.append(f"{i}. 【{action.action_type.value}】{action.theme_name} ({conf_icon}{action.confidence.value})")
-        lines.append(f"   ID：{action.theme_id}")
+        lines.append(f"{i}. 【{_action_label(action.action_type)}】{action.theme_name} ({conf_icon}{_confidence_label(action.confidence)})")
+        lines.append(f"   題材代號：{action.theme_id}")
         if action.reason:
             lines.append(f"   原因：{action.reason}")
         if action.evidence:
             ev = action.evidence[0]
-            lines.append(f"   證據：{ev.source} ({ev.source_level.value})")
+            lines.append(f"   證據：{ev.source} ({_source_level_label(ev.source_level)})")
 
     if pack.warnings:
         lines.append("")
@@ -71,7 +160,8 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
             for c in not_satisfied:
                 lines.append(f"    • {c}")
         satisfaction = adj_check.get("satisfaction", "")
-        satisfaction_label = {"satisfied": "✅ satisfied", "partial": "⚠️ partial", "not_satisfied": "❌ not_satisfied"}.get(satisfaction, satisfaction)
+        satisfaction_icon = {"satisfied": "✅", "partial": "⚠️", "not_satisfied": "❌"}.get(str(satisfaction), "")
+        satisfaction_label = f"{satisfaction_icon} {_satisfaction_label(satisfaction)}".strip()
         lines.append(f"  結論：{satisfaction_label}")
 
     lines.append("")
@@ -134,4 +224,4 @@ def format_next_steps(change_id: str, status: str = "pending") -> str:
             "• /topic_maintain - 重新產生\n"
             "也可直接使用下方按鈕操作。"
         )
-    return f"變更包已 {status}，如需重新產生請使用 /topic_maintain"
+    return f"變更包狀態：{_status_label(status)}，如需重新產生請使用 /topic_maintain"

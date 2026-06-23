@@ -515,6 +515,7 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
 
         markdown = fallback_markdown(request, structured_data, [], reason="test")
 
+        self.assertIn("這不是正式 AI 完成報告", markdown)
         self.assertIn("共享資料層摘要", markdown)
         self.assertIn("news_context", markdown)
         self.assertIn("feature_pack", markdown)

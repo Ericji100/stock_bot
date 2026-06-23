@@ -3,9 +3,11 @@ from __future__ import annotations
 import unittest
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import (
+    _GeminiDiscoveryRunner,
     _append_search_provider_log,
     _build_search_query_log,
     _gemini_discovery_source_count,
@@ -286,6 +288,69 @@ class SearchProviderTests(unittest.TestCase):
         ]
         self.assertTrue(_should_run_gemini_search_fallback(request, sources, config))
 
+    def test_fallback_when_source_count_is_high_but_official_sources_missing(self):
+        request = CommandRequest(command="research", raw_text="/research 2330 --deep", mode="deep")
+        config = ResearchCenterConfig(
+            api_key=None,
+            gemini_fallback_thresholds={
+                "research_deep": {
+                    "min_total_sources": 20,
+                    "min_level1_sources": 2,
+                    "min_level2_sources": 5,
+                    "min_dated_ratio": 0,
+                }
+            },
+        )
+        sources = [
+            SourceItem(f"S{i:03d}", "台股新聞", f"https://news.example/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 31)
+        ]
+
+        summary = _source_quality_summary(sources, request)
+
+        self.assertGreaterEqual(summary["total"], 20)
+        self.assertIn("official_sources_insufficient", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config))
+
+    def test_fallback_when_source_count_is_high_but_dated_sources_missing(self):
+        request = CommandRequest(command="news", raw_text="/news refresh --model minimax", mode="normal")
+        config = ResearchCenterConfig(api_key=None)
+        structured_data = {"tavily_search_discovery": {"enabled": True}}
+        sources = [
+            SourceItem(f"S{i:03d}", "台股新聞", f"https://news.example/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 31)
+        ]
+
+        summary = _source_quality_summary(sources, request, structured_data)
+
+        self.assertEqual(summary["dated_sources"], 0)
+        self.assertIn("dated_sources_insufficient", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config, structured_data=structured_data))
+
+    def test_theme_flow_fallback_when_sources_many_but_not_relevant(self):
+        request = CommandRequest(command="theme_flow", raw_text="/theme_flow AI電源 --model minimax", theme_scope="AI電源", mode="normal")
+        config = ResearchCenterConfig(
+            api_key=None,
+            gemini_fallback_thresholds={
+                "default": {
+                    "min_total_sources": 20,
+                    "min_level2_sources": 5,
+                    "min_theme_relevant_sources": 8,
+                    "min_theme_high_quality_relevant_sources": 3,
+                    "min_dated_ratio": 0,
+                }
+            },
+        )
+        sources = [
+            SourceItem(f"S{i:03d}", "general AI geopolitics news", f"https://example.com/{i}", "Level 2", provider="minimax_mcp_search")
+            for i in range(1, 35)
+        ]
+
+        summary = _source_quality_summary(sources, request)
+
+        self.assertIn("theme_relevant_sources_insufficient", summary["fallback_reasons"])
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config))
+
     def test_theme_source_selection_prefers_relevant_taiwan_sources(self):
         sources = [
             SourceItem("S001", "AI geopolitics weekly", "https://substack.example/a", "Level 3", snippet="general AI news", provider="minimax_mcp_search"),
@@ -486,10 +551,100 @@ class TavilySearchTests(unittest.TestCase):
 
 
 class MiniMaxMCPFallbackTests(unittest.TestCase):
+    class FakeSearchHealth:
+        def __init__(self, available=True):
+            self.available = available
+            self.failures = 0
+            self.successes = 0
+
+        def is_available(self, source):
+            return self.available
+
+        def record_failure(self, source, error=""):
+            self.failures += 1
+            if self.failures >= 2:
+                self.available = False
+
+        def record_success(self, source):
+            self.successes += 1
+            self.failures = 0
+            self.available = True
+
+        def get_status(self, source):
+            return {
+                "failure_count": self.failures,
+                "cooldown_until": "2099-01-01T00:00:00" if not self.available else None,
+                "last_error": "429 Too Many Requests" if self.failures else "",
+            }
+
+    def test_gemini_search_429_enters_cooldown_and_stops_remaining_tasks(self):
+        from research_center.command_parser import parse_command_text
+
+        class FailingGemini:
+            def __init__(self):
+                self.calls = 0
+                self.timeout_seconds = 90.0
+                self.max_retries = 1
+                self.model = "gemini-test"
+                self.fallback_models = ()
+
+            def generate_report(self, prompt, enable_grounding=True):
+                self.calls += 1
+                raise RuntimeError("HTTP 429 Too Many Requests")
+
+        center = SimpleNamespace(
+            gemini=FailingGemini(),
+            config=SimpleNamespace(gemini_discovery_model="gemini-test"),
+            source_health=self.FakeSearchHealth(),
+        )
+        runner = _GeminiDiscoveryRunner(center)
+        request = parse_command_text("/research 2330 --deep")
+        tasks = [
+            {"label": "one", "prompt": "p1"},
+            {"label": "two", "prompt": "p2"},
+            {"label": "three", "prompt": "p3"},
+        ]
+        sources = []
+        structured_data = {}
+        progress: list[str] = []
+
+        runner._run_gemini(request, tasks, sources, structured_data, [], [], progress.append)
+
+        self.assertEqual(center.gemini.calls, 1)
+        self.assertFalse(center.source_health.is_available("gemini_search"))
+        self.assertEqual(len(structured_data["gemini_search_discovery"]["runs"]), 1)
+        self.assertTrue(any("source cooldown" in msg for msg in progress))
+
+    def test_gemini_search_skips_when_source_in_cooldown(self):
+        from research_center.command_parser import parse_command_text
+
+        class GeminiShouldNotRun:
+            timeout_seconds = 90.0
+            max_retries = 1
+            model = "gemini-test"
+            fallback_models = ()
+
+            def generate_report(self, prompt, enable_grounding=True):
+                raise AssertionError("Gemini should not be called while in cooldown")
+
+        center = SimpleNamespace(
+            gemini=GeminiShouldNotRun(),
+            config=SimpleNamespace(gemini_discovery_model="gemini-test"),
+            source_health=self.FakeSearchHealth(available=False),
+        )
+        runner = _GeminiDiscoveryRunner(center)
+        request = parse_command_text("/research 2330 --deep")
+        structured_data = {"pre_gemini_source_quality": {"quality": "thin"}}
+        progress: list[str] = []
+
+        runner._run_gemini(request, [{"label": "one", "prompt": "p1"}], [], structured_data, [], [], progress.append)
+
+        self.assertEqual(structured_data["gemini_search_discovery"]["reason"], "source_cooldown")
+        self.assertTrue(any("source cooldown" in msg for msg in progress))
+
     def test_tavily_official_usage_overrides_local_exhausted_marker(self):
         from research_center.command_parser import parse_command_text
         from research_center.config import ResearchCenterConfig
-        from research_center.orchestrator import _GeminiDiscoveryRunner
         from research_center.tavily_search_service import TavilySearchResult
 
         config = ResearchCenterConfig(api_key=None, tavily_api_key="fake")

@@ -16,6 +16,12 @@ import yfinance as yf
 
 from fugle_data import fetch_fugle_history
 
+from candidate_filter_service import (
+    DEFAULT_HARD_FILTER_SETTINGS,
+    apply_basic_hard_filter,
+    hard_filter_display_text,
+    resolve_hard_filter_settings,
+)
 from progress_logger import now_timestamp
 
 
@@ -101,12 +107,7 @@ REPORT_RATING_TITLES = {
     "D": "▫️ D級：其他",
 }
 
-DEFAULT_SCAN_SETTINGS = {
-    "min_price": 10.0,
-    "max_price": 100.0,
-    "min_avg_volume_20d": 500.0,
-    "min_monthly_revenue": 50_000_000.0,
-}
+DEFAULT_SCAN_SETTINGS = dict(DEFAULT_HARD_FILTER_SETTINGS)
 
 
 @dataclass(frozen=True)
@@ -853,14 +854,7 @@ def scan_tw_market(
 ) -> ScanReport:
     print(f"[{now_timestamp()}] [選股進度][財報營收] 0% 初始化掃描設定", flush=True)
     _ensure_cache_dirs()
-    settings = dict(DEFAULT_SCAN_SETTINGS)
-    if scan_settings:
-        for key, value in scan_settings.items():
-            if key in settings:
-                try:
-                    settings[key] = float(value)
-                except (TypeError, ValueError):
-                    continue
+    settings = resolve_hard_filter_settings(scan_settings)
 
     print(f"[{now_timestamp()}] [選股進度][財報營收] 10% 讀取上市櫃股票清單", flush=True)
     universe = load_stock_universe(force_refresh=force_refresh)
@@ -884,13 +878,13 @@ def scan_tw_market(
         latest_revenue = revenue_history[0].revenue
         price = price_metric.get("price")
         avg_volume_20d = price_metric.get("avg_volume_20d")
-        if price is None or avg_volume_20d is None:
-            continue
-        if not (settings["min_price"] < price < settings["max_price"]):
-            continue
-        if avg_volume_20d <= settings["min_avg_volume_20d"]:
-            continue
-        if latest_revenue <= settings["min_monthly_revenue"]:
+        hard_filter = apply_basic_hard_filter(
+            price=price,
+            avg_volume_20d=avg_volume_20d,
+            latest_monthly_revenue=latest_revenue,
+            settings=settings,
+        )
+        if not hard_filter.passed:
             continue
 
         revenue_group = classify_revenue_group(revenue_history)
@@ -992,7 +986,7 @@ def format_scan_report(report: ScanReport) -> str:
             f"總掃描範圍：{report.total_symbols} 檔",
             (
                 f"通過硬篩標的：{report.hard_filter_passed} 檔 "
-                f"(股價 {int(settings['min_price'])}~{int(settings['max_price'])} / 均量 > {int(settings['min_avg_volume_20d'])})"
+                f"({hard_filter_display_text(settings)})"
             ),
             f"符合選股邏輯：{len(report.candidates)} 檔",
             f"資料日期：{report.generated_at.split()[0]}",

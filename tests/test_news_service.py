@@ -15,6 +15,7 @@ from research_center.news_service import (
     _classification_payload,
     _classify_batch_size,
     _classify_limit,
+    _classify_retry_timeout_seconds,
     _classify_text_limit,
     _classify_timeout_seconds,
     _news_high_tier_classify_limit,
@@ -1593,7 +1594,8 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=False):
             self.assertEqual(_classify_limit(), 18)
             self.assertEqual(_classify_batch_size(), 3)
-            self.assertEqual(_classify_timeout_seconds(), 45.0)
+            self.assertEqual(_classify_timeout_seconds(), 75.0)
+            self.assertEqual(_classify_retry_timeout_seconds(), 90.0)
             self.assertEqual(_classify_text_limit(), 500)
             self.assertEqual(_news_high_tier_classify_limit(), 12)
 
@@ -1633,6 +1635,7 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         self.assertEqual(len(classified), 1)
         self.assertEqual(len(gemini.calls), 2)
         self.assertTrue(any("fallback to local rules" in msg for msg in messages))
+        self.assertIn("local_rule_fallback", classified[0].tags)
 
     def test_timeout_retry_failure_fallbacks_remaining_items_without_more_ai_calls(self):
         class AlwaysFailGemini(self.FakeGemini):
@@ -1649,6 +1652,7 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         self.assertEqual(len(classified), 3)
         self.assertEqual(len(gemini.calls), 2)
         self.assertTrue(any("fallback remaining 2 items" in msg for msg in messages))
+        self.assertTrue(all("local_rule_fallback" in item.tags for item in classified))
 
     def test_call_news_classifier_restores_temporary_timeout(self):
         gemini = self.FakeGemini()

@@ -6,6 +6,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from .convergence_service import candidate_snapshot_from_row
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"
 STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
@@ -27,6 +29,7 @@ def save_recent_scan_result(
         "candidate_count": len(codes),
         "codes": codes,
         "selected_codes": codes,
+        "candidate_snapshot": _build_recent_scan_candidate_snapshots(scan_type, report_date, codes),
         "summary": report_text[:3000],
     }
     records.insert(0, record)
@@ -122,8 +125,38 @@ def _sanitize_recent_scan_record(item: dict[str, Any]) -> dict[str, Any]:
     record["codes"] = codes
     record["selected_codes"] = codes
     record["candidate_count"] = len(codes)
+    if "candidate_snapshot" not in record:
+        report_date = _parse_report_date(record.get("report_date"))
+        record["candidate_snapshot"] = _build_recent_scan_candidate_snapshots(
+            str(record.get("scan_type") or "scan"),
+            report_date,
+            codes,
+        )
     return record
 
 
 def _safe(value: str) -> str:
     return re.sub(r"[^0-9A-Za-z\u4e00-\u9fff_.-]+", "_", str(value)).strip("_")[:40] or "scan"
+
+
+def _build_recent_scan_candidate_snapshots(scan_type: str, report_date: date, codes: list[str]) -> list[dict[str, Any]]:
+    return [
+        candidate_snapshot_from_row(
+            {
+                "code": code,
+                "scan_type": scan_type,
+                "report_date": report_date.isoformat(),
+            },
+            source_command="scan",
+            source_pool=scan_type,
+            data_date=report_date.isoformat(),
+        )
+        for code in codes
+    ]
+
+
+def _parse_report_date(value: Any) -> date:
+    try:
+        return date.fromisoformat(str(value))
+    except Exception:
+        return datetime.now().date()

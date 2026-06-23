@@ -173,6 +173,15 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(expected, summary)
         self.assertIn("排隊執行", summary)
         self.assertIn("背景執行", summary)
+        self.assertIn("參數：", summary)
+        self.assertIn("/topic_maintain --deep --model minimax", summary)
+        self.assertIn("source=technical, ai_top=15, model=minimax", summary)
+        self.assertIn("run_backfill_if_needed(report_date=None, force_refresh=false)", summary)
+
+    def test_all_registered_scheduled_jobs_have_actual_parameters(self):
+        missing = [item.label for item in main.SCHEDULED_JOB_REGISTRATIONS if not item.parameters]
+
+        self.assertEqual(missing, [])
 
     def test_startup_message_uses_registered_scheduled_jobs_summary(self):
         source = Path(main.__file__).read_text(encoding="utf-8")

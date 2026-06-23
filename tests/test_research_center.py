@@ -109,7 +109,7 @@ class TopicMaintainOrchestratorTests(unittest.TestCase):
             result = center._run_topic_management_command(request)
 
         self.assertIn("⚠️ 變更包產生但未通過檢查", result.summary)
-        self.assertIn("狀態：failed", result.summary)
+        self.assertIn("審核狀態：未通過檢查", result.summary)
         self.assertNotIn("✅ 變更包已產生", result.summary)
 
 

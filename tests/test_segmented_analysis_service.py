@@ -43,6 +43,22 @@ class _FakeMiniMax:
         )
 
 
+class _FakeMiniMaxFailFromCall(_FakeMiniMax):
+    def __init__(self, fail_from: int):
+        super().__init__()
+        self.fail_from = fail_from
+
+    def generate_report(self, prompt: str):
+        self.prompts.append(prompt)
+        if len(self.prompts) >= self.fail_from:
+            raise RuntimeError("context window exceeds limit")
+        return _FakeResult(
+            markdown=f"## segment {len(self.prompts)}\n分析完成",
+            raw={"call": len(self.prompts)},
+            diagnostics={"model": "MiniMax-M3", "call": len(self.prompts)},
+        )
+
+
 class _FakeGemini:
     def __init__(self):
         self.prompts: list[str] = []
@@ -168,8 +184,12 @@ def test_should_use_segmented_analysis_uses_prompt_size_for_all_models():
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model minimax"), "minimax", prompt_chars=large_prompt) is True
     assert should_use_segmented_analysis(parse_command_text("/sector_strength --model gemini"), "gemini", prompt_chars=large_prompt) is True
     assert should_use_segmented_analysis(parse_command_text("/theme_flow AI伺服器 --model deepseek"), "deepseek", prompt_chars=large_prompt) is True
+    assert should_use_segmented_analysis(parse_command_text("/macro 台股 --model minimax"), "minimax", prompt_chars=large_prompt) is True
+    assert should_use_segmented_analysis(parse_command_text("/theme AI電源 --model minimax"), "minimax", prompt_chars=large_prompt) is True
+    assert should_use_segmented_analysis(parse_command_text("/value_scan 我的持股 --model minimax"), "minimax", prompt_chars=large_prompt) is True
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model deepseek"), "deepseek", prompt_chars=large_prompt - 1) is False
-    assert should_use_segmented_analysis(parse_command_text("/research 2330 --model minimax"), "minimax", prompt_chars=large_prompt) is False
+    assert should_use_segmented_analysis(parse_command_text("/research 2330 --model minimax"), "minimax", prompt_chars=large_prompt) is True
+    assert should_use_segmented_analysis(parse_command_text("/research 2330 --brief --model minimax"), "minimax", prompt_chars=large_prompt) is False
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model minimax"), "minimax") is False
 
 
@@ -226,6 +246,58 @@ def test_segmented_theme_analysis_uses_shared_high_model_packet_when_available()
     assert "command_specific_data" in "\n".join(client.prompts)
 
 
+def test_segmented_research_preserves_sources_risks_and_counter_evidence():
+    request = parse_command_text("/research 2330 --deep --model minimax")
+    sources = _theme_sources(6)
+    data = {
+        "report_date": "2026-06-22",
+        "high_model_input_package": {
+            "command_specific_data": {
+                "schema_version": "research_high_model_packet_v1",
+                "input_mode": "full",
+                "core_input_audit": {"must_include": ["financial_summary", "counter_evidence"]},
+                "payload": {
+                    "target": {"code": "2330", "name": "台積電"},
+                    "financial_summary": {"revenue_yoy": 20.5},
+                    "counter_evidence": ["客戶庫存調整可能壓抑短期訂單"],
+                },
+            },
+            "unified_evidence_pack": {
+                "risk_evidence": ["匯率與庫存風險"],
+                "counter_evidence": ["先進製程資本支出遞延"],
+            },
+            "low_model_digest": {
+                "facts": [{"fact": "AI 伺服器需求支撐營收", "source_ids": ["S001"]}],
+                "counter_evidence": [{"text": "部分客戶下修庫存", "source_ids": ["S002"]}],
+            },
+            "data_gap_summary": ["尚缺最新法說會逐字稿"],
+            "selected_sources": [{"source_id": "S001", "title": "營收公告"}],
+            "required_original_excerpts": [{"source_id": "S002", "text": "庫存調整"}],
+            "complete_source_index": [{"source_id": source.source_id, "title": source.title} for source in sources],
+            "local_scoring": {"quality": "for_reference_only"},
+            "ai_input_audit": {"received": ["counter_evidence", "risk_evidence", "complete_source_index"]},
+        },
+    }
+    client = _FakeMiniMax()
+
+    result = run_segmented_theme_analysis(
+        request=request,
+        structured_data=data,
+        sources=sources,
+        ai_client=client,
+        model_name="MiniMax-M3",
+        original_prompt_chars=220000,
+    )
+
+    joined_prompts = "\n".join(client.prompts)
+    assert result.diagnostics["final_status"] == "success"
+    assert "客戶庫存調整可能壓抑短期訂單" in joined_prompts
+    assert "匯率與庫存風險" in joined_prompts
+    assert "尚缺最新法說會逐字稿" in joined_prompts
+    assert "S001" in joined_prompts
+    assert "S006" in joined_prompts
+
+
 def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(monkeypatch):
     request = parse_command_text("/theme_radar --model minimax")
     client = _FakeMiniMax()
@@ -250,7 +322,7 @@ def test_segmented_theme_analysis_does_not_attach_all_sources_to_each_segment(mo
     assert logged_source_counts[-1] <= 109
 
 
-def test_segmented_theme_analysis_fallbacks_when_final_prompt_too_large(monkeypatch):
+def test_segmented_theme_analysis_retries_compact_final_when_final_prompt_too_large(monkeypatch):
     request = parse_command_text("/theme_radar --model minimax")
     client = _FakeMiniMax()
     monkeypatch.setattr("research_center.segmented_analysis_service.SEGMENTED_ANALYSIS_FINAL_HARD_CHARS", 1000)
@@ -263,10 +335,12 @@ def test_segmented_theme_analysis_fallbacks_when_final_prompt_too_large(monkeypa
         model_name="MiniMax-M3",
     )
 
-    assert result.diagnostics["final_status"] == "fallback"
+    assert result.diagnostics["final_status"] == "success"
     assert result.diagnostics["final_diagnostics"]["final_prompt_too_large"] is True
-    assert len(client.prompts) == result.diagnostics["segment_count"]
-    assert "最終 AI 整合失敗" in result.markdown
+    assert result.diagnostics["final_diagnostics"]["status"] == "success_after_retry"
+    assert result.diagnostics["final_retry_diagnostics"]["status"] == "success"
+    assert len(client.prompts) == result.diagnostics["segment_count"] + 1
+    assert "分析完成" in result.markdown
 
 
 def test_theme_radar_high_model_package_uses_stock_index_relations():
@@ -350,6 +424,57 @@ class SegmentedAnalysisSourceFilterTests(unittest.TestCase):
 
 
 class SegmentedAnalysisResilienceTests(unittest.TestCase):
+    def test_research_segmented_final_fallback_is_not_ai_success(self) -> None:
+        tmp_path = ensure_test_cache_dir("segmented_analysis/research_final_fallback")
+        request = parse_command_text("/research 2330 --deep --model minimax")
+        try:
+            def fake_attach_high_model_input_package(req, data, sources, prompt_chars_estimate=0, progress=None):
+                data["high_model_input_package"] = {
+                    "command_specific_data": {
+                        "schema_version": "research_test_payload_v1",
+                        "input_mode": "full",
+                        "payload": {
+                            "target": "2330",
+                            "financial_summary": {"revenue_yoy": 20},
+                            "counter_evidence": ["測試反證"],
+                        },
+                    },
+                    "unified_evidence_pack": {"risk_evidence": ["測試風險"]},
+                    "selected_sources": [{"source_id": "S001", "title": "測試來源"}],
+                    "complete_source_index": [{"source_id": "S001", "title": "測試來源"}],
+                }
+
+            with patch("research_center.orchestrator.collect_structured_data", return_value=({"target": "2330"}, _theme_sources(2))), \
+                 patch("research_center.orchestrator.filter_and_sort_sources_for_analysis_date", lambda sources, req: (sources, [])), \
+                 patch("research_center.orchestrator._select_sources_for_prompt", lambda req, sources, data, progress=None: sources), \
+                 patch("research_center.orchestrator._enrich_sources_with_web_fetch", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.persist_search_sources_to_news", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_news_events", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_data_gap_summary", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_unified_evidence_pack", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_ai_data_center", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_low_model_digest", lambda *args, **kwargs: None), \
+                 patch("research_center.orchestrator.attach_high_model_input_package", side_effect=fake_attach_high_model_input_package), \
+                 patch("research_center.orchestrator.build_prompt", return_value="x" * SEGMENTED_ANALYSIS_PROMPT_THRESHOLD):
+                config = ResearchCenterConfig(
+                    api_key=None,
+                    minimax_api_key="test-key",
+                    enable_grounding=False,
+                    report_root=tmp_path / "reports",
+                    database_path=tmp_path / "research.db",
+                )
+                center = ResearchCenter(config)
+                center.minimax = _FakeMiniMaxFailFromCall(fail_from=4)
+                with patch.object(center._gemini_discovery_runner, "run_discovery_flow", lambda req, sources, data, use_grounding, progress=None: (sources, False)):
+                    result = center.run(request)
+
+            self.assertEqual(result.status, "fallback_success")
+            self.assertIsNotNone(result.fallback_reason)
+            self.assertEqual(result.report_json["metadata"]["ai_status"], "fallback_success")
+            self.assertIn("這不是正式 AI 完成報告", result.markdown)
+        finally:
+            safe_remove_test_cache("segmented_analysis/research_final_fallback")
+
     def test_records_actual_model_from_final_call(self) -> None:
         request = parse_command_text("/theme_radar --model gemini")
 
@@ -505,8 +630,9 @@ class SegmentedAnalysisResilienceTests(unittest.TestCase):
         )
 
         labels = [run.label for run in result.segment_runs]
-        self.assertTrue(any(label.startswith("local_core_packet_part_") for label in labels))
-        self.assertLessEqual(max(len(prompt) for prompt in client.prompts[:-1]), 180_000)
+        self.assertLessEqual(result.diagnostics["segment_count"], 8)
+        self.assertIn("local_core_packet_part_", "\n".join(client.prompts))
+        self.assertLessEqual(max(len(prompt) for prompt in client.prompts[:-1]), 220_000)
         self.assertIn("核心資料必須保留", "\n".join(client.prompts))
 
     def test_segmented_ai_call_sets_temporary_timeout(self) -> None:
@@ -657,6 +783,7 @@ def test_theme_flow_segmented_analysis_batches_related_stocks_and_layers():
         "theme_flow_news_stats",
     ]
     assert all(len(prompt) < 50000 for prompt in client.prompts)
+    assert "資金流向與資金輪動判斷" in client.prompts[-1]
 
 
 def test_theme_radar_minimax_orchestrator_uses_segmented_flow(monkeypatch):

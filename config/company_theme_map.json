@@ -327,11 +327,35 @@
         "url": "https://www.reuters.com/world/asia-pacific/foxconn-can-make-1000-ai-racks-week-increase-next-year-chairman-says-2025-11-21/",
         "publish_date": "2025-11-21",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI 需求強勁，科技零組件輪漲，台股聚焦 AI 及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "半導體與 AI 族群為台股多頭重心",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX 與 WWDC 將登場，台股科技股漲聲不斷",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "待補題材角色",
+    "role": "AI 伺服器 ODM／GB200/GB300 主力",
     "products": [
       "AI伺服器",
       "雲端伺服器",
@@ -432,7 +456,7 @@
       "AI 伺服器營收佔比、液冷方案客戶滲透率",
       "主要客戶名單與出貨/量產資料"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -469,11 +493,11 @@
       },
       {
         "theme_id": "ai_server_odm",
-        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "theme_name": "AI 伺服器ODM與機殼",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "AI 伺服器 ODM（QCT）",
+        "role": "AI 伺服器 ODM／GB200/GB300 主力",
         "evidence": [
           "QCT Press Release L1 官方 COMPUTEX 2025",
           "既有公司知識庫 verified",
@@ -481,7 +505,7 @@
           "既有公司知識庫收錄廣達為 ai_server_odm_rack_scale verified 角色"
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-23T10:07:59"
       },
       {
         "theme_id": "ai_server_odm_rack_scale",
@@ -757,11 +781,35 @@
         "content": "AI 伺服器代工",
         "publish_date": "2026-06-03",
         "score_contribution": 4.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI 需求強勁，科技零組件輪漲，台股聚焦 AI 及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "半導體與 AI 族群為台股多頭重心",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX 與 WWDC 將登場，台股科技股漲聲不斷",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
+    "relation_strength": "high",
     "relation_type": "direct",
-    "role": "緯創 在「蘋果 AI 終端與 iPhone/Mac 供應鏈」中的擴充供應鏈節點",
+    "role": "AI 伺服器 ODM",
     "products": [
       "AI伺服器",
       "GPU加速伺服器",
@@ -830,7 +878,7 @@
       "主要客戶名單與營收佔比",
       "AI 伺服器營收佔比與主要客戶"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -865,17 +913,17 @@
       },
       {
         "theme_id": "ai_server_odm",
-        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "theme_name": "AI 伺服器ODM與機殼",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "AI 伺服器代工",
+        "role": "AI 伺服器 ODM",
         "evidence": [
           "既有公司知識庫收錄為 ai_server 角色",
           "既有公司知識庫收錄緯創為 ai_server 與 ai_server_odm_rack_scale 角色"
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-23T10:07:59"
       },
       {
         "theme_id": "ai_server_odm_rack_scale",
@@ -1495,10 +1543,18 @@
         "url": "internal://theme/ai_power_cooling",
         "publish_date": null,
         "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "candidate",
+    "relation_type": "indirect_or_thematic",
     "role": "待補題材角色",
     "products": [
       "資料中心電源供應器",
@@ -1614,7 +1670,7 @@
       "AI 電源營收佔比、800V HVDC 客戶驗證進度",
       "主要客戶名單與出貨/量產資料"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_power_equipment",
@@ -1721,6 +1777,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "price_hike_concept",
+        "theme_name": "科技零組件漲價概念股",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -3394,11 +3461,59 @@
         "publish_date": "2025-11-12",
         "score_contribution": 0.0
       },
-      "台積電既有公司知識庫含CoWoS/先進封裝產品線，矽光子/CPO製程平台已於技術論壇提及，惟量產時程與客戶名單未取得L1_official證據"
+      "台積電既有公司知識庫含CoWoS/先進封裝產品線，矽光子/CPO製程平台已於技術論壇提及，惟量產時程與客戶名單未取得L1_official證據",
+      {
+        "source": "費半收紅台積電ADR漲逾1% 投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半收紅，台積電ADR漲逾1%，投顧看好台股挑戰48,000點",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，台股創歷史新高，聚焦AI及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX與WWDC利多發酵，台積電5月營收將再寫歷史新高，市場看好6月行情挑戰46,000點",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "WWDC於6月9日舉行，與COMPUTEX及台積電5月營收並列三大利多，市場看好6月行情挑戰46,000點，蘋果鏈含台積電、大立光、鴻海、玉晶光等受惠",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "盤前台股聚焦AI與漲價概念，科技零組件輪動，呼應蘋果鏈與AI伺服器雙題材",
+        "url": "https://money.udn.com/money/story/5607/9532153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "台積電ADR走強，投顧看好台股挑戰48000點，蘋果鏈指標股台積電具資金集中效果",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      }
     ],
-    "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "矽光子製程與CPO平台",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "CoWoS封裝",
       "SoIC",
@@ -3498,9 +3613,11 @@
       "N2/A16 量產時程細節",
       "CoWoS 毛利率、精確客戶營收佔比",
       "十年長約的具體產能分配比例",
-      "艾克爾美國廠對台系測試廠的直接分包金額"
+      "艾克爾美國廠對台系測試廠的直接分包金額",
+      "後續需追蹤月營收、法說會展望、CoWoS產能擴張進度、N3/N2客戶與訂單結構、法人買賣超",
+      "台積電Apple製程節點佔比、N3/N2 Apple晶片投片進度"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "advanced_packaging_cowos_soic",
@@ -3568,6 +3685,32 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "ai_semiconductor_leader",
+        "theme_name": "AI 半導體龍頭與先進製程",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "後續需追蹤月營收、法說會展望、CoWoS產能擴張進度、N3/N2客戶與訂單結構、法人買賣超"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
+      },
+      {
+        "theme_id": "wwdc_apple_chain",
+        "theme_name": "WWDC 與蘋果供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "台積電Apple製程節點佔比、N3/N2 Apple晶片投片進度"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -3806,11 +3949,67 @@
         "content": "封測族群受惠 AI 資金潮",
         "publish_date": "2026-06-03",
         "score_contribution": 4.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1% 投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半收紅，台積電ADR漲逾1%，投顧看好台股挑戰48,000點",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，台股創歷史新高，聚焦AI及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX與WWDC利多發酵，台積電5月營收將再寫歷史新高，市場看好6月行情挑戰46,000點",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC與台積電5月營收創高等三大利多發酵，市場看好6月行情挑戰46,000點，科技股漲聲不斷。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半與台積電ADR走強，投顧看好台股挑戰48,000點，台積電為AI供應鏈核心標的。",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲，AI與漲價概念為盤面焦點。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰",
+        "source_level": "L3_community",
+        "content": "市場文章以AI護城河為主題，討論CoWoS與相關供應鏈（細節待原文補強）。",
+        "url": "https://vocus.cc/article/...",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "待補題材角色",
+    "relation_strength": "low",
+    "relation_type": "供應鏈上下游",
+    "role": "後段封測",
     "products": [
       "先進封裝服務",
       "測試服務",
@@ -3901,17 +4100,18 @@
       "AI 客戶名單",
       "與 TSMC CoWoS 後段分工",
       "CoWoS/SoIC 對應營收佔比、主要客戶",
-      "客戶名單"
+      "客戶名單",
+      "後續需追蹤CoWoS封測營收佔比、客戶端拉貨變化、毛利率走勢、資本支出進度"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
-        "theme_name": "CoWoS 與先進封裝產能擴張",
+        "theme_name": "CoWoS 先進封裝供應鏈",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "後段封測與先進封裝",
+        "role": "後段封測",
         "evidence": [
           "櫃買中心 半導體產業鏈簡介"
         ],
@@ -3920,7 +4120,7 @@
           "AI 晶片客戶名單",
           "TSMC CoWoS 後段合作份額"
         ],
-        "updated_at": "2026-06-01T19:07:58"
+        "updated_at": "2026-06-23T10:07:59"
       },
       {
         "theme_id": "ai_advanced_packaging_cowos",
@@ -3943,6 +4143,19 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "ai_semiconductor_leader",
+        "theme_name": "AI 半導體龍頭與先進製程",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "後續需追蹤CoWoS封測營收佔比、客戶端拉貨變化、毛利率走勢、資本支出進度"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -4466,11 +4679,43 @@
       },
       "欣興為 ABF 載板一線供應商，受惠於 AI 晶片封裝需求",
       "台新投信報告指出台灣在高階 PCB 與 ABF 載板具備領先優勢",
-      "欣興為ABF載板龍頭，既有公司知識庫資料待補；資本支出與AI伺服器載板佔比需年報/法說會驗證"
+      "欣興為ABF載板龍頭，既有公司知識庫資料待補；資本支出與AI伺服器載板佔比需年報/法說會驗證",
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC與台積電5月營收創高等三大利多發酵，市場看好6月行情挑戰46,000點，科技股漲聲不斷。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半與台積電ADR走強，投顧看好台股挑戰48,000點，台積電為AI供應鏈核心標的。",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲，AI與漲價概念為盤面焦點。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰",
+        "source_level": "L3_community",
+        "content": "市場文章以AI護城河為主題，討論CoWoS與相關供應鏈（細節待原文補強）。",
+        "url": "https://vocus.cc/article/...",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "ABF載板與高階PCB",
+    "role": "ABF載板",
     "products": [
       "ABF載板",
       "伺服器PCB",
@@ -4558,7 +4803,7 @@
       "Rubin 平台產品佔營收預估",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -4622,6 +4867,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "cowos_advanced_packaging",
+        "theme_name": "CoWoS 先進封裝供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "ABF載板",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -7063,11 +7319,35 @@
         "url": "https://www.trendforce.com",
         "publish_date": "2026",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，6月科技零組件呈現輪漲價格局，台股創歷史新高，盤面聚焦AI與漲價概念股，DRAM屬於漲價概念族群之一。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC、台積電5月營收創新高三大利多發酵，投顧看好6月科技股漲聲不斷，DRAM記憶體族群受惠AI與漲價循環。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 DRAM側翼戰場",
+        "source_level": "L3_community",
+        "content": "AI護城河主軸下，DRAM為盤面側翼戰場，記憶體族群可作為主軸之外的延伸投資標的。",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
+    "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "DRAM/SLC NAND製造",
+    "role": "待補題材角色",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -7098,7 +7378,7 @@
       },
       "待查證題材或產品營收占比"
     ],
-    "benefit_logic": "HBM 與 AI 記憶體供應鏈需求提升，可能帶動華邦電相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
+    "benefit_logic": "受惠記憶體漲價、車用/工控利基型DRAM與Flash需求",
     "missing_data": [
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料",
@@ -7121,7 +7401,7 @@
       "營收佔比",
       "官方未揭露客戶名單"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "hbm_memory_supply_chain",
@@ -7185,6 +7465,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "dram_memory",
+        "theme_name": "DRAM 與記憶體",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -7291,11 +7582,35 @@
         "url": "https://www.trendforce.com",
         "publish_date": "2026",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，6月科技零組件呈現輪漲價格局，台股創歷史新高，盤面聚焦AI與漲價概念股，DRAM屬於漲價概念族群之一。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC、台積電5月營收創新高三大利多發酵，投顧看好6月科技股漲聲不斷，DRAM記憶體族群受惠AI與漲價循環。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 DRAM側翼戰場",
+        "source_level": "L3_community",
+        "content": "AI護城河主軸下，DRAM為盤面側翼戰場，記憶體族群可作為主軸之外的延伸投資標的。",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
+    "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "DRAM製造",
+    "role": "待補題材角色",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -7323,7 +7638,7 @@
       },
       "待查證題材或產品營收占比"
     ],
-    "benefit_logic": "HBM 與 AI 記憶體供應鏈需求提升，可能帶動南亞科相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。",
+    "benefit_logic": "台股DRAM指標股，受惠AI伺服器HBM、DDR5需求與記憶體漲價循環",
     "missing_data": [
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料",
@@ -7342,7 +7657,7 @@
       "營收佔比",
       "官方未揭露客戶名單"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "memory_recovery",
@@ -7379,6 +7694,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "dram_memory",
+        "theme_name": "DRAM 與記憶體",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -11868,10 +12194,18 @@
         "url": "https://money.udn.com/money/story/124512/9509862",
         "publish_date": "2026-05-18",
         "summary": "AI 帶動 MLCC 銷售升溫，國巨為主要受惠對象。"
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "low",
-    "relation_type": "candidate",
+    "relation_strength": "high",
+    "relation_type": "direct_beneficiary",
     "role": "待補題材角色",
     "products": [
       "晶片電阻",
@@ -11954,7 +12288,7 @@
       "日廠產能擴張情況",
       "AI 伺服器專用 MLCC 營收佔比"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -12051,6 +12385,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "price_hike_concept",
+        "theme_name": "科技零組件漲價概念股",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -13691,10 +14036,58 @@
         "url": "https://www.reuters.com/world/asia-pacific/foxconn-can-make-1000-ai-racks-week-increase-next-year-chairman-says-2025-11-21/",
         "publish_date": "2025-11-21",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI 需求強勁，科技零組件輪漲，台股聚焦 AI 及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "半導體與 AI 族群為台股多頭重心",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX 與 WWDC 將登場，台股科技股漲聲不斷",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "WWDC於6月9日舉行，與COMPUTEX及台積電5月營收並列三大利多，市場看好6月行情挑戰46,000點，蘋果鏈含台積電、大立光、鴻海、玉晶光等受惠",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "盤前台股聚焦AI與漲價概念，科技零組件輪動，呼應蘋果鏈與AI伺服器雙題材",
+        "url": "https://money.udn.com/money/story/5607/9532153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "台積電ADR走強，投顧看好台股挑戰48000點，蘋果鏈指標股台積電具資金集中效果",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "AI 伺服器",
@@ -13812,9 +14205,10 @@
       "人型機器人實際出貨量",
       "2025-2026年法說會對AI機器人之具體揭露",
       "AI 伺服器/整櫃營收佔比、毛利率",
-      "液冷方案的實際出貨量預估"
+      "液冷方案的實際出貨量預估",
+      "鴻海iPhone組裝營收佔比、2026年iPhone出貨預估、組裝ASP與良率變化"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_odm_rack",
@@ -13851,11 +14245,11 @@
       },
       {
         "theme_id": "ai_server_odm",
-        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "theme_name": "AI 伺服器ODM與機殼",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "AI Factory 與整櫃系統整合商",
+        "role": "AI 伺服器組裝龍頭／GB200 主要代工",
         "evidence": [
           "NVIDIA Newsroom L1 官方",
           "Reuters L2 媒體報導",
@@ -13864,7 +14258,7 @@
           "既有公司知識庫收錄鴻海為 ai_server_odm_rack_scale verified 角色"
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-23T10:07:59"
       },
       {
         "theme_id": "ai_server_odm_rack_scale",
@@ -13879,6 +14273,19 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "wwdc_apple_chain",
+        "theme_name": "WWDC 與蘋果供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "鴻海iPhone組裝營收佔比、2026年iPhone出貨預估、組裝ASP與良率變化"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -14101,11 +14508,59 @@
         "url": "https://www.reuters.com/world/asia-pacific/foxconn-can-make-1000-ai-racks-week-increase-next-year-chairman-says-2025-11-21/",
         "publish_date": "2025-11-21",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI 需求強勁，科技零組件輪漲，台股聚焦 AI 及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "半導體與 AI 族群為台股多頭重心",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX 與 WWDC 將登場，台股科技股漲聲不斷",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "雲端資料中心與 AI 伺服器供應商",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "AI 伺服器",
       "液冷平台",
@@ -14176,7 +14631,7 @@
       "液冷方案滲透率",
       "NVL72 整櫃出貨量與客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "ai_server_factory_event",
@@ -14196,11 +14651,11 @@
       },
       {
         "theme_id": "ai_server_odm",
-        "theme_name": "AI 伺服器 ODM 與整櫃系統整合",
+        "theme_name": "AI 伺服器ODM與機殼",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "白牌 AI 伺服器 ODM",
+        "role": "白牌/ODM 伺服器",
         "evidence": [
           "Wiwynn Official L1 官方 GB300 NVL72",
           "既有公司知識庫 verified",
@@ -14208,7 +14663,7 @@
           "既有公司知識庫收錄緯穎為 ai_server 與整櫃系統供應商"
         ],
         "missing_data": [],
-        "updated_at": "2026-06-03T08:33:31"
+        "updated_at": "2026-06-23T10:07:59"
       },
       {
         "theme_id": "ai_server_odm_rack_scale",
@@ -14222,6 +14677,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "compute_x_2026_ai_exhibition",
+        "theme_name": "COMPUTEX 2026 AI 展會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -16034,11 +16500,35 @@
         "url": "https://www.trendforce.com",
         "publish_date": "2026",
         "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，6月科技零組件呈現輪漲價格局，台股創歷史新高，盤面聚焦AI與漲價概念股，DRAM屬於漲價概念族群之一。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC、台積電5月營收創新高三大利多發酵，投顧看好6月科技股漲聲不斷，DRAM記憶體族群受惠AI與漲價循環。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 DRAM側翼戰場",
+        "source_level": "L3_community",
+        "content": "AI護城河主軸下，DRAM為盤面側翼戰場，記憶體族群可作為主軸之外的延伸投資標的。",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "NAND控制IC與SSD模組",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "HBM",
       "DRAM",
@@ -16067,7 +16557,7 @@
       "待查",
       "待查證題材或產品營收占比"
     ],
-    "benefit_logic": "AI 訓練與推論需求提升高頻寬記憶體與企業儲存需求。",
+    "benefit_logic": "受惠NAND Flash模組與AI/資料中心儲存需求，控制IC出貨增溫",
     "missing_data": [
       "精確營收佔比或業務佔比",
       "主要客戶名單與出貨/量產資料",
@@ -16087,7 +16577,7 @@
       "精確客戶名單",
       "客戶營收佔比"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
@@ -16148,6 +16638,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "dram_memory",
+        "theme_name": "DRAM 與記憶體",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -18053,11 +18554,35 @@
         "source_level": "L2_media",
         "publish_date": "2026-05-01",
         "summary": "報導指出 Apple 財報與展望優於預期，受惠 iPhone 17 與 Mac 新品需求強勁。"
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "WWDC於6月9日舉行，與COMPUTEX及台積電5月營收並列三大利多，市場看好6月行情挑戰46,000點，蘋果鏈含台積電、大立光、鴻海、玉晶光等受惠",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "盤前台股聚焦AI與漲價概念，科技零組件輪動，呼應蘋果鏈與AI伺服器雙題材",
+        "url": "https://money.udn.com/money/story/5607/9532153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "台積電ADR走強，投顧看好台股挑戰48000點，蘋果鏈指標股台積電具資金集中效果",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "高階手機鏡頭供應商",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "光學鏡頭",
       "穿戴式光學",
@@ -18104,9 +18629,10 @@
       "各供應商 iPhone 17、Mac 與 AI 終端新品訂單佔比",
       "Apple Intelligence 對記憶體、NPU 與鏡頭升級的實際 BOM 變化",
       "供應鏈毛利率與匯率敏感度",
-      "Apple 對各零組件台廠的正式採購名單"
+      "Apple 對各零組件台廠的正式採購名單",
+      "大立光Apple營收佔比、各機型鏡頭出貨比重、2025年逐月Apple營收變化"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "多數台股公司尚未明確揭露 AI 眼鏡營收佔比、客戶名稱或量產訂單",
       "AI 眼鏡產品形態、價格、續航、隱私與殺手級應用仍在驗證",
@@ -18122,7 +18648,23 @@
       "傳產輪動常受短線資金驅動，缺乏營收驗證時容易退燒",
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "wwdc_apple_chain",
+        "theme_name": "WWDC 與蘋果供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "大立光Apple營收佔比、各機型鏡頭出貨比重、2025年逐月Apple營收變化"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3406": {
     "company_name": "玉晶光",
@@ -18261,11 +18803,35 @@
         "source_level": "L1_official",
         "publish_date": "2025-07-23",
         "summary": "AI 應用擴散可延伸至智慧移動與車用電子，需以車用產品與客戶認證驗證。"
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "WWDC於6月9日舉行，與COMPUTEX及台積電5月營收並列三大利多，市場看好6月行情挑戰46,000點，蘋果鏈含台積電、大立光、鴻海、玉晶光等受惠",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "盤前台股聚焦AI與漲價概念，科技零組件輪動，呼應蘋果鏈與AI伺服器雙題材",
+        "url": "https://money.udn.com/money/story/5607/9532153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "台積電ADR走強，投顧看好台股挑戰48000點，蘋果鏈指標股台積電具資金集中效果",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "鏡頭與光學元件",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "光學鏡頭",
       "AR/VR 光學",
@@ -18335,9 +18901,10 @@
       "電動車平台客戶認證與量產時程",
       "車用產品 ASP、毛利率與認證週期",
       "客戶/訂單佐證",
-      "最新法說會或年報來源"
+      "最新法說會或年報來源",
+      "玉晶光Apple營收佔比、廣角/長焦各產品線出貨量、與大立光分單比例"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "多數台股公司尚未明確揭露 AI 眼鏡營收佔比、客戶名稱或量產訂單",
       "AI 眼鏡產品形態、價格、續航、隱私與殺手級應用仍在驗證",
@@ -18356,7 +18923,23 @@
       "傳產輪動常受短線資金驅動，缺乏營收驗證時容易退燒",
       "全球景氣與中國需求不確定會影響報價與接單",
       "航運、塑化、鋼鐵等產業波動大，庫存與報價反轉風險高"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "wwdc_apple_chain",
+        "theme_name": "WWDC 與蘋果供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "玉晶光Apple營收佔比、廣角/長焦各產品線出貨量、與大立光分單比例"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "6209": {
     "company_name": "今國光",
@@ -18752,11 +19335,35 @@
         "source_level": "L1_official",
         "publish_date": "2026-03-24",
         "summary": "TASA 指出低軌星系、多軌道通訊、衛星通訊設備與高頻射頻元件需求成長。"
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "high",
-    "relation_type": "direct",
-    "role": "低功耗終端 AI 與無線連接晶片候選",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "終端 AI",
       "Wi-Fi",
@@ -18820,7 +19427,7 @@
       "衛星 PCB、射頻元件與地面終端實際出貨量",
       "國際衛星業者採購排程與長約資料"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "多數台股公司尚未明確揭露 AI 眼鏡營收佔比、客戶名稱或量產訂單",
       "AI 眼鏡產品形態、價格、續航、隱私與殺手級應用仍在驗證",
@@ -18837,7 +19444,21 @@
       "衛星直連手機商業模式、頻譜、法規與資費仍需驗證",
       "高頻材料與衛星板產品驗證期長，營收認列可能波動",
       "若衛星營收佔比低，股價易受題材情緒波動"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "compute_x_2026_ai_exhibition",
+        "theme_name": "COMPUTEX 2026 AI 展會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "6456": {
     "company_name": "GIS",
@@ -18893,11 +19514,35 @@
         "source_level": "L2_media",
         "publish_date": "2026-01-30",
         "summary": "TrendForce 指出 Meta Ray-Ban Display Glasses 零組件訂單上修，預估 2026 年全球 AR 眼鏡出貨年增。"
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
+    "relation_strength": "low",
     "relation_type": "indirect",
-    "role": "觸控與顯示模組整合，待驗證 AR 眼鏡顯示模組關聯",
+    "role": "觸控面板與光學貼合",
     "products": [
       "Micro LED",
       "近眼顯示",
@@ -18931,7 +19576,7 @@
       "精確題材營收佔比",
       "AR 眼鏡微顯示器與光機模組的客戶認證進度"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "AR 眼鏡顯示路線尚未統一，Micro LED、Micro OLED、LCoS 與光波導各有成本與量產挑戰",
       "台灣面板與光學公司是否進入國際品牌供應鏈仍缺乏正式揭露",
@@ -18939,7 +19584,21 @@
       "若初期 AI 眼鏡以無顯示音訊眼鏡為主，近眼顯示需求可能延後",
       "台灣面板與光學公司是否進入 Meta、Google、Samsung 或 Apple 供應鏈仍缺乏正式揭露",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "觸控面板與光學貼合",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "2409": {
     "company_name": "友達",
@@ -19003,10 +19662,34 @@
         "source_level": "L2_media",
         "publish_date": "2026-01-30",
         "summary": "TrendForce 指出 Meta Ray-Ban Display Glasses 零組件訂單上修，預估 2026 年全球 AR 眼鏡出貨年增。"
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
-    "relation_type": "indirect",
+    "relation_strength": "low",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "Micro LED",
@@ -19040,7 +19723,7 @@
       "精確題材營收佔比",
       "AR 眼鏡微顯示器與光機模組的客戶認證進度"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "panel_advanced_packaging_pivot",
@@ -19052,6 +19735,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -19142,10 +19836,34 @@
         "source_level": "L2_media",
         "content": "群創布局MicroLED大尺寸顯示技術，發布MicroLED車用與穿戴顯示解決方案。",
         "score_contribution": 5.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "low",
-    "relation_type": "direct",
+    "relation_type": "candidate",
     "role": "待補題材角色",
     "products": [
       "Micro LED",
@@ -19185,7 +19903,7 @@
       "FOPLP 實際營收貢獻時程",
       "主要半導體客戶名單"
     ],
-    "updated_at": "2026-06-18T21:25:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "display_microled",
@@ -19208,6 +19926,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T21:25:48"
+      },
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -19405,11 +20134,35 @@
         "source_level": "L1_official",
         "publish_date": "2025-05-23",
         "summary": "AI 終端與企業應用需要連網設備作為基礎，Wi-Fi 7 為終端升級觀察方向。"
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
-    "relation_type": "indirect",
-    "role": "藍牙、Wi-Fi、音訊與邊緣裝置連接晶片供應商",
+    "relation_strength": "medium",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "低功耗 SoC",
       "Wi-Fi",
@@ -19459,7 +20212,7 @@
       "企業 AP 與消費路由器產品線拆分",
       "精確客戶名單"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "AI 眼鏡電子零組件供應鏈尚未正式定案，台股公司多屬潛在受惠",
       "低功耗 AI 晶片、藍牙/Wi-Fi、音訊與電源管理元件競爭激烈",
@@ -19476,7 +20229,21 @@
       "白牌交換器毛利率可能受競爭與客戶議價壓力影響",
       "需區分 AI 資料中心交換器與一般網通設備",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "compute_x_2026_ai_exhibition",
+        "theme_name": "COMPUTEX 2026 AI 展會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "6237": {
     "company_name": "驊訊",
@@ -19943,11 +20710,35 @@
         "source_level": "L1_official",
         "publish_date": "2025-07-23",
         "summary": "AI 新十大建設列出全球量子能力登頂，規劃國家級量子研發實驗室與後量子密碼。"
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
     "relation_type": "indirect",
-    "role": "聯詠 在「AI 伺服器功率半導體與 MOSFET 規格升級」中的擴充供應鏈節點",
+    "role": "面板驅動IC設計大廠",
     "products": [
       "量子晶片",
       "後量子密碼",
@@ -19993,7 +20784,7 @@
       "政府量子計畫預算與標案落地資料",
       "精確題材營收佔比"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "量子科技商業化時程長，短期營收貢獻不明確",
       "台股多數公司與量子科技關聯間接，容易產生概念股誤判",
@@ -20007,7 +20798,21 @@
       "TV 與消費電子需求波動",
       "OLED 與 LCD 競爭",
       "AI 題材直接關聯較弱"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "面板驅動IC設計大廠",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "6791": {
     "company_name": "虎門科技",
@@ -26064,11 +26869,35 @@
         "url": "https://mops.twse.com.tw/mops/web/index",
         "publish_date": "2026-05-23",
         "score_contribution": 8.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "WWDC於6月9日舉行，與COMPUTEX及台積電5月營收並列三大利多，市場看好6月行情挑戰46,000點，蘋果鏈含台積電、大立光、鴻海、玉晶光等受惠",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "盤前台股聚焦AI與漲價概念，科技零組件輪動，呼應蘋果鏈與AI伺服器雙題材",
+        "url": "https://money.udn.com/money/story/5607/9532153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "台積電ADR走強，投顧看好台股挑戰48000點，蘋果鏈指標股台積電具資金集中效果",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "祥碩 在「AI ASIC 設計服務與矽智財」中的擴充供應鏈節點",
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
     "products": [
       "AI ASIC",
       "設計服務",
@@ -26087,15 +26916,32 @@
       "主要客戶名單與出貨/量產資料",
       "公司法說會或年報對該題材的直接揭露",
       "未找到可靠來源揭露精確客戶名單",
-      "不要捏造百分比"
+      "不要捏造百分比",
+      "祥碩Apple裝置USB/Type-C IC出貨比重、客戶端design-win進度、最新法說會揭露"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "ASIC 設計服務專案高度依賴少數客戶與製程節點",
       "NRE 與量產營收認列時程波動大",
       "流片失敗、規格變更或客戶取消專案會造成獲利波動",
       "公司層級題材關聯與營收貢獻仍需以官方資料驗證"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "wwdc_apple_chain",
+        "theme_name": "WWDC 與蘋果供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "祥碩Apple裝置USB/Type-C IC出貨比重、客戶端design-win進度、最新法說會揭露"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "1102": {
     "company_name": "亞泥",
@@ -27713,11 +28559,19 @@
         "content": "MLCC 與陶瓷材料供應商",
         "publish_date": "2026-05-21",
         "score_contribution": 4.0
+      },
+      {
+        "source": "經濟日報",
+        "source_level": "L2_media",
+        "content": "AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
-    "relation_type": "direct",
-    "role": "信昌電 在「被動元件漲價與庫存回補」中的擴充供應鏈節點",
+    "relation_type": "direct_beneficiary",
+    "role": "待補題材角色",
     "products": [
       "MLCC",
       "晶片電阻",
@@ -27758,7 +28612,7 @@
       "AI 伺服器客戶",
       "毛利率變化"
     ],
-    "updated_at": "2026-06-18T21:17:09",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "passive_components",
@@ -27808,6 +28662,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-18T18:37:19"
+      },
+      {
+        "theme_id": "price_hike_concept",
+        "theme_name": "科技零組件漲價概念股",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -29519,11 +30384,43 @@
       "台灣 ABF 載板在全球市場具備領先地位",
       "CMoney PCB 材料族群 5/30 漲 3.94%",
       "印刷電路板產業鏈簡介：銅箔基板為中游關鍵材料",
-      "南電ABF/BT載板產品線需驗證；資本支出與擴產規劃待官方公告"
+      "南電ABF/BT載板產品線需驗證；資本支出與擴產規劃待官方公告",
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC與台積電5月營收創高等三大利多發酵，市場看好6月行情挑戰46,000點，科技股漲聲不斷。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半與台積電ADR走強，投顧看好台股挑戰48,000點，台積電為AI供應鏈核心標的。",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲，AI與漲價概念為盤面焦點。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰",
+        "source_level": "L3_community",
+        "content": "市場文章以AI護城河為主題，討論CoWoS與相關供應鏈（細節待原文補強）。",
+        "url": "https://vocus.cc/article/...",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
     ],
     "relation_strength": "high",
     "relation_type": "core",
-    "role": "ABF與BT載板",
+    "role": "ABF載板",
     "products": [
       "CCL",
       "銅箔基板",
@@ -29555,7 +30452,7 @@
       "產品量產或出貨數據",
       "主要客戶、營收佔比與公司層級證據待查證"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -29587,6 +30484,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "cowos_advanced_packaging",
+        "theme_name": "CoWoS 先進封裝供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "ABF載板",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -31206,11 +32114,43 @@
         "summary": "原資料寫成景碩，但 4952 為凌通；景碩既有正確代號為 3189。"
       },
       "印刷電路板產業鏈簡介：IC 載板為 PCB 中游",
-      "景碩IC載板與FCBGA產品線已有，惟AI伺服器FCBGA佔比與客戶端認證進度需驗證"
+      "景碩IC載板與FCBGA產品線已有，惟AI伺服器FCBGA佔比與客戶端認證進度需驗證",
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX、蘋果WWDC與台積電5月營收創高等三大利多發酵，市場看好6月行情挑戰46,000點，科技股漲聲不斷。",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1%　投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半與台積電ADR走強，投顧看好台股挑戰48,000點，台積電為AI供應鏈核心標的。",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲，AI與漲價概念為盤面焦點。",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰",
+        "source_level": "L3_community",
+        "content": "市場文章以AI護城河為主題，討論CoWoS與相關供應鏈（細節待原文補強）。",
+        "url": "https://vocus.cc/article/...",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
     ],
     "relation_strength": "low",
     "relation_type": "upstream",
-    "role": "IC載板與FCBGA",
+    "role": "IC載板",
     "products": [
       "ABF 載板",
       "IC 載板",
@@ -31244,7 +32184,7 @@
       "AI伺服器或高階封裝客戶資料",
       "產能利用率與新產能進度"
     ],
-    "updated_at": "2026-06-19T12:18:48",
+    "updated_at": "2026-06-23T10:07:59",
     "candidate_themes": [
       {
         "theme_id": "high_speed_pcb_ccl",
@@ -31296,6 +32236,17 @@
         ],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      },
+      {
+        "theme_id": "cowos_advanced_packaging",
+        "theme_name": "CoWoS 先進封裝供應鏈",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "IC載板",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -32116,11 +33067,35 @@
         "content": "成熟製程晶圓代工受惠 AI 周邊",
         "publish_date": "2026-06-03",
         "score_contribution": 4.0
+      },
+      {
+        "source": "費半收紅台積電ADR漲逾1% 投顧：台股挑戰48000點",
+        "source_level": "L2_media",
+        "content": "費半收紅，台積電ADR漲逾1%，投顧看好台股挑戰48,000點",
+        "url": "https://money.udn.com/money/story/11162/9582188",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁，台股創歷史新高，聚焦AI及漲價概念股",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "COMPUTEX與WWDC利多發酵，台積電5月營收將再寫歷史新高，市場看好6月行情挑戰46,000點",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "medium",
-    "relation_type": "indirect",
-    "role": "成熟製程晶圓代工",
+    "relation_strength": "low",
+    "relation_type": "同業競爭",
+    "role": "待補題材角色",
     "products": [
       "成熟製程",
       "28nm",
@@ -32142,11 +33117,12 @@
     "missing_data": [
       "AI 題材直接營收佔比",
       "主要客戶名單與產品線營收拆分",
-      "各應用別營收占比",
+      "各應用別營收佔比",
       "12 奈米合作量產進度",
-      "AI 周邊晶片客戶明細"
+      "AI 周邊晶片客戶明細",
+      "後續需追蹤產能利用率、28/22奈米接單狀況、ASP走勢、客戶結構"
     ],
-    "updated_at": "2026-06-03T08:33:31",
+    "updated_at": "2026-06-23T10:07:59",
     "risk_notes": [
       "成熟製程景氣循環波動",
       "消費/車用需求若反轉將影響稼動率",
@@ -32155,7 +33131,23 @@
       "產能利用率波動",
       "中國成熟製程競爭",
       "新製程合作時程不確定"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "ai_semiconductor_leader",
+        "theme_name": "AI 半導體龍頭與先進製程",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [
+          "後續需追蹤產能利用率、28/22奈米接單狀況、ASP走勢、客戶結構"
+        ],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "8358": {
     "company_name": "金居",
@@ -34727,6 +35719,152 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-06-19T12:18:48"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "6176": {
+    "company_name": "瑞儀",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "updated_at": "2026-06-23T10:07:59",
+    "candidate_themes": [
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "8215": {
+    "company_name": "明基材",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "low",
+    "relation_type": "candidate",
+    "role": "待補題材角色",
+    "updated_at": "2026-06-23T10:07:59",
+    "candidate_themes": [
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "待補題材角色",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "4760": {
+    "company_name": "誠美材",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [
+      {
+        "source": "台股三大利多發酵下 6月行情衝刺46,000點大關",
+        "source_level": "L2_media",
+        "content": "投顧看好6月台股行情，COMPUTEX與蘋果WWDC等事件利多將推動科技股輪動，面板與零組件屬於受惠輪動族群之一",
+        "url": "https://money.udn.com/money/story/5607/9537229",
+        "publish_date": "2026-06-01",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "6月23日盤前／AI 需求強 科技零組件輪漲價 台股創史高 聚焦 AI 及漲價概念",
+        "source_level": "L2_media",
+        "content": "AI需求強勁帶動科技零組件輪漲價，面板屬於漲價概念股觀察名單",
+        "url": "https://money.udn.com/money/story/5607/9582153",
+        "publish_date": "2026-06-23",
+        "score_contribution": 0.0
+      },
+      {
+        "source": "Vocus AI護城河攻頂戰 面板變成側翼戰場",
+        "source_level": "L3_community",
+        "content": "社群文章觀察到面板在AI主線中被定位為側翼戰場，具備低基期補漲空間",
+        "url": "",
+        "publish_date": "",
+        "score_contribution": 0.0
+      }
+    ],
+    "relation_strength": "medium",
+    "role": "偏光板製造",
+    "updated_at": "2026-06-23T10:07:59",
+    "candidate_themes": [
+      {
+        "theme_id": "panel_ai_demand",
+        "theme_name": "面板與顯示器",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "偏光板製造",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-06-23T10:07:59"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"

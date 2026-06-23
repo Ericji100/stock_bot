@@ -43,6 +43,7 @@ from .recent_scans import find_recent_scan, load_recent_scan_results, save_recen
 from .value_validation import build_value_cross_validation
 from .rerating_snapshot_service import build_rerating_snapshot_for_stock
 from .models import CommandRequest
+from .convergence_service import attach_convergence_fields
 from .news_context_service import attach_news_context
 from .news_event_service import attach_news_events
 from .prompt_manifest_service import prompt_bundle_for_request
@@ -149,6 +150,7 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     attach_data_gap_summary(request, data)
     attach_unified_evidence_pack(request, data)
     data.setdefault("prompt_bundle", prompt_bundle_for_request(request))
+    attach_convergence_fields(request, data)
 
     sources = _official_sources()
     if request.command == "macro":

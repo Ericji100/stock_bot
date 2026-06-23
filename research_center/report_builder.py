@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import html
 import json
@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from .models import CommandRequest, ReportArtifacts, SourceItem
+from .convergence_service import build_report_convergence_layer
 from .report_display_normalizer import normalize_report_text
 from .report_validator import append_qa_notes, validate_report
 from .company_knowledge_update_service import source_quality_score
@@ -28,14 +29,26 @@ def build_report_json(
     fallback_reason: str | None,
     structured_data: dict[str, Any] | None = None,
     report_variant: str | None = None,
+    report_id: str | None = None,
 ) -> dict[str, Any]:
     data = structured_data or {}
+    convergence_layer = build_report_convergence_layer(
+        request,
+        data,
+        sources,
+        ai_used=ai_used,
+        fallback_reason=fallback_reason,
+        report_id=report_id,
+        report_variant=report_variant,
+    )
     shared_data_layer = _shared_data_layer_summary(data)
     report_quality = build_report_quality_layer(request, data, sources)
     local_scoring = data.get("local_scoring") or {}
     scores = _normalize_scores(local_scoring.get("scores") or [])
     buy_rating = local_scoring.get("buy_rating")
+    ai_status = str(data.get("ai_status") or ("fallback_success" if fallback_reason else ("ai_success" if ai_used else "not_used")))
     return {
+        "schema_version": "report_json_v2",
         "report_title": _report_title(request),
         "report_type": request.command,
         "target": request.target or request.market_scope or request.candidate_pool or "latest",
@@ -50,8 +63,12 @@ def build_report_json(
         "positive_factors": _extract_list_after_heading(markdown, ("利多", "正面", "優勢", "證據")),
         "watch_items": _extract_list_after_heading(markdown, ("觀察", "追蹤", "未來")),
         "sources": [asdict(item) for item in sources],
+        "report_metadata": convergence_layer["report_metadata"],
+        "data_source_summary": convergence_layer["data_source_summary"],
+        "candidate_snapshot": convergence_layer["candidate_snapshot"],
         "metadata": {
             "ai_used": ai_used,
+            "ai_status": ai_status,
             "report_variant": report_variant,
             "analysis_model": data.get("analysis_model"),
             "analysis_model_choice": data.get("analysis_model_choice"),
@@ -60,6 +77,7 @@ def build_report_json(
             "report_generated_at": data.get("report_generated_at"),
             "comparison_reports": data.get("comparison_reports"),
             "fallback_reason": fallback_reason,
+            "minimax_retry_diagnostics": data.get("minimax_retry_diagnostics"),
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "output_formats": list(request.output_formats),
             "local_scoring_policy": local_scoring.get("policy"),
@@ -240,12 +258,12 @@ def write_report_artifacts(
     markdown = _append_source_reference_bridge(markdown, sources)
     markdown = _append_complete_source_appendix(markdown, sources)
     markdown = normalize_report_text(markdown)
-    report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant)
+    report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant, report_id)
     qa = validate_report(markdown, request, sources, report_json)
     markdown = append_qa_notes(markdown, qa)
     markdown = normalize_report_text(markdown)
     if markdown != report_json.get("markdown_validated_source"):
-        report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant)
+        report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant, report_id)
     report_json["metadata"]["qa_validation"] = qa
 
     markdown_path = output_dir / f"{report_id}.md" if "md" in request.output_formats else Path("__no_markdown_file__")
@@ -1023,6 +1041,8 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
     return f"""# {title}
 
 ## 摘要
+⚠️ 這不是正式 AI 完成報告，而是本地資料 fallback 報告。請勿把本報告視為完整 AI 投研結論。
+
 {analysis_note}{fallback_note}
 
 ## 資料基準

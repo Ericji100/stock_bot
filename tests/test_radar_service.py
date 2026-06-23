@@ -164,6 +164,7 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
         self.assertEqual(radar._select_ai_enrichment_codes([a1, a2, b1, c1], 3), ["2222", "3333", "4444"])
 
     def test_attach_chip_scores_uses_lightweight_radar_context_unittest(self):
+        radar._RADAR_CHIP_GRADE_CACHE.clear()
         candidate = radar.RadarCandidate(code="2330")
         captured: dict[str, object] = {}
 
@@ -181,6 +182,83 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
         self.assertEqual(captured["target_trading_days"], 5)
         self.assertIs(captured["include_foreign_ratio"], False)
         self.assertEqual(captured["scope"], "radar")
+
+    def test_chip_grade_maps_reused_between_candidates_and_scoring_unittest(self):
+        radar._RADAR_CHIP_GRADE_CACHE.clear()
+        calls = {"count": 0}
+
+        def fake_build_market_context(*args, **kwargs):
+            calls["count"] += 1
+            return object()
+
+        with patch.object(radar, "build_market_context", side_effect=fake_build_market_context), \
+             patch.object(
+                 radar,
+                 "build_chip_grade_maps",
+                 return_value={"chip_1": {"2330": "A"}, "chip_2": {}, "chip_3": {}, "chip_4": {}},
+             ), \
+             patch.object(radar, "_stock_meta_by_code", return_value={}):
+            candidates, policy = radar._chip_candidates(date(2026, 5, 20))
+            radar._attach_chip_scores(candidates, date(2026, 5, 20), None)
+
+        self.assertEqual(calls["count"], 1)
+        self.assertEqual(candidates[0].code, "2330")
+        self.assertEqual(policy["candidate_count"], 1)
+
+    def test_save_radar_result_uses_slim_cache_and_artifact_candidates_unittest(self):
+        cache_path = Path(".cache") / "radar_unittest_slim_cache.json"
+        report_dir = Path(".cache") / "radar_unittest_slim_reports"
+        result = radar.RadarResult(
+            request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 20), ai_top=5),
+            report_date=date(2026, 5, 20),
+            candidates=[
+                radar.RadarCandidate(
+                    code="2330",
+                    name="台積電",
+                    technical_signals=[{"signal_date": pd.Timestamp("2026-05-20")}],
+                    strategy_codes={"A"},
+                    total_score=80,
+                )
+            ],
+            ai_enriched_codes=[],
+            diagnostics={},
+        )
+
+        with patch.object(radar, "RADAR_CACHE_PATH", cache_path), patch.object(radar, "RADAR_REPORT_DIR", report_dir):
+            radar.save_radar_result(result)
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+            loaded = radar.load_radar_result(date(2026, 5, 20))
+
+        self.assertNotIn("candidates", payload[0])
+        self.assertTrue(Path(payload[0]["artifact_paths"]["candidates"]).exists())
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.candidates[0].code, "2330")
+        self.assertEqual(loaded.candidates[0].technical_signals[0]["signal_date"], "2026-05-20T00:00:00")
+
+    def test_large_radar_cache_rebuilds_from_artifact_index_unittest(self):
+        cache_path = Path(".cache") / "radar_unittest_large_cache.json"
+        report_dir = Path(".cache") / "radar_unittest_large_reports"
+        radar_dir = report_dir / "2026-05-20" / "radar_20260520_120000"
+        radar_dir.mkdir(parents=True, exist_ok=True)
+        (radar_dir / "radar_candidates.json").write_text(
+            json.dumps([{"code": "2330", "name": "台積電", "total_score": 88}], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        for name in ("radar_summary.md", "evidence_pack.json", "ai_analysis.json", "sources.json"):
+            (radar_dir / name).write_text("{}" if name.endswith(".json") else "summary", encoding="utf-8")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text("x" * 200, encoding="utf-8")
+
+        with patch.object(radar, "RADAR_CACHE_PATH", cache_path), \
+             patch.object(radar, "RADAR_REPORT_DIR", report_dir), \
+             patch.object(radar, "RADAR_CACHE_MAX_BYTES", 10):
+            records = radar._load_radar_records(limit=5)
+            result = radar._record_to_result(records[0])
+
+        self.assertEqual(records[0]["schema_version"], "radar_cache_index_v2")
+        self.assertTrue(Path(records[0]["artifact_paths"]["candidates"]).exists())
+        self.assertEqual(result.candidates[0].code, "2330")
+        self.assertIn("radar_cache_index_v2", cache_path.read_text(encoding="utf-8"))
 
     def test_research_center_sources_skip_fallback_when_minimax_has_enough_sources_unittest(self):
         candidate = radar.RadarCandidate(code="2330", name="台積電")
@@ -337,11 +415,11 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
         self.assertTrue(all(line.endswith("...") for line in lines))
 
 
-def test_parse_radar_args_defaults_to_technical_top5():
+def test_parse_radar_args_defaults_to_combined_top15():
     request = radar.parse_radar_args([])
-    assert request.source == "technical"
+    assert request.source == "combined"
     assert request.report_date is None
-    assert request.ai_top == 5
+    assert request.ai_top == 15
     assert request.model == "minimax"
 
 
@@ -374,6 +452,31 @@ def test_run_radar_accepts_raw_arg_list(monkeypatch):
     assert result.request.report_date == date(2026, 5, 20)
     assert result.report_date == date(2026, 5, 20)
     assert captured == {"source": "technical", "target_date": date(2026, 5, 20)}
+
+
+def test_combined_candidates_merges_technical_chip_and_financial(monkeypatch):
+    tech = radar.RadarCandidate(code="2330", name="台積電", source_labels=["技術"])
+    chip = radar.RadarCandidate(code="2241", name="艾姆勒", chip_grades={"chip_1": "B"}, source_labels=["籌碼"])
+    financial = radar.RadarCandidate(
+        code="2241",
+        name="艾姆勒",
+        revenue_history=[{"month": "2026-04-01", "yoy": 22}],
+        source_labels=["財報營收"],
+    )
+
+    monkeypatch.setattr(radar, "_technical_candidates_for_radar", lambda *args, **kwargs: ([tech], {"source": "technical"}))
+    monkeypatch.setattr(radar, "_chip_candidates", lambda *args, **kwargs: ([chip], {"source": "chip"}))
+    monkeypatch.setattr(radar, "_financial_candidates", lambda *args, **kwargs: ([financial], {"source": "financial"}))
+    monkeypatch.setattr(radar, "_curated_candidates", lambda *args, **kwargs: ([], {"source": "curated"}))
+
+    candidates, policy = radar._load_candidates("combined", date(2026, 5, 22), {}, {}, None)
+    by_code = {item.code: item for item in candidates}
+
+    assert policy["status"] == "combined"
+    assert set(by_code) == {"2330", "2241"}
+    assert by_code["2241"].chip_grades["chip_1"] == "B"
+    assert by_code["2241"].revenue_history
+    assert any("跨來源" in label for label in by_code["2241"].source_labels)
 
 
 def test_resolve_radar_report_date_uses_previous_trading_day_on_holiday(monkeypatch):
@@ -514,8 +617,8 @@ def test_call_ai_comment_model_retries_temporary_overload(monkeypatch):
     assert calls["count"] == 2
 
 
-def test_attach_ai_comments_runs_in_chunks(monkeypatch):
-    candidates = [radar.RadarCandidate(code=f"23{i:02d}", name=f"Stock{i}") for i in range(12)]
+def test_attach_ai_comments_runs_top15_in_three_chunks(monkeypatch):
+    candidates = [radar.RadarCandidate(code=f"23{i:02d}", name=f"Stock{i}") for i in range(15)]
     calls = []
 
     def fake_call(model, prompt):
@@ -544,8 +647,224 @@ def test_attach_ai_comments_runs_in_chunks(monkeypatch):
 
     assert len(calls) == 3
     assert meta["chunk_count"] == 3
-    assert meta["comment_count"] == 12
+    assert meta["comment_count"] == 15
     assert all(item.ai_comment["status"] == "ok" for item in candidates)
+
+
+def test_score_candidates_uses_early_wave_components(monkeypatch):
+    candidate = radar.RadarCandidate(
+        code="3550",
+        name="聯穎",
+        industry="電子零組件業",
+        strategy_codes={"D"},
+        technical_signals=[{"strategy_code": "D", "sub_signal_type": "D4_hammer_candle_reclaim"}],
+        chip_grades={"chip_1": "B", "chip_2": "A"},
+        news_items=[{"title": "AI高速傳輸 題材升溫"}],
+    )
+    snapshot = {
+        "technical": {
+            "above_ma": {"ma5": True, "ma10": True, "ma20": True, "ma21": True, "ma60": True},
+            "reclaim_ma": {"ma20": True, "ma21": True, "ma60": True},
+            "ma_slopes": {"ma5": "up", "ma10": "up", "ma20": "up"},
+            "volume_ratio": 2.2,
+            "volume": 2200,
+            "volume_avg20": 1000,
+            "volume_avg60": 1200,
+            "price_up_volume_up": True,
+            "recent_break_low_recover": True,
+            "long_lower_shadow": True,
+            "breakout_20d": True,
+            "breakout_60d": False,
+            "distance_from_60d_low_pct": 12,
+            "distance_from_120d_low_pct": 25,
+            "ma20_deviation_pct": 8,
+            "price_metrics": {},
+        },
+        "revenue": {
+            "history": [
+                {"month": "2026-02-01", "revenue": 100, "yoy": -5, "MoM%": -1},
+                {"month": "2026-03-01", "revenue": 120, "yoy": 8, "MoM%": 20},
+                {"month": "2026-04-01", "revenue": 150, "yoy": 18, "MoM%": 25},
+                {"month": "2026-05-01", "revenue": 190, "yoy": 32, "MoM%": 26},
+            ]
+        },
+        "financial": {
+            "financial_data": [
+                {"Quarter": "2025Q4", "EPS": -0.2, "Gross_Margin": 14, "Operating_Margin": -2, "Net_Income": -100, "Operating_Cash_Flow": 10},
+                {"Quarter": "2026Q1", "EPS": 0.1, "Gross_Margin": 16, "Operating_Margin": 1, "Net_Income": 20, "Operating_Cash_Flow": 30, "Free_Cash_Flow": 5},
+            ],
+            "valuation_data": {"latest": {"pb_ratio": 1.4}},
+        },
+        "chip": {
+            "grades": {"chip_1": "B", "chip_2": "A"},
+            "institutional_data": [
+                {"Date": "2026-05-18", "Foreign_Net_Lots": -10, "Investment_Trust_Net_Lots": 0, "Dealer_Net_Lots": 0},
+                {"Date": "2026-05-19", "Foreign_Net_Lots": 20, "Investment_Trust_Net_Lots": 5, "Dealer_Net_Lots": 1},
+                {"Date": "2026-05-20", "Foreign_Net_Lots": 30, "Investment_Trust_Net_Lots": 5, "Dealer_Net_Lots": 1},
+                {"Date": "2026-05-21", "Foreign_Net_Lots": 40, "Investment_Trust_Net_Lots": 5, "Dealer_Net_Lots": 1},
+                {"Date": "2026-05-22", "Foreign_Net_Lots": 50, "Investment_Trust_Net_Lots": 5, "Dealer_Net_Lots": 1},
+            ],
+            "margin_data": [{"Date": "2026-05-22", "Financing_Net_Change_Lots": -5, "Short_Margin_Ratio": 40}],
+            "tdcc_data": {"large_holder_pct": 65, "retail_holder_pct": 30},
+        },
+        "theme_news": {
+            "local_news": [{"title": "AI高速傳輸需求升溫"}],
+            "web_sources": [{"title": "供應鏈題材"}],
+            "ai_sources": [],
+            "topic_context": {"matched_topics": ["AI高速傳輸"], "company_topic_relations": {"direct_matches": 1}},
+        },
+        "sector": {"industry": "電子零組件業", "industry_candidate_count": 3, "same_industry_codes": ["3550", "1111", "2222"]},
+    }
+    monkeypatch.setattr(radar, "_build_radar_feature_snapshot", lambda *args, **kwargs: snapshot)
+
+    radar._score_candidates([candidate], date(2026, 5, 22))
+
+    assert set(candidate.score_components) == {"technical", "revenue", "financial", "chip", "theme", "sector"}
+    assert candidate.score_components["technical"] <= 30
+    assert candidate.score_components["revenue"] <= 20
+    assert candidate.score_components["financial"] <= 15
+    assert candidate.score_components["chip"] <= 15
+    assert candidate.score_components["theme"] <= 15
+    assert candidate.score_components["sector"] <= 5
+    assert candidate.total_score <= 100
+    assert candidate.score_details["financial"]["score"] > 0
+    assert candidate.key_reasons
+    assert candidate.radar_feature_snapshot is snapshot
+
+
+def test_score_candidates_preserves_early_turnaround_when_financial_missing(monkeypatch):
+    candidate = radar.RadarCandidate(
+        code="2241",
+        name="艾姆勒",
+        industry="汽車零組件業",
+        strategy_codes={"B"},
+        technical_signals=[{"strategy_code": "B", "sub_signal_type": "B1_reversal"}],
+        chip_grades={"chip_1": "B"},
+    )
+    snapshot = {
+        "technical": {
+            "status": "ok",
+            "above_ma": {"ma5": True, "ma10": True},
+            "reclaim_ma": {"ma20": True},
+            "ma_slopes": {"ma5": "up"},
+            "volume_ratio": 1.5,
+            "price_up_volume_up": True,
+            "distance_from_60d_low_pct": 16,
+            "ma20_deviation_pct": 5,
+            "price_metrics": {"change_pct_20d": 8},
+        },
+        "revenue": {
+            "history": [
+                {"month": "2026-01-01", "revenue": 90, "yoy": -10, "MoM%": -5},
+                {"month": "2026-02-01", "revenue": 95, "yoy": -8, "MoM%": 5},
+                {"month": "2026-03-01", "revenue": 110, "yoy": 6, "MoM%": 15},
+                {"month": "2026-04-01", "revenue": 130, "yoy": 22, "MoM%": 18},
+            ]
+        },
+        "financial": {"financial_data": []},
+        "chip": {"grades": {"chip_1": "B"}, "institutional_data": [], "margin_data": [], "tdcc_data": {}},
+        "theme_news": {"local_news": [], "web_sources": [], "ai_sources": [], "topic_context": {}},
+        "sector": {"industry": "汽車零組件業", "industry_candidate_count": 2, "same_industry_codes": ["2241", "1111"]},
+    }
+    monkeypatch.setattr(radar, "_build_radar_feature_snapshot", lambda *args, **kwargs: snapshot)
+
+    radar._score_candidates([candidate], date(2026, 5, 22))
+
+    assert candidate.score_components["financial"] > 0
+    assert candidate.score_components["revenue"] >= 8
+    assert candidate.total_score >= 45
+    assert any("早期" in reason or "尚未反映" in reason for reason in candidate.key_reasons)
+    assert any("重估" in reason for reason in candidate.key_reasons)
+    assert any("財報資料缺漏" in risk for risk in candidate.risk_flags)
+
+
+def test_early_turnaround_candidate_survives_top15_among_technical_only_pool(monkeypatch):
+    early = radar.RadarCandidate(
+        code="2241",
+        name="艾姆勒",
+        industry="汽車零組件業",
+        strategy_codes={"B"},
+        technical_signals=[{"strategy_code": "B", "sub_signal_type": "B1_reversal"}],
+        chip_grades={"chip_1": "B"},
+        source_labels=["籌碼", "財報營收"],
+    )
+    ordinary = [
+        radar.RadarCandidate(
+            code=f"9{index:03d}",
+            name=f"技術股{index}",
+            industry="電子零組件業",
+            strategy_codes={"A"},
+            technical_signals=[{"strategy_code": "A"}],
+        )
+        for index in range(40)
+    ]
+    candidates = [*ordinary, early]
+
+    def fake_snapshot(item, *_args, **_kwargs):
+        if item.code == "2241":
+            return {
+                "technical": {
+                    "status": "ok",
+                    "above_ma": {"ma5": True, "ma10": True},
+                    "reclaim_ma": {"ma20": True},
+                    "ma_slopes": {"ma5": "up"},
+                    "volume_ratio": 1.5,
+                    "price_up_volume_up": True,
+                    "distance_from_60d_low_pct": 16,
+                    "ma20_deviation_pct": 5,
+                    "price_metrics": {"change_pct_20d": 8},
+                },
+                "revenue": {
+                    "history": [
+                        {"month": "2026-01-01", "revenue": 90, "yoy": -10, "MoM%": -5},
+                        {"month": "2026-02-01", "revenue": 95, "yoy": -8, "MoM%": 5},
+                        {"month": "2026-03-01", "revenue": 110, "yoy": 6, "MoM%": 15},
+                        {"month": "2026-04-01", "revenue": 130, "yoy": 22, "MoM%": 18},
+                    ]
+                },
+                "financial": {"financial_data": []},
+                "chip": {
+                    "grades": {"chip_1": "B"},
+                    "institutional_data": [
+                        {"Date": "2026-05-20", "Foreign_Net_Lots": 10, "Investment_Trust_Net_Lots": 0, "Dealer_Net_Lots": 0},
+                        {"Date": "2026-05-21", "Foreign_Net_Lots": 15, "Investment_Trust_Net_Lots": 0, "Dealer_Net_Lots": 1},
+                        {"Date": "2026-05-22", "Foreign_Net_Lots": 20, "Investment_Trust_Net_Lots": 0, "Dealer_Net_Lots": 1},
+                    ],
+                    "margin_data": [],
+                    "tdcc_data": {},
+                },
+                "theme_news": {"local_news": [], "web_sources": [], "ai_sources": [], "topic_context": {}},
+                "sector": {"industry": "汽車零組件業", "industry_candidate_count": 1, "same_industry_codes": ["2241"]},
+            }
+        return {
+            "technical": {
+                "status": "ok",
+                "above_ma": {"ma5": True, "ma10": True, "ma20": True},
+                "reclaim_ma": {},
+                "ma_slopes": {"ma5": "up"},
+                "volume_ratio": 1.1,
+                "price_up_volume_up": True,
+                "distance_from_60d_low_pct": 35,
+                "ma20_deviation_pct": 3,
+                "price_metrics": {"change_pct_20d": 5},
+            },
+            "revenue": {"history": []},
+            "financial": {"financial_data": []},
+            "chip": {"grades": {}, "institutional_data": [], "margin_data": [], "tdcc_data": {}},
+            "theme_news": {"local_news": [], "web_sources": [], "ai_sources": [], "topic_context": {}},
+            "sector": {"industry": item.industry, "industry_candidate_count": len(ordinary), "same_industry_codes": [row.code for row in ordinary[:20]]},
+        }
+
+    monkeypatch.setattr(radar, "_build_radar_feature_snapshot", fake_snapshot)
+
+    radar._score_candidates(candidates, date(2026, 5, 22))
+    ranked = sorted(candidates, key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True)
+    top15_codes = {item.code for item in ranked[:15]}
+
+    assert "2241" in top15_codes
+    assert early.total_score > max(item.total_score for item in ordinary)
+    assert any("早期" in reason or "尚未反映" in reason for reason in early.key_reasons)
+    assert any("財報資料缺漏" in risk for risk in early.risk_flags)
 
 
 def test_normalise_ai_sources_preserves_all_sources_and_fetch_details():
@@ -796,6 +1115,98 @@ def test_format_radar_report_shows_ai_comment():
     assert "觀察：觀察量能。" in text
 
 
+def test_radar_ai_comment_display_cleans_internal_english_labels():
+    dirty_reason = (
+        "[verified_fact+market_hypothesis] 題材發酵，"
+        "volume_quality=false，row_count=0，chip/institutional/margin 待補。"
+    )
+    dirty_risk = "(verified_fact) risk uses market_hypothesis and data_coverage."
+    dirty_watch = "reasoned_inference：setup score 改善，但 score_components 仍受 limited_by_light_research 影響。"
+    candidate = radar.RadarCandidate(
+        code="2330",
+        name="台積電",
+        strategy_codes={"A"},
+        score_components={"technical": 30, "revenue": 15, "financial": 10, "chip": 10, "theme": 10, "sector": 5},
+        total_score=80,
+        key_reasons=["技術轉強"],
+        ai_comment={"status": "ok", "priority": "高", "reason": dirty_reason, "risk": dirty_risk, "watch": dirty_watch},
+    )
+    result = radar.RadarResult(
+        request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 22), ai_top=15, model="minimax"),
+        report_date=date(2026, 5, 22),
+        candidates=[candidate],
+        ai_enriched_codes=["2330"],
+        diagnostics={},
+    )
+
+    full_text = radar.format_radar_report(result)
+    push_text = radar.format_radar_push_summary(result, limit=15)
+    combined = f"{full_text}\n{push_text}"
+
+    for forbidden in ["verified_fact", "market_hypothesis", "volume_quality", "row_count", "chip/institutional/margin"]:
+        assert forbidden not in combined
+    assert "量能未配合" in combined
+    assert "資料缺漏" in combined
+    assert "籌碼、法人與融資券" in combined
+    assert "推論" in combined
+    assert "技術型態分數" in combined
+
+
+def test_format_radar_report_defaults_to_top15():
+    candidates = [
+        radar.RadarCandidate(
+            code=f"{2300 + index}",
+            name=f"Stock{index}",
+            score_components={"technical": 1, "revenue": 0, "financial": 0, "chip": 0, "theme": 0, "sector": 0},
+            total_score=20 - index,
+        )
+        for index in range(16)
+    ]
+    result = radar.RadarResult(
+        request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 22), ai_top=15),
+        report_date=date(2026, 5, 22),
+        candidates=candidates,
+        ai_enriched_codes=[],
+        diagnostics={},
+    )
+
+    text = radar.format_radar_report(result)
+
+    assert "15. 2314 Stock14" in text
+    assert "16. 2315 Stock15" not in text
+    assert "完整名單共 16 檔" in text
+
+
+def test_format_radar_push_summary_is_concise_and_keeps_full_report_separate():
+    candidates = [
+        radar.RadarCandidate(
+            code=f"{2300 + index}",
+            name=f"Stock{index}",
+            score_components={"technical": 10, "revenue": 3, "financial": 2, "chip": 1, "theme": 4, "sector": 5},
+            total_score=80 - index,
+            key_reasons=["技術轉強", "題材升溫", "法人回補"],
+            risk_flags=["短線過熱"],
+            ai_comment={"status": "ok", "priority": "中", "reason": "AI 短評" * 80, "risk": "風險" * 80},
+        )
+        for index in range(12)
+    ]
+    result = radar.RadarResult(
+        request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 22), ai_top=15, model="minimax"),
+        report_date=date(2026, 5, 22),
+        candidates=candidates,
+        ai_enriched_codes=[],
+        diagnostics={},
+    )
+
+    push_text = radar.format_radar_push_summary(result, limit=5)
+    full_text = radar.format_radar_report(result)
+
+    assert "5. 2304 Stock4" in push_text
+    assert "6. 2305 Stock5" not in push_text
+    assert "完整名單共 12 檔" in push_text
+    assert len(push_text) < len(full_text)
+
+
 def test_technical_candidates_from_cache_falls_back_to_scan_signals(monkeypatch):
     monkeypatch.setattr(
         radar,
@@ -957,6 +1368,7 @@ class RadarTechnicalCacheFreshnessTests(unittest.TestCase):
 
 
 def test_attach_chip_scores_adds_existing_grade_maps(monkeypatch):
+    radar._RADAR_CHIP_GRADE_CACHE.clear()
     candidate = radar.RadarCandidate(code="2330")
     monkeypatch.setattr(radar, "build_market_context", lambda *args, **kwargs: object())
     monkeypatch.setattr(
@@ -972,6 +1384,7 @@ def test_attach_chip_scores_adds_existing_grade_maps(monkeypatch):
 
 
 def test_attach_chip_scores_uses_lightweight_radar_context(monkeypatch):
+    radar._RADAR_CHIP_GRADE_CACHE.clear()
     candidate = radar.RadarCandidate(code="2330")
     captured: dict[str, object] = {}
 
@@ -991,6 +1404,53 @@ def test_attach_chip_scores_uses_lightweight_radar_context(monkeypatch):
     assert captured["target_trading_days"] == 5
     assert captured["include_foreign_ratio"] is False
     assert captured["scope"] == "radar"
+
+
+def test_chip_candidates_uses_lightweight_radar_context(monkeypatch):
+    radar._RADAR_CHIP_GRADE_CACHE.clear()
+    captured: dict[str, object] = {}
+
+    def fake_build_market_context(*args, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(radar, "build_market_context", fake_build_market_context)
+    monkeypatch.setattr(
+        radar,
+        "build_chip_grade_maps",
+        lambda context, keys: {"chip_1": {"2330": "A"}, "chip_2": {}, "chip_3": {}, "chip_4": {}},
+    )
+    monkeypatch.setattr(radar, "_stock_meta_by_code", lambda: {})
+
+    candidates, policy = radar._chip_candidates(date(2026, 5, 20))
+
+    assert captured["target_trading_days"] == 5
+    assert captured["include_foreign_ratio"] is False
+    assert captured["scope"] == "radar"
+    assert candidates[0].code == "2330"
+    assert policy["candidate_count"] == 1
+
+
+def test_radar_chip_grade_maps_reused_between_candidates_and_scoring(monkeypatch):
+    radar._RADAR_CHIP_GRADE_CACHE.clear()
+    calls = {"count": 0}
+
+    def fake_build_market_context(*args, **kwargs):
+        calls["count"] += 1
+        return object()
+
+    monkeypatch.setattr(radar, "build_market_context", fake_build_market_context)
+    monkeypatch.setattr(
+        radar,
+        "build_chip_grade_maps",
+        lambda context, keys: {"chip_1": {"2330": "A"}, "chip_2": {}, "chip_3": {}, "chip_4": {}},
+    )
+    monkeypatch.setattr(radar, "_stock_meta_by_code", lambda: {})
+
+    candidates, _ = radar._chip_candidates(date(2026, 5, 20))
+    radar._attach_chip_scores(candidates, date(2026, 5, 20), None)
+
+    assert calls["count"] == 1
 
 
 def test_attach_web_sources_filters_with_request_argument_order(monkeypatch):
@@ -1090,7 +1550,9 @@ def test_research_center_sources_skip_fallback_when_minimax_has_enough_sources(m
 
 def test_format_radar_more_reads_saved_cache(monkeypatch):
     cache_path = Path(".cache") / "radar_test_results.json"
+    report_dir = Path(".cache") / "radar_test_reports"
     monkeypatch.setattr(radar, "RADAR_CACHE_PATH", cache_path)
+    monkeypatch.setattr(radar, "RADAR_REPORT_DIR", report_dir)
     result = radar.RadarResult(
         request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 20), ai_top=5),
         report_date=date(2026, 5, 20),
@@ -1115,7 +1577,9 @@ def test_format_radar_more_reads_saved_cache(monkeypatch):
 
 def test_save_radar_result_serializes_numpy_and_pandas_signal_values(monkeypatch):
     cache_path = Path(".cache") / "radar_json_safe_test_results.json"
+    report_dir = Path(".cache") / "radar_json_safe_reports"
     monkeypatch.setattr(radar, "RADAR_CACHE_PATH", cache_path)
+    monkeypatch.setattr(radar, "RADAR_REPORT_DIR", report_dir)
     result = radar.RadarResult(
         request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 20), ai_top=5),
         report_date=date(2026, 5, 20),
@@ -1139,9 +1603,38 @@ def test_save_radar_result_serializes_numpy_and_pandas_signal_values(monkeypatch
 
     radar.save_radar_result(result)
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    signal = payload[0]["candidates"][0]["technical_signals"][0]
+    assert "candidates" not in payload[0]
+    candidates_path = Path(payload[0]["artifact_paths"]["candidates"])
+    signal = json.loads(candidates_path.read_text(encoding="utf-8"))[0]["technical_signals"][0]
 
     assert signal["ma_context"]["ma105_support"] is True
     assert signal["features"]["score"] == 1.5
     assert signal["features"]["missing"] is None
     assert signal["signal_date"] == "2026-05-20T00:00:00"
+
+
+def test_load_radar_records_rebuilds_large_cache_from_artifacts(monkeypatch):
+    cache_path = Path(".cache") / "radar_large_cache_test.json"
+    report_dir = Path(".cache") / "radar_large_cache_reports"
+    radar_dir = report_dir / "2026-05-20" / "radar_20260520_120000"
+    radar_dir.mkdir(parents=True, exist_ok=True)
+    (radar_dir / "radar_candidates.json").write_text(
+        json.dumps([{"code": "2330", "name": "台積電", "total_score": 88}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    for name in ("radar_summary.md", "evidence_pack.json", "ai_analysis.json", "sources.json"):
+        (radar_dir / name).write_text("{}" if name.endswith(".json") else "summary", encoding="utf-8")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text("x" * 200, encoding="utf-8")
+
+    monkeypatch.setattr(radar, "RADAR_CACHE_PATH", cache_path)
+    monkeypatch.setattr(radar, "RADAR_REPORT_DIR", report_dir)
+    monkeypatch.setattr(radar, "RADAR_CACHE_MAX_BYTES", 10)
+
+    records = radar._load_radar_records(limit=5)
+    result = radar._record_to_result(records[0])
+
+    assert records[0]["schema_version"] == "radar_cache_index_v2"
+    assert Path(records[0]["artifact_paths"]["candidates"]).exists()
+    assert result.candidates[0].code == "2330"
+    assert cache_path.stat().st_size < 200

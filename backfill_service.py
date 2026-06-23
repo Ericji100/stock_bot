@@ -25,6 +25,8 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 from pathlib import Path
 from typing import Any, Callable
 
+from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
+
 DEFAULT_CORE_RESEARCH_LIMIT = 80
 DEFAULT_STRUCTURED_TIMEOUT_SECONDS = 30
 DEFAULT_STRUCTURED_TOTAL_BUDGET_SECONDS = 300
@@ -308,11 +310,7 @@ def build_backfill_candidate_pool(
     except Exception as exc:
         warnings.append(f"config.json 載入失敗，硬篩選使用預設值: {exc}")
 
-    scan_settings = config.get("scan_settings") or {}
-    min_price = float(scan_settings.get("min_price", 0))
-    max_price = float(scan_settings.get("max_price", 10**9))
-    min_avg_volume_20d = float(scan_settings.get("min_avg_volume_20d", 0))
-    min_monthly_revenue = float(scan_settings.get("min_monthly_revenue", 0))
+    scan_settings = resolve_hard_filter_settings(config.get("scan_settings") or {})
 
     pool: dict[str, BackfillCandidate] = {}
 
@@ -355,12 +353,14 @@ def build_backfill_candidate_pool(
                 continue
             price = metric.get("price")
             avg_volume = metric.get("avg_volume_20d")
-            if (
-                price is not None
-                and avg_volume is not None
-                and min_price <= price <= max_price
-                and avg_volume >= min_avg_volume_20d
-            ):
+            hard_filter = apply_basic_hard_filter(
+                price=price,
+                avg_volume_20d=avg_volume,
+                latest_monthly_revenue=None,
+                settings=scan_settings,
+                require_revenue=False,
+            )
+            if hard_filter.passed:
                 _add_candidate(pool, universe_by_code, entry.code, "hard_filter_price_volume", entry.name, entry.symbol, entry.market)
     except Exception as exc:
         warnings.append(f"價量篩選失敗: {exc}")
@@ -376,7 +376,7 @@ def build_backfill_candidate_pool(
             if not points:
                 continue
             latest_revenue = points[0].revenue
-            if latest_revenue is not None and latest_revenue >= min_monthly_revenue:
+            if latest_revenue is not None and latest_revenue >= scan_settings["min_monthly_revenue"]:
                 _add_candidate(pool, universe_by_code, entry.code, "hard_filter_revenue_size", entry.name, entry.symbol, entry.market)
     except Exception as exc:
         warnings.append(f"營收規模篩選失敗: {exc}")
@@ -900,6 +900,7 @@ def backfill_candidate_data(
     stop_event: threading.Event | None = None,
     throttle: BackfillThrottle | None = None,
     structured_total_budget_sec: float | None = DEFAULT_STRUCTURED_TOTAL_BUDGET_SECONDS,
+    scan_settings: dict[str, Any] | None = None,
 ) -> BackfillResult:
     """Warm up all cached data for the candidate pool (medium) and core research pool (full).
 
@@ -913,6 +914,7 @@ def backfill_candidate_data(
     result.universe_count = len(universe)
     result.candidate_count = len(candidates)
     result.core_research_count = len(core_pool)
+    resolved_scan_settings = resolve_hard_filter_settings(scan_settings)
     revenue_history: dict[str, Any] = {}
     chip_context: Any | None = None
 
@@ -1036,6 +1038,7 @@ def backfill_candidate_data(
             progress_label="手動完整回補",
             scope="backfill",
             extra_candidates=extra_chip_candidates,
+            scan_settings=resolved_scan_settings,
         )
         result.chip_candidate_count = len(chip_context.candidates) if chip_context.candidates is not None else 0
         result.latest_trading_date = chip_context.latest_trading_date
@@ -1239,6 +1242,7 @@ def run_full_backfill(
         stop_event,
         throttle,
         structured_total_budget_sec=structured_total_budget_sec,
+        scan_settings=config.get("scan_settings") or {},
     )
     result.warnings.extend(pool_warnings)
 

@@ -18,6 +18,10 @@ REQUIRED_SCHEMA_KEYS = {
     "positive_factors",
     "watch_items",
     "sources",
+    "schema_version",
+    "report_metadata",
+    "data_source_summary",
+    "candidate_snapshot",
 }
 
 FORBIDDEN_PATTERNS = ("保證獲利", "必漲", "一定買入", "自動下單", "穩賺", "保證達成")
@@ -153,4 +157,10 @@ def _schema_errors(report_json: dict[str, Any]) -> list[str]:
         errors.append("scores must be list")
     if not isinstance(report_json.get("sources"), list):
         errors.append("sources must be list")
+    if not isinstance(report_json.get("data_source_summary"), list):
+        errors.append("data_source_summary must be list")
+    if not isinstance(report_json.get("candidate_snapshot"), list):
+        errors.append("candidate_snapshot must be list")
+    if not isinstance(report_json.get("report_metadata"), dict):
+        errors.append("report_metadata must be dict")
     return errors

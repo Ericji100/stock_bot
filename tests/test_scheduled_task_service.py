@@ -190,14 +190,14 @@ class ScheduledTaskServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_format_registered_scheduled_jobs(self):
         text = format_registered_scheduled_jobs(
             [
-                ScheduledJobRegistration("scan", "監控掃描", "每日 12:30"),
-                ScheduledJobRegistration("backfill", "完整資料回補檢查", "每 2 小時", queued=False),
+                ScheduledJobRegistration("scan", "監控掃描", "每日 12:30", parameters="source=monitor"),
+                ScheduledJobRegistration("backfill", "完整資料回補檢查", "每 2 小時", queued=False, parameters="force_refresh=false"),
             ]
         )
 
         self.assertIn("已註冊定時任務", text)
-        self.assertIn("每日 12:30｜監控掃描｜排隊執行", text)
-        self.assertIn("每 2 小時｜完整資料回補檢查｜背景執行", text)
+        self.assertIn("每日 12:30｜監控掃描｜參數：source=monitor｜排隊執行", text)
+        self.assertIn("每 2 小時｜完整資料回補檢查｜參數：force_refresh=false｜背景執行", text)
 
 
 if __name__ == "__main__":

@@ -184,7 +184,12 @@ class TopicChangePack:
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        report_metadata = self.extra.get("report_metadata") if isinstance(self.extra, dict) else None
+        data_source_summary = self.extra.get("data_source_summary") if isinstance(self.extra, dict) else None
+        candidate_snapshot = self.extra.get("candidate_snapshot") if isinstance(self.extra, dict) else None
+        command_result = self.extra.get("command_result") if isinstance(self.extra, dict) else None
+        data = {
+            "schema_version": "topic_change_pack_v2",
             "change_id": self.change_id,
             "parent_change_id": self.parent_change_id,
             "mode": self.mode.value,
@@ -204,6 +209,15 @@ class TopicChangePack:
             "prompt_log_path": self.prompt_log_path,
             "extra": self.extra,
         }
+        if report_metadata:
+            data["report_metadata"] = report_metadata
+        if data_source_summary:
+            data["data_source_summary"] = data_source_summary
+        if candidate_snapshot:
+            data["candidate_snapshot"] = candidate_snapshot
+        if command_result:
+            data["command_result"] = command_result
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TopicChangePack:

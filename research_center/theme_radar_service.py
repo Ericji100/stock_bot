@@ -150,13 +150,37 @@ def build_theme_flow_data(
         _emit(progress, f"題材流向：分析 {query or '未指定題材'}")
 
     stock_rows = (preloaded or {}).get("stock_rows")
+    stock_rows_source = "preloaded"
     if stock_rows is None:
         universe = load_stock_universe(False)
-        price_metrics = _safe_price_metrics(universe[:200])
-        market_movers = market_movers or build_market_movers(target_date, universe=universe, price_metrics=price_metrics, progress=progress)
+        by_code = {str(getattr(entry, "code", "")): entry for entry in universe}
+        market_movers = market_movers or _load_cached_market_movers_snapshot(target_date)
+        rows = rows_from_market_movers(market_movers or {}, "active_movers")
+        if rows:
+            stock_rows_source = "market_movers_cache"
+        else:
+            codes, recent_policy = _strong_stock_codes("recent", target_date, by_code)
+            rows = _stock_rows(codes, by_code, {})
+            if rows:
+                stock_rows_source = "recent_scan_cache"
+                market_movers = {
+                    "status": "recent_scan_cache_for_theme_flow",
+                    "market_data_date": target_date.isoformat(),
+                    "active_movers": rows,
+                    "strong_stock_policy": recent_policy,
+                    "data_quality": {
+                        "limited_market_price_fields": True,
+                        "warnings": ["theme_flow 使用近期選股快取建立題材流向候選股，避免 standalone 指令大量抓取價量資料。"],
+                    },
+                }
+        if not rows:
+            sample_universe = universe[:80]
+            price_metrics = _safe_price_metrics(sample_universe)
+            market_movers = market_movers or build_market_movers(target_date, universe=sample_universe, price_metrics=price_metrics, progress=progress)
+            rows = rows_from_market_movers(market_movers, "active_movers") or _fallback_active_rows(sample_universe, price_metrics, 80)
+            stock_rows_source = "limited_price_sample"
         stock_rows = annotate_rows_with_subsectors(_attach_theme_matches(
-            rows_from_market_movers(market_movers, "active_movers")
-            or _fallback_active_rows(universe[:200], price_metrics, 160),
+            rows,
             topic_library,
         ))
     else:
@@ -196,6 +220,7 @@ def build_theme_flow_data(
             "has_supply_chain_nodes": bool(nodes),
             "related_stock_count": len(related),
             "market_data_date": _market_data_date_from(market_movers),
+            "stock_rows_source": stock_rows_source,
         },
         "analysis_policy": _analysis_policy(),
     }
@@ -760,6 +785,38 @@ def _safe_price_metrics(universe: list[Any]) -> dict[str, Any]:
         return load_price_metrics(universe)
     except Exception:
         return {}
+
+
+def _load_cached_market_movers_snapshot(target_date: date) -> dict[str, Any] | None:
+    cache_dir = ROOT_DIR / ".cache" / "market_movers"
+    exact_path = cache_dir / f"market_movers_{target_date.isoformat()}.json"
+    paths = [exact_path]
+    if cache_dir.exists():
+        paths.extend(
+            path for path in sorted(cache_dir.glob("market_movers_*.json"), reverse=True)
+            if path != exact_path
+        )
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if path != exact_path:
+            payload = dict(payload)
+            data_quality = dict(payload.get("data_quality") or {})
+            warnings = list(data_quality.get("warnings") or [])
+            warning = "theme_flow 使用最近一次 market_movers 快照，避免 standalone 指令大量抓取價量資料。"
+            if warning not in warnings:
+                warnings.append(warning)
+            data_quality["warnings"] = warnings
+            data_quality["latest_snapshot_used"] = True
+            payload["data_quality"] = data_quality
+        return payload
+    return None
 
 
 def _build_layers(theme: dict[str, Any] | None, nodes: list[dict[str, Any]], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

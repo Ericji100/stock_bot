@@ -138,7 +138,18 @@ class MiniMaxService:
                     response = client.post(url, headers=headers, json=payload)
                     response.raise_for_status()
                     return response.json()
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
+            except httpx.TimeoutException as exc:
+                diagnostics = _build_minimax_transport_error_diagnostics(
+                    url=url,
+                    model=self.model,
+                    payload=payload,
+                    attempt=attempt + 1,
+                    exc=exc,
+                    timeout_seconds=self.timeout_seconds,
+                )
+                diagnostics["retry_skipped_reason"] = "timeout_not_retried"
+                raise MiniMaxRequestError(_format_minimax_error_message(diagnostics), diagnostics) from exc
+            except httpx.TransportError as exc:
                 last_error = exc
                 if attempt >= self.max_retries:
                     diagnostics = _build_minimax_transport_error_diagnostics(

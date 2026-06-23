@@ -69,6 +69,30 @@ class TestTopicFormatters(unittest.TestCase):
         self.assertIn("⚠️ 警告", result)
         self.assertIn("下一步", result)
 
+    def test_format_change_pack_created_summary_uses_chinese_labels(self):
+        pack = TopicChangePack(
+            change_id="change_20260622_035927",
+            parent_change_id=None,
+            mode=TopicChangeMode.UPDATE,
+            status=TopicChangeStatus.PENDING,
+            model="minimax",
+            created_at="2026-06-22T03:59:27+0800",
+            updated_at="2026-06-22T03:59:27+0800",
+            summary="題材庫更新維護：候選 6 筆，產生 6 筆可審核變更。",
+            confidence="medium",
+            actions=[],
+        )
+
+        result = formatters.format_change_pack_created_summary(pack)
+
+        self.assertIn("變更包代號：change_20260622_035927", result)
+        self.assertIn("維護模式：更新", result)
+        self.assertIn("審核狀態：待審核", result)
+        self.assertIn("信心度：中", result)
+        self.assertNotIn("模式：update", result)
+        self.assertNotIn("狀態：pending", result)
+        self.assertNotIn("信心度：medium", result)
+
     def test_format_change_pack_detail_with_adjustment_check(self):
         pack = TopicChangePack(
             change_id="change_adjust_test",
@@ -94,7 +118,7 @@ class TestTopicFormatters(unittest.TestCase):
         self.assertIn("請增加更多題材", result)
         self.assertIn("已完成", result)
         self.assertIn("未完成", result)
-        self.assertIn("partial", result)
+        self.assertIn("部分滿足", result)
 
     def test_format_change_pack_detail_with_satisfied_check(self):
         pack = TopicChangePack(
@@ -116,8 +140,8 @@ class TestTopicFormatters(unittest.TestCase):
             },
         )
         result = formatters.format_change_pack_detail(pack)
-        self.assertIn("satisfied", result)
-        self.assertIn("✅ satisfied", result)
+        self.assertIn("已滿足", result)
+        self.assertIn("✅ 已滿足", result)
 
     def test_format_apply_result_success(self):
         from research_center.topic_models import TopicApplyResult
@@ -179,7 +203,7 @@ class TestTopicFormatters(unittest.TestCase):
 
     def test_format_next_steps_non_pending(self):
         result = formatters.format_next_steps("change_xxx", "confirmed")
-        self.assertIn("已 confirmed", result)
+        self.assertIn("狀態：已套用", result)
 
     def test_format_change_pack_detail_failed_no_logs(self):
         """Failed pack should NOT show raw_response_path or prompt_log_path to users."""
@@ -210,6 +234,25 @@ class TestTopicFormatters(unittest.TestCase):
         # Next steps should still appear
         self.assertIn("/topic_reject", result)
         self.assertIn("/topic_maintain", result)
+
+    def test_format_change_pack_created_summary_shows_data_date_from_metadata(self):
+        pack = TopicChangePack(
+            change_id="change_20260622_035927",
+            parent_change_id=None,
+            mode=TopicChangeMode.UPDATE,
+            status=TopicChangeStatus.PENDING,
+            model="minimax",
+            created_at="2026-06-22T03:59:27+0800",
+            updated_at="2026-06-22T03:59:27+0800",
+            summary="題材庫更新",
+            confidence="medium",
+            actions=[],
+            extra={"command_result": {"data_date": "2026-06-21"}},
+        )
+
+        result = formatters.format_change_pack_created_summary(pack)
+
+        self.assertIn("資料日期：2026-06-21", result)
 
 
 if __name__ == "__main__":

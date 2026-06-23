@@ -23,28 +23,50 @@ from .topic_schema_normalizer import (
 AiJsonCall = Callable[[str, str], dict[str, Any] | list[Any]]
 
 CANDIDATE_PROMPT_LIMITS = {
-    "webfetch_evidence_json": 12000,
-    "web_fetched_sources_json": 8000,
-    "discovery_sources_json": 10000,
-    "external_topic_source_caches_json": 6000,
-    "existing_topic_profiles_json": 5000,
-    "company_topic_map_json": 3000,
-    "supply_chain_nodes_json": 3000,
-    "company_knowledge_json": 3000,
-    "low_model_digest_json": 8000,
+    "webfetch_evidence_json": 2200,
+    "web_fetched_sources_json": 1000,
+    "discovery_sources_json": 2200,
+    "recent_scan_candidates_json": 700,
+    "market_signals_json": 500,
+    "external_topic_source_caches_json": 500,
+    "existing_topic_profiles_json": 600,
+    "company_topic_map_json": 500,
+    "supply_chain_nodes_json": 500,
+    "company_knowledge_json": 500,
+    "low_model_digest_json": 400,
+}
+
+CANDIDATE_RETRY_PROMPT_LIMITS = {
+    "webfetch_evidence_json": 1400,
+    "web_fetched_sources_json": 600,
+    "discovery_sources_json": 1400,
+    "recent_scan_candidates_json": 400,
+    "market_signals_json": 300,
+    "external_topic_source_caches_json": 300,
+    "existing_topic_profiles_json": 350,
+    "company_topic_map_json": 300,
+    "supply_chain_nodes_json": 300,
+    "company_knowledge_json": 300,
+    "low_model_digest_json": 250,
 }
 
 DETAIL_PROMPT_LIMITS = {
-    "webfetch_evidence_json": 3500,
-    "web_fetched_sources_json": 1500,
-    "existing_topic_profiles_json": 700,
-    "company_topic_map_json": 700,
-    "supply_chain_nodes_json": 700,
-    "company_knowledge_json": 700,
-    "low_model_digest_json": 1200,
+    "webfetch_evidence_json": 1800,
+    "web_fetched_sources_json": 800,
+    "existing_topic_profiles_json": 350,
+    "company_topic_map_json": 350,
+    "supply_chain_nodes_json": 350,
+    "company_knowledge_json": 350,
+    "low_model_digest_json": 500,
 }
 
 DETAIL_BATCH_SIZE = 2
+DETAIL_AI_BATCH_LIMITS = {
+    TopicChangeMode.INITIAL: 4,
+    TopicChangeMode.UPDATE: 8,
+}
+DETAIL_STAGE_PROMPT_HARD_CHARS = 18000
+CANDIDATE_STAGE_PROMPT_HARD_CHARS = 15000
 
 LOCAL_FALLBACK_TOPIC_RULES = [
     {
@@ -134,12 +156,14 @@ def run_topic_pipeline(
         if candidates:
             stage_logs.append({"stage": "candidate_fallback", "count": len(candidates)})
 
-    target_count = 16 if mode == TopicChangeMode.INITIAL else 8
-    max_count = 20 if mode == TopicChangeMode.INITIAL else 10
+    target_count = 12 if mode == TopicChangeMode.INITIAL else 8
+    max_count = 12 if mode == TopicChangeMode.INITIAL else 8
     selected = candidates[:max_count]
+    ai_detail_batch_limit = DETAIL_AI_BATCH_LIMITS[mode]
+    detail_batch_size = 1 if mode == TopicChangeMode.UPDATE else DETAIL_BATCH_SIZE
 
     actions = []
-    for batch_index, batch in enumerate(_chunks(selected, DETAIL_BATCH_SIZE), start=1):
+    for batch_index, batch in enumerate(_chunks(selected, detail_batch_size), start=1):
         default_types = []
         for candidate in batch:
             action_type, target_theme_id = decide_topic_action_type(candidate, existing_profiles)
@@ -148,17 +172,25 @@ def run_topic_pipeline(
                 candidate["target_theme_id"] = target_theme_id
             default_types.append(action_type)
 
-        payload = _expand_batch(
-            batch=batch,
-            batch_index=batch_index,
-            prompt_variables=prompt_variables,
-            load_prompt=load_prompt,
-            render_prompt=render_prompt,
-            call_ai_json=call_ai_json,
-            stage_logs=stage_logs,
-            emit=emit,
-        )
-        batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
+        if batch_index <= ai_detail_batch_limit:
+            payload = _expand_batch(
+                batch=batch,
+                batch_index=batch_index,
+                prompt_variables=prompt_variables,
+                load_prompt=load_prompt,
+                render_prompt=render_prompt,
+                call_ai_json=call_ai_json,
+                stage_logs=stage_logs,
+                emit=emit,
+            )
+            batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
+        else:
+            stage_logs.append({
+                "stage": f"detail_expand_{batch_index}_local_budget_fallback",
+                "count": len(batch),
+                "warning": "已達 AI 細節擴寫批次上限，剩餘候選改用本地保守擴寫，避免題材庫維護逾時。",
+            })
+            batch_actions = normalize_topic_detail_actions(batch, fallback_candidates=batch)
         if not batch_actions:
             stage_logs.append({
                 "stage": f"detail_expand_{batch_index}_local_fallback",
@@ -179,6 +211,8 @@ def run_topic_pipeline(
     for log in stage_logs:
         if log.get("error"):
             warnings.append(f"{log.get('stage')}: {log.get('error')}")
+        if log.get("warning"):
+            warnings.append(f"{log.get('stage')}: {log.get('warning')}")
         if isinstance(log.get("company_knowledge_updates"), dict):
             company_knowledge_updates = _merge_company_knowledge_updates(
                 company_knowledge_updates,
@@ -208,8 +242,33 @@ def run_topic_pipeline(
     if not pack.actions:
         pack.status = TopicChangeStatus.FAILED
         pack.warnings.append("AI 未產生可套用的題材變更，請拒絕此變更包或重新執行 /topic_maintain。")
+    if _stage_logs_expose_model_reasoning(stage_logs):
+        pack.status = TopicChangeStatus.FAILED
+        warning = "AI 回應包含模型思考草稿（<think> 或英文推理），此變更包不可套用，請重新執行 /topic_maintain。"
+        if warning not in pack.warnings:
+            pack.warnings.append(warning)
     normalize_change_pack_quality(pack)
     return pack, stage_logs
+
+
+def _stage_logs_expose_model_reasoning(stage_logs: list[dict[str, Any]]) -> bool:
+    patterns = (
+        "<think>",
+        "</think>",
+        "The user wants",
+        "Let me",
+        "I need to",
+        "Now let me",
+        "model_reasoning_exposed",
+    )
+    for log in stage_logs:
+        for value in log.values():
+            if not isinstance(value, str):
+                continue
+            lowered = value.lower()
+            if any(pattern.lower() in lowered for pattern in patterns):
+                return True
+    return False
 
 
 def _extract_candidates(
@@ -232,32 +291,115 @@ def _extract_candidates(
         variables,
         max_chars=CANDIDATE_PROMPT_LIMITS["low_model_digest_json"],
     )
+    prompt_chars = len(prompt)
+    emit(f"AI 產生候選題材 prompt={prompt_chars} chars")
+    if prompt_chars > CANDIDATE_STAGE_PROMPT_HARD_CHARS:
+        stage_logs.append({
+            "stage": "candidate_extract",
+            "error": f"prompt_too_large:{prompt_chars}",
+            "warning": "候選題材萃取 prompt 過大，改用本地 evidence 規則產生候選，避免題材庫維護逾時。",
+            "prompt_chars": prompt_chars,
+        })
+        return []
     try:
-        emit("AI 產生候選題材")
         payload = call_ai_json(prompt, "candidate_extract")
+        if _payload_exposes_model_reasoning(payload):
+            stage_logs.append({"stage": "candidate_extract", "error": "model_reasoning_exposed"})
         if isinstance(payload, dict) and isinstance(payload.get("company_knowledge_updates"), dict):
             stage_logs.append({
                 "stage": "candidate_extract_company_knowledge",
                 "company_knowledge_updates": payload["company_knowledge_updates"],
             })
-        if isinstance(payload, dict):
-            raw_items = (
-                payload.get("candidates")
-                or payload.get("topics")
-                or payload.get("items")
-                or payload.get("actions")
-            )
-        else:
-            raw_items = payload
-        candidates = []
-        for idx, item in enumerate(raw_items or []):
-            candidate = normalize_topic_candidate(item, idx)
-            if candidate is not None:
-                candidates.append(candidate)
-        stage_logs.append({"stage": "candidate_extract", "count": len(candidates)})
+        candidates = _candidates_from_payload(payload)
+        stage_logs.append({"stage": "candidate_extract", "count": len(candidates), "prompt_chars": prompt_chars})
         return candidates
     except Exception as exc:
-        stage_logs.append({"stage": "candidate_extract", "error": str(exc)})
+        if _should_retry_candidate_error(exc):
+            candidates = _retry_candidate_extract(
+                prompt_variables=prompt_variables,
+                template=template,
+                render_prompt=render_prompt,
+                call_ai_json=call_ai_json,
+                stage_logs=stage_logs,
+                reason=str(exc),
+            )
+            if candidates:
+                stage_logs.append({
+                    "stage": "candidate_extract_recovered",
+                    "count": len(candidates),
+                    "reason": str(exc),
+                })
+                return candidates
+        stage_logs.append({"stage": "candidate_extract", "error": str(exc), "prompt_chars": prompt_chars})
+        return []
+
+
+def _candidates_from_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        raw_items = (
+            payload.get("candidates")
+            or payload.get("topics")
+            or payload.get("items")
+            or payload.get("actions")
+        )
+    else:
+        raw_items = payload
+    candidates = []
+    for idx, item in enumerate(raw_items or []):
+        candidate = normalize_topic_candidate(item, idx)
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates
+
+
+def _should_retry_candidate_error(exc: Exception) -> bool:
+    text = str(exc)
+    retry_markers = (
+        "ReadTimeout",
+        "timed out",
+        "timeout",
+        "status=timeout",
+        "MiniMax API request failed",
+    )
+    return any(marker.lower() in text.lower() for marker in retry_markers)
+
+
+def _retry_candidate_extract(
+    *,
+    prompt_variables: dict[str, str],
+    template: str,
+    render_prompt: Callable[[str, dict[str, str]], str],
+    call_ai_json: AiJsonCall,
+    stage_logs: list[dict[str, Any]],
+    reason: str,
+) -> list[dict[str, Any]]:
+    variables = _compact_prompt_variables(prompt_variables, CANDIDATE_RETRY_PROMPT_LIMITS)
+    prompt = render_prompt(template, variables)
+    prompt = _append_low_model_digest_block(
+        prompt,
+        variables,
+        max_chars=CANDIDATE_RETRY_PROMPT_LIMITS["low_model_digest_json"],
+    )
+    try:
+        payload = call_ai_json(prompt, "candidate_extract_retry")
+        if _payload_exposes_model_reasoning(payload):
+            stage_logs.append({"stage": "candidate_extract_retry", "error": "model_reasoning_exposed"})
+            return []
+        candidates = _candidates_from_payload(payload)
+        stage_logs.append({
+            "stage": "candidate_extract_retry",
+            "count": len(candidates),
+            "reason": reason,
+            "prompt_chars": len(prompt),
+        })
+        return candidates
+    except Exception as retry_exc:
+        stage_logs.append({
+            "stage": "candidate_extract_retry",
+            "error": str(retry_exc),
+            "reason": reason,
+            "prompt_chars": len(prompt),
+        })
         return []
 
 
@@ -277,27 +419,200 @@ def _expand_batch(
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "missing prompt"})
         return {}
     variables = _compact_detail_prompt_variables(prompt_variables)
-    variables["topic_candidates_json"] = json.dumps(batch, ensure_ascii=False, indent=2)
+    variables["topic_candidates_json"] = json.dumps(
+        [_compact_detail_candidate(candidate) for candidate in batch],
+        ensure_ascii=False,
+        indent=2,
+    )
     prompt = render_prompt(template, variables)
     prompt = _append_low_model_digest_block(
         prompt,
         variables,
         max_chars=DETAIL_PROMPT_LIMITS["low_model_digest_json"],
     )
+    prompt_chars = len(prompt)
+    emit(f"AI 補題材細節 batch {batch_index} prompt={prompt_chars} chars")
+    if prompt_chars > DETAIL_STAGE_PROMPT_HARD_CHARS:
+        stage_logs.append({
+            "stage": f"detail_expand_{batch_index}",
+            "error": f"prompt_too_large:{prompt_chars}",
+            "warning": "細節擴寫 prompt 過大，改用本地保守擴寫，避免題材庫維護卡住。",
+            "prompt_chars": prompt_chars,
+        })
+        return {}
     try:
-        emit(f"AI 補題材細節 batch {batch_index}")
         payload = call_ai_json(prompt, f"detail_expand_{batch_index}")
+        if _payload_exposes_model_reasoning(payload):
+            stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "model_reasoning_exposed"})
         if isinstance(payload, dict) and isinstance(payload.get("company_knowledge_updates"), dict):
             stage_logs.append({
                 "stage": f"detail_expand_{batch_index}_company_knowledge",
                 "company_knowledge_updates": payload["company_knowledge_updates"],
             })
         count = len(payload.get("actions", [])) if isinstance(payload, dict) else len(payload or [])
-        stage_logs.append({"stage": f"detail_expand_{batch_index}", "count": count})
+        if count <= 0:
+            retry_payload = _retry_detail_batch(
+                prompt=prompt,
+                stage=f"detail_expand_{batch_index}",
+                call_ai_json=call_ai_json,
+                stage_logs=stage_logs,
+                reason="empty_actions",
+            )
+            retry_count = len(retry_payload.get("actions", [])) if isinstance(retry_payload, dict) else len(retry_payload or [])
+            if retry_count > 0:
+                stage_logs.append({
+                    "stage": f"detail_expand_{batch_index}_recovered",
+                    "count": retry_count,
+                    "reason": "empty_actions",
+                })
+                return retry_payload
+        stage_logs.append({"stage": f"detail_expand_{batch_index}", "count": count, "prompt_chars": prompt_chars})
         return payload
     except Exception as exc:
-        stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": str(exc)})
+        if _should_retry_detail_error(exc):
+            retry_payload = _retry_detail_batch(
+                prompt=prompt,
+                stage=f"detail_expand_{batch_index}",
+                call_ai_json=call_ai_json,
+                stage_logs=stage_logs,
+                reason=str(exc),
+            )
+            retry_count = len(retry_payload.get("actions", [])) if isinstance(retry_payload, dict) else len(retry_payload or [])
+            if retry_count > 0:
+                stage_logs.append({
+                    "stage": f"detail_expand_{batch_index}_recovered",
+                    "count": retry_count,
+                    "reason": str(exc),
+                    "prompt_chars": prompt_chars,
+                })
+                return retry_payload
+        stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": str(exc), "prompt_chars": prompt_chars})
         return {}
+
+
+def _should_retry_detail_error(exc: Exception) -> bool:
+    text = str(exc)
+    retry_markers = (
+        "Expecting property name",
+        "Expecting ',' delimiter",
+        "Unterminated string",
+        "Invalid control character",
+        "JSONDecodeError",
+        "ReadTimeout",
+        "timed out",
+        "timeout",
+        "status=timeout",
+        "MiniMax API request failed",
+    )
+    return any(marker.lower() in text.lower() for marker in retry_markers)
+
+
+def _retry_detail_batch(
+    *,
+    prompt: str,
+    stage: str,
+    call_ai_json: AiJsonCall,
+    stage_logs: list[dict[str, Any]],
+    reason: str,
+) -> dict[str, Any] | list[Any]:
+    retry_prompt = (
+        prompt
+        + "\n\n"
+        + "重要：上一輪輸出無法使用。請只輸出合法 JSON object；根物件只能包含 actions。"
+        + " 不要 Markdown、不要註解、不要多餘文字。"
+    )
+    try:
+        payload = call_ai_json(retry_prompt, f"{stage}_retry")
+        count = len(payload.get("actions", [])) if isinstance(payload, dict) else len(payload or [])
+        stage_logs.append({
+            "stage": f"{stage}_retry",
+            "count": count,
+            "reason": reason,
+            "prompt_chars": len(retry_prompt),
+        })
+        return payload
+    except Exception as retry_exc:
+        stage_logs.append({
+            "stage": f"{stage}_retry",
+            "error": str(retry_exc),
+            "reason": reason,
+            "prompt_chars": len(retry_prompt),
+        })
+        return {}
+
+
+def _compact_detail_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Keep detail-stage candidates small while preserving auditable evidence hints."""
+    if not isinstance(candidate, dict):
+        return {}
+    compact = {
+        "theme_id": candidate.get("theme_id") or "",
+        "theme_name": candidate.get("theme_name") or "",
+        "keywords": _bounded_list(candidate.get("keywords"), limit=10, max_string=80),
+        "industries": _bounded_list(candidate.get("industries"), limit=8, max_string=80),
+        "reason": _limit_text(candidate.get("reason") or candidate.get("description") or "", 700),
+        "candidate_companies": _compact_candidate_companies(candidate.get("candidate_companies")),
+        "source_refs": _compact_source_refs(candidate.get("source_refs") or candidate.get("evidence")),
+    }
+    for key in ("action_type", "target_theme_id", "rank", "confidence"):
+        if candidate.get(key) is not None:
+            compact[key] = candidate[key]
+    return compact
+
+
+def _compact_candidate_companies(value: Any, *, limit: int = 16) -> list[dict[str, Any]]:
+    companies = value if isinstance(value, list) else []
+    compact: list[dict[str, Any]] = []
+    for item in companies[:limit]:
+        if isinstance(item, str):
+            compact.append({"company_code": item, "company_name": "", "role": ""})
+            continue
+        if not isinstance(item, dict):
+            continue
+        compact.append({
+            "company_code": item.get("company_code") or item.get("code") or "",
+            "company_name": item.get("company_name") or item.get("name") or "",
+            "role": _limit_text(item.get("role") or item.get("reason") or "", 120),
+        })
+    return compact
+
+
+def _compact_source_refs(value: Any, *, limit: int = 5) -> list[dict[str, Any]]:
+    refs = value if isinstance(value, list) else []
+    compact: list[dict[str, Any]] = []
+    for item in refs[:limit]:
+        if isinstance(item, str):
+            compact.append({"title": _limit_text(item, 120), "claim": "", "url": ""})
+            continue
+        if not isinstance(item, dict):
+            continue
+        compact.append({
+            "title": _limit_text(item.get("title") or item.get("source") or "", 120),
+            "claim": _limit_text(item.get("claim") or item.get("snippet") or item.get("summary") or item.get("content") or "", 260),
+            "url": _limit_text(item.get("url") or item.get("link") or "", 220),
+            "source_level": _limit_text(item.get("source_level") or "", 40),
+        })
+    return compact
+
+
+def _bounded_list(value: Any, *, limit: int, max_string: int) -> list[Any]:
+    items = value if isinstance(value, list) else []
+    return [_limit_text(item, max_string) if isinstance(item, str) else item for item in items[:limit]]
+
+
+def _limit_text(value: Any, max_chars: int) -> str:
+    text = str(value or "")
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + f"... [truncated, total {len(text)} chars]"
+
+
+def _payload_exposes_model_reasoning(payload: Any) -> bool:
+    try:
+        text = json.dumps(payload, ensure_ascii=False)
+    except Exception:
+        text = str(payload)
+    return _stage_logs_expose_model_reasoning([{"payload": text}])
 
 
 def _fallback_candidates_from_evidence(structured_data: dict[str, Any]) -> list[dict[str, Any]]:

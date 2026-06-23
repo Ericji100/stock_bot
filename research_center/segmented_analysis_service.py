@@ -14,13 +14,14 @@ from .prompt_logging import write_prompt_log
 
 ProgressCallback = Callable[[str], None]
 
-THEME_ANALYSIS_COMMANDS = {"theme_radar", "theme_flow", "sector_strength"}
+SEGMENTED_ANALYSIS_COMMANDS = {"research", "value_scan", "macro", "theme", "theme_radar", "theme_flow", "sector_strength"}
 SEGMENTED_ANALYSIS_PROMPT_THRESHOLD = 120_000
 SEGMENTED_ANALYSIS_TARGET_CHARS = 110_000
 SEGMENTED_ANALYSIS_HARD_CHARS = 160_000
 SEGMENTED_ANALYSIS_FINAL_HARD_CHARS = 180_000
 SEGMENTED_ANALYSIS_CALL_TIMEOUT_SECONDS = 900.0
 SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS = 8
+SEGMENTED_ANALYSIS_MAX_THEME_FLOW_SEGMENTS = 10
 SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS = 110_000
 SEGMENTED_ANALYSIS_PARALLEL_MIN_SEGMENTS = 4
 SEGMENTED_ANALYSIS_MAX_PARALLEL_CALLS = 2
@@ -60,7 +61,9 @@ def should_use_segmented_analysis(
     prompt_chars: int | None = None,
     threshold_chars: int = SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
 ) -> bool:
-    if request.command not in THEME_ANALYSIS_COMMANDS:
+    if request.command not in SEGMENTED_ANALYSIS_COMMANDS:
+        return False
+    if request.command == "research" and request.mode != "deep":
         return False
     if prompt_chars is None:
         return False
@@ -100,18 +103,15 @@ def run_segmented_theme_analysis(
 
     base_plans = _segment_plans(request, structured_data)
     plans = _split_oversized_plans(request, structured_data, base_plans)
-    if len(plans) > SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS:
-        _emit(
-            progress,
-            f"分段 AI 分析預估 {len(plans)} 段，超過上限 {SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS}，改用保真核心包整合模式。",
-        )
+    max_segments = _max_segment_plan_count(request)
+    if len(plans) > max_segments:
+        _emit(progress, f"\u5206\u6bb5 AI\uff1a\u539f\u59cb\u5206\u6bb5 {len(plans)} \u6bb5\u8d85\u904e\u4e0a\u9650 {max_segments} \u6bb5\uff0c\u6539\u7528\u6574\u5408\u5206\u6bb5\u3002")
         plans = _bounded_integration_plans(request, structured_data, plans)
     segment_runs: list[SegmentRun] = []
     prompt_paths: list[str] = []
     outputs: list[dict[str, Any]] = []
-    _emit(progress, f"分段 AI 分析開始：segments={len(plans)} model={model_name} timeout={int(call_timeout_seconds)}s")
-
-    _emit(progress, f"分段 AI 分析啟動：{len(plans)} 個分析段，model={model_name}")
+    _emit(progress, f"\u5206\u6bb5 AI\uff1a\u958b\u59cb\u57f7\u884c\uff0csegments={len(plans)} model={model_name} timeout={int(call_timeout_seconds)}s")
+    _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5c07\u4f9d\u5e8f\u5206\u6790 {len(plans)} \u6bb5\u8cc7\u6599\uff0cmodel={model_name}")
 
     def execute_segment(index: int, plan: dict[str, Any], prior_outputs: list[dict[str, Any]]) -> tuple[int, str, SegmentRun, dict[str, Any]]:
         prompt = _build_segment_prompt(request, structured_data, plan, prior_outputs)
@@ -136,9 +136,9 @@ def run_segmented_theme_analysis(
         )
         _emit(
             progress,
-            f"分段 AI 呼叫 {index}/{len(plans)}：{plan['title']} prompt={len(prompt)} chars est_tokens={max(1, len(prompt) // 4)} sources={len(segment_sources)} timeout={int(call_timeout_seconds)}s",
+            f"\u5206\u6bb5 AI\uff1a\u9001\u51fa {index}/{len(plans)}\uff5c{plan['title']}\uff5cprompt={len(prompt)} chars est_tokens={max(1, len(prompt) // 4)} sources={len(segment_sources)} timeout={int(call_timeout_seconds)}s",
         )
-        _emit(progress, f"分段 AI {index}/{len(plans)}：{plan['title']}，prompt={len(prompt)} chars")
+        _emit(progress, f"\u5206\u6bb5 AI\uff1a{index}/{len(plans)}\uff5c{plan['title']}\uff5cprompt={len(prompt)} chars")
         started = time.monotonic()
         try:
             result = _call_ai_with_timeout_setting(ai_client, prompt, call_timeout_seconds)
@@ -156,8 +156,8 @@ def run_segmented_theme_analysis(
                 markdown=markdown,
                 diagnostics=diagnostics,
             )
-            _emit(progress, f"分段 AI 完成 {index}/{len(plans)}：{plan['title']} output={len(markdown)} chars elapsed={elapsed:.1f}s")
-            _emit(progress, f"分段 AI 完成：{plan['title']}，output={len(markdown)} chars")
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5b8c\u6210 {index}/{len(plans)}\uff5c{plan['title']}\uff5coutput={len(markdown)} chars elapsed={elapsed:.1f}s")
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5b8c\u6210\uff5c{plan['title']}\uff5coutput={len(markdown)} chars")
         except Exception as exc:
             elapsed = time.monotonic() - started
             fallback = _segment_local_fallback(plan, structured_data, exc)
@@ -172,22 +172,27 @@ def run_segmented_theme_analysis(
                 error=str(exc),
                 diagnostics={"elapsed_seconds": round(elapsed, 2), "timeout_seconds": call_timeout_seconds},
             )
-            _emit(progress, f"分段 AI 失敗 {index}/{len(plans)}：{plan['title']}，已保留該段並繼續；elapsed={elapsed:.1f}s error={exc}")
-            _emit(progress, f"分段 AI 失敗，改用本地段落摘要：{plan['title']}，原因：{exc}")
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5931\u6557 {index}/{len(plans)}\uff5c{plan['title']}\uff5c\u6539\u7528\u672c\u5730 fallback\uff5celapsed={elapsed:.1f}s error={exc}")
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6b64\u6bb5\u6a21\u578b\u5206\u6790\u5931\u6557\uff0c\u5df2\u4fdd\u7559\u672c\u5730\u6458\u8981\u4f5c\u70ba fallback\uff5c{plan['title']}\uff5c\u932f\u8aa4\uff1a{exc}")
         return index, str(prompt_path), run, _segment_output(plan, run.markdown, run)
 
     parallel_workers = _segment_parallel_workers(request, plans)
     if parallel_workers > 1:
-        _emit(progress, f"分段 AI 受控並行啟動：workers={parallel_workers} segments={len(plans)}")
+        _emit(progress, f"\u5206\u6bb5 AI\uff1a\u555f\u7528\u5e73\u884c\u5206\u6790 workers={parallel_workers} segments={len(plans)}")
         old_timeout = getattr(ai_client, "timeout_seconds", None) if hasattr(ai_client, "timeout_seconds") else None
         if hasattr(ai_client, "timeout_seconds"):
             setattr(ai_client, "timeout_seconds", call_timeout_seconds)
         result_rows: dict[int, tuple[str, SegmentRun, dict[str, Any]]] = {}
         try:
+            remaining_plans = list(enumerate(plans, 1))
+            if remaining_plans and remaining_plans[0][1].get("label") == "local_core_packet":
+                index, plan = remaining_plans.pop(0)
+                _, prompt_path, run, output = execute_segment(index, plan, [])
+                result_rows[index] = (prompt_path, run, output)
             with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
                 futures = {
                     executor.submit(execute_segment, index, plan, []): index
-                    for index, plan in enumerate(plans, 1)
+                    for index, plan in remaining_plans
                 }
                 for future in as_completed(futures):
                     index, prompt_path, run, output = future.result()
@@ -227,9 +232,10 @@ def run_segmented_theme_analysis(
         },
     )
     prompt_paths.append(str(final_prompt_path))
-    _emit(progress, f"分段 AI 最終整合開始：prompt={len(final_prompt)} chars est_tokens={max(1, len(final_prompt) // 4)} sources={len(final_sources)} timeout={int(call_timeout_seconds)}s")
-    _emit(progress, f"分段 AI 最終整合：prompt={len(final_prompt)} chars")
+    _emit(progress, f"\u5206\u6bb5 AI\uff1a\u9001\u51fa\u6700\u7d42\u6574\u5408 prompt={len(final_prompt)} chars est_tokens={max(1, len(final_prompt) // 4)} sources={len(final_sources)} timeout={int(call_timeout_seconds)}s")
+    _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408 prompt={len(final_prompt)} chars")
     final_started = time.monotonic()
+    final_retry_diagnostics: dict[str, Any] | None = None
     try:
         if final_prompt_too_large:
             raise ValueError(
@@ -244,20 +250,98 @@ def run_segmented_theme_analysis(
         raw = dict(getattr(final_result, "raw", {}) or {})
         final_status = "success"
         final_error = None
-        _emit(progress, f"分段 AI 最終整合完成：output={len(markdown)} chars elapsed={final_elapsed:.1f}s")
-        _emit(progress, f"分段 AI 最終整合完成：output={len(markdown)} chars")
+        _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5b8c\u6210 output={len(markdown)} chars elapsed={final_elapsed:.1f}s")
+        _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5b8c\u6210 output={len(markdown)} chars")
     except Exception as exc:
-        final_elapsed = time.monotonic() - final_started
-        markdown = _compose_segmented_fallback_report(request, outputs, exc)
-        final_diagnostics = {"status": "fallback", "error": str(exc), "elapsed_seconds": round(final_elapsed, 2), "timeout_seconds": call_timeout_seconds}
-        if final_prompt_too_large:
-            final_diagnostics["final_prompt_too_large"] = True
-            final_diagnostics["final_prompt_hard_chars"] = SEGMENTED_ANALYSIS_FINAL_HARD_CHARS
-        raw = {}
-        final_status = "fallback"
-        final_error = str(exc)
-        _emit(progress, f"分段 AI 最終整合失敗，改用分段底稿 fallback：elapsed={final_elapsed:.1f}s error={exc}")
-        _emit(progress, f"分段 AI 最終整合失敗，改用分段摘要組報告：{exc}")
+        retry_prompt = _build_compact_final_retry_prompt(request, structured_data, outputs, final_sources, exc)
+        retry_prompt_path = write_prompt_log(
+            request,
+            retry_prompt,
+            f"{model_name}_final_retry_compact",
+            False,
+            final_sources,
+            {
+                **(structured_data.get("prompt_policy") or {}),
+                "purpose": "segmented_theme_final_retry_compact",
+                "segment_count": len(segment_runs),
+                "original_final_prompt_chars": len(final_prompt),
+                "prompt_chars": len(retry_prompt),
+                "estimated_tokens": max(1, len(retry_prompt) // 4),
+                "source_count": len(final_sources),
+                "call_timeout_seconds": call_timeout_seconds,
+                "original_error": str(exc),
+            },
+        )
+        prompt_paths.append(str(retry_prompt_path))
+        _emit(
+            progress,
+            f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5931\u6557\uff0c\u6539\u7528\u7cbe\u7c21 retry prompt\u3002original={len(final_prompt)} chars retry={len(retry_prompt)} chars prompt={retry_prompt_path}",
+        )
+        retry_started = time.monotonic()
+        try:
+            retry_result = _call_ai_with_timeout_setting(ai_client, retry_prompt, call_timeout_seconds)
+            markdown = str(getattr(retry_result, "markdown", "") or "").strip()
+            final_elapsed = time.monotonic() - final_started
+            retry_elapsed = time.monotonic() - retry_started
+            retry_diagnostics = dict(getattr(retry_result, "diagnostics", {}) or {})
+            final_retry_diagnostics = {
+                **retry_diagnostics,
+                "status": "success",
+                "retry": True,
+                "prompt_path": str(retry_prompt_path),
+                "prompt_chars": len(retry_prompt),
+                "elapsed_seconds": round(retry_elapsed, 2),
+                "timeout_seconds": call_timeout_seconds,
+                "original_error": str(exc),
+            }
+            final_diagnostics = {
+                "status": "success_after_retry",
+                "retry": True,
+                "original_error": str(exc),
+                "elapsed_seconds": round(final_elapsed, 2),
+                "timeout_seconds": call_timeout_seconds,
+                "retry_diagnostics": final_retry_diagnostics,
+            }
+            for model_key in ("actual_model", "model"):
+                if retry_diagnostics.get(model_key):
+                    final_diagnostics[model_key] = retry_diagnostics.get(model_key)
+            if final_prompt_too_large:
+                final_diagnostics["final_prompt_too_large"] = True
+                final_diagnostics["final_prompt_hard_chars"] = SEGMENTED_ANALYSIS_FINAL_HARD_CHARS
+            raw = dict(getattr(retry_result, "raw", {}) or {})
+            final_status = "success"
+            final_error = None
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408 retry \u6210\u529f output={len(markdown)} chars elapsed={retry_elapsed:.1f}s")
+        except Exception as retry_exc:
+            final_elapsed = time.monotonic() - final_started
+            retry_elapsed = time.monotonic() - retry_started
+            markdown = _compose_segmented_fallback_report(request, outputs, retry_exc)
+            final_retry_diagnostics = {
+                "status": "failed",
+                "retry": True,
+                "prompt_path": str(retry_prompt_path),
+                "prompt_chars": len(retry_prompt),
+                "elapsed_seconds": round(retry_elapsed, 2),
+                "timeout_seconds": call_timeout_seconds,
+                "original_error": str(exc),
+                "retry_error": str(retry_exc),
+            }
+            final_diagnostics = {
+                "status": "fallback",
+                "error": str(retry_exc),
+                "original_error": str(exc),
+                "elapsed_seconds": round(final_elapsed, 2),
+                "timeout_seconds": call_timeout_seconds,
+                "retry_diagnostics": final_retry_diagnostics,
+            }
+            if final_prompt_too_large:
+                final_diagnostics["final_prompt_too_large"] = True
+                final_diagnostics["final_prompt_hard_chars"] = SEGMENTED_ANALYSIS_FINAL_HARD_CHARS
+            raw = {}
+            final_status = "fallback"
+            final_error = str(retry_exc)
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408 retry \u5931\u6557\uff0c\u6539\u7528\u5206\u6bb5 fallback \u5831\u544a\uff5celapsed={final_elapsed:.1f}s error={retry_exc}")
+            _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5931\u6557\uff0c\u5831\u544a\u5df2\u6a19\u793a\u70ba fallback\uff0c\u932f\u8aa4\uff1a{retry_exc}")
 
     diagnostics = {
         "mode": "segmented_theme_analysis",
@@ -277,6 +361,7 @@ def run_segmented_theme_analysis(
         "final_error": final_error,
         "final_prompt_chars": len(final_prompt),
         "final_diagnostics": final_diagnostics,
+        "final_retry_diagnostics": final_retry_diagnostics,
         "actual_model": final_diagnostics.get("actual_model") or final_diagnostics.get("model") or model_name,
         "prompt_paths": prompt_paths,
         "segment_runs": [_run_to_metadata(item) for item in segment_runs],
@@ -313,13 +398,13 @@ def _split_oversized_plans(
                     {
                         **plan,
                         "label": f"{plan.get('label', 'segment')}_part_{index}",
-                        "title": f"{plan.get('title', '核心入模資料')} {index}/{total}",
+                        "title": f"{plan.get('title', 'large_payload')} {index}/{total}",
                         "payload": {
                             "segment_split": {
                                 "source_label": plan.get("label"),
                                 "part_index": index,
                                 "part_total": total,
-                                "policy": "大型核心入模包依 JSON 結構切段；只切段不刪資料，完整原始資料仍保留於報告 JSON、來源檔與 HTML 附錄。",
+                                "policy": "split large JSON payload; full data remains in prompt slices and report artifacts.",
                             },
                             **chunk,
                         },
@@ -340,13 +425,13 @@ def _split_oversized_plans(
                 {
                     **plan,
                     "label": f"{plan.get('label', 'segment')}_part_{index}",
-                    "title": f"{plan.get('title', '分段資料')} {index}/{total}",
+                    "title": f"{plan.get('title', 'large_payload')} {index}/{total}",
                     "payload": {
                         "segment_split": {
                             "source_label": plan.get("label"),
                             "part_index": index,
                             "part_total": total,
-                            "policy": "原始段落過大，改為更小完整分段；不刪除核心資料。",
+                            "policy": "split large payload for model stability; core data is not deleted.",
                         },
                         **chunk,
                     },
@@ -369,11 +454,27 @@ def _bounded_integration_plans(
     """
 
     if any(isinstance(plan.get("payload"), dict) and plan["payload"].get("segment_split") for plan in plans):
-        return _merge_small_segment_plans(request, structured_data, plans)
+        merged = _merge_small_segment_plans(request, structured_data, plans)
+        return _limit_segment_plan_count(
+            merged,
+            max_segments=_max_segment_plan_count(request),
+        )
     packet_plans = _high_model_packet_plans(structured_data)
     if packet_plans:
-        return packet_plans[:SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS]
-    return plans[:SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS]
+        return _limit_segment_plan_count(
+            packet_plans,
+            max_segments=_max_segment_plan_count(request),
+        )
+    return _limit_segment_plan_count(
+        plans,
+        max_segments=_max_segment_plan_count(request),
+    )
+
+
+def _max_segment_plan_count(request: CommandRequest) -> int:
+    if request.command == "theme_flow":
+        return SEGMENTED_ANALYSIS_MAX_THEME_FLOW_SEGMENTS
+    return SEGMENTED_ANALYSIS_MAX_HIGH_MODEL_PACKET_SEGMENTS
 
 
 def _segment_parallel_workers(request: CommandRequest, plans: list[dict[str, Any]]) -> int:
@@ -422,24 +523,41 @@ def _merge_small_segment_plans(
     return merged or plans
 
 
+def _limit_segment_plan_count(plans: list[dict[str, Any]], *, max_segments: int) -> list[dict[str, Any]]:
+    """Cap high-model calls by merging adjacent plans, never by dropping them."""
+
+    if len(plans) <= max_segments or max_segments <= 0:
+        return plans
+    buckets: list[list[dict[str, Any]]] = [[] for _ in range(max_segments)]
+    total = len(plans)
+    for index, plan in enumerate(plans):
+        bucket_index = min((index * max_segments) // total, max_segments - 1)
+        buckets[bucket_index].append(plan)
+    limited: list[dict[str, Any]] = []
+    for bucket in buckets:
+        if not bucket:
+            continue
+        if len(bucket) == 1:
+            limited.append(bucket[0])
+        else:
+            limited.append(_combined_segment_plan(bucket, len(limited) + 1))
+    return limited
+
+
 def _combined_segment_plan(plans: list[dict[str, Any]], index: int) -> dict[str, Any]:
     labels = [str(plan.get("label") or f"segment_{idx}") for idx, plan in enumerate(plans, 1)]
     titles = [str(plan.get("title") or label) for plan, label in zip(plans, labels)]
     return {
         "label": f"merged_segment_{index}",
-        "title": "合併小型分段：" + "、".join(titles[:3]) + (" 等" if len(titles) > 3 else ""),
+        "title": "Merged segment: " + " / ".join(titles[:3]) + (" etc." if len(titles) > 3 else ""),
         "payload": {
             "merged_segment": {
                 "part_count": len(plans),
                 "labels": labels,
-                "policy": "多個小型分段合併以減少高階模型呼叫次數；只合併不刪資料，原分段 payload 完整保留於 sections。",
+                "policy": "Merged to keep high-model call count bounded. Original payloads are kept under sections; core data is not deleted.",
             },
             "sections": [
-                {
-                    "label": plan.get("label"),
-                    "title": plan.get("title"),
-                    "payload": plan.get("payload"),
-                }
+                {"label": plan.get("label"), "title": plan.get("title"), "payload": plan.get("payload")}
                 for plan in plans
             ],
         },
@@ -501,7 +619,7 @@ def _split_value_for_segment(value: Any, *, target_chars: int) -> list[Any]:
         return _split_payload_for_segment(value, target_chars=target_chars)
     if isinstance(value, str) and len(value) > target_chars:
         return [
-            {"資料型態": "完整分段文字", "段落": index + 1, "內容": value[start:start + target_chars]}
+            {"segment_type": "long_text_slice", "part_index": index + 1, "content": value[start:start + target_chars]}
             for index, start in enumerate(range(0, len(value), target_chars))
         ]
     return [value]
@@ -514,14 +632,14 @@ def _segment_plans(request: CommandRequest, data: dict[str, Any]) -> list[dict[s
     if request.command == "sector_strength":
         return [
             *_market_strength_plans(data),
-            {"label": "sector_subsector", "title": "族群與子族群整合", "payload": _sector_payload(data)},
+            {"label": "sector_subsector", "title": "Sector and subsector ranking", "payload": _sector_payload(data)},
         ]
     if request.command == "theme_flow":
         return _theme_flow_plans(data)
     return [
         *_market_strength_plans(data),
         *_theme_evidence_plans(data),
-        {"label": "extension_path", "title": "題材擴散與下一層候選", "payload": _radar_flow_payload(data)},
+        {"label": "extension_path", "title": "Theme diffusion and next path", "payload": _radar_flow_payload(data)},
     ]
 
 
@@ -538,10 +656,10 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     plans = [
         {
             "label": "local_core_packet",
-            "title": "本地核心資料包",
+            "title": "\u672c\u5730\u6838\u5fc3\u8cc7\u6599\u5305",
             "no_auto_split": True,
             "payload": {
-                "input_policy": "本段使用共用本地整理模組產出的等價重組資料，不是語意刪減摘要。",
+                "input_policy": "Keep required core data. Use master tables and relation tables to reduce duplication without deleting themes, stocks, sectors, sources, risks, or counter-evidence.",
                 "command_specific_data": {
                     "schema_version": command_specific.get("schema_version"),
                     "input_mode": command_specific.get("input_mode"),
@@ -552,7 +670,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
         },
         {
             "label": "evidence_and_low_model",
-            "title": "證據、反證與低階模型底稿",
+            "title": "\u8b49\u64da\u3001\u53cd\u8b49\u8207\u4f4e\u968e\u6a21\u578b\u6574\u7406",
             "no_auto_split": True,
             "payload": {
                 "unified_evidence_pack": package.get("unified_evidence_pack"),
@@ -567,7 +685,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
         },
         {
             "label": "sources_and_excerpts",
-            "title": "來源索引與必要原文摘錄",
+            "title": "\u4f86\u6e90\u7d22\u5f15\u8207\u5fc5\u8981\u539f\u6587\u6458\u9304",
             "no_auto_split": True,
             "payload": {
                 "selected_sources": package.get("selected_sources"),
@@ -578,7 +696,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
         },
         {
             "label": "local_scoring_and_audit",
-            "title": "本地量化底稿與入模審計",
+            "title": "\u672c\u5730\u8a55\u5206\u8207\u5165\u6a21\u7a3d\u6838",
             "no_auto_split": True,
             "payload": {
                 "local_scoring": package.get("local_scoring"),
@@ -608,30 +726,25 @@ def _build_segment_prompt(
 ) -> str:
     payload = _compact_segment_payload(plan.get("payload") or {})
     prior_state = _prior_outputs_state(prior_outputs)
-    return "\n".join(
-        [
-            "# 台股 AI 投研分段閱讀任務",
-            "",
-            f"指令：/{request.command}",
-            f"分析日期：{data.get('report_date') or request.report_date or 'latest'}",
-            f"目前段落：{plan.get('title')}",
-            "",
-            "請嚴格遵守：",
-            "- 本段資料已由本地系統做機械式去重、分類與分段；不得再因主觀判斷刪除題材、公司、來源或反證。",
-            "- 只能根據本段資料與前段結論判斷，不要憑空新增公司或題材。",
-            "- 產業/子族群強勢可以作為市場線索，但不能直接說成已驗證題材證據。",
-            "- 若有題材、族群、公司、供應鏈資料，請保留代號、名稱、關係、證據來源，不得只寫概括摘要。",
-            "- 若資料不足，請明確標示「市場強勢、題材證據待補」或「資料不足」。",
-            "- 不得輸出買進、賣出、目標價、保證獲利、必漲等投資指令。",
-            "- 請用 Markdown，輸出可供最終整合模型引用的分段閱讀筆記。",
-            "",
-            "前段結論：",
-            _json(prior_state),
-            "",
-            "本段資料：",
-            _json(payload),
-        ]
-    )
+    return _sanitize_prompt_text("\n".join([
+        "# Segmented AI analysis task",
+        "",
+        f"Command: {request.command}",
+        f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
+        f"Segment topic: {plan.get('title')}",
+        "",
+        "Task rules:",
+        "- Organize verifiable observations from this segment only; do not make the final investment conclusion.",
+        "- Preserve risks, counter-evidence, data gaps, source IDs, company codes, theme names, sector names, and important numbers.",
+        "- If this segment conflicts with prior segment notes, mark the conflict instead of hiding it.",
+        "- Write in Traditional Chinese for the analysis text and avoid exposing internal field names in final prose.",
+        "",
+        "Prior segment state:",
+        _json(prior_state),
+        "",
+        "Segment payload:",
+        _json(payload),
+    ]))
 
 
 def _build_final_prompt(
@@ -640,34 +753,107 @@ def _build_final_prompt(
     outputs: list[dict[str, Any]],
     sources: list[SourceItem],
 ) -> str:
-    return "\n".join(
-        [
-            "# 台股族群題材正式報告整合",
-            "",
-            f"指令：/{request.command}",
-            f"分析日期：{data.get('report_date') or request.report_date or 'latest'}",
-            "",
-            "請根據下列分段結論、本地摘要與來源索引，整合成一份正式 Markdown 報告。",
-            "",
-            "硬規則：",
-            "- 必須分開說明「市場強弱族群」與「題材庫證據映射」。",
-            "- 不得預設 AI、半導體、伺服器為主線；以分段市場結論為準。",
-            "- 若某族群市場很強但題材庫證據不足，要標示「市場強勢、題材證據待補」。",
-            "- 若有命中公司、代表股或候選股，必須列出股票代號與名稱，不得只寫數量。",
-            "- 代表股只能來自已驗證或合理推論；候選股只能稱為觀察名單。",
-            "- 請保留題材擴散推論，但推論要標示依據與待驗證點。",
-            "- 不得輸出買進、賣出、加碼、追價、停損、停利、目標價、保證獲利。",
-            "",
-            "本地摘要資料：",
-            _json(_final_local_summary(data)),
-            "",
-            "分段分析結果：",
-            _json(_segment_outputs_state(outputs)),
-            "",
-            "可引用來源清單：",
-            _json(_source_refs(sources)),
+    command_specific_rules = _final_synthesis_command_rules(request.command)
+    return _sanitize_prompt_text("\n".join([
+        "# Segmented AI final synthesis task",
+        "",
+        f"Command: {request.command}",
+        f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
+        "",
+        "Use the local core packet, segment notes, source index, risks and counter-evidence to produce the formal report.",
+        "",
+        "Synthesis rules:",
+        "- Main report must be in Traditional Chinese and must not expose unreadable internal parameter names.",
+        "- Segment outputs and low-model digest are drafts only; re-evaluate the evidence independently.",
+        "- Include supporting evidence, counter-evidence, risks, data gaps, and follow-up validation conditions.",
+        "- If evidence is insufficient, lower confidence explicitly instead of forcing a strong conclusion.",
+        "- You may provide reality-based scenario thinking, but cite the evidence and failure conditions.",
+        "- Do not output source_id, rank_score, prompt_chars, coverage_pct, V/C or other internal field names in prose.",
+        *command_specific_rules,
+        "",
+        "Local core summary:",
+        _json(_final_local_summary(data)),
+        "",
+        "Segment analysis notes:",
+        _json(_segment_outputs_state(outputs)),
+        "",
+        "Source index:",
+        _json(_source_refs(sources)),
+    ]))
+
+
+def _final_synthesis_command_rules(command: str) -> list[str]:
+    if command == "theme_flow":
+        return [
+            "- The final report must include an explicit section named 「資金流向與資金輪動判斷」.",
+            "- If fund-flow evidence is insufficient, write 「目前資金流證據不足」 and explain which evidence is missing.",
         ]
-    )
+    if command == "macro":
+        return [
+            "- The final report must clearly cover market liquidity, risk appetite, index structure, and Taiwan market fund flow.",
+        ]
+    if command == "theme":
+        return [
+            "- The final report must distinguish core beneficiaries, secondary beneficiaries, watch-only names, and stocks that should not be included.",
+        ]
+    if command == "value_scan":
+        return [
+            "- The final report must rank candidates by verified rerating evidence, counter-evidence, and data gaps; do not rely only on price strength.",
+        ]
+    return []
+
+
+def _build_compact_final_retry_prompt(
+    request: CommandRequest,
+    data: dict[str, Any],
+    outputs: list[dict[str, Any]],
+    sources: list[SourceItem],
+    original_error: Exception,
+) -> str:
+    """Build a smaller final synthesis prompt after the normal final call fails.
+
+    The retry keeps the decision-critical material: segment conclusions, risks,
+    counter-evidence, missing data and source references. Full raw data remains
+    in the segment prompt logs and report JSON.
+    """
+
+    compact_outputs = []
+    for item in outputs:
+        if not isinstance(item, dict):
+            continue
+        markdown = str(item.get("markdown") or "").strip()
+        compact_outputs.append(
+            {
+                "label": item.get("label"),
+                "title": item.get("title"),
+                "status": item.get("status"),
+                "error": item.get("error"),
+                "note_excerpt": _truncate_segment_text(markdown, 600),
+            }
+        )
+    retry_sources = _source_refs(sources[:80])
+    return _sanitize_prompt_text("\n".join([
+        "# Segmented AI final synthesis retry",
+        "",
+        f"Command: {request.command}",
+        f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
+        f"Previous final synthesis failed: {original_error}",
+        "",
+        "Retry rules:",
+        "- This is still a formal AI retry, not a local fallback report.",
+        "- Keep the key conclusions, risks, counter-evidence, missing data and source references.",
+        "- Use concise Traditional Chinese and avoid exposing internal field names.",
+        "- If the evidence is insufficient, state the confidence limit clearly.",
+        "",
+        "Compact local core summary:",
+        _json(_compact(_final_local_summary(data), depth=3, max_list=8, max_keys=40, max_string=800)),
+        "",
+        "Segment notes:",
+        _json({"segment_count": len(compact_outputs), "segments": compact_outputs}),
+        "",
+        "Source index:",
+        _json(retry_sources),
+    ]))
 
 
 def _prior_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -760,63 +946,62 @@ def _segment_output(plan: dict[str, Any], markdown: str, run: SegmentRun) -> dic
 
 def _segment_local_fallback(plan: dict[str, Any], data: dict[str, Any], exc: Exception) -> str:
     payload = plan.get("payload") or {}
-    return "\n".join(
-        [
-            f"## {plan.get('title')}",
-            "",
-            f"本段 AI 分析失敗，已保留本地完整分段資料供最終整合與入模審計使用。原因：{exc}",
-            "",
-            "```json",
-            _json(_compact(payload, depth=3, max_list=10, max_keys=60, max_string=1200)),
-            "```",
-        ]
-    )
+    return "\n".join([
+        f"## {plan.get('title')}",
+        "",
+        f"Segment AI failed; this local summary is fallback only and not formal AI analysis. Error: {exc}",
+        "",
+        "```json",
+        _json(_compact(payload, depth=3, max_list=10, max_keys=60, max_string=1200)),
+        "```",
+    ])
 
 
 def _compose_segmented_fallback_report(request: CommandRequest, outputs: list[dict[str, Any]], exc: Exception) -> str:
     title = {
-        "theme_radar": "市場題材雷達與族群強弱分析",
-        "theme_flow": "題材擴散路徑分析",
-        "sector_strength": "族群強弱排行",
-    }.get(request.command, "族群題材分析")
+        "theme_radar": "theme_radar fallback report",
+        "theme_flow": "theme_flow fallback report",
+        "sector_strength": "sector_strength fallback report",
+        "research": "research fallback report",
+    }.get(request.command, "segmented AI fallback report")
     lines = [
         f"# {title}",
         "",
-        f"最終 AI 整合失敗，以下保留分段分析結果。原因：{exc}",
+        f"Final AI synthesis failed. The following content only aggregates segment outputs and local summaries; it is not a formal AI report. Error: {exc}",
         "",
     ]
     for output in outputs:
-        lines.extend([f"## {output.get('title')}", "", str(output.get("markdown") or "資料不足"), ""])
+        lines.extend([f"## {output.get('title')}", "", str(output.get("markdown") or "No usable segment output."), ""])
     return "\n".join(lines).strip() + "\n"
 
 
 def _market_strength_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [
-        {"label": "market_price_rankings", "title": "市場漲跌與量能排行", "payload": _market_price_payload(data)},
-        {"label": "market_sector_movers", "title": "全市場產業排行", "payload": _market_sector_mover_payload(data)},
-        {"label": "sector_strength", "title": "族群強弱排行", "payload": _market_sector_strength_payload(data)},
-        {"label": "subsector_strength", "title": "子族群強弱排行", "payload": _market_subsector_strength_payload(data)},
+        {"label": "market_price_rankings", "title": "Market price and volume rankings", "payload": _market_price_payload(data)},
+        {"label": "market_sector_movers", "title": "Sector price and volume movers", "payload": _market_sector_mover_payload(data)},
+        {"label": "sector_strength", "title": "Sector strength ranking", "payload": _market_sector_strength_payload(data)},
+        {"label": "subsector_strength", "title": "Subsector strength ranking", "payload": _market_subsector_strength_payload(data)},
     ]
 
 
 def _theme_evidence_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [
-        {"label": "theme_rankings", "title": "題材排行與證據分級", "payload": _theme_rankings_payload(data)},
-        {"label": "theme_strong_stocks", "title": "強勢股題材命中", "payload": _theme_strong_stocks_payload(data)},
-        {"label": "theme_news_stats", "title": "新聞趨勢與題材熱度", "payload": _theme_news_payload(data)},
+        {"label": "theme_rankings", "title": "Theme rankings and matched companies", "payload": _theme_rankings_payload(data)},
+        {"label": "theme_strong_stocks", "title": "Theme strong stocks and relations", "payload": _theme_strong_stocks_payload(data)},
+        {"label": "theme_news_stats", "title": "Theme news statistics", "payload": _theme_news_payload(data)},
     ]
 
 
 def _theme_flow_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     plans: list[dict[str, Any]] = [
-        {"label": "theme_flow_profile", "title": "題材概況與資料品質", "payload": _theme_flow_profile_payload(data)}
+        {"label": "theme_flow_profile", "title": "Theme flow profile", "payload": _theme_flow_profile_payload(data)}
     ]
     related = data.get("related_stocks") or []
     related_chunks = _chunked(related, 30) or [[]]
     for index, chunk in enumerate(related_chunks, 1):
         plans.append({
             "label": f"theme_flow_related_stocks_{index}",
-            "title": f"相關股票分批分析 {index}/{len(related_chunks)}",
+            "title": f"Theme related stocks {index}/{len(related_chunks)}",
             "payload": _theme_flow_related_stocks_payload(data, chunk, index, len(related_chunks)),
         })
     layers = data.get("layers") or []
@@ -824,13 +1009,13 @@ def _theme_flow_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     for index, chunk in enumerate(layer_chunks, 1):
         plans.append({
             "label": f"theme_flow_layers_{index}",
-            "title": f"供應鏈層級分批分析 {index}/{len(layer_chunks)}",
+            "title": f"Theme supply-chain layers {index}/{len(layer_chunks)}",
             "payload": _theme_flow_layers_payload(data, chunk, index, len(layer_chunks)),
         })
     plans.extend([
-        {"label": "theme_flow_market_validation", "title": "供應鏈層級盤面驗證", "payload": _theme_flow_validation_payload(data)},
-        {"label": "theme_flow_next_candidates", "title": "下一層受惠候選", "payload": _theme_flow_next_candidates_payload(data)},
-        {"label": "theme_flow_news_stats", "title": "題材新聞趨勢", "payload": _theme_flow_news_payload(data)},
+        {"label": "theme_flow_market_validation", "title": "Market validation", "payload": _theme_flow_validation_payload(data)},
+        {"label": "theme_flow_next_candidates", "title": "Next diffusion candidates", "payload": _theme_flow_next_candidates_payload(data)},
+        {"label": "theme_flow_news_stats", "title": "Theme news statistics", "payload": _theme_flow_news_payload(data)},
     ])
     return plans
 
@@ -1533,7 +1718,7 @@ def _compact(
             result[str(key)] = _compact(item, depth=depth - 1, max_list=max_list, max_keys=max_keys, max_string=max_string)
         if max_keys > 0 and len(value) > max_keys:
             remaining = dict(list(value.items())[max_keys:])
-            result["其餘欄位完整分段"] = _compact(remaining, depth=depth - 1, max_list=0, max_keys=0, max_string=max_string)
+            result["remaining_items"] = _compact(remaining, depth=depth - 1, max_list=0, max_keys=0, max_string=max_string)
         return result
     if isinstance(value, (list, tuple)):
         rows = list(value)
@@ -1545,20 +1730,20 @@ def _compact(
         if max_list > 0 and len(rows) > max_list:
             remaining = rows[max_list:]
             items.append({
-                "資料型態": "其餘資料完整分段",
-                "總筆數": len(remaining),
-                "資料未刪除": True,
-                "資料": _compact(remaining, depth=depth - 1, max_list=0, max_keys=max_keys, max_string=max_string),
+                "overflow_type": "remaining_list_items",
+                "remaining_count": len(remaining),
+                "full_data_preserved": True,
+                "remaining_items": _compact(remaining, depth=depth - 1, max_list=0, max_keys=max_keys, max_string=max_string),
             })
         return items
     if isinstance(value, str) and len(value) > max_string:
         return {
-            "資料型態": "完整分段文字",
-            "總字數": len(value),
-            "每段字數": max_string,
-            "資料未刪除": True,
-            "段落": [
-                {"段號": index + 1, "文字": value[start:start + max_string]}
+            "overflow_type": "long_text",
+            "original_length": len(value),
+            "slice_size": max_string,
+            "full_data_preserved": True,
+            "slices": [
+                {"part_index": index + 1, "text": value[start:start + max_string]}
                 for index, start in enumerate(range(0, len(value), max_string))
             ],
         }
@@ -1586,6 +1771,12 @@ def _run_to_metadata(run: SegmentRun) -> dict[str, Any]:
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=_json_default)
+
+
+def _sanitize_prompt_text(value: str) -> str:
+    """Remove corrupted private-use glyphs before sending prompts to AI providers."""
+
+    return re.sub(r"[\ue000-\uf8ff\ufffd]", "", value)
 
 
 def _json_default(value: Any) -> str:

@@ -131,11 +131,71 @@ class TopicPipelineServiceTests(unittest.TestCase):
             call_ai_json=call_ai_json,
         )
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
-        self.assertEqual(len(pack.actions), 4)
+        self.assertEqual(len(pack.actions), 5)
         self.assertTrue(pack.actions[0].evidence)
         self.assertTrue(pack.actions[1].evidence)
         self.assertTrue(any("bad json" in warning for warning in pack.warnings))
         self.assertTrue(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
+
+    def test_pipeline_retries_malformed_detail_json_once(self):
+        stages = []
+
+        def call_ai_json(_prompt, stage):
+            stages.append(stage)
+            if stage == "candidate_extract":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            if stage == "detail_expand_1":
+                raise ValueError("Expecting property name enclosed in double quotes: line 1 column 2")
+            if stage == "detail_expand_1_retry":
+                return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": []}
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertIn("detail_expand_1_retry", stages)
+        self.assertTrue(any(log.get("stage") == "detail_expand_1_recovered" for log in logs))
+        self.assertFalse(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
+
+    def test_pipeline_retries_detail_timeout_once(self):
+        stages = []
+
+        def call_ai_json(_prompt, stage):
+            stages.append(stage)
+            if stage == "candidate_extract":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            if stage == "detail_expand_1":
+                raise TimeoutError("MiniMax API request failed; status=timeout; reason=ReadTimeout")
+            if stage == "detail_expand_1_retry":
+                return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": []}
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertIn("detail_expand_1_retry", stages)
+        self.assertTrue(any(log.get("stage") == "detail_expand_1_recovered" for log in logs))
+        self.assertFalse(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
 
     def test_pipeline_compacts_large_detail_stage_inputs(self):
         prompts = {}
@@ -185,12 +245,14 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertLess(len(prompts["detail_expand_1"]), 24000)
         self.assertIn("truncated for detail stage", prompts["detail_expand_1"])
 
-    def test_pipeline_compacts_large_candidate_stage_inputs(self):
+    def test_pipeline_uses_local_fallback_when_candidate_stage_too_large(self):
         prompts = {}
         variables = self._variables()
         variables["webfetch_evidence_json"] = "E" * 50000
         variables["web_fetched_sources_json"] = "W" * 50000
         variables["discovery_sources_json"] = "D" * 50000
+        variables["recent_scan_candidates_json"] = "R" * 50000
+        variables["market_signals_json"] = "V" * 50000
         variables["external_topic_source_caches_json"] = "X" * 50000
         variables["existing_topic_profiles_json"] = "P" * 50000
         variables["company_topic_map_json"] = "M" * 50000
@@ -203,13 +265,15 @@ class TopicPipelineServiceTests(unittest.TestCase):
 
         def load_prompt(name):
             if name == "topic_candidate_extract":
-                return (
+                block = (
                     "{webfetch_evidence_json} {web_fetched_sources_json} "
                     "{discovery_sources_json} {external_topic_source_caches_json} "
+                    "{recent_scan_candidates_json} {market_signals_json} "
                     "{existing_topic_profiles_json} {company_topic_map_json} "
                     "{supply_chain_nodes_json} {company_knowledge_json} "
                     "{low_model_digest_json}"
                 )
+                return "\n".join([block, block, block])
             if name == "topic_detail_expand":
                 return "{topic_candidates_json}"
             return ""
@@ -217,15 +281,27 @@ class TopicPipelineServiceTests(unittest.TestCase):
         def call_ai_json(prompt, stage):
             prompts[stage] = prompt
             if stage == "candidate_extract":
-                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+                raise AssertionError("candidate_extract should be skipped when prompt exceeds hard limit")
             return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
 
-        pack, _logs = run_topic_pipeline(
+        pack, logs = run_topic_pipeline(
             mode=TopicChangeMode.UPDATE,
             ai_model="minimax",
             change_id="change_test",
             iso_ts="2026-05-31T10:00:00+0800",
-            structured_data={"existing_topic_profiles": []},
+            structured_data={
+                "existing_topic_profiles": [],
+                "webfetch_evidence": {
+                    "items": [
+                        {
+                            "title": "AI 電源供應題材升溫",
+                            "claim": "AI資料中心推升電源供應與BBU需求。",
+                            "topic_hints": ["AI伺服器電源與BBU"],
+                            "companies": ["2308"],
+                        }
+                    ]
+                },
+            },
             prompt_variables=variables,
             load_prompt=load_prompt,
             render_prompt=self._render_prompt,
@@ -233,12 +309,13 @@ class TopicPipelineServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
-        self.assertLess(len(prompts["candidate_extract"]), 75000)
-        self.assertIn("truncated for detail stage", prompts["candidate_extract"])
+        self.assertNotIn("candidate_extract", prompts)
+        self.assertIn("detail_expand_1", prompts)
+        self.assertTrue(any(str(log.get("error", "")).startswith("prompt_too_large") for log in logs))
 
     def test_pipeline_falls_back_to_local_candidates_when_candidate_extract_fails(self):
         def call_ai_json(prompt, stage):
-            if stage == "candidate_extract":
+            if stage.startswith("candidate_extract"):
                 raise TimeoutError("candidate timeout")
             return {
                 "actions": [
@@ -282,6 +359,60 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertGreaterEqual(len(pack.actions), 2)
         self.assertTrue(any(log.get("stage") == "candidate_fallback" for log in logs))
         self.assertTrue(any("candidate timeout" in warning for warning in pack.warnings))
+
+    def test_pipeline_retries_candidate_timeout_once(self):
+        stages = []
+
+        def call_ai_json(prompt, stage):
+            stages.append(stage)
+            if stage == "candidate_extract":
+                raise TimeoutError("ReadTimeout: candidate timeout")
+            if stage == "candidate_extract_retry":
+                return {"candidates": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+            return {"actions": [{"theme_id": "ai_power", "theme_name": "AI電源"}]}
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        self.assertIn("candidate_extract_retry", stages)
+        self.assertFalse(any(log.get("stage") == "candidate_fallback" for log in logs))
+        self.assertTrue(any(log.get("stage") == "candidate_extract_recovered" for log in logs))
+
+    def test_pipeline_fails_when_ai_exposes_model_reasoning(self):
+        def call_ai_json(prompt, stage):
+            if stage == "candidate_extract":
+                return {
+                    "candidates": [
+                        {"theme_id": "ai_power", "theme_name": "AI ??", "keywords": ["AI ??"]},
+                    ],
+                    "raw": "<think>The user wants internal reasoning.</think>",
+                }
+            return {"actions": [{"theme_id": "ai_power", "theme_name": "AI ??"}]}
+
+        pack, _logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.FAILED)
+        self.assertTrue(any("model_reasoning_exposed" in warning or "<think>" in warning for warning in pack.warnings))
 
 
 if __name__ == "__main__":

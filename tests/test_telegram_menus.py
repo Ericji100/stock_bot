@@ -119,6 +119,7 @@ class TelegramMenuTests(unittest.TestCase):
 
         self.assertIn("AI 模型：MiniMax 調用失敗", note)
         self.assertIn("MiniMax 模型調用或公開來源整合未完整成功", note)
+        self.assertIn("這不是正式 AI 完成報告", note)
         self.assertNotIn("Gemini / 公開網路搜尋", note)
 
     def test_theme_radar_empty_command_starts_date_menu(self):
@@ -1045,7 +1046,7 @@ class ScanMenuTests(unittest.TestCase):
     def test_scheduled_radar_uses_minimax_comment(self):
         content = Path("d:/code/stock_ai_bot/main.py").read_text(encoding="utf-8")
         self.assertIn('source="technical"', content)
-        self.assertIn("ai_top=5", content)
+        self.assertIn("ai_top=15", content)
         self.assertIn('model="minimax"', content)
         self.assertIn("ai_comment_enabled=True", content)
 

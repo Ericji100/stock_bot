@@ -38,6 +38,7 @@ class ScheduledJobRegistration:
     schedule: str
     queued: bool = True
     task_type: str = "scheduled_task"
+    parameters: str = ""
 
     def to_spec(self, *, category: str = "定時任務") -> ScheduledTaskSpec:
         return ScheduledTaskSpec(
@@ -193,5 +194,6 @@ def format_registered_scheduled_jobs(registrations: list[ScheduledJobRegistratio
     lines = ["已註冊定時任務："]
     for item in registrations:
         queue_text = "排隊執行" if item.queued else "背景執行"
-        lines.append(f"- {item.schedule}｜{item.label}｜{queue_text}")
+        parameter_text = f"｜參數：{item.parameters}" if item.parameters else ""
+        lines.append(f"- {item.schedule}｜{item.label}{parameter_text}｜{queue_text}")
     return "\n".join(lines)

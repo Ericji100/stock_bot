@@ -41,12 +41,12 @@ TEMPLATE_MAP = {
 
 
 def _prompt_structured_data(request: CommandRequest, structured_data: dict[str, Any]) -> str:
-    """??????????????????structured prompt pack???[:22000] ?????????????
+    """Build a command-aware compact structured prompt pack.
 
-    - value_scan: ????? ai_candidate_evidence_pack?????????
-    - research: ????? research ??pack????local_rerating_snapshot / local_scoring
-    - macro: ????? macro ??pack????quantitative_market / fear_greed ??
-    - theme: ????? theme ??pack????matched_universe / matched_companies
+    - value_scan: keep ai_candidate_evidence_pack readable.
+    - research: keep research pack, local_rerating_snapshot, and local_scoring.
+    - macro: keep macro pack, quantitative_market, and fear_greed.
+    - theme: keep matched_universe and matched_companies.
     """
     high_model_package = structured_data.get("high_model_input_package")
     if isinstance(high_model_package, dict):
@@ -478,7 +478,7 @@ def build_prompt_from_request(
     macro_guard_rules = _macro_guard_rules(request, structured_data)
 
     # report context template (from prompt/rules/report_context.md)
-    # ????????????????structured prompt pack????[:22000] ???
+    # Build command-aware structured prompt pack for the shared report context.
     structured_data_json = _prompt_structured_data(request, structured_data)
     report_context = _read_rule_prompt("report_context.md").format(
         request_json=_json(asdict(request)),
@@ -506,7 +506,7 @@ def build_prompt_from_request(
 
 ---
 
-??????????
+評分與分析準則
 {scoring_rules}
 
 ---
@@ -517,7 +517,7 @@ def build_prompt_from_request(
 
 {rules_blocks}
 
-????????Markdown ?????????????????????????????????????
+請用繁體中文產出正式 Markdown 報告，不要輸出內部參數名稱、程式欄位名稱或不可讀的英文標籤。
 """.strip()
 
 
@@ -648,8 +648,8 @@ def _sector_strength_focus_queries(structured_data: dict[str, Any], suffix: str)
     rankings = structured_data.get("sector_rankings") or []
     sectors = [str(row.get("sector") or "").strip() for row in rankings[:5] if isinstance(row, dict) and str(row.get("sector") or "").strip()]
     if not sectors:
-        return [f"????????????? {suffix}".strip()]
-    return [f"???{' '.join(sectors)} {suffix}".strip()]
+        return [f"台股強勢族群 題材 輪動 {suffix}".strip()]
+    return [f"台股 {' '.join(sectors)} 強勢族群 題材 輪動 {suffix}".strip()]
 
 
 def build_grounding_discovery_prompts(

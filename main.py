@@ -65,6 +65,7 @@ import technical_scanner as ts
 from radar_service import (
     RadarRequest,
     format_radar_more,
+    format_radar_push_summary,
     format_radar_report,
     parse_radar_args,
     resolve_radar_report_date,
@@ -87,18 +88,18 @@ _SCHEDULED_TASK_WORKER: asyncio.Task | None = None
 _SCHEDULED_CHIP_BACKFILL_TASKS: dict[str, asyncio.Task] = {}
 _SCHEDULED_TASK_SERVICE = ScheduledTaskService(runtime=GLOBAL_COMMAND_RUNTIME)
 SCHEDULED_JOB_REGISTRATIONS: tuple[ScheduledJobRegistration, ...] = (
-    ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30"),
-    ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50"),
-    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（MiniMax M3）", "每日 10:00"),
-    ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45"),
-    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45"),
-    ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00"),
-    ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30"),
-    ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30"),
-    ScheduledJobRegistration("scheduled:chip_cache:1630", "16:30 籌碼快取今日回補", "每日 16:30", queued=False),
-    ScheduledJobRegistration("scheduled:chip_cache:1830", "18:30 籌碼快取今日回補", "每日 18:30", queued=False),
-    ScheduledJobRegistration("scheduled:chip_cache:2100", "21:00 籌碼快取完整回補", "每日 21:00", queued=False),
-    ScheduledJobRegistration("scheduled:full_backfill_check", "完整資料回補檢查", "每 2 小時，啟動後 5 分鐘首次檢查", queued=False),
+    ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30", parameters="build_monitor_scan_report(title=12:30 監控掃描, empty_message=無突破訊號)"),
+    ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50", parameters="build_noon_market_report(), retry=6, retry_delay=30m"),
+    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（MiniMax M3）", "每日 10:00", parameters="/topic_maintain --deep --model minimax"),
+    ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45", parameters="build_portfolio_report(), retry=portfolio default"),
+    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45", parameters="refresh model=minimax, scheduled_latest, lightweight_refill=auto"),
+    ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00", parameters="refresh model=minimax, scheduled_latest, lightweight_refill=auto"),
+    ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30", parameters="/scan selection=7(all), date=today if trading day"),
+    ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30", parameters="source=technical, ai_top=15, model=minimax, ai_comment=true, push_summary_limit=15"),
+    ScheduledJobRegistration("scheduled:chip_cache:1630", "16:30 籌碼快取今日回補", "每日 16:30", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=false, force_refresh=false)"),
+    ScheduledJobRegistration("scheduled:chip_cache:1830", "18:30 籌碼快取今日回補", "每日 18:30", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=false, force_refresh=false)"),
+    ScheduledJobRegistration("scheduled:chip_cache:2100", "21:00 籌碼快取完整回補", "每日 21:00", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=true, force_refresh=false)"),
+    ScheduledJobRegistration("scheduled:full_backfill_check", "完整資料回補檢查", "每 2 小時，啟動後 5 分鐘首次檢查", queued=False, parameters="run_backfill_if_needed(report_date=None, force_refresh=false)"),
 )
 BOT_COMMAND_SPECS: tuple[tuple[str, str], ...] = (
     ("start", "顯示機器人指令說明"),
@@ -253,7 +254,9 @@ def split_telegram_message(text: str, limit: int = 4000) -> list[str]:
         split_at = remaining.rfind("\n", 0, limit)
         if split_at == -1:
             split_at = limit
-        chunks.append(remaining[:split_at].strip())
+        chunk = remaining[:split_at].strip()
+        if chunk:
+            chunks.append(chunk)
         remaining = remaining[split_at:].strip()
     return chunks or [text]
 
@@ -1348,7 +1351,7 @@ async def run_radar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         request = parse_radar_args(context.args)
     except ValueError as exc:
-        await safe_send_reply(update, f"❌ {exc}\n範例：/radar --source technical --ai-top 5 --model deepseek")
+        await safe_send_reply(update, f"❌ {exc}\n範例：/radar --source technical --ai-top 15 --model deepseek")
         return
 
     if not context.args and request.report_date is None:
@@ -1407,7 +1410,7 @@ async def prompt_radar_model_selection(
             "📡 Radar 請選擇 AI 短評模型\n"
             f"來源：{request.source}\n"
             f"日期：{date_text}\n"
-            f"分析範圍：每策略 Top {request.ai_top}"
+            f"分析範圍：AI補強 Top {request.ai_top}"
         ),
         reply_markup=build_radar_model_keyboard(),
     )
@@ -1575,9 +1578,9 @@ async def execute_radar_request(update: Update, context: ContextTypes.DEFAULT_TY
 def _radar_start_mode_text(request: RadarRequest) -> str:
     if request.ai_comment_enabled and request.model:
         label = {"gemini": "Gemini", "deepseek": "DeepSeek", "minimax": "MiniMax"}.get(request.model, request.model)
-        return f"AI短評：{label}｜每策略 Top {request.ai_top}"
+        return f"AI短評：{label}｜AI補強 Top {request.ai_top}"
     if request.ai_comment_enabled:
-        return f"外部來源補強：每策略 Top {request.ai_top}"
+        return f"外部來源補強：AI補強 Top {request.ai_top}"
     return "AI短評：略過"
 
 
@@ -1856,7 +1859,7 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
             RadarRequest(
                 source="technical",
                 report_date=target_date,
-                ai_top=5,
+                ai_top=15,
                 model="minimax",
                 ai_comment_enabled=True,
             ),
@@ -1864,7 +1867,7 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
             config=config,
             progress=progress,
         )
-        report_text = format_radar_report(result)
+        report_text = format_radar_push_summary(result, limit=15)
         chunks = split_telegram_message(report_text)
         print(
             f"[{now_timestamp()}] Radar 21:30 推播文字長度={len(report_text)} chars，拆分段數={len(chunks)}",

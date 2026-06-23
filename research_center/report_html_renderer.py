@@ -19,7 +19,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
     title = html.escape(normalize_report_text(str(report_json.get("report_title") or "AI 投研報告")))
     tabs = _build_tabs(report_json, markdown)
     disclaimer_html = f'<div class="disclaimer">{html.escape(disclaimer)}</div>' if disclaimer else ""
-    return f"""<!doctype html>
+    html_text = f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -98,6 +98,7 @@ def render_report_html(report_json: dict[str, Any], markdown: str, disclaimer: s
 </head>
 <body><main>{tabs}{disclaimer_html}</main></body>
 </html>"""
+    return _cleanup_known_internal_html_leaks(html_text)
 
 
 def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
@@ -151,6 +152,27 @@ def _build_tabs(report_json: dict[str, Any], markdown: str) -> str:
     <section class="tab-panel" id="panel-qa">{qa_html}</section>
   </div>
 </div>"""
+
+
+def _cleanup_known_internal_html_leaks(html_text: str) -> str:
+    """Final guard for known internal field labels that can appear in model text."""
+    replacements = {
+        "fact：": "事實：",
+        "stance：": "立場：",
+        "evidence type：": "證據類型：",
+        "source ids：": "來源編號：",
+        "source id：": "來源編號：",
+        "date：": "日期：",
+        "related stocks：": "關聯股票：",
+        "company knowledge summary：": "公司知識摘要：",
+        "公司知識庫 摘要：": "公司知識摘要：",
+        "news stats：": "新聞統計：",
+        "low model warnings：": "低階模型警示：",
+    }
+    result = html_text
+    for raw, label in replacements.items():
+        result = re.sub(re.escape(raw), label, result, flags=re.I)
+    return result
 
 
 def _markdown_to_html(markdown: str) -> str:

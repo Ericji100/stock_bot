@@ -21,15 +21,28 @@ PROMPT_WORKFLOW_DIR = Path(__file__).resolve().parents[1] / "prompt" / "workflow
 LOW_MODEL_ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "logs" / "ai_low_model"
 HIGH_MODEL_BALANCED_THRESHOLD_CHARS = 180_000
 HIGH_MODEL_COMPACT_THRESHOLD_CHARS = 320_000
-LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS = 320_000
-LOW_MODEL_SEGMENT_TARGET_CHARS = 220_000
-LOW_MODEL_SEGMENT_HARD_LIMIT_CHARS = 420_000
+LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS = 120_000
+LOW_MODEL_SEGMENT_TARGET_CHARS = 16_000
+LOW_MODEL_SEGMENT_HARD_LIMIT_CHARS = 90_000
 LOW_MODEL_MAX_SEGMENTS = 300
 LOW_MODEL_EXECUTION_MAX_SEGMENTS = 48
+LOW_MODEL_TOPIC_MAINTAIN_EXECUTION_MAX_SEGMENTS = 6
+LOW_MODEL_CONSECUTIVE_TRANSPORT_FAILURE_LIMIT = 3
 LOW_MODEL_TEXT_EVIDENCE_LIMIT = 320
+LOW_MODEL_SEGMENT_TIMEOUT_SECONDS = 75.0
+LOW_MODEL_RETRY_TIMEOUT_SECONDS = 45.0
 LOW_MODEL_QUOTA_COOLDOWN_HOURS = 6
 TOKEN_ESTIMATE_DIVISOR = 4
 SEMANTIC_COMMAND_CONTEXT_SCHEMA_VERSION = "semantic_command_context_v1"
+LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS = {
+    "macro": 6,
+    "theme": 6,
+    "theme_flow": 6,
+    "theme_radar": 8,
+    "sector_strength": 8,
+    "value_scan": 8,
+    "topic_maintain": LOW_MODEL_TOPIC_MAINTAIN_EXECUTION_MAX_SEGMENTS,
+}
 COMPLETE_SEGMENT_CONTEXT_SCHEMA_VERSION = "complete_segment_context_v1"
 AI_WORKFLOW_STANDARD_CAPABILITIES = [
     "local_data_package",
@@ -120,7 +133,7 @@ def build_ai_workflow_coverage(
 
 
 def _low_model_cooldown_file() -> Path:
-    return LOW_MODEL_ARTIFACT_DIR / "cooldown" / "minimax_m2_7.json"
+    return LOW_MODEL_ARTIFACT_DIR / "cooldown" / "minimax_m3.json"
 
 
 def _low_model_cooldown_status(now: datetime | None = None) -> dict[str, Any] | None:
@@ -184,6 +197,31 @@ def _is_low_model_quota_error(exc: BaseException | str) -> bool:
     )
 
 
+def _is_low_model_transport_error(exc: BaseException | str) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "transport_error",
+            "connecterror",
+            "connecttimeout",
+            "readtimeout",
+            "timeout",
+            "getaddrinfo failed",
+            "winerror 10053",
+            "winerror 10060",
+            "connection aborted",
+            "connection reset",
+        )
+    )
+
+
+def _low_model_execution_segment_limit(request: CommandRequest) -> int:
+    if request.command in LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS:
+        return LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS[request.command]
+    return LOW_MODEL_EXECUTION_MAX_SEGMENTS
+
+
 def _low_model_cooldown_digest(
     request: CommandRequest,
     *,
@@ -206,7 +244,7 @@ def _low_model_cooldown_digest(
         "estimated_tokens": 0,
         "source_count": len(sources),
         "warnings": [
-            "MiniMax M3 額度或速率限制仍在冷卻中，本次略過低階資料整理；高階模型會改用本地資料中心與完整來源索引。"
+            f"{model_name} 額度或速率限制仍在冷卻中，本次略過低階資料整理；高階模型會改用本地資料中心與完整來源索引。"
         ],
     }
     digest["validation"] = validate_low_model_digest(digest)
@@ -272,7 +310,7 @@ def attach_low_model_digest(
     structured_data["low_model_skipped_structured_sections"] = payload.get("skipped_structured_sections") or []
     _emit(
         progress,
-        f"MiniMax M3 低階選擇性整理：text_evidence={len(payload.get('text_evidence') or [])} skipped_structured={len(payload.get('skipped_structured_sections') or [])}",
+        f"{model_name} 低階選擇性整理：text_evidence={len(payload.get('text_evidence') or [])} skipped_structured={len(payload.get('skipped_structured_sections') or [])}",
     )
     digest = run_low_model_digest_for_payload(
         request,
@@ -835,7 +873,7 @@ def build_high_model_input_package(
         "workflow_policy": {
             "目的": "在不犧牲報告品質的前提下，將完整核心資料清洗、去重、分類後分段提供給高階模型閱讀。",
             "完整資料保留": "核心分析資料不得因省 token 被語意壓縮或刪除；完整原始資料、完整來源、來源快照與結構化資料仍保存在報告 JSON、sources JSON 與本地快取。",
-            "低階模型限制": "MiniMax M3 只做格式整理、去重、來源對照與資料缺口標記，不得判斷重要性、不得刪資料、不得做最終評分或買賣建議。",
+            "低階模型限制": "低階模型只做格式整理、去重、來源對照與資料缺口標記，不得判斷重要性、不得刪資料、不得做最終評分或買賣建議。",
             "高階模型責任": "高階模型必須分段閱讀完整核心資料，重新判斷、重新評分、檢查反證與資料缺口，不得直接照抄低階資料包。",
         },
         "token_budget_policy": {
@@ -2345,6 +2383,11 @@ def _compact_theme_match(row: dict[str, Any]) -> dict[str, Any]:
     counter = row.get("counter_evidence") if isinstance(row.get("counter_evidence"), list) else []
     missing = row.get("missing_data")
     missing_count = len(missing) if isinstance(missing, list) else len(missing or {}) if isinstance(missing, dict) else 0
+    risk_note_count = len(row.get("risk_notes") or []) if isinstance(row.get("risk_notes"), list) else 0
+    evidence_count = _count_or_none(row.get("evidence_count"), len(evidence))
+    counter_evidence_count = _count_or_none(row.get("counter_evidence_count"), len(counter))
+    missing_data_count = _count_or_none(row.get("missing_data_count"), missing_count)
+    risk_note_count = _count_or_none(row.get("risk_note_count"), risk_note_count)
     return {
         key: value
         for key, value in {
@@ -2358,14 +2401,22 @@ def _compact_theme_match(row: dict[str, Any]) -> dict[str, Any]:
             "verification_status": row.get("verification_status"),
             "supply_chain_role": row.get("supply_chain_role"),
             "layer": row.get("layer"),
-            "benefit_logic": _truncate_text(str(row.get("benefit_logic") or ""), 260) if row.get("benefit_logic") else None,
-            "evidence_count": len(evidence),
-            "counter_evidence_count": len(counter),
-            "missing_data_count": missing_count,
-            "risk_note_count": len(row.get("risk_notes") or []) if isinstance(row.get("risk_notes"), list) else 0,
+            "benefit_logic": _truncate_text(str(row.get("benefit_logic") or ""), 110) if row.get("benefit_logic") else None,
+            "evidence_count": evidence_count,
+            "counter_evidence_count": counter_evidence_count,
+            "missing_data_count": missing_data_count,
+            "risk_note_count": risk_note_count,
         }.items()
         if value not in (None, "", [], {})
     }
+
+
+def _count_or_none(raw: Any, fallback: int) -> int | None:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = int(fallback or 0)
+    return value or None
 
 
 def _compact_subsector_match(row: dict[str, Any]) -> dict[str, Any]:
@@ -2672,6 +2723,17 @@ def _emit(progress: ProgressCallback | None, message: str) -> None:
         progress(message)
 
 
+def _generate_low_model_json_with_timeout(minimax: MiniMaxService, prompt: str, timeout_seconds: float):
+    if not hasattr(minimax, "timeout_seconds"):
+        return minimax.generate_json(prompt)
+    old_timeout = getattr(minimax, "timeout_seconds")
+    try:
+        setattr(minimax, "timeout_seconds", timeout_seconds)
+        return minimax.generate_json(prompt)
+    finally:
+        setattr(minimax, "timeout_seconds", old_timeout)
+
+
 def _run_low_model_digest_guarded(
     request: CommandRequest,
     payload: dict[str, Any],
@@ -2691,7 +2753,7 @@ def _run_low_model_digest_guarded(
     cached = _read_cached_low_model_digest(fingerprint)
     if cached:
         cached["cache_hit"] = True
-        _emit(progress, f"MiniMax M3 低階整理快取命中：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
+        _emit(progress, f"{model_name} 低階整理快取命中：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
         return cached
 
     cooldown = _low_model_cooldown_status()
@@ -2704,7 +2766,7 @@ def _run_low_model_digest_guarded(
             cooldown=cooldown,
             sources=sources,
         )
-        _emit(progress, f"MiniMax M3 額度冷卻中，略過低階整理：cooldown_until={digest.get('cooldown_until')}")
+        _emit(progress, f"{model_name} 額度冷卻中，略過低階整理：cooldown_until={digest.get('cooldown_until')}")
         return digest
 
     prompt = build_low_model_digest_prompt_from_payload(
@@ -2737,7 +2799,7 @@ def _run_low_model_digest_guarded(
 
     _emit(
         progress,
-        f"MiniMax M3 低階整理開始：model={model_name} prompt={prompt_chars} chars est_tokens={_estimate_tokens(prompt_chars)} sources={source_count}",
+        f"{model_name} 低階整理開始：model={model_name} prompt={prompt_chars} chars est_tokens={_estimate_tokens(prompt_chars)} sources={source_count}",
     )
     prompt_path = write_prompt_log(
         request,
@@ -2767,7 +2829,7 @@ def _run_low_model_digest_guarded(
         digest["estimated_tokens"] = _estimate_tokens(prompt_chars)
         digest["validation"] = validate_low_model_digest(digest)
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
-        _emit(progress, f"MiniMax M3 低階整理完成：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
+        _emit(progress, f"{model_name} 低階整理完成：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
         return digest
     except Exception as exc:
         if not _is_low_model_quota_error(exc):
@@ -2804,7 +2866,7 @@ def _run_low_model_digest_guarded(
             digest["cooldown_until"] = cooldown_payload.get("cooldown_until")
         digest["validation"] = validate_low_model_digest(digest)
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
-        _emit(progress, f"MiniMax M3 低階整理失敗，改用本地資料中心繼續：{exc}")
+        _emit(progress, f"{model_name} 低階整理失敗，改用本地資料中心繼續：{exc}")
         return digest
 
 
@@ -2824,7 +2886,7 @@ def _retry_single_low_model_digest(
     progress: ProgressCallback | None,
 ) -> dict[str, Any] | None:
     source_ids = [item.source_id for item in sources[:80]]
-    _emit(progress, f"MiniMax M3 低階整理失敗，改用精簡重試：{first_error}")
+    _emit(progress, f"{model_name} 低階整理失敗，改用精簡重試：{first_error}")
     retry_prompt = _build_low_model_retry_prompt(
         payload,
         error=first_error,
@@ -2851,7 +2913,7 @@ def _retry_single_low_model_digest(
         },
     )
     try:
-        retry_result = minimax.generate_json(retry_prompt)
+        retry_result = _generate_low_model_json_with_timeout(minimax, retry_prompt, LOW_MODEL_RETRY_TIMEOUT_SECONDS)
         parsed = _parse_json_object(retry_result.markdown)
         digest = _normalize_digest(parsed, model_name=model_name)
         digest["status"] = "success_after_retry"
@@ -2865,12 +2927,12 @@ def _retry_single_low_model_digest(
         digest["first_error"] = first_error
         digest["validation"] = validate_low_model_digest(digest)
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
-        _emit(progress, f"MiniMax M3 低階整理重試成功：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
+        _emit(progress, f"{model_name} 低階整理重試成功：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
         return digest
     except Exception as retry_exc:
         if _is_low_model_quota_error(retry_exc):
             return None
-        _emit(progress, f"MiniMax M3 低階整理重試失敗：{retry_exc}")
+        _emit(progress, f"{model_name} 低階整理重試失敗：{retry_exc}")
         return None
 
 
@@ -2901,10 +2963,33 @@ def _run_segmented_low_model_digest(
             cooldown=cooldown,
             sources=sources,
         )
-        _emit(progress, f"MiniMax M3 額度冷卻中，略過分段低階整理：cooldown_until={digest.get('cooldown_until')}")
+        _emit(progress, f"{model_name} 額度冷卻中，略過分段低階整理：cooldown_until={digest.get('cooldown_until')}")
         return digest
     segments = _build_low_model_payload_segments(payload)
-    if len(segments) > LOW_MODEL_EXECUTION_MAX_SEGMENTS:
+    segment_limit = _low_model_execution_segment_limit(request)
+    omitted_segment_runs: list[dict[str, Any]] = []
+    if len(segments) > segment_limit and request.command in LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS:
+        omitted = segments[segment_limit:]
+        omitted_segment_runs = [
+            {
+                "label": item.get("label"),
+                "status": "skipped_segment_limit",
+                "prompt_chars": 0,
+                "estimated_tokens": 0,
+                "source_count": 0,
+                "prompt_path": "",
+                "source_ids": [],
+                "error": f"{request.command} low model segment skipped by limit {segment_limit}/{len(segments)}",
+                "fallback_action": "use_local_fidelity_package_for_final_model",
+            }
+            for item in omitted
+        ]
+        segments = segments[:segment_limit]
+        _emit(
+            progress,
+            f"{model_name} 低階整理限制為 {segment_limit} 段，剩餘 {len(omitted)} 段改由本地保真資料包、來源索引與高階模型處理。",
+        )
+    if len(segments) > segment_limit:
         digest = {
             "schema_version": LOW_MODEL_DIGEST_SCHEMA_VERSION,
             "status": "skipped",
@@ -2916,16 +3001,16 @@ def _run_segmented_low_model_digest(
             "prompt_chars": 0,
             "estimated_tokens": 0,
             "segment_count": len(segments),
-            "segment_limit": LOW_MODEL_EXECUTION_MAX_SEGMENTS,
+            "segment_limit": segment_limit,
             "source_count": len(sources) or _payload_source_count(payload),
             "warnings": [
-                "MiniMax M3 低階整理分段過多，已跳過低階整理；高階模型仍會使用本地保真核心資料包與完整來源索引。"
+                f"{model_name} 低階整理分段過多，已跳過低階整理；高階模型仍會使用本地保真核心資料包與完整來源索引。"
             ],
             "failed_segment_index": [
                 {
                     "label": "low_model_segment_count_exceeded",
                     "status": "skipped",
-                    "error": f"segment_count={len(segments)} exceeds limit={LOW_MODEL_EXECUTION_MAX_SEGMENTS}",
+                    "error": f"segment_count={len(segments)} exceeds limit={segment_limit}",
                     "source_ids": [],
                     "fallback_action": "use_local_fidelity_package_for_final_model",
                 }
@@ -2933,7 +3018,7 @@ def _run_segmented_low_model_digest(
             "diagnostics": {
                 "mode": "skipped_low_model_digest",
                 "segment_count": len(segments),
-                "segment_limit": LOW_MODEL_EXECUTION_MAX_SEGMENTS,
+                "segment_limit": segment_limit,
                 "original_prompt_chars": original_prompt_chars,
                 "fallback_action": "use_local_fidelity_package_for_final_model",
             },
@@ -2942,16 +3027,17 @@ def _run_segmented_low_model_digest(
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
         _emit(
             progress,
-            f"MiniMax M3 低階資料整理略過：segments={len(segments)} 超過上限 {LOW_MODEL_EXECUTION_MAX_SEGMENTS}，改由本地保真核心資料包供高階模型分析。",
+            f"{model_name} 低階資料整理略過：segments={len(segments)} 超過上限 {segment_limit}，改由本地保真核心資料包供高階模型分析。",
         )
         return digest
     _emit(
         progress,
-        f"MiniMax M3 分段資料整理開始：segments={len(segments)} original_prompt={original_prompt_chars} chars est_tokens={_estimate_tokens(original_prompt_chars)} sources={len(sources) or _payload_source_count(payload)}",
+        f"{model_name} 分段資料整理開始：segments={len(segments)} original_prompt={original_prompt_chars} chars est_tokens={_estimate_tokens(original_prompt_chars)} sources={len(sources) or _payload_source_count(payload)}",
     )
     digests: list[dict[str, Any]] = []
     runs: list[dict[str, Any]] = []
     prompt_paths: list[str] = []
+    consecutive_transport_failures = 0
     for index, segment in enumerate(segments, 1):
         segment_payload = segment["payload"]
         prompt = build_low_model_digest_prompt_from_payload(
@@ -2975,7 +3061,7 @@ def _run_segmented_low_model_digest(
                 "fallback_action": "record_failed_segment_for_audit",
             }
             runs.append(run)
-            _emit(progress, f"MiniMax M3 分段資料整理略過過大段落 {index}/{len(segments)}：{segment['label']} prompt={len(prompt)} chars，保留原始資料給高階模型")
+            _emit(progress, f"{model_name} 分段資料整理略過過大段落 {index}/{len(segments)}：{segment['label']} prompt={len(prompt)} chars，保留原始資料給高階模型")
             continue
         segment_sources = _sources_for_segment_payload(sources, segment_payload)
         prompt_path = write_prompt_log(
@@ -3002,7 +3088,7 @@ def _run_segmented_low_model_digest(
         prompt_paths.append(str(prompt_path))
         _emit(
             progress,
-            f"MiniMax M3 分段資料整理 {index}/{len(segments)}：{segment['label']} prompt={len(prompt)} chars est_tokens={_estimate_tokens(len(prompt))} sources={len(segment_sources)}",
+            f"{model_name} 分段資料整理 {index}/{len(segments)}：{segment['label']} prompt={len(prompt)} chars est_tokens={_estimate_tokens(len(prompt))} sources={len(segment_sources)}",
         )
         run = {
             "label": segment["label"],
@@ -3014,7 +3100,7 @@ def _run_segmented_low_model_digest(
             "source_ids": [item.source_id for item in segment_sources],
         }
         try:
-            result = minimax.generate_json(prompt)
+            result = _generate_low_model_json_with_timeout(minimax, prompt, LOW_MODEL_SEGMENT_TIMEOUT_SECONDS)
             parsed = _parse_json_object(result.markdown)
             digest = _normalize_digest(parsed, model_name=model_name)
             digest["prompt_path"] = str(prompt_path)
@@ -3024,7 +3110,8 @@ def _run_segmented_low_model_digest(
             run["output_facts"] = len(digest.get("facts") or [])
             run["output_sources"] = len(digest.get("source_map") or [])
             run["usage"] = _extract_usage(result.diagnostics)
-            _emit(progress, f"MiniMax M3 分段資料整理完成 {index}/{len(segments)}：facts={run['output_facts']} sources={run['output_sources']}")
+            consecutive_transport_failures = 0
+            _emit(progress, f"{model_name} 分段資料整理完成 {index}/{len(segments)}：facts={run['output_facts']} sources={run['output_sources']}")
         except Exception as exc:
             if _is_low_model_quota_error(exc):
                 cooldown_payload = _write_low_model_cooldown(exc, model_name=model_name)
@@ -3032,7 +3119,7 @@ def _run_segmented_low_model_digest(
                 run["error"] = str(exc)
                 run["cooldown_until"] = cooldown_payload.get("cooldown_until")
                 run["fallback_action"] = "skip_low_model_until_cooldown_expires"
-                _emit(progress, f"MiniMax M3 額度或速率限制，停止後續低階分段：cooldown_until={run.get('cooldown_until')}")
+                _emit(progress, f"{model_name} 額度或速率限制，停止後續低階分段：cooldown_until={run.get('cooldown_until')}")
                 runs.append(run)
                 break
             _retry_low_model_segment(
@@ -3053,8 +3140,26 @@ def _run_segmented_low_model_digest(
                 run=run,
                 progress=progress,
             )
+            run_status = str(run.get("status") or "")
+            error_text = " ".join(str(run.get(key) or "") for key in ("error", "first_error"))
+            if run_status.startswith("failed") and _is_low_model_transport_error(error_text):
+                consecutive_transport_failures += 1
+            else:
+                consecutive_transport_failures = 0
+            if consecutive_transport_failures >= LOW_MODEL_CONSECUTIVE_TRANSPORT_FAILURE_LIMIT:
+                run["fallback_action"] = "stop_low_model_after_consecutive_transport_failures"
+                run["transport_failure_break"] = True
+                run["consecutive_transport_failures"] = consecutive_transport_failures
+                _emit(
+                    progress,
+                    f"{model_name} 分段資料整理連續網路失敗，停止後續低階分段；改由本地保真核心資料包供高階模型分析。",
+                )
+                runs.append(run)
+                break
         runs.append(run)
 
+    if omitted_segment_runs:
+        runs.extend(omitted_segment_runs)
     merged = _merge_low_model_digests(digests, model_name=model_name)
     success_count = sum(1 for item in runs if item.get("status") in {"success", "success_after_retry"})
     failed_runs = [item for item in runs if str(item.get("status") or "").startswith("failed")]
@@ -3088,13 +3193,17 @@ def _run_segmented_low_model_digest(
     }
     if failed_runs:
         merged.setdefault("warnings", []).append(
-            "部分 MiniMax M3 分段整理失敗；失敗段來源已列入 failed_segment_index，報告會保留診斷並由高階模型搭配本地資料中心判斷。"
+            f"部分 {model_name} 分段整理失敗；失敗段來源已列入 failed_segment_index，報告會保留診斷並由高階模型搭配本地資料中心判斷。"
+        )
+    if omitted_segment_runs:
+        merged.setdefault("warnings", []).append(
+            "低階整理已限制分段數；未送入低階模型的段落仍保留於本地保真資料包、來源索引、JSON/HTML 附錄與高階模型入模資料。"
         )
     merged["validation"] = validate_low_model_digest(merged)
     merged["artifact_paths"] = save_low_model_digest_artifacts(request, merged, fingerprint=fingerprint, purpose=purpose)
     _emit(
         progress,
-        f"MiniMax M3 分段資料整理結束：success={success_count}/{len(runs)} failed={len(failed_runs)} facts={len(merged.get('facts') or [])} sources={len(merged.get('source_map') or [])}",
+        f"{model_name} 分段資料整理結束：success={success_count}/{len(runs)} failed={len(failed_runs)} facts={len(merged.get('facts') or [])} sources={len(merged.get('source_map') or [])}",
     )
     return merged
 
@@ -3119,7 +3228,7 @@ def _retry_low_model_segment(
     progress: ProgressCallback | None,
 ) -> None:
     run["first_error"] = first_error
-    _emit(progress, f"MiniMax M3 分段資料整理失敗 {segment_index}/{segment_total}，改用精簡重試：{first_error}")
+    _emit(progress, f"{model_name} 分段資料整理失敗 {segment_index}/{segment_total}，改用精簡重試：{first_error}")
     retry_prompt = _build_low_model_retry_prompt(
         segment_payload,
         error=first_error,
@@ -3152,7 +3261,7 @@ def _retry_low_model_segment(
     run["retry_prompt_chars"] = len(retry_prompt)
     run["retry_estimated_tokens"] = _estimate_tokens(len(retry_prompt))
     try:
-        retry_result = minimax.generate_json(retry_prompt)
+        retry_result = _generate_low_model_json_with_timeout(minimax, retry_prompt, LOW_MODEL_RETRY_TIMEOUT_SECONDS)
         parsed = _parse_json_object(retry_result.markdown)
         digest = _normalize_digest(parsed, model_name=model_name)
         digest["prompt_path"] = str(retry_path)
@@ -3162,7 +3271,7 @@ def _retry_low_model_segment(
         run["output_facts"] = len(digest.get("facts") or [])
         run["output_sources"] = len(digest.get("source_map") or [])
         run["usage"] = _extract_usage(retry_result.diagnostics)
-        _emit(progress, f"MiniMax M3 分段資料整理重試成功 {segment_index}/{segment_total}：facts={run['output_facts']} sources={run['output_sources']}")
+        _emit(progress, f"{model_name} 分段資料整理重試成功 {segment_index}/{segment_total}：facts={run['output_facts']} sources={run['output_sources']}")
     except Exception as retry_exc:
         cooldown_payload = _write_low_model_cooldown(retry_exc, model_name=model_name) if _is_low_model_quota_error(retry_exc) else None
         run["status"] = "failed_after_retry"
@@ -3172,7 +3281,7 @@ def _retry_low_model_segment(
             run["status"] = "failed_quota_cooldown"
             run["cooldown_until"] = cooldown_payload.get("cooldown_until")
             run["fallback_action"] = "skip_low_model_until_cooldown_expires"
-        _emit(progress, f"MiniMax M3 分段資料整理重試失敗 {segment_index}/{segment_total}：{retry_exc}")
+        _emit(progress, f"{model_name} 分段資料整理重試失敗 {segment_index}/{segment_total}：{retry_exc}")
 
 
 def _build_low_model_payload_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3279,13 +3388,12 @@ def _build_low_model_retry_prompt(
     segment_label: str,
     source_ids: list[str],
 ) -> str:
-    compact_payload = _prepare_low_model_payload_for_prompt(
+    compact_payload = _prepare_low_model_retry_payload_for_prompt(
         payload,
-        max_sources=18,
-        max_list=22,
-        max_keys=38,
-        max_string=360,
-        depth=3,
+        max_list=10,
+        max_keys=24,
+        max_string=180,
+        depth=2,
     )
     template = _read_workflow_prompt("low_model_digest_retry.md")
     return template.format(
@@ -3295,6 +3403,51 @@ def _build_low_model_retry_prompt(
         error=_truncate_text(error, 600),
         compact_payload_json=json.dumps(compact_payload, ensure_ascii=False, indent=2, default=str),
     )
+
+
+def _prepare_low_model_retry_payload_for_prompt(
+    value: Any,
+    *,
+    max_list: int,
+    max_keys: int,
+    max_string: int,
+    depth: int,
+) -> Any:
+    if isinstance(value, str):
+        text = value.strip()
+        return text if len(text) <= max_string else text[:max_string] + "...(重試摘要，完整資料已在原始段落與來源檔)"
+    if depth <= 0:
+        return _truncate_text(value, max_string)
+    if isinstance(value, dict):
+        output: dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= max_keys:
+                output["其餘欄位"] = f"尚有 {len(value) - max_keys} 個欄位，完整資料已在原始段落與來源檔"
+                break
+            output[str(key)] = _prepare_low_model_retry_payload_for_prompt(
+                item,
+                max_list=max_list,
+                max_keys=max_keys,
+                max_string=max_string,
+                depth=depth - 1,
+            )
+        return output
+    if isinstance(value, list):
+        rows = _dedupe_rows_for_prompt(value)
+        items = [
+            _prepare_low_model_retry_payload_for_prompt(
+                item,
+                max_list=max_list,
+                max_keys=max_keys,
+                max_string=max_string,
+                depth=depth - 1,
+            )
+            for item in rows[:max_list]
+        ]
+        if len(rows) > max_list:
+            items.append({"其餘筆數": len(rows) - max_list, "說明": "重試只帶前段摘要；完整資料已在原始段落與來源檔"})
+        return items
+    return value
 
 
 def _merge_low_model_digests(digests: list[dict[str, Any]], *, model_name: str) -> dict[str, Any]:

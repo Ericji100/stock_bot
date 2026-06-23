@@ -35,7 +35,7 @@ class ResearchPayload(BaseModel):
 
 
 class MacroPayload(BaseModel):
-    market_scope: str = "??"
+    market_scope: str = "台股"
     theme_scope: str | None = None
     mode: str = "normal"
     report_date: str | None = None

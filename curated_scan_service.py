@@ -8,6 +8,7 @@ from typing import Any
 
 import pandas as pd
 
+from candidate_filter_service import hard_filter_display_text, resolve_hard_filter_settings
 from chip_strategies import (
     CHIP_STRATEGY_NAMES,
     build_chip_grade_maps,
@@ -70,10 +71,10 @@ def build_curated_scan_result(
     scan_settings: dict[str, float] | None = None,
     report_date: date | None = None,
 ) -> CuratedScanResult:
-    settings = scan_settings or {}
+    settings = resolve_hard_filter_settings(scan_settings or {})
     target_date = report_date or get_tw_today()
     financial_report = scan_tw_market(False, None, settings)
-    chip_context = build_market_context(False, target_date, include_daily_data=True)
+    chip_context = build_market_context(False, target_date, include_daily_data=True, scan_settings=settings)
     chip_grade_maps = build_chip_grade_maps(chip_context, ["chip_1", "chip_2", "chip_3", "chip_4"])
     technical_result = ts.run_technical_scan(settings, target_date)
     technical_signal_codes = _collect_technical_signal_codes(technical_result)
@@ -323,7 +324,7 @@ def _format_curated_scan_report(
             "",
             "掃描統計",
             f"營收財報選股命中：{financial_candidate_count} 檔",
-            f"法人大戶硬篩標的：{chip_candidate_count} 檔 (股價 {int(scan_settings['min_price'])}~{int(scan_settings['max_price'])} / 均量 > {int(scan_settings['min_avg_volume_20d'])})",
+            f"法人大戶硬篩標的：{chip_candidate_count} 檔 ({hard_filter_display_text(scan_settings)})",
             f"技術面硬篩標的：{technical_hard_filter_passed} 檔",
             f"技術面訊號命中：{technical_matched_symbols} 檔",
             f"重複命中精選：{len(selected_codes)} 檔",

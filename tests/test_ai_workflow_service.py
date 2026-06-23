@@ -13,10 +13,13 @@ from research_center.ai_workflow_service import (
     LOW_MODEL_DIGEST_SCHEMA_VERSION,
     _digest_fingerprint,
     _build_low_model_digest_payload,
+    _build_low_model_retry_prompt,
+    _low_model_cooldown_file,
     attach_low_model_digest,
     build_ai_workflow_coverage,
     build_high_model_input_package,
     build_low_model_digest_prompt,
+    build_low_model_digest_prompt_from_payload,
     run_low_model_digest_for_payload,
     validate_low_model_digest,
 )
@@ -75,6 +78,16 @@ class FailingMiniMax(FakeMiniMax):
         raise RuntimeError("segment too large")
 
 
+class TransportFailingMiniMax(FakeMiniMax):
+    def __init__(self):
+        super().__init__(None)
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt: str) -> MiniMaxResult:
+        self.prompts.append(prompt)
+        raise RuntimeError("MiniMax API request failed; status=transport_error; reason=ConnectError; response=getaddrinfo failed")
+
+
 class QuotaFailingMiniMax(FakeMiniMax):
     def __init__(self):
         super().__init__(None)
@@ -89,9 +102,12 @@ class RetryThenSuccessMiniMax(FakeMiniMax):
     def __init__(self):
         super().__init__(None)
         self.prompts: list[str] = []
+        self.timeout_seconds = 600.0
+        self.seen_timeouts: list[float] = []
 
     def generate_json(self, prompt: str) -> MiniMaxResult:
         self.prompts.append(prompt)
+        self.seen_timeouts.append(self.timeout_seconds)
         if len(self.prompts) == 1:
             return MiniMaxResult(
                 markdown='{"schema_version": "low_model_digest_v1", "facts": [',
@@ -110,6 +126,17 @@ class RetryThenSuccessMiniMax(FakeMiniMax):
             raw={"ok": True},
             diagnostics={"model": self.model, "usage": {"total_tokens": 8}},
         )
+
+
+class TimeoutAwareLowModelMiniMax(CountingMiniMax):
+    def __init__(self):
+        super().__init__()
+        self.timeout_seconds = 600.0
+        self.seen_timeouts: list[float] = []
+
+    def generate_json(self, prompt: str) -> MiniMaxResult:
+        self.seen_timeouts.append(self.timeout_seconds)
+        return super().generate_json(prompt)
 
 
 def _request() -> CommandRequest:
@@ -321,6 +348,38 @@ class LowModelDigestTests(unittest.TestCase):
         self.assertEqual(len(minimax.prompts), 2)
         self.assertEqual(digest["facts"][0]["fact"], "retry fact")
         self.assertTrue(str(digest["retry_prompt_path"]).replace("\\", "/").endswith("logs/ai_prompts/single_retry.json"))
+        self.assertEqual(minimax.seen_timeouts, [600.0, 45.0])
+        self.assertEqual(minimax.timeout_seconds, 600.0)
+
+    def test_low_model_retry_prompt_is_compact(self) -> None:
+        payload = {
+            "command": "macro",
+            "text_evidence": [
+                {
+                    "source_id": f"S{i:03d}",
+                    "title": f"來源 {i}",
+                    "summary": "這是一段很長的市場與題材摘要。" * 80,
+                    "snippet": "補充原文。" * 120,
+                }
+                for i in range(40)
+            ],
+        }
+        original_prompt = build_low_model_digest_prompt_from_payload(
+            payload,
+            max_sources=60,
+            max_list=60,
+            max_keys=80,
+            max_string=900,
+            depth=4,
+        )
+        retry_prompt = _build_low_model_retry_prompt(
+            payload,
+            error="Expecting ',' delimiter",
+            segment_label="text_evidence_1",
+            source_ids=[f"S{i:03d}" for i in range(40)],
+        )
+        self.assertLess(len(retry_prompt), len(original_prompt) * 0.45)
+        self.assertLess(len(retry_prompt), 18000)
 
     def test_large_low_model_payload_is_segmented(self) -> None:
         payload = {
@@ -345,6 +404,65 @@ class LowModelDigestTests(unittest.TestCase):
         self.assertGreater(len(minimax.prompts), 1)
         self.assertEqual(digest["diagnostics"]["mode"], "segmented_low_model_digest")
         self.assertGreater(digest["estimated_tokens"], 0)
+
+    def test_segmented_low_model_prompt_size_stays_below_hard_limit(self) -> None:
+        payload = {
+            "command": "topic_maintain",
+            "target": "market",
+            "items": [
+                {
+                    "source_id": f"S{index:03d}",
+                    "title": f"題材證據 {index}",
+                    "text": "AI 伺服器、電力、PCB、半導體供應鏈證據 " + ("x" * 1800),
+                }
+                for index in range(55)
+            ],
+        }
+        minimax = CountingMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TARGET_CHARS", 8_000
+        ), patch("research_center.ai_workflow_service.LOW_MODEL_SEGMENT_HARD_LIMIT_CHARS", 35_000), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/segmented_size_guard.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request(),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_segment_size_guard",
+            )
+        self.assertEqual(digest["diagnostics"]["mode"], "segmented_low_model_digest")
+        self.assertGreater(len(minimax.prompts), 1)
+        self.assertLessEqual(max(len(prompt) for prompt in minimax.prompts), 35_000)
+
+    def test_segmented_low_model_sets_short_timeout_for_each_segment(self) -> None:
+        payload = {
+            "command": "research",
+            "target": "凌陽",
+            "items": [{"source_id": "S001", "text": "AI " + ("x" * 5000)} for _ in range(30)],
+        }
+        minimax = TimeoutAwareLowModelMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TIMEOUT_SECONDS", 12.5
+        ), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/segmented_timeout_guard.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request_for("research"),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_segment_timeout_guard",
+            )
+
+        self.assertEqual(digest["diagnostics"]["mode"], "segmented_low_model_digest")
+        self.assertGreater(len(minimax.seen_timeouts), 1)
+        self.assertTrue(all(value == 12.5 for value in minimax.seen_timeouts))
+        self.assertEqual(minimax.timeout_seconds, 600.0)
 
     def test_excessive_low_model_segments_are_skipped_without_ai_call(self) -> None:
         payload = {
@@ -394,6 +512,105 @@ class LowModelDigestTests(unittest.TestCase):
         self.assertEqual(digest["diagnostics"]["failed_count"], len(digest["failed_segment_index"]))
         self.assertEqual(digest["failed_segment_index"][0]["fallback_action"], "record_failed_segment_for_audit")
 
+    def test_segmented_low_model_breaks_after_consecutive_transport_failures(self) -> None:
+        payload = {
+            "command": "topic_maintain",
+            "target": "market",
+            "items": [{"source_id": f"S{index:03d}", "text": "AI " + ("x" * 5000)} for index in range(40)],
+        }
+        minimax = TransportFailingMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_CONSECUTIVE_TRANSPORT_FAILURE_LIMIT", 2
+        ), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/transport_break.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request_for("theme_radar"),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_transport_break",
+            )
+
+        self.assertEqual(digest["status"], "failed")
+        executed_runs = [run for run in digest["segment_runs"] if run.get("status") != "skipped_segment_limit"]
+        self.assertLessEqual(len(executed_runs), 2)
+        self.assertTrue(executed_runs[-1]["transport_failure_break"])
+        self.assertEqual(
+            digest["failed_segment_index"][-1]["fallback_action"],
+            "stop_low_model_after_consecutive_transport_failures",
+        )
+
+    def test_topic_maintain_low_model_limits_executed_segments(self) -> None:
+        payload = {
+            "command": "topic_maintain",
+            "target": "market",
+            "items": [{"source_id": f"S{index:03d}", "text": "題材證據 " + ("x" * 3000)} for index in range(24)],
+        }
+        minimax = CountingMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TARGET_CHARS", 3000
+        ), patch.dict(
+            "research_center.ai_workflow_service.LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS",
+            {"topic_maintain": 3},
+            clear=False,
+        ), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/topic_limited.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request_for("topic_maintain"),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_topic_segment_limit",
+            )
+
+        self.assertLessEqual(len(minimax.prompts), 3)
+        self.assertEqual(len([run for run in digest["segment_runs"] if run["status"] == "success"]), 3)
+        self.assertTrue(any(run["status"] == "skipped_segment_limit" for run in digest["segment_runs"]))
+        self.assertIn("低階整理已限制分段數", "\n".join(digest.get("warnings") or []))
+
+    def test_macro_low_model_limits_executed_segments_but_keeps_audit_rows(self) -> None:
+        payload = {
+            "command": "macro",
+            "target": "台股",
+            "items": [{"source_id": f"S{index:03d}", "text": "宏觀證據 " + ("x" * 3000)} for index in range(32)],
+        }
+        minimax = CountingMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TARGET_CHARS", 3000
+        ), patch.dict(
+            "research_center.ai_workflow_service.LOW_MODEL_COMMAND_EXECUTION_SEGMENT_LIMITS",
+            {"macro": 4},
+            clear=False,
+        ), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/macro_limited.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request_for("macro"),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_macro_segment_limit",
+            )
+
+        self.assertEqual(len(minimax.prompts), 4)
+        self.assertEqual(len([run for run in digest["segment_runs"] if run["status"] == "success"]), 4)
+        self.assertTrue(any(run["status"] == "skipped_segment_limit" for run in digest["segment_runs"]))
+        self.assertTrue(
+            all(
+                run.get("fallback_action") == "use_local_fidelity_package_for_final_model"
+                for run in digest["segment_runs"]
+                if run.get("status") == "skipped_segment_limit"
+            )
+        )
+
     def test_low_model_fingerprint_ignores_volatile_timestamps(self) -> None:
         first = {
             "command": "research",
@@ -433,6 +650,9 @@ class LowModelDigestTests(unittest.TestCase):
             _digest_fingerprint(_request_for("theme_radar"), first, purpose="stable"),
             _digest_fingerprint(_request_for("theme_radar"), second, purpose="stable"),
         )
+
+    def test_low_model_cooldown_file_uses_m3_name(self) -> None:
+        self.assertEqual(_low_model_cooldown_file().name, "minimax_m3.json")
 
     def test_html_contains_low_model_tab(self) -> None:
         html = render_report_html(
@@ -1065,6 +1285,46 @@ class HighModelInputPackageTests(unittest.TestCase):
         )
         flow_text = __import__("json").dumps(flow, ensure_ascii=False)
         self.assertNotIn("very long evidence", flow_text)
+
+    def test_theme_radar_stock_index_keeps_relation_signal_without_zero_count_bloat(self) -> None:
+        stock = {
+            "code": "2455",
+            "name": "全新",
+            "price": 100,
+            "theme_matches": [
+                {
+                    "theme_id": "ar",
+                    "theme_name": "AR 近眼顯示",
+                    "relation_score": 90,
+                    "source_level": "L2_media",
+                    "supply_chain_role": "光通訊與近眼顯示供應鏈節點",
+                    "benefit_logic": "AR 近眼顯示、光波導與 Micro LED 需求提升，可能帶動相關產品、服務或供應鏈角色的需求；需後續以公司公告、法說會或月營收驗證。" * 3,
+                    "evidence": [],
+                    "counter_evidence": [{"summary": "客戶尚未確認"}],
+                    "missing_data": [],
+                    "risk_notes": [],
+                }
+            ],
+        }
+        data = {
+            "theme_rankings": [{"theme_id": "ar", "theme_name": "AR 近眼顯示", "representative_stocks": [stock]}],
+            "strong_stocks": [stock],
+        }
+
+        package = build_high_model_input_package(
+            _request_for("theme_radar"),
+            data,
+            _sources(),
+            prompt_chars_estimate=4_600_000,
+        )
+
+        match = package["command_specific_data"]["payload"]["stock_index"][0]["theme_matches"][0]
+        self.assertEqual(match["counter_evidence_count"], 1)
+        self.assertIn("benefit_logic", match)
+        self.assertLessEqual(len(match["benefit_logic"]), 150)
+        self.assertNotIn("evidence_count", match)
+        self.assertNotIn("missing_data_count", match)
+        self.assertNotIn("risk_note_count", match)
 
     def test_prompt_registry_uses_high_model_input_package_for_balanced_mode(self) -> None:
         data = {

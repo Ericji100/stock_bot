@@ -14,9 +14,14 @@ from research_center.topic_models import (
 )
 from research_center.topic_maintain_service import (
     TopicMaintainAIError,
+    _build_topic_candidate_snapshots,
     _build_topic_low_model_payload,
+    _normalize_topic_action_defaults,
+    _strip_model_reasoning_text,
     run_topic_maintain,
 )
+from research_center.topic_pipeline_service import run_topic_pipeline
+from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
 
 
 class TestTopicMaintainService(unittest.TestCase):
@@ -28,6 +33,188 @@ class TestTopicMaintainService(unittest.TestCase):
     def tearDown(self):
         for p in self._patchers:
             p.stop()
+
+    def test_strip_model_reasoning_text_removes_think_block(self):
+        cleaned, stripped = _strip_model_reasoning_text(
+            '<think>The user wants internal reasoning.</think>\n{"actions":[]}'
+        )
+
+        self.assertTrue(stripped)
+        self.assertNotIn("<think>", cleaned)
+        self.assertNotIn("The user wants", cleaned)
+        self.assertEqual(cleaned, '{"actions":[]}')
+
+    def test_topic_pipeline_update_limits_detail_ai_batches(self):
+        stages: list[str] = []
+        candidates = [
+            {
+                "theme_id": f"theme_{idx}",
+                "theme_name": f"題材{idx}",
+                "keywords": [f"題材{idx}"],
+                "reason": "測試候選",
+            }
+            for idx in range(10)
+        ]
+
+        def load_prompt(name: str) -> str:
+            if name == "topic_candidate_extract":
+                return "候選抽取 {low_model_digest_json}"
+            if name == "topic_detail_expand":
+                return "細節擴寫 {topic_candidates_json}"
+            return ""
+
+        def render_prompt(template: str, variables: dict[str, str]) -> str:
+            result = template
+            for key, value in variables.items():
+                result = result.replace("{" + key + "}", value)
+            return result
+
+        def call_ai_json(_prompt: str, stage_name: str):
+            stages.append(stage_name)
+            if stage_name == "candidate_extract":
+                return {"candidates": candidates}
+            return {
+                "actions": [
+                    {
+                        "action_type": "create_theme",
+                        "theme_id": f"{stage_name}_{idx}",
+                        "theme_name": f"{stage_name} 題材{idx}",
+                        "keywords": ["測試"],
+                        "confidence": "medium",
+                    }
+                    for idx in range(3)
+                ]
+            }
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-06-20T00:00:00+08:00",
+            structured_data={},
+            prompt_variables={},
+            load_prompt=load_prompt,
+            render_prompt=render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(stages[0], "candidate_extract")
+        self.assertIn("detail_expand_3", stages)
+        self.assertLessEqual(
+            len([stage for stage in stages if stage.startswith("detail_expand_")]),
+            8,
+        )
+        self.assertEqual(pack.extra["candidate_count"], 10)
+        self.assertLessEqual(pack.extra["action_count"], 12)
+        self.assertFalse(any(str(log.get("stage")).startswith("detail_expand_9") for log in logs))
+        self.assertFalse(any("local_budget_fallback" in str(log.get("stage")) for log in logs))
+
+    def test_topic_pipeline_large_detail_prompt_uses_local_fallback(self):
+        stages: list[str] = []
+        candidates = [
+            {
+                "theme_id": "large_theme",
+                "theme_name": "大型題材",
+                "keywords": ["大型題材"],
+                "reason": "測試候選",
+            }
+        ]
+
+        def load_prompt(name: str) -> str:
+            if name == "topic_candidate_extract":
+                return "候選抽取"
+            if name == "topic_detail_expand":
+                return "細節擴寫 {topic_candidates_json} " + ("甲" * 30000)
+            return ""
+
+        def render_prompt(template: str, variables: dict[str, str]) -> str:
+            result = template
+            for key, value in variables.items():
+                result = result.replace("{" + key + "}", value)
+            return result
+
+        def call_ai_json(_prompt: str, stage_name: str):
+            stages.append(stage_name)
+            if stage_name == "candidate_extract":
+                return {"candidates": candidates}
+            raise AssertionError("detail_expand should be skipped when prompt is too large")
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-06-20T00:00:00+08:00",
+            structured_data={},
+            prompt_variables={},
+            load_prompt=load_prompt,
+            render_prompt=render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(stages, ["candidate_extract"])
+        self.assertEqual(pack.extra["action_count"], 1)
+        self.assertTrue(any(log.get("error", "").startswith("prompt_too_large") for log in logs))
+
+    def test_topic_pipeline_large_candidate_prompt_uses_local_fallback(self):
+        stages: list[str] = []
+
+        def load_prompt(name: str) -> str:
+            if name == "topic_candidate_extract":
+                return "候選抽取 {webfetch_evidence_json} " + ("乙" * 50000)
+            if name == "topic_detail_expand":
+                return "細節擴寫 {topic_candidates_json}"
+            return ""
+
+        def render_prompt(template: str, variables: dict[str, str]) -> str:
+            result = template
+            for key, value in variables.items():
+                result = result.replace("{" + key + "}", value)
+            return result
+
+        def call_ai_json(_prompt: str, stage_name: str):
+            stages.append(stage_name)
+            if stage_name == "candidate_extract":
+                raise AssertionError("candidate_extract should be skipped when prompt is too large")
+            return {
+                "actions": [
+                    {
+                        "action_type": "create_theme",
+                        "theme_id": "mlcc_passive_components",
+                        "theme_name": "MLCC與被動元件",
+                        "keywords": ["MLCC"],
+                        "confidence": "medium",
+                    }
+                ]
+            }
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-06-20T00:00:00+08:00",
+            structured_data={
+                "webfetch_evidence": {
+                    "items": [
+                        {
+                            "title": "MLCC 報價上漲",
+                            "claim": "MLCC 供需改善，被動元件族群受惠。",
+                            "topic_hints": ["MLCC與被動元件"],
+                            "companies": [{"company_code": "2327", "company_name": "國巨"}],
+                        }
+                    ]
+                }
+            },
+            prompt_variables={"webfetch_evidence_json": json.dumps({"items": ["MLCC"]}, ensure_ascii=False)},
+            load_prompt=load_prompt,
+            render_prompt=render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(stages, ["detail_expand_1"])
+        self.assertGreaterEqual(pack.extra["candidate_count"], 1)
+        self.assertEqual(pack.extra["action_count"], 1)
+        self.assertTrue(any(log.get("stage") == "candidate_extract" and str(log.get("error", "")).startswith("prompt_too_large") for log in logs))
+        self.assertTrue(any("候選題材萃取 prompt 過大" in warning for warning in pack.warnings))
 
     def _mock_center(self, ai_model="gemini", gemini_result=None, deepseek_result=None):
         center = MagicMock()
@@ -156,9 +343,74 @@ class TestTopicMaintainService(unittest.TestCase):
         self.assertIsInstance(pack, TopicChangePack)
         self.assertEqual(pack.extra["ai_workflow_coverage"]["schema_version"], "ai_workflow_coverage_v1")
         self.assertEqual(pack.extra["ai_workflow_coverage"]["command"], "topic_maintain")
+        self.assertIn("report_metadata", pack.extra)
+        self.assertIn("data_source_summary", pack.extra)
+        self.assertIn("candidate_snapshot", pack.extra)
+        self.assertIn("command_result", pack.extra)
+        self.assertEqual(pack.extra["command_result"]["command"], "topic_maintain")
         mock_collect.assert_called_once()
         # Verify flow reached AI call step
         self.assertTrue(any("呼叫 AI" in msg for msg in progress_calls), f"Expected AI call in progress: {progress_calls}")
+
+    def test_topic_candidate_snapshot_preserves_theme_company_risk_and_evidence(self):
+        action = TopicChangeAction(
+            action_type=TopicActionType.UPDATE_THEME,
+            theme_id="ai_power",
+            theme_name="AI 電源",
+            affected_companies=["2308 台達電"],
+            confidence=TopicConfidence.HIGH,
+            reason="AI 電源需求擴散，但訂單能見度仍待驗證。",
+            risk_notes=["客戶拉貨節奏不確定"],
+            missing_data=["缺少分產品營收曝險"],
+            counter_evidence=["同業庫存仍高"],
+            extra={"source_refs": ["SRC-1"]},
+        )
+        pack = TopicChangePack(
+            change_id="change_test",
+            parent_change_id=None,
+            mode=TopicChangeMode.UPDATE,
+            status=TopicChangeStatus.PENDING,
+            model="minimax",
+            created_at="2026-06-21T00:00:00+08:00",
+            updated_at="2026-06-21T00:00:00+08:00",
+            summary="test",
+            confidence="medium",
+            actions=[action],
+        )
+
+        snapshots = _build_topic_candidate_snapshots(
+            pack,
+            report_date="2026-06-21",
+            created_at="2026-06-21T00:00:00+08:00",
+        )
+
+        self.assertEqual(len(snapshots), 1)
+        snapshot = snapshots[0]
+        self.assertEqual(snapshot["schema_version"], "candidate_snapshot_v1")
+        self.assertEqual(snapshot["code"], "2308")
+        self.assertEqual(snapshot["name"], "台達電")
+        self.assertEqual(snapshot["source_command"], "topic_maintain")
+        self.assertEqual(snapshot["signal_type"], "topic_library_update")
+        self.assertEqual(snapshot["theme_signals"][0]["confidence"], "high")
+        self.assertIn("客戶拉貨節奏不確定", snapshot["risk_flags"])
+        self.assertIn("缺少分產品營收曝險", snapshot["early_stage_flags"])
+        self.assertIn("SRC-1", snapshot["evidence_refs"])
+        self.assertIn("同業庫存仍高", snapshot["evidence_refs"])
+
+    def test_topic_action_defaults_add_counter_evidence_and_next_validation(self):
+        action = TopicChangeAction(
+            action_type=TopicActionType.CREATE_THEME,
+            theme_id="ai_power",
+            theme_name="AI 電源",
+            keywords=["AI 電源"],
+        )
+
+        patched = _normalize_topic_action_defaults(action)
+
+        self.assertIn("counter_evidence", patched)
+        self.assertIn("next_validation", patched)
+        self.assertTrue(action.counter_evidence)
+        self.assertTrue(action.extra["next_validation"])
 
     def test_run_topic_maintain_mode_initial_when_empty(self):
         """run_topic_maintain should use initial mode when formal library is empty."""
@@ -937,7 +1189,7 @@ class TestTopicMaintainService(unittest.TestCase):
         minimax_mock.max_retries = 1
 
         def generate_json(_prompt):
-            self.assertEqual(minimax_mock.timeout_seconds, 240.0)
+            self.assertEqual(minimax_mock.timeout_seconds, 120.0)
             self.assertEqual(minimax_mock.max_retries, 0)
             if minimax_mock.generate_json.call_count == 1:
                 return MagicMock(raw=json.dumps({
@@ -1069,6 +1321,45 @@ class TestTopicMaintainService(unittest.TestCase):
         result = _parse_ai_json_response(input_with_think)
         self.assertIsInstance(result, dict)
         self.assertEqual(result["summary"], "test")
+
+    def test_run_topic_maintain_saves_sanitized_raw_stages(self):
+        """Saved topic raw stages should not expose MiniMax <think> reasoning."""
+        self._mock_is_formal_library_empty(False)
+        mock_request = self._mock_request(ai_model="minimax")
+        root = ensure_test_cache_dir("topic_maintain/sanitized_raw")
+        raw_path = root / "topic_raw.json"
+        try:
+            minimax_mock = MagicMock()
+            minimax_mock.timeout_seconds = 600.0
+            minimax_mock.max_retries = 1
+            minimax_mock.generate_json.side_effect = [
+                MagicMock(raw='<think>The user wants hidden reasoning.</think>{"candidates":[{"theme_id":"ai_power","theme_name":"AI電源","keywords":["AI電源"]}]}'),
+                MagicMock(raw='<think>Let me reason.</think>{"actions":[{"action_type":"create_theme","theme_id":"ai_power","theme_name":"AI電源","keywords":["AI電源"],"industries":["電源供應"],"confidence":"medium","reason":"測試","evidence":[],"counter_evidence":[],"affected_companies":["2330"],"supply_chain_nodes":[],"target_theme_id":null,"risk_notes":[],"missing_data":[]}]}'),
+            ]
+
+            center = MagicMock()
+            center.minimax = minimax_mock
+            center._gemini_discovery_runner = MagicMock()
+            center._gemini_discovery_runner.run_discovery_flow.return_value = ([], False)
+
+            self._mock_write_prompt_log(str(root / "prompt.json"))
+            raw_path_patcher = patch("research_center.topic_maintain_service.raw_response_path", return_value=raw_path)
+            self._patchers.append(raw_path_patcher)
+            raw_path_patcher.start()
+            self._mock_save_change_pack()
+            self._mock_collect_structured_data()
+            self._mock_web_fetch()
+
+            pack = run_topic_maintain(mock_request, center=center, progress=None)
+            saved = json.loads(raw_path.read_text(encoding="utf-8"))
+            saved_text = json.dumps(saved, ensure_ascii=False)
+
+            self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+            self.assertNotIn("<think>", saved_text)
+            self.assertNotIn("The user wants", saved_text)
+            self.assertTrue(any(stage.get("model_reasoning_stripped") for stage in saved["stages"]))
+        finally:
+            safe_remove_test_cache("topic_maintain/sanitized_raw")
 
     def test_parse_ai_json_response_extracts_json_from_surrounding_text(self):
         """_parse_ai_json_response should extract JSON object from surrounding text."""

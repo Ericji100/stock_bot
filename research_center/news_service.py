@@ -464,9 +464,9 @@ def _classify_batch_size() -> int:
 
 def _classify_timeout_seconds() -> float:
     try:
-        return max(1.0, float(os.environ.get("NEWS_AI_CLASSIFY_TIMEOUT_SECONDS", "45")))
+        return max(1.0, float(os.environ.get("NEWS_AI_CLASSIFY_TIMEOUT_SECONDS", "75")))
     except ValueError:
-        return 45.0
+        return 75.0
 
 
 def _classify_text_limit() -> int:
@@ -481,6 +481,13 @@ def _classify_retry_text_limit() -> int:
         return max(0, int(os.environ.get("NEWS_AI_CLASSIFY_RETRY_TEXT_LIMIT", "120")))
     except ValueError:
         return 120
+
+
+def _classify_retry_timeout_seconds() -> float:
+    try:
+        return max(1.0, float(os.environ.get("NEWS_AI_CLASSIFY_RETRY_TIMEOUT_SECONDS", "90")))
+    except ValueError:
+        return 90.0
 
 
 def _news_high_tier_classify_limit() -> int:
@@ -874,6 +881,14 @@ def run_news_refresh(
             item.news_origin = "refresh"
             item.category = _correct_news_category(item)
         classified = _backfill_refresh_item_dates(classified)
+        local_fallback_count = sum(
+            1
+            for item in classified
+            if "local_rule_fallback" in (getattr(item, "tags", None) or [])
+        )
+        ai_classified_count = max(0, len(classified) - local_fallback_count)
+        if local_fallback_count:
+            emit(f"AI 分類 fallback：{local_fallback_count}/{len(classified)} 則改用本地規則")
 
         category_counts = Counter(normalize_news_category(item.category) for item in classified)
         holding_count = sum(1 for item in classified if _matches_portfolio(item, portfolio))
@@ -897,7 +912,11 @@ def run_news_refresh(
 
         low_digest_meta = {
             "schema_version": "low_model_digest_v1",
-            "status": "success" if primary_classifier == "minimax_low" else "skipped",
+            "status": (
+                "partial_success"
+                if local_fallback_count
+                else ("success" if primary_classifier == "minimax_low" else "skipped")
+            ),
             "model": "MiniMax-M3",
             "reason": "news_general_classification" if primary_classifier == "minimax_low" else "low_model_news_classifier_not_used",
         }
@@ -912,6 +931,9 @@ def run_news_refresh(
             html_sections=False,
             diagnostics={
                 "classified_count": len(classified),
+                "ai_classified_count": ai_classified_count,
+                "local_fallback_count": local_fallback_count,
+                "classification_status": "partial_success" if local_fallback_count else "ai_success",
                 "filtered_count": filtered_count,
                 "search_sources": total_source_count,
                 "primary_classifier": primary_classifier,
@@ -932,6 +954,9 @@ def run_news_refresh(
             "filtered_count": filtered_count,
             "category_counts": dict(category_counts),
             "holding_count": holding_count,
+            "ai_classified_count": ai_classified_count,
+            "local_fallback_count": local_fallback_count,
+            "classification_status": "partial_success" if local_fallback_count else "ai_success",
             "minimax_diagnostics": minimax_diag,
             "web_fetch_diagnostics": web_fetch_diag,
             "ai_workflow_coverage": ai_workflow_coverage,
@@ -1040,6 +1065,7 @@ def _classify_news_batches(
 ) -> list[NewsItem]:
     batch_size = _classify_batch_size()
     timeout_seconds = _classify_timeout_seconds()
+    retry_timeout_seconds = max(timeout_seconds, _classify_retry_timeout_seconds())
     text_limit = _classify_text_limit()
     retry_text_limit = _classify_retry_text_limit()
     result_items: list[NewsItem] = []
@@ -1065,7 +1091,7 @@ def _classify_news_batches(
             retry_prompt = prompt_text.replace("{news_batch_json}", retry_json)
             emit(f"{label} {batch_no}/{total_batches} retry_prompt={len(retry_prompt)} chars est_tokens={max(1, len(retry_prompt) // 4)} items={len(batch)}")
             try:
-                ai_result = _call_news_classifier(center, ai_model, retry_prompt, timeout_seconds)
+                ai_result = _call_news_classifier(center, ai_model, retry_prompt, retry_timeout_seconds)
                 raw = getattr(ai_result, "raw", str(ai_result))
                 parsed = _parse_ai_json_batch(raw)
                 result_items.extend(_apply_classification_meta(batch, parsed))
@@ -1144,6 +1170,10 @@ def _fallback_classification(batch: list[NewsItem]) -> list[NewsItem]:
     for it in batch:
         it.category = _guess_category(it.title)
         it.category = _correct_news_category(it)
+        tags = list(getattr(it, "tags", None) or [])
+        if "local_rule_fallback" not in tags:
+            tags.append("local_rule_fallback")
+        it.tags = tags
         result_items.append(apply_news_signal_tags(it))
     return result_items
 

@@ -55,7 +55,7 @@ def _low_digest() -> dict[str, Any]:
     return {
         "schema_version": LOW_MODEL_DIGEST_SCHEMA_VERSION,
         "status": "skipped",
-        "model": "MiniMax-M2.7",
+        "model": "MiniMax-M3",
         "reason": "coverage audit does not consume low model quota",
     }
 

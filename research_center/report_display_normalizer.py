@@ -34,6 +34,8 @@ def normalize_report_text(text: str) -> str:
     normalized = _replace_value_phrases(protected, value_phrases)
     normalized = _replace_theme_radar_relation_codes(normalized)
     normalized = _replace_truncation_placeholders(normalized)
+    normalized = _replace_common_metric_labels(normalized)
+    normalized = _replace_ai_digest_field_labels(normalized)
     normalized = _replace_terms(normalized, terms)
     normalized = _replace_coverage_pct_labels(normalized)
     normalized = _replace_internal_reference_paths(normalized)
@@ -54,6 +56,33 @@ def display_field_label(raw: str) -> str:
     key = str(raw or "").strip()
     if not key:
         return ""
+    labels = {
+        "fact": "事實",
+        "facts": "事實",
+        "fact_packets": "事實封包",
+        "event": "事件",
+        "events": "事件",
+        "event_summary": "事件摘要",
+        "summary": "摘要",
+        "stance": "立場",
+        "evidence_type": "證據類型",
+        "source_id": "來源編號",
+        "source_ids": "來源編號",
+        "source_map": "來源對照",
+        "date": "日期",
+        "confidence": "信心度",
+        "needs_verification": "需要驗證",
+        "risk": "風險",
+        "risk_evidence": "風險證據",
+        "counter_evidence": "反證",
+        "missing_data": "資料缺口",
+        "related_stocks": "關聯股票",
+        "news_stats": "新聞統計",
+        "low_model_warnings": "低階模型警示",
+    }
+    normalized_key = key.lower().replace(" ", "_").replace("-", "_")
+    if normalized_key in labels:
+        return labels[normalized_key]
     return display_term(key)
 
 
@@ -65,6 +94,14 @@ def display_value(raw: Any) -> str:
         return "否"
     if raw is None:
         return "無"
+    if isinstance(raw, dict):
+        parts = []
+        for key, value in raw.items():
+            parts.append(f"{display_field_label(str(key))}：{display_value(value)}")
+        return "；".join(parts) if parts else "無"
+    if isinstance(raw, (list, tuple, set)):
+        values = [display_value(item) for item in raw]
+        return "、".join(item for item in values if item) or "無"
     text = str(raw).strip()
     if not text:
         return ""
@@ -167,6 +204,72 @@ def _replace_coverage_pct_labels(text: str) -> str:
     ]
     for pattern, replacement in replacements:
         result = re.sub(pattern, replacement, result, flags=re.I)
+    return result
+
+
+def _replace_common_metric_labels(text: str) -> str:
+    """Rewrite common English metric labels that can appear in AI-rendered tables."""
+    result = text
+    replacements = [
+        (r"\bavg\s+change\s+pct\b", "平均漲跌幅"),
+        (r"\bmedian\s+change\s+pct\b", "漲跌幅中位數"),
+        (r"\bchange\s+pct\b", "漲跌幅"),
+        (r"\bsector\s+score\b", "族群分數"),
+        (r"\bsector\s+state\b", "族群狀態"),
+        (r"\bsubsector\s+score\b", "子族群分數"),
+        (r"\bsubsector\s+state\b", "子族群狀態"),
+        (r"\bavg\s+trend\s+score\b", "平均趨勢分數"),
+        (r"\btrend\s+score\b", "趨勢分數"),
+        (r"\btheme\s+hit\s+count\b", "題材命中數"),
+        (r"\bnew\s+high\s+count\b", "創新高數"),
+        (r"\bnew\s+high\b", "創新高數"),
+        (r"\blimit\s+up\s+count\b", "漲停家數"),
+        (r"\bvolume\s+surge\s+count\b", "放量轉強家數"),
+        (r"\bstrong\s+stock\s+count\b", "強勢股數"),
+    ]
+    for pattern, replacement in replacements:
+        result = re.sub(pattern, replacement, result, flags=re.I)
+    return result
+
+
+def _replace_ai_digest_field_labels(text: str) -> str:
+    """Rewrite common low-model digest keys that can leak into HTML appendices."""
+    result = text
+    replacements = [
+        (r"\bmissing\s+data\s+policy\b", "缺資料解讀規則"),
+        (r"\brelated\s+stocks\b", "關聯股票"),
+        (r"\bnews\s+stats\b", "新聞統計"),
+        (r"\bevidence\s+type\b", "證據類型"),
+        (r"\bsource\s+ids\b", "來源編號"),
+        (r"\bsource\s+id\b", "來源編號"),
+        (r"\bsource\s+map\b", "來源對照"),
+        (r"\blow\s+model\s+warnings\b", "低階模型警示"),
+        (r"\bmissing\s+data\b", "資料缺口"),
+        (r"\bcounter\s+evidence\b", "反證"),
+        (r"\brisk\s+evidence\b", "風險證據"),
+        (r"\bevent\s+summary\b", "事件摘要"),
+        (r"\bfact\s+packets\b", "事實封包"),
+        (r"\bfact\b", "事實"),
+        (r"\bevent\b", "事件"),
+        (r"\bstance\b", "立場"),
+        (r"\bdate\b", "日期"),
+        (r"\bconfidence\b", "信心度"),
+        (r"\bnegative\b", "負面"),
+        (r"\bpositive\b", "正面"),
+        (r"\bneutral\b", "中性"),
+        (r"\bmixed\b", "正反訊號並存"),
+        (r"\binsufficient\b", "資料不足"),
+        (r"\bsentiment\b", "市場情緒"),
+        (r"\bverified\b", "已驗證"),
+        (r"\binferred\b", "推論"),
+        (r"\bhigh\b", "高"),
+        (r"\bmedium\b", "中"),
+        (r"\blow\b", "低"),
+    ]
+    for pattern, replacement in replacements:
+        result = re.sub(pattern, replacement, result, flags=re.I)
+    result = re.sub(r"[\"']([^\"']+)[\"']\s*:", lambda match: f"{display_field_label(match.group(1))}：", result)
+    result = re.sub(r"[:：]\s*[\"']([^\"']+)[\"']", lambda match: f"：{display_value(match.group(1))}", result)
     return result
 
 

@@ -5,7 +5,7 @@ import unittest
 from research_center.command_parser import parse_command_text
 from research_center.models import SourceItem
 from research_center.report_builder import build_report_json, render_html, summarize_for_telegram, write_report_artifacts
-from research_center.report_display_normalizer import display_term, normalize_report_text
+from research_center.report_display_normalizer import display_term, display_value, normalize_report_text
 from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
 
 
@@ -71,6 +71,88 @@ def test_normalize_sector_strength_internal_labels_to_chinese():
     assert "族群強勢樣本" in text
     for raw_token in ["strong stocks", "stock codes", "local scoring", "scores", "buy rating", "report confidence v1", "sector strong samples"]:
         assert raw_token not in text
+
+
+def test_normalize_low_model_digest_fields_to_chinese():
+    raw = (
+        "{'fact': 'AI 電源動能強但投信倒貨', 'stance': 'negative', "
+        "'evidence type': 'verified', 'source ids': ['S030'], 'date': '2026-05-08'}\n"
+        "related stocks、news stats、low model warnings"
+    )
+
+    text = normalize_report_text(raw)
+
+    assert "事實" in text
+    assert "立場：負面" in text
+    assert "證據類型：已驗證" in text
+    assert "來源編號" in text
+    assert "日期：2026-05-08" in text
+    assert "關聯股票" in text
+    assert "新聞統計" in text
+    assert "低階模型警示" in text
+    for raw_token in ["'fact'", "'stance'", "evidence type", "source ids", "related stocks", "news stats", "low model warnings"]:
+        assert raw_token not in text
+
+
+def test_display_value_formats_dict_and_list_without_python_repr():
+    text = display_value({"社群或論壇來源，僅列補充": 13, "來源不足": ["related stocks"]})
+
+    assert "社群或論壇來源，僅列補充：13" in text
+    assert "來源不足：關聯股票" in text
+    assert "{'" not in text
+    assert "['" not in text
+
+
+class LowModelDigestDisplayNormalizerTests(unittest.TestCase):
+    def test_low_model_digest_fields_are_readable_in_unittest(self):
+        raw = (
+            "{'fact': 'AI 電源動能強但投信倒貨', 'stance': 'negative', "
+            "'evidence type': 'verified', 'source ids': ['S030'], 'date': '2026-05-08'}\n"
+            "related stocks、news stats、low model warnings"
+        )
+
+        text = normalize_report_text(raw)
+
+        self.assertIn("事實", text)
+        self.assertIn("立場：負面", text)
+        self.assertIn("證據類型：已驗證", text)
+        self.assertIn("來源編號", text)
+        self.assertIn("日期：2026-05-08", text)
+        self.assertIn("關聯股票", text)
+        self.assertIn("新聞統計", text)
+        self.assertIn("低階模型警示", text)
+        for raw_token in ["'fact'", "'stance'", "evidence type", "source ids", "related stocks", "news stats", "low model warnings"]:
+            self.assertNotIn(raw_token, text)
+
+    def test_display_value_formats_dict_and_list_in_unittest(self):
+        text = display_value({"社群或論壇來源，僅列補充": 13, "來源不足": ["related stocks"]})
+
+        self.assertIn("社群或論壇來源，僅列補充：13", text)
+        self.assertIn("來源不足：關聯股票", text)
+        self.assertNotIn("{'", text)
+        self.assertNotIn("['", text)
+
+    def test_html_renderer_cleans_known_internal_low_model_labels_in_unittest(self):
+        request = parse_command_text("/theme_flow AI電源 --model minimax")
+        markdown = (
+            "# 題材流向\n\n"
+            "- fact：AI 電源動能強；stance：positive；evidence type：verified；source ids：S001；date：2026-06-22\n"
+            "- related stocks：台達電、康舒\n"
+            "- company knowledge summary：缺少分產品營收曝險"
+        )
+        report_json = build_report_json(request, markdown, "summary", [], True, None, {"analysis_model": "MiniMax"})
+
+        html = render_html(report_json, markdown)
+
+        self.assertIn("事實：", html)
+        self.assertIn("立場：", html)
+        self.assertIn("證據類型：", html)
+        self.assertIn("來源編號：", html)
+        self.assertIn("日期：", html)
+        self.assertIn("關聯股票：", html)
+        self.assertIn("公司知識摘要：", html)
+        for raw in ["fact：", "stance：", "evidence type：", "source ids：", "related stocks：", "company knowledge summary："]:
+            self.assertNotIn(raw, html)
 
 
 class ThemeRadarDisplayNormalizerTests(unittest.TestCase):
@@ -178,6 +260,25 @@ class ThemeRadarDisplayNormalizerTests(unittest.TestCase):
         self.assertIn("客戶資料覆蓋率", text)
         self.assertIn("供應鏈層級覆蓋率", text)
         for raw_token in ["financial validation", "revenue exposure", "chip validation", "coverage pct", " pct"]:
+            self.assertNotIn(raw_token, text)
+
+    def test_normalize_common_metric_table_headers(self):
+        raw = (
+            "依當日 change pct 高低排序。\n"
+            "| sector score | sector state | new high | avg change pct | avg trend score | theme hit count |\n"
+            "| 100 | active_breakout | 14 | +5.44% | 68.19 | 0 |"
+        )
+
+        text = normalize_report_text(raw)
+
+        self.assertIn("漲跌幅", text)
+        self.assertIn("族群分數", text)
+        self.assertIn("族群狀態", text)
+        self.assertIn("創新高數", text)
+        self.assertIn("平均漲跌幅", text)
+        self.assertIn("平均趨勢分數", text)
+        self.assertIn("題材命中數", text)
+        for raw_token in ["change pct", "sector score", "sector state", "new high", "avg change pct", "avg trend score", "theme hit count"]:
             self.assertNotIn(raw_token, text)
 
 
@@ -367,6 +468,29 @@ def test_html_ai_audit_shows_not_required_core_sections_in_chinese():
     assert "本指令不需要" in html
 
 
+
+
+def test_html_renderer_cleans_known_internal_low_model_labels():
+    request = parse_command_text("/theme_flow AI電源 --model minimax")
+    markdown = (
+        "# 題材流向\n\n"
+        "- fact：AI 電源動能強；stance：positive；evidence type：verified；source ids：S001；date：2026-06-22\n"
+        "- related stocks：台達電、康舒\n"
+        "- company knowledge summary：缺少分產品營收曝險"
+    )
+    report_json = build_report_json(request, markdown, "summary", [], True, None, {"analysis_model": "MiniMax"})
+
+    html = render_html(report_json, markdown)
+
+    assert "事實：" in html
+    assert "立場：" in html
+    assert "證據類型：" in html
+    assert "來源編號：" in html
+    assert "日期：" in html
+    assert "關聯股票：" in html
+    assert "公司知識摘要：" in html
+    for raw in ["fact：", "stance：", "evidence type：", "source ids：", "related stocks：", "company knowledge summary："]:
+        assert raw not in html
 
 
 def test_html_ai_audit_shows_macro_source_missing_in_chinese():

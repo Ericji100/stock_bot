@@ -13,6 +13,12 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
+from candidate_filter_service import (
+    DEFAULT_HARD_FILTER_SETTINGS,
+    apply_basic_hard_filter,
+    hard_filter_display_text,
+    resolve_hard_filter_settings,
+)
 from data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
@@ -45,12 +51,7 @@ TWSE_HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedu
 TDCC_DISTRIBUTION_URL = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 
-HARD_FILTERS = {
-    "min_price": 10.0,
-    "max_price": 80.0,
-    "min_avg_volume_20d": 500.0,
-    "min_monthly_revenue": 50_000_000.0,
-}
+HARD_FILTERS = dict(DEFAULT_HARD_FILTER_SETTINGS)
 
 TARGET_DAILY_TRADING_DAYS = 60
 TRADING_DAY_LOOKBACK = 120
@@ -603,7 +604,12 @@ def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
     return issued_shares
 
 
-def _build_hard_filter_candidates(report_date: date, force_refresh: bool = False) -> pd.DataFrame:
+def _build_hard_filter_candidates(
+    report_date: date,
+    force_refresh: bool = False,
+    scan_settings: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    settings = resolve_hard_filter_settings(scan_settings, defaults=HARD_FILTERS)
     universe = load_stock_universe(force_refresh=force_refresh)
     revenue_history = load_recent_revenue_history(universe)
     price_metrics = load_price_metrics(universe, force_refresh=force_refresh)
@@ -620,11 +626,13 @@ def _build_hard_filter_candidates(report_date: date, force_refresh: bool = False
 
         if latest_revenue is None or price is None or avg_volume_20d is None or not shares:
             continue
-        if not (HARD_FILTERS["min_price"] < float(price) < HARD_FILTERS["max_price"]):
-            continue
-        if float(avg_volume_20d) <= HARD_FILTERS["min_avg_volume_20d"]:
-            continue
-        if float(latest_revenue) <= HARD_FILTERS["min_monthly_revenue"]:
+        hard_filter = apply_basic_hard_filter(
+            price=price,
+            avg_volume_20d=avg_volume_20d,
+            latest_monthly_revenue=latest_revenue,
+            settings=settings,
+        )
+        if not hard_filter.passed:
             continue
 
         rows.append(
@@ -643,7 +651,7 @@ def _build_hard_filter_candidates(report_date: date, force_refresh: bool = False
 
     frame = pd.DataFrame(rows)
     frame.attrs["total_symbols"] = len(universe)
-    frame.attrs["scan_settings"] = dict(HARD_FILTERS)
+    frame.attrs["scan_settings"] = dict(settings)
     if frame.empty:
         return frame
     return frame.sort_values("code").reset_index(drop=True)
@@ -1525,9 +1533,10 @@ def build_market_context(
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
     scope: str = "default",
     extra_candidates: list[dict[str, Any]] | None = None,
+    scan_settings: dict[str, Any] | None = None,
 ) -> ChipMarketContext:
     report_date = report_date or get_tw_today()
-    candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh)
+    candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh, scan_settings=scan_settings)
     if extra_candidates:
         extra_frame = pd.DataFrame(extra_candidates)
         if not extra_frame.empty and "code" in extra_frame.columns:
@@ -1626,10 +1635,7 @@ def _format_context_sources(context: ChipMarketContext) -> str:
 
 
 def _format_scan_statistics(context: ChipMarketContext, matched_count: int, data_date_text: str | None = None) -> list[str]:
-    settings = context.scan_settings or HARD_FILTERS
-    min_price = _format_price(float(settings.get("min_price", HARD_FILTERS["min_price"])))
-    max_price = _format_price(float(settings.get("max_price", HARD_FILTERS["max_price"])))
-    min_volume = _format_price(float(settings.get("min_avg_volume_20d", HARD_FILTERS["min_avg_volume_20d"])))
+    settings = resolve_hard_filter_settings(context.scan_settings or HARD_FILTERS)
     resolved_data_date = data_date_text or (context.latest_trading_date.isoformat() if context.latest_trading_date else context.report_date.isoformat())
     return [
         "",
@@ -1637,7 +1643,7 @@ def _format_scan_statistics(context: ChipMarketContext, matched_count: int, data
         f"總掃描範圍：{context.total_symbols} 檔",
         (
             f"通過硬篩標的：{len(context.candidates)} 檔 "
-            f"(股價 {min_price}~{max_price} / 均量 > {min_volume})"
+            f"({hard_filter_display_text(settings)})"
         ),
         f"符合選股邏輯：{matched_count} 檔",
         f"資料日期：{resolved_data_date}",
@@ -1964,6 +1970,7 @@ def warmup_chip_data_cache(
     strategy_keys: list[str] | None = None,
     scope: str = "default",
     extra_candidates: list[dict[str, Any]] | None = None,
+    scan_settings: dict[str, Any] | None = None,
 ) -> ChipMarketContext:
     target_date = report_date or get_tw_today()
     target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1
@@ -1979,6 +1986,7 @@ def warmup_chip_data_cache(
         target_trading_days=target_days,
         scope=scope,
         extra_candidates=extra_candidates,
+        scan_settings=scan_settings,
     )
     update_tdcc_snapshot_cache()
     _print_chip_progress(

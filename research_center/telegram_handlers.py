@@ -983,7 +983,10 @@ def _telegram_status_note(result) -> str:
     elif fallback_reason:
         notes.append(f"AI 模型：{_fallback_model_label(result)} 調用失敗，已改用本地 fallback")
     if fallback_reason:
-        notes.append(f"⚠️ {_fallback_model_label(result)} 模型調用或公開來源整合未完整成功，本報告已使用本地資料 fallback。原因：{fallback_reason}")
+        notes.append(
+            f"⚠️ {_fallback_model_label(result)} 模型調用或公開來源整合未完整成功。"
+            f"這不是正式 AI 完成報告，而是本地資料 fallback 報告。原因：{fallback_reason}"
+        )
     return "\n\n" + "\n".join(notes) if notes else ""
 
 

@@ -19,6 +19,7 @@ from stock_scanner import (
 )
 from technical_strategy_engine import detect_technical_strategies
 
+from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 from progress_logger import now_timestamp
 
 
@@ -194,10 +195,7 @@ def fetch_daily_history(symbol: str, end_date: date) -> tuple[pd.DataFrame, str]
 
 
 def build_hard_filter_candidates(scan_settings: dict[str, float] | None = None) -> tuple[list[TechnicalCandidate], int]:
-    settings = dict(DEFAULT_SCAN_SETTINGS)
-    if scan_settings:
-        settings.update(scan_settings)
-    settings["max_price"] = 80.0
+    settings = resolve_hard_filter_settings(scan_settings, defaults=DEFAULT_SCAN_SETTINGS)
 
     universe = load_stock_universe(False)
     revenue_history = load_recent_revenue_history(universe)
@@ -216,11 +214,13 @@ def build_hard_filter_candidates(scan_settings: dict[str, float] | None = None) 
             continue
         price = float(price)
         avg_volume = float(avg_volume)
-        if not (float(settings["min_price"]) <= price <= 80.0):
-            continue
-        if avg_volume <= float(settings["min_avg_volume_20d"]):
-            continue
-        if latest_revenue <= float(settings["min_monthly_revenue"]):
+        hard_filter = apply_basic_hard_filter(
+            price=price,
+            avg_volume_20d=avg_volume,
+            latest_monthly_revenue=latest_revenue,
+            settings=settings,
+        )
+        if not hard_filter.passed:
             continue
         candidates.append(
             TechnicalCandidate(

@@ -29,6 +29,7 @@ from research_center.data_services import collect_structured_data
 from research_center.evidence_pack_service import build_ai_compact_context, build_three_layer_evidence_context
 from research_center.news_repository import NewsRepository
 from research_center.recent_scans import load_recent_scan_results, save_recent_scan_result
+from research_center.convergence_service import candidate_snapshot_from_row
 from research_center.structured_cache import load_latest_research_structured_cache, load_research_structured_cache
 from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
 from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
@@ -38,9 +39,10 @@ from stock_scanner import load_recent_revenue_history, load_stock_universe, scan
 ROOT_DIR = Path(__file__).resolve().parent
 RADAR_CACHE_PATH = ROOT_DIR / ".cache" / "radar_results.json"
 RADAR_REPORT_DIR = ROOT_DIR / "reports" / "radar"
+RADAR_CACHE_MAX_BYTES = 50 * 1024 * 1024
 RADAR_PROMPT_DIR = ROOT_DIR / "prompt" / "radar"
-DEFAULT_SOURCE = "technical"
-DEFAULT_AI_TOP = 5
+DEFAULT_SOURCE = "combined"
+DEFAULT_AI_TOP = 15
 RADAR_AI_CHUNK_SIZE = 5
 RADAR_AI_PROMPT_MAX_CHARS = 90_000
 RADAR_AI_COMPACT_SOURCE_LIMIT = 10
@@ -59,7 +61,7 @@ RADAR_FULL_RESEARCH_CACHE_MAX_AGE_DAYS = 5
 RADAR_LIGHT_RESEARCH_CACHE_DIR = ROOT_DIR / ".cache" / "radar_research_light"
 RADAR_TECHNICAL_CACHE_READY_HOUR = 15
 RADAR_TECHNICAL_CACHE_READY_MINUTE = 0
-MAIN_SOURCES = {"technical", "curated", "financial", "chip", "monitor", "portfolio"}
+MAIN_SOURCES = {"combined", "technical", "curated", "financial", "chip", "monitor", "portfolio"}
 CHIP_KEYS = ["chip_1", "chip_2", "chip_3", "chip_4"]
 TECHNICAL_STRATEGY_LABELS = {
     "A": "多頭延續回檔突破",
@@ -87,6 +89,7 @@ CHIP_STRATEGY_LABELS = {
     "chip_3": "法人持股比例增加",
     "chip_4": "每週大戶持股",
 }
+_RADAR_CHIP_GRADE_CACHE: dict[str, dict[str, dict[str, str]]] = {}
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,11 @@ class RadarCandidate:
     data_coverage: dict[str, Any] = field(default_factory=dict)
     ai_comment: dict[str, Any] = field(default_factory=dict)
     score_components: dict[str, int] = field(default_factory=dict)
+    score_details: dict[str, dict[str, Any]] = field(default_factory=dict)
+    key_reasons: list[str] = field(default_factory=list)
+    risk_flags: list[str] = field(default_factory=list)
+    score_caps_applied: list[str] = field(default_factory=list)
+    radar_feature_snapshot: dict[str, Any] = field(default_factory=dict)
     total_score: int = 0
 
 
@@ -202,14 +210,14 @@ def run_radar(
     _attach_revenue_scores(candidates)
     _attach_chip_scores(candidates, target_date, progress)
     _attach_local_news(candidates, target_date)
-    _score_candidates(candidates)
+    _score_candidates(candidates, target_date)
     _attach_base_evidence_packs(candidates, target_date)
 
     ai_analysis_meta: dict[str, Any] = {}
     ai_codes = _select_ai_enrichment_codes(candidates, radar_request.ai_top)
     if ai_codes:
         if radar_request.ai_comment_enabled and radar_request.model:
-            _emit(progress, f"Radar：每策略 Top{radar_request.ai_top} 外部來源與 AI 短評 {len(ai_codes)} 檔")
+            _emit(progress, f"Radar：AI補強 Top{radar_request.ai_top} 外部來源與 AI 短評 {len(ai_codes)} 檔")
             _attach_research_center_sources(candidates, ai_codes, target_date, progress)
             _ensure_radar_source_sufficiency(candidates, ai_codes, target_date, progress)
             _attach_research_evidence_packs(candidates, ai_codes, target_date, progress)
@@ -217,7 +225,7 @@ def run_radar(
         else:
             _emit(progress, f"Radar：Top{radar_request.ai_top} 外部來源補強 {len(ai_codes)} 檔")
             _attach_web_sources(candidates, ai_codes, target_date, progress)
-        _score_candidates(candidates)
+        _score_candidates(candidates, target_date)
         _attach_base_evidence_packs(candidates, target_date)
 
     candidates.sort(key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True)
@@ -235,8 +243,7 @@ def run_radar(
             "evidence_pack_status": _radar_evidence_pack_status(candidates, ai_codes),
         },
     )
-    record = save_radar_result(result)
-    _save_radar_artifacts(result, record)
+    save_radar_result(result)
     return result
 
 
@@ -276,7 +283,7 @@ def resolve_radar_report_date(report_date: date | None = None) -> tuple[date, st
     return today, "無法確認最新交易日，暫以今天日期執行。"
 
 
-def format_radar_report(result: RadarResult, *, limit: int = 10) -> str:
+def format_radar_report(result: RadarResult, *, limit: int = 15) -> str:
     date_text = result.report_date.isoformat()
     lines = [
         f"📡 每日選股雷達 {date_text}",
@@ -301,6 +308,18 @@ def format_radar_report(result: RadarResult, *, limit: int = 10) -> str:
         lines.append("目前沒有可評分候選股。")
         return "\n".join(lines)
 
+    early_candidates = [
+        item for item in result.candidates[:limit]
+        if _radar_candidate_tag(item) in {"早期轉強", "轉機波段", "題材重估", "籌碼轉強"}
+    ][:3]
+    if early_candidates:
+        lines.append("📈 早期波段候選")
+        for item in early_candidates:
+            tag = _radar_candidate_tag(item)
+            reasons = "、".join(item.key_reasons[:3]) if item.key_reasons else "技術/籌碼/基本面轉強"
+            lines.append(f"{item.code} {item.name}｜{item.total_score}分｜{tag}｜{reasons}")
+        lines.append("")
+
     for rank, item in enumerate(result.candidates[:limit], 1):
         strategy = "/".join(sorted(item.strategy_codes)) if item.strategy_codes else "-"
         ai_badge = _ai_badge(item)
@@ -310,10 +329,12 @@ def format_radar_report(result: RadarResult, *, limit: int = 10) -> str:
         technical_line = _technical_signal_line(item)
         chip_line = _chip_grade_line(item)
         ai_lines = _ai_comment_lines(item)
+        tag = _radar_candidate_tag(item)
+        tag_text = f"｜{tag}" if tag else ""
         lines.extend(
             [
-                f"{rank}. {item.code} {item.name}｜{item.total_score}分｜策略 {strategy}{ai_badge}",
-                f"   技術 {components.get('technical', 0)}｜營收 {components.get('revenue', 0)}｜籌碼 {components.get('chip', 0)}｜題材 {components.get('theme', 0)}｜族群 {components.get('market', 0)}",
+                f"{rank}. {item.code} {item.name}｜{item.total_score}分｜策略 {strategy}{ai_badge}{tag_text}",
+                f"   技術 {components.get('technical', 0)}｜營收 {components.get('revenue', 0)}｜財報 {components.get('financial', 0)}｜籌碼 {components.get('chip', 0)}｜題材 {components.get('theme', 0)}｜族群 {_component_sector_score(components)}",
                 f"   {item.industry or '未分類'}｜{labels or '候選來源'}",
             ]
         )
@@ -323,11 +344,62 @@ def format_radar_report(result: RadarResult, *, limit: int = 10) -> str:
             lines.append(f"   {evidence}")
         if chip_line:
             lines.append(f"   籌碼：{chip_line}")
+        if item.key_reasons:
+            lines.append(f"   關鍵線索：{'、'.join(item.key_reasons[:5])}")
+        if item.risk_flags:
+            lines.append(f"   風險：{'、'.join(item.risk_flags[:3])}")
         lines.extend(f"   {line}" for line in ai_lines)
         lines.append("")
 
     if len(result.candidates) > limit:
         lines.append(f"完整名單共 {len(result.candidates)} 檔，可用 /radar_more 查看。")
+    lines.append("資料來源：既有選股流程 / 本地新聞資料庫 / 外部搜尋來源（若已設定）")
+    return "\n".join(lines).strip()
+
+
+def format_radar_push_summary(result: RadarResult, *, limit: int = 15) -> str:
+    """Format a concise scheduled Radar push while preserving the full artifact separately."""
+    date_text = result.report_date.isoformat()
+    lines = [
+        f"📡 每日選股雷達 {date_text}",
+        _radar_mode_line(result.request),
+        "",
+    ]
+    evidence_status = (result.diagnostics or {}).get("evidence_pack_status") or {}
+    if evidence_status.get("selected"):
+        lines.append(
+            "外部證據："
+            f"{evidence_status.get('success', 0)}/{evidence_status.get('selected', 0)} 成功，"
+            f"{evidence_status.get('timeout', 0)} 檔逾時，"
+            f"{evidence_status.get('failed', 0)} 檔失敗"
+        )
+        lines.append("")
+    if not result.candidates:
+        lines.append("目前沒有可評分候選股。")
+        return "\n".join(lines).strip()
+
+    top_limit = max(1, min(limit, len(result.candidates)))
+    lines.append(f"Top {top_limit} 重點候選：")
+    for rank, item in enumerate(result.candidates[:top_limit], 1):
+        components = item.score_components or {}
+        tag = _radar_candidate_tag(item)
+        tag_text = f"｜{tag}" if tag else ""
+        reasons = "、".join(item.key_reasons[:3]) if item.key_reasons else "技術、籌碼或題材轉強"
+        lines.extend(
+            [
+                f"{rank}. {item.code} {item.name}｜{item.total_score}分{tag_text}",
+                f"   技術 {components.get('technical', 0)}｜營收 {components.get('revenue', 0)}｜財報 {components.get('financial', 0)}｜籌碼 {components.get('chip', 0)}｜題材 {components.get('theme', 0)}｜族群 {_component_sector_score(components)}",
+                f"   關鍵線索：{_truncate_radar_text(reasons, limit=120)}",
+            ]
+        )
+        if item.risk_flags:
+            lines.append(f"   主要風險：{_truncate_radar_text('、'.join(item.risk_flags[:2]), limit=100)}")
+        ai_lines = _ai_comment_lines(item)[:2]
+        lines.extend(f"   {line}" for line in ai_lines)
+        lines.append("")
+
+    if len(result.candidates) > top_limit:
+        lines.append(f"完整名單共 {len(result.candidates)} 檔，請用 /radar_more 查看完整雷達報告。")
     lines.append("資料來源：既有選股流程 / 本地新聞資料庫 / 外部搜尋來源（若已設定）")
     return "\n".join(lines).strip()
 
@@ -343,9 +415,9 @@ def format_radar_more(report_date: date | None = None) -> str:
 
 def _radar_mode_line(request: RadarRequest) -> str:
     if request.ai_comment_enabled and request.model:
-        return f"來源：{_source_label(request.source)}｜AI短評：{_model_label(request.model)}｜每策略 Top {request.ai_top}"
+        return f"來源：{_source_label(request.source)}｜AI短評：{_model_label(request.model)}｜AI補強 Top {request.ai_top}"
     if request.ai_comment_enabled:
-        return f"來源：{_source_label(request.source)}｜外部來源補強：每策略 Top {request.ai_top}"
+        return f"來源：{_source_label(request.source)}｜外部來源補強：AI補強 Top {request.ai_top}"
     return f"來源：{_source_label(request.source)}｜AI短評：略過"
 
 
@@ -362,6 +434,35 @@ def _ai_badge(item: RadarCandidate) -> str:
     return ""
 
 
+def _component_sector_score(components: dict[str, Any]) -> int:
+    return int(components.get("sector", components.get("market", 0)) or 0)
+
+
+def _radar_candidate_tag(item: RadarCandidate) -> str:
+    components = item.score_components or {}
+    technical = int(components.get("technical", 0) or 0)
+    revenue = int(components.get("revenue", 0) or 0)
+    financial = int(components.get("financial", 0) or 0)
+    chip = int(components.get("chip", 0) or 0)
+    theme = int(components.get("theme", 0) or 0)
+    risks = " ".join(item.risk_flags or [])
+    if "短線過熱" in risks or "乖離" in risks:
+        return "短線過熱"
+    if technical >= 16 and revenue < 6 and financial < 4 and theme < 5:
+        return "僅技術反彈"
+    if theme >= 9 and revenue >= 6:
+        return "題材重估"
+    if revenue >= 10 and financial >= 6:
+        return "轉機波段"
+    if chip >= 8:
+        return "籌碼轉強"
+    if theme >= 6 and "題材無法驗證" in risks:
+        return "題材未驗證"
+    if technical >= 16 and item.total_score >= 60:
+        return "早期轉強"
+    return ""
+
+
 def _ai_comment_lines(item: RadarCandidate) -> list[str]:
     comment = item.ai_comment or {}
     if not comment:
@@ -370,12 +471,46 @@ def _ai_comment_lines(item: RadarCandidate) -> list[str]:
         return ["AI短評：本次模型分析失敗，保留本地 Radar 評分。"]
     lines = []
     if comment.get("reason"):
-        lines.append(f"AI短評：{_truncate_radar_text(comment['reason'])}")
+        lines.append(f"AI短評：{_truncate_radar_text(_clean_radar_ai_display_text(comment['reason']))}")
     if comment.get("risk"):
-        lines.append(f"風險：{_truncate_radar_text(comment['risk'])}")
+        lines.append(f"風險：{_truncate_radar_text(_clean_radar_ai_display_text(comment['risk']))}")
     if comment.get("watch"):
-        lines.append(f"觀察：{_truncate_radar_text(comment['watch'])}")
+        lines.append(f"觀察：{_truncate_radar_text(_clean_radar_ai_display_text(comment['watch']))}")
     return lines
+
+
+def _clean_radar_ai_display_text(value: Any) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+
+    # Remove evidence-label wrappers that were useful to prompts but noisy in Telegram.
+    evidence_labels = r"(?:verified_fact|reasoned_inference|market_hypothesis|sentiment_signal|insufficient)"
+    text = re.sub(rf"[\[(（]\s*{evidence_labels}(?:\s*[+,/]\s*{evidence_labels})*\s*[\])）]", "", text, flags=re.IGNORECASE)
+
+    replacements = [
+        (r"\bvolume_quality\s*=\s*false\b", "量能未配合"),
+        (r"\bvolume_quality\s*=\s*true\b", "量能配合"),
+        (r"\bchip/institutional/margin\b", "籌碼、法人與融資券"),
+        (r"\brow_count\s*=\s*0\b", "資料缺漏"),
+        (r"\brow_count\s*=\s*(\d+)\b", r"資料筆數 \1"),
+        (r"\blimited_by_light_research\b", "輕量資料限制"),
+        (r"\bsetup\s+score\b", "技術型態分數"),
+        (r"\bscore_components\b", "分數細項"),
+        (r"\bdata_coverage\b", "資料覆蓋狀況"),
+        (r"\bverified_fact\b", "已驗證"),
+        (r"\breasoned_inference\b", "推論"),
+        (r"\bmarket_hypothesis\b", "市場假設"),
+        (r"\bsentiment_signal\b", "情緒訊號"),
+        (r"\binsufficient\b", "資料不足"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    text = re.sub(r"[\[(（]\s*[\])）]", "", text)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([，。；、：])", r"\1", text)
+    return text.strip()
 
 
 def _truncate_radar_text(value: Any, *, limit: int = RADAR_TELEGRAM_AI_TEXT_LIMIT) -> str:
@@ -388,6 +523,7 @@ def _truncate_radar_text(value: Any, *, limit: int = RADAR_TELEGRAM_AI_TEXT_LIMI
 def save_radar_result(result: RadarResult) -> dict[str, Any]:
     records = _load_radar_records(limit=30)
     payload = _json_safe(_result_to_record(result))
+    payload["artifact_paths"] = _save_radar_artifacts(result, payload)
     records.insert(0, payload)
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -451,6 +587,8 @@ def _load_candidates(
     progress: Callable[[str], None] | None,
 ) -> tuple[list[RadarCandidate], dict[str, Any]]:
     source = _normalise_source(source)
+    if source == "combined":
+        return _combined_candidates(target_date, scan_settings, config or {}, progress)
     if source == "technical":
         return _technical_candidates_for_radar(target_date, scan_settings, progress)
     if source == "curated":
@@ -464,6 +602,72 @@ def _load_candidates(
     if source == "portfolio":
         return _portfolio_candidates()
     raise ValueError(f"不支援的 Radar 來源：{source}")
+
+
+def _combined_candidates(
+    target_date: date,
+    scan_settings: dict[str, float] | None,
+    config: dict[str, Any],
+    progress: Callable[[str], None] | None,
+) -> tuple[list[RadarCandidate], dict[str, Any]]:
+    loaders: list[tuple[str, Callable[[], tuple[list[RadarCandidate], dict[str, Any]]]]] = [
+        ("technical", lambda: _technical_candidates_for_radar(target_date, scan_settings, progress)),
+        ("chip", lambda: _chip_candidates(target_date)),
+        ("financial", lambda: _financial_candidates(scan_settings)),
+        ("curated", lambda: _curated_candidates(target_date, scan_settings, progress)),
+    ]
+    merged: dict[str, RadarCandidate] = {}
+    policies: list[dict[str, Any]] = []
+    failures: list[dict[str, str]] = []
+    for source_name, loader in loaders:
+        try:
+            candidates, policy = loader()
+        except Exception as exc:
+            failures.append({"source": source_name, "error": str(exc)})
+            _emit(progress, f"Radar：combined 來源 {source_name} 載入失敗，略過：{exc}")
+            continue
+        policy = dict(policy or {})
+        policy["source_key"] = source_name
+        policies.append(policy)
+        for candidate in candidates:
+            _merge_radar_candidate(merged, candidate, source_name)
+    _emit(progress, f"Radar：combined 跨來源候選 {len(merged)} 檔，來源 {len(policies)} 組")
+    return list(merged.values()), {
+        "source": "跨來源候選池",
+        "status": "combined",
+        "candidate_count": len(merged),
+        "sources": policies,
+        "failures": failures,
+    }
+
+
+def _merge_radar_candidate(merged: dict[str, RadarCandidate], incoming: RadarCandidate, source_name: str) -> None:
+    if not incoming.code:
+        return
+    item = merged.get(incoming.code)
+    if item is None:
+        merged[incoming.code] = incoming
+        _add_label(incoming, f"跨來源/{_source_label(source_name)}")
+        return
+    if not item.name and incoming.name:
+        item.name = incoming.name
+    if not item.symbol and incoming.symbol:
+        item.symbol = incoming.symbol
+    if not item.industry and incoming.industry:
+        item.industry = incoming.industry
+    if item.price is None and incoming.price is not None:
+        item.price = incoming.price
+    item.strategy_codes.update(incoming.strategy_codes)
+    item.technical_signals.extend(incoming.technical_signals)
+    item.chip_grades.update(incoming.chip_grades)
+    if incoming.revenue_history and not item.revenue_history:
+        item.revenue_history = list(incoming.revenue_history)
+    item.news_items.extend(incoming.news_items)
+    item.web_sources.extend(incoming.web_sources)
+    item.ai_sources.extend(incoming.ai_sources)
+    for label in incoming.source_labels:
+        _add_label(item, label)
+    _add_label(item, f"跨來源/{_source_label(source_name)}")
 
 
 def _technical_candidates(
@@ -671,8 +875,7 @@ def _financial_candidates(scan_settings: dict[str, float] | None) -> tuple[list[
 
 
 def _chip_candidates(target_date: date) -> tuple[list[RadarCandidate], dict[str, Any]]:
-    context = build_market_context(False, target_date, include_daily_data=True)
-    grade_maps = build_chip_grade_maps(context, CHIP_KEYS)
+    grade_maps = _load_radar_chip_grade_maps(target_date)
     by_code = _stock_meta_by_code()
     candidates: dict[str, RadarCandidate] = {}
     for key, grades in grade_maps.items():
@@ -681,6 +884,23 @@ def _chip_candidates(target_date: date) -> tuple[list[RadarCandidate], dict[str,
             item.chip_grades[key] = grade
             _add_label(item, f"籌碼/{key}:{grade}")
     return list(candidates.values()), {"source": "法人籌碼 / 大戶選股結果", "status": "generated", "candidate_count": len(candidates)}
+
+
+def _load_radar_chip_grade_maps(target_date: date) -> dict[str, dict[str, str]]:
+    cache_key = target_date.isoformat()
+    if cache_key in _RADAR_CHIP_GRADE_CACHE:
+        return _RADAR_CHIP_GRADE_CACHE[cache_key]
+    context = build_market_context(
+        False,
+        target_date,
+        include_daily_data=True,
+        include_foreign_ratio=False,
+        target_trading_days=5,
+        scope="radar",
+    )
+    grade_maps = build_chip_grade_maps(context, CHIP_KEYS)
+    _RADAR_CHIP_GRADE_CACHE[cache_key] = grade_maps
+    return grade_maps
 
 
 def _monitor_candidates(config: dict[str, Any]) -> tuple[list[RadarCandidate], dict[str, Any]]:
@@ -711,15 +931,7 @@ def _attach_chip_scores(
     if not candidates:
         return
     try:
-        context = build_market_context(
-            False,
-            target_date,
-            include_daily_data=True,
-            include_foreign_ratio=False,
-            target_trading_days=5,
-            scope="radar",
-        )
-        grade_maps = build_chip_grade_maps(context, CHIP_KEYS)
+        grade_maps = _load_radar_chip_grade_maps(target_date)
     except Exception as exc:
         _emit(progress, f"Radar：籌碼評級補強略過：{exc}")
         return
@@ -1199,7 +1411,7 @@ def _build_radar_light_research_data(item: RadarCandidate, analysis_date: date) 
         "financial_data": [],
         "topic_context": {
             "theme_score": item.score_components.get("theme", 0),
-            "market_score": item.score_components.get("market", 0),
+            "market_score": _component_sector_score(item.score_components),
             "local_news_titles": [news.get("title") for news in item.news_items[:5] if isinstance(news, dict)],
         },
         "news_context": {
@@ -1210,6 +1422,9 @@ def _build_radar_light_research_data(item: RadarCandidate, analysis_date: date) 
             "scope": "radar_light",
             "total_score": item.total_score,
             "score_components": item.score_components,
+            "score_details": item.score_details,
+            "key_reasons": item.key_reasons,
+            "risk_flags": item.risk_flags,
             "chip_grades": item.chip_grades,
             "chip_summary": _chip_grade_line(item),
             "data_limits": data_limits,
@@ -1275,6 +1490,10 @@ def _build_radar_evidence_pack(
         "radar_scores": {
             "total_score": item.total_score,
             "score_components": item.score_components,
+            "score_details": item.score_details,
+            "key_reasons": item.key_reasons,
+            "risk_flags": item.risk_flags,
+            "score_caps_applied": item.score_caps_applied,
             "policy": "本地 Radar 分數只供 AI 參考，不得由 AI 改寫。",
         },
         "technical": {
@@ -1286,6 +1505,10 @@ def _build_radar_evidence_pack(
             "score": item.score_components.get("revenue", 0),
             "history": item.revenue_history,
         },
+        "financial": {
+            "score": item.score_components.get("financial", 0),
+            "detail": item.score_details.get("financial", {}),
+        },
         "chip": {
             "score": item.score_components.get("chip", 0),
             "grades": item.chip_grades,
@@ -1293,12 +1516,13 @@ def _build_radar_evidence_pack(
         },
         "theme_and_market": {
             "theme_score": item.score_components.get("theme", 0),
-            "market_score": item.score_components.get("market", 0),
+            "market_score": _component_sector_score(item.score_components),
             "local_news": item.news_items,
             "web_sources": item.web_sources,
             "ai_sources": item.ai_sources,
         },
         "data_coverage": item.data_coverage,
+        "radar_feature_snapshot": item.radar_feature_snapshot,
     }
     if research_structured_data:
         pack["research_structured_data"] = research_structured_data
@@ -1401,6 +1625,9 @@ def _radar_final_context(item: RadarCandidate, analysis_date: date, raw_sources:
         "radar_scores": {
             "total_score": item.total_score,
             "score_components": item.score_components,
+            "score_details": item.score_details,
+            "key_reasons": item.key_reasons,
+            "risk_flags": item.risk_flags,
             "strategies": sorted(item.strategy_codes),
         },
         "coverage": item.data_coverage,
@@ -1635,17 +1862,750 @@ def _attach_radar_low_model_digest(
         }
 
 
-def _score_candidates(candidates: list[RadarCandidate]) -> None:
+def _score_candidates(candidates: list[RadarCandidate], analysis_date: date | None = None) -> None:
     industry_counts: dict[str, int] = {}
     for item in candidates:
         if item.industry:
             industry_counts[item.industry] = industry_counts.get(item.industry, 0) + 1
     for item in candidates:
-        item.score_components["technical"] = _score_technical(item)
-        item.score_components["chip"] = _score_chip(item)
-        item.score_components["theme"] = _score_theme(item)
-        item.score_components["market"] = min(10, industry_counts.get(item.industry, 0) * 2)
-        item.total_score = min(100, sum(item.score_components.values()))
+        snapshot = _build_radar_feature_snapshot(item, candidates, industry_counts, analysis_date)
+        details = {
+            "technical": _score_technical_detail(item, snapshot),
+            "revenue": _score_revenue_detail(item, snapshot),
+            "financial": _score_financial_detail(item, snapshot),
+            "chip": _score_chip_detail(item, snapshot),
+            "theme": _score_theme_news_detail(item, snapshot),
+            "sector": _score_sector_detail(item, snapshot),
+        }
+        components = {key: int(detail.get("score") or 0) for key, detail in details.items()}
+        total = min(100, sum(components.values()))
+        total, caps = _apply_radar_score_caps(total, components, details)
+        item.radar_feature_snapshot = snapshot
+        item.score_details = details
+        item.score_components = components
+        item.score_caps_applied = caps
+        item.key_reasons = _top_unique_reasons(details, limit=5)
+        item.risk_flags = _top_unique_risks(details, caps, limit=4)
+        item.total_score = int(total)
+
+
+def _build_radar_feature_snapshot(
+    item: RadarCandidate,
+    candidates: list[RadarCandidate],
+    industry_counts: dict[str, int],
+    analysis_date: date | None,
+) -> dict[str, Any]:
+    structured, structured_date = _load_radar_structured_snapshot(item.code, analysis_date)
+    technical = _build_technical_snapshot(item, analysis_date)
+    structured_revenue_rows = _structured_rows(structured, "revenue_data")
+    revenue_rows = structured_revenue_rows or item.revenue_history
+    financial_rows = _structured_rows(structured, "financial_data")
+    chip = {
+        "grades": dict(item.chip_grades),
+        "institutional_data": _structured_rows(structured, "institutional_data"),
+        "margin_data": _structured_rows(structured, "margin_data"),
+        "tdcc_data": structured.get("tdcc_data") if isinstance(structured, dict) else {},
+    }
+    theme_context = structured.get("topic_context") if isinstance(structured, dict) else {}
+    sector_peers = [candidate.code for candidate in candidates if candidate.industry and candidate.industry == item.industry]
+    return {
+        "analysis_date": analysis_date.isoformat() if analysis_date else None,
+        "structured_cache_date": structured_date.isoformat() if structured_date else None,
+        "technical": technical,
+        "revenue": {"history": revenue_rows},
+        "financial": {
+            "financial_data": financial_rows,
+            "gross_margin_cache": structured.get("gross_margin_cache") if isinstance(structured, dict) else {},
+            "valuation_data": structured.get("valuation_data") if isinstance(structured, dict) else {},
+        },
+        "chip": chip,
+        "theme_news": {
+            "local_news": item.news_items,
+            "web_sources": item.web_sources,
+            "ai_sources": item.ai_sources,
+            "topic_context": theme_context,
+        },
+        "sector": {
+            "industry": item.industry,
+            "industry_candidate_count": industry_counts.get(item.industry, 0),
+            "same_industry_codes": sector_peers[:20],
+        },
+    }
+
+
+def _load_radar_structured_snapshot(stock_code: str, analysis_date: date | None) -> tuple[dict[str, Any], date | None]:
+    if not analysis_date:
+        return {}, None
+    exact = load_research_structured_cache(stock_code, analysis_date, max_age_hours=24 * 90)
+    if isinstance(exact, dict):
+        return exact, analysis_date
+    latest = load_latest_research_structured_cache(
+        stock_code,
+        before_or_on=analysis_date,
+        max_age_days=max(10, RADAR_FULL_RESEARCH_CACHE_MAX_AGE_DAYS),
+    )
+    if latest:
+        return latest
+    return {}, None
+
+
+def _structured_rows(structured: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = structured.get(key) if isinstance(structured, dict) else None
+    return [dict(row) for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+
+
+def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "strategies": sorted(item.strategy_codes),
+        "signals": item.technical_signals[:12],
+        "price_metrics": _load_price_metric_for_item(item),
+    }
+    frame = _load_technical_daily_frame(item, analysis_date)
+    if frame is None or frame.empty:
+        snapshot["status"] = "missing_daily"
+        return snapshot
+    current = frame.iloc[-1]
+    previous = frame.iloc[-2] if len(frame) >= 2 else current
+    close = _to_float(current.get("close"))
+    prev_close = _to_float(previous.get("close"))
+    volume = _to_float(current.get("volume"))
+    ma: dict[str, float | None] = {}
+    prev_ma: dict[str, float | None] = {}
+    slopes: dict[str, str] = {}
+    for window in (5, 10, 13, 20, 21, 60, 105):
+        series = frame["close"].rolling(window).mean()
+        ma_key = f"ma{window}"
+        ma[ma_key] = _to_float(series.iloc[-1])
+        prev_ma[ma_key] = _to_float(series.iloc[-2]) if len(series) >= 2 else None
+        if len(series) > window + 3 and pd.notna(series.iloc[-1]) and pd.notna(series.iloc[-4]):
+            slopes[ma_key] = "up" if float(series.iloc[-1]) > float(series.iloc[-4]) else "flat_or_down"
+    vol20 = _to_float(frame["volume"].rolling(20).mean().iloc[-1]) if "volume" in frame else None
+    vol60 = _to_float(frame["volume"].rolling(60).mean().iloc[-1]) if "volume" in frame else None
+    high20 = _to_float(frame["high"].rolling(20).max().iloc[-2]) if len(frame) >= 2 and "high" in frame else None
+    high60 = _to_float(frame["high"].rolling(60).max().iloc[-2]) if len(frame) >= 2 and "high" in frame else None
+    low60 = _to_float(frame["low"].rolling(60).min().iloc[-1]) if "low" in frame else None
+    low120 = _to_float(frame["low"].rolling(120).min().iloc[-1]) if "low" in frame else None
+    volume_ratio = volume / vol20 if volume is not None and vol20 and vol20 > 0 else None
+    recent_lows = frame["low"].iloc[-12:-1] if len(frame) > 12 and "low" in frame else pd.Series(dtype=float)
+    recent_prior_low = _to_float(recent_lows.min()) if not recent_lows.empty else None
+    recent_break_low = False
+    if recent_prior_low is not None and len(frame) >= 4 and "low" in frame:
+        recent_break_low = bool((frame["low"].iloc[-4:-1] < recent_prior_low).any() and close and close > recent_prior_low)
+    candle_range = _to_float(current.get("high")) - _to_float(current.get("low")) if _to_float(current.get("high")) is not None and _to_float(current.get("low")) is not None else None
+    lower_shadow = None
+    if candle_range and candle_range > 0 and close is not None:
+        lower_shadow = (min(close, _to_float(current.get("open")) or close) - (_to_float(current.get("low")) or close)) / candle_range
+    snapshot.update(
+        {
+            "status": "ok",
+            "last_date": str(current.get("date")),
+            "close": close,
+            "previous_close": prev_close,
+            "volume": volume,
+            "ma": ma,
+            "previous_ma": prev_ma,
+            "ma_slopes": slopes,
+            "volume_avg20": vol20,
+            "volume_avg60": vol60,
+            "volume_ratio": volume_ratio,
+            "above_ma": {key: close is not None and value is not None and close >= value for key, value in ma.items()},
+            "reclaim_ma": {
+                key: close is not None and value is not None and prev_close is not None and prev_ma.get(key) is not None and close >= value and prev_close < prev_ma[key]
+                for key, value in ma.items()
+            },
+            "distance_from_60d_low_pct": _pct_from_low(close, low60),
+            "distance_from_120d_low_pct": _pct_from_low(close, low120),
+            "breakout_20d": close is not None and high20 is not None and close > high20,
+            "breakout_60d": close is not None and high60 is not None and close > high60,
+            "price_up_volume_up": close is not None and prev_close is not None and volume is not None and close > prev_close and (volume_ratio or 0) > 1,
+            "recent_break_low_recover": recent_break_low,
+            "long_lower_shadow": bool(lower_shadow is not None and lower_shadow >= 0.35),
+            "ma20_deviation_pct": ((close / ma["ma20"] - 1) * 100) if close and ma.get("ma20") else None,
+        }
+    )
+    return snapshot
+
+
+def _load_technical_daily_frame(item: RadarCandidate, analysis_date: date | None) -> pd.DataFrame | None:
+    candidates = [item.symbol, f"{item.code}.TW", f"{item.code}.TWO", f"{item.code}_TW", f"{item.code}_TWO"]
+    for symbol in candidates:
+        if not symbol:
+            continue
+        stem = str(symbol).replace(".", "_")
+        path = ROOT_DIR / ".cache" / "technical_daily" / f"{stem}.csv"
+        if not path.exists():
+            continue
+        try:
+            frame = pd.read_csv(path)
+        except Exception:
+            continue
+        if "date" not in frame.columns:
+            continue
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame = frame.dropna(subset=["date"]).sort_values("date")
+        if analysis_date:
+            frame = frame[frame["date"].dt.date <= analysis_date]
+        for column in ("open", "high", "low", "close", "volume"):
+            if column in frame.columns:
+                frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        return frame.tail(160)
+    return None
+
+
+def _load_price_metric_for_item(item: RadarCandidate) -> dict[str, Any]:
+    path = ROOT_DIR / ".cache" / "price_metrics.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    metrics = payload.get("metrics") if isinstance(payload, dict) else None
+    if not isinstance(metrics, dict):
+        return {}
+    for key in (item.symbol, f"{item.code}.TW", f"{item.code}.TWO", item.code):
+        value = metrics.get(key)
+        if isinstance(value, dict):
+            return dict(value)
+    return {}
+
+
+def _score_detail(score: float, max_score: int, reasons: list[str], risks: list[str] | None = None, details: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "score": int(max(0, min(max_score, round(score)))),
+        "reasons": _unique_texts(reasons),
+        "risks": _unique_texts(risks or []),
+        "details": details or {},
+    }
+
+
+def _score_technical_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    tech = snapshot.get("technical") or {}
+    reasons: list[str] = []
+    risks: list[str] = []
+    details: dict[str, Any] = {}
+    trend = 0.0
+    above = tech.get("above_ma") or {}
+    reclaim = tech.get("reclaim_ma") or {}
+    slopes = tech.get("ma_slopes") or {}
+    if above.get("ma5") or reclaim.get("ma5"):
+        trend += 1; reasons.append("收盤站回 MA5")
+    if above.get("ma10") or above.get("ma13") or reclaim.get("ma10") or reclaim.get("ma13"):
+        trend += 1; reasons.append("收盤站回 MA10/MA13")
+    if above.get("ma20") or above.get("ma21") or reclaim.get("ma20") or reclaim.get("ma21"):
+        trend += 2; reasons.append("收盤站回 MA20/MA21")
+    if above.get("ma60") or reclaim.get("ma60"):
+        trend += 2; reasons.append("收盤站回 MA60")
+    if above.get("ma105") or reclaim.get("ma105"):
+        trend += 2; reasons.append("收盤站回 MA105")
+    if slopes.get("ma5") == "up":
+        trend += 1; reasons.append("MA5 上彎")
+    if slopes.get("ma10") == "up" or slopes.get("ma13") == "up":
+        trend += 1; reasons.append("MA10/MA13 上彎")
+    if slopes.get("ma20") == "up" or slopes.get("ma21") == "up":
+        trend += 1; reasons.append("MA20/MA21 走平轉上")
+    trend = min(8, trend)
+
+    reversal = 0.0
+    d60 = _to_float(tech.get("distance_from_60d_low_pct"))
+    d120 = _to_float(tech.get("distance_from_120d_low_pct"))
+    if d60 is not None and d60 < 20 and (above.get("ma20") or above.get("ma21")):
+        reversal += 1; reasons.append("距 60 日低點 20% 內轉強")
+    if d120 is not None and d120 < 30 and (above.get("ma20") or above.get("ma21")):
+        reversal += 1; reasons.append("距 120 日低點 30% 內轉強")
+    if item.technical_signals:
+        reversal += 1; reasons.append("既有技術策略觸發")
+    if any(str(signal.get("strategy_code") or "") == "C" for signal in item.technical_signals):
+        reversal += 1.5; reasons.append("低檔背離/反轉策略觸發")
+    if any(_has_kd_low_divergence(signal) for signal in item.technical_signals):
+        reversal += 1; reasons.append("KD 低檔背離或轉強")
+    if any(_has_dif_support(signal) for signal in item.technical_signals):
+        reversal += 1; reasons.append("DIF 接近零軸或轉強")
+    reversal = min(5, reversal)
+
+    volume = 0.0
+    volume_ratio = _to_float(tech.get("volume_ratio")) or _to_float((tech.get("price_metrics") or {}).get("volume_ratio"))
+    if volume_ratio is not None:
+        if volume_ratio > 3:
+            volume += 3; reasons.append("量比大於 3")
+        elif volume_ratio > 2:
+            volume += 2; reasons.append("量比大於 2")
+        elif volume_ratio > 1.5:
+            volume += 1; reasons.append("量比大於 1.5")
+        if 1.2 <= volume_ratio <= 3:
+            volume += 1; reasons.append("量增但未爆量過熱")
+    if tech.get("volume") and tech.get("volume_avg20") and _to_float(tech.get("volume")) > _to_float(tech.get("volume_avg20")):
+        volume += 1; reasons.append("成交量突破 20 日均量")
+    if tech.get("volume") and tech.get("volume_avg60") and _to_float(tech.get("volume")) > _to_float(tech.get("volume_avg60")):
+        volume += 1; reasons.append("成交量突破 60 日均量")
+    if tech.get("price_up_volume_up"):
+        volume += 1; reasons.append("價漲量增")
+    volume = min(5, volume)
+
+    shakeout = 0.0
+    if tech.get("recent_break_low_recover"):
+        shakeout += 2; reasons.append("跌破轉折低點後快速收復")
+    if tech.get("long_lower_shadow") and (above.get("ma20") or above.get("ma21")):
+        shakeout += 1.5; reasons.append("長下影後收回 MA20/MA21")
+    if reclaim.get("ma20") or reclaim.get("ma21"):
+        shakeout += 1.5; reasons.append("跌破 MA20/MA21 後快速站回")
+    if reclaim.get("ma60"):
+        shakeout += 2; reasons.append("跌破 MA60 後快速站回")
+    if any(str(signal.get("strategy_code") or "") == "D" for signal in item.technical_signals):
+        shakeout += 1.5; reasons.append("急跌收復策略觸發")
+    shakeout = min(5, shakeout)
+
+    breakout = 0.0
+    if tech.get("breakout_20d"):
+        breakout += 1; reasons.append("突破近 20 日高點")
+    if tech.get("breakout_60d"):
+        breakout += 1.5; reasons.append("突破近 60 日高點")
+    if any(str(signal.get("strategy_code") or "") in {"A", "B"} for signal in item.technical_signals):
+        breakout += 1; reasons.append("回測突破策略觸發")
+    breakout = min(4, breakout)
+
+    cross = 0.0
+    strategies = set(item.strategy_codes)
+    if strategies:
+        cross += 1; reasons.append("命中 A/B/C/D 技術策略")
+    if len(strategies) >= 2:
+        cross += 1; reasons.append("多策略族群交叉確認")
+    if strategies & {"A", "B"} and strategies & {"C", "D"}:
+        cross += 1; reasons.append("趨勢策略與反轉/收復策略交叉")
+    cross = min(3, cross)
+
+    score = trend + reversal + volume + shakeout + breakout + cross
+    deviation = _to_float(tech.get("ma20_deviation_pct"))
+    if deviation is not None and deviation > 25:
+        score -= 2; risks.append("乖離 MA20 超過 25%")
+    if volume_ratio is not None and volume_ratio > 5 and tech.get("price_up_volume_up") is False:
+        score -= 2; risks.append("爆量但價格未同步轉強")
+    if any("高風險" in str(signal.get("notes") or "") for signal in item.technical_signals):
+        score -= 2; risks.append("既有技術訊號標記高風險")
+    details.update({"trend": trend, "reversal": reversal, "volume": volume, "shakeout": shakeout, "breakout": breakout, "strategy_cross": cross})
+    return _score_detail(score, 30, reasons, risks, details)
+
+
+def _score_revenue_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history") or item.revenue_history)
+    reasons: list[str] = []
+    risks: list[str] = []
+    if not rows:
+        return _score_detail(0, 20, [], ["營收資料缺漏"], {"row_count": 0})
+    latest = rows[-1]
+    yoy_values = [_to_float(row.get("yoy") or row.get("YoY") or row.get("YoY%") or row.get("revenue_yoy")) for row in rows]
+    mom_values = [_to_float(row.get("mom") or row.get("MoM%")) for row in rows]
+    latest_yoy = yoy_values[-1]
+    latest_mom = mom_values[-1] if mom_values else None
+    score = 0.0
+    if latest_yoy is not None:
+        if latest_yoy > 50:
+            score += 4; reasons.append("最新月營收 YoY 大於 50%")
+        elif latest_yoy >= 30:
+            score += 3; reasons.append("最新月營收 YoY 30% 以上")
+        elif latest_yoy >= 10:
+            score += 2; reasons.append("最新月營收 YoY 10% 以上")
+    recent3 = [value for value in yoy_values[-3:] if value is not None]
+    recent5 = [value for value in yoy_values[-5:] if value is not None]
+    if sum(1 for value in recent3 if value > 0) >= 2:
+        score += 2; reasons.append("近 3 月 YoY 有 2 月以上為正")
+    if sum(1 for value in recent5 if value > 0) >= 4:
+        score += 2; reasons.append("近 5 月 YoY 有 4 月以上為正")
+    if len(yoy_values) >= 2 and yoy_values[-2] is not None and latest_yoy is not None and yoy_values[-2] < 0 <= latest_yoy:
+        score += 2; reasons.append("營收 YoY 由負轉正")
+    acceleration = _consecutive_increase_count([value for value in yoy_values if value is not None])
+    if acceleration >= 3:
+        score += 3; reasons.append("YoY 連續 3 個月加速")
+    elif acceleration >= 2:
+        score += 2; reasons.append("YoY 連續 2 個月加速")
+    revenues = [_to_float(row.get("revenue") or row.get("Monthly_Revenue") or row.get("monthly_revenue")) for row in rows]
+    if revenues[-1] is not None and len([value for value in revenues[-6:] if value is not None]) >= 3 and revenues[-1] >= max(value for value in revenues[-6:] if value is not None):
+        score += 2; reasons.append("最新月營收創 6 個月高")
+    if revenues[-1] is not None and len([value for value in revenues[-12:] if value is not None]) >= 6 and revenues[-1] >= max(value for value in revenues[-12:] if value is not None):
+        score += 3; reasons.append("最新月營收創 12 個月高")
+    if latest_mom is not None:
+        if latest_mom > 20:
+            score += 2; reasons.append("最新月 MoM 大於 20%")
+        elif latest_mom > 0:
+            score += 1; reasons.append("最新月 MoM 為正")
+        if latest_yoy is not None and latest_yoy > 0 and latest_mom > 0:
+            score += 1; reasons.append("YoY 與 MoM 同步轉正")
+    if latest_yoy is not None and latest_yoy > 0 and ((snapshot.get("theme_news") or {}).get("local_news") or (snapshot.get("theme_news") or {}).get("web_sources")):
+        score += 2; reasons.append("營收轉強與題材/新聞可交叉觀察")
+    price_metrics = (snapshot.get("technical") or {}).get("price_metrics") or {}
+    change20 = _to_float(price_metrics.get("change_pct_20d"))
+    if latest_yoy is not None and latest_yoy > 20 and (change20 is None or change20 < 30):
+        score += 2; reasons.append("營收轉強但股價尚未大幅反映")
+    if latest_yoy is not None and latest_yoy >= 15 and (change20 is None or change20 < 18):
+        prior_negative_count = sum(1 for value in recent5[:-1] if value is not None and value <= 0)
+        if prior_negative_count >= 2 or acceleration >= 2:
+            score += 2; reasons.append("早期營收轉機，市場可能尚未完全定價")
+    if latest_yoy is not None and latest_yoy > 30 and latest_mom is not None and latest_mom < -30:
+        score -= 2; risks.append("單月 YoY 強但 MoM 大幅下滑")
+    if len(recent5) >= 4 and sum(1 for value in recent5[:-1] if value <= 0) >= 3 and latest_yoy and latest_yoy > 50:
+        score -= 2; risks.append("營收可能只是單月跳動")
+    return _score_detail(score, 20, reasons, risks, {"latest": latest, "latest_yoy": latest_yoy, "latest_mom": latest_mom})
+
+
+def _score_financial_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    financial = snapshot.get("financial") or {}
+    rows = _normalise_financial_rows(financial.get("financial_data"))
+    reasons: list[str] = []
+    risks: list[str] = []
+    if not rows:
+        revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history") or item.revenue_history)
+        latest_yoy = _to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) if revenue_rows else None
+        technical = snapshot.get("technical") or {}
+        chip_grades = (snapshot.get("chip") or {}).get("grades") or {}
+        provisional = 0.0
+        if latest_yoy is not None and latest_yoy >= 15:
+            provisional += 3.0
+            reasons.append("財報尚未反映，但月營收已有早期轉機線索")
+        if technical.get("status") == "ok" and (technical.get("volume_ratio") or 0) >= 1.2:
+            provisional += 2.0
+            reasons.append("價量已有初步反應，財報空窗期採觀察分")
+        if any(str(grade).upper() in {"S", "A", "B"} for grade in chip_grades.values()):
+            provisional += 2.0
+            reasons.append("籌碼評級提供財報前的輔助驗證")
+        return _score_detail(provisional, 15, reasons, ["財報資料缺漏，需等待下一季財報驗證"], {"row_count": 0, "latest_yoy": latest_yoy, "provisional": True})
+    latest = rows[-1]
+    prev = rows[-2] if len(rows) >= 2 else {}
+    score = 0.0
+    eps_values = [_to_float(row.get("EPS") or row.get("eps")) for row in rows]
+    latest_eps = eps_values[-1]
+    prev_eps = eps_values[-2] if len(eps_values) >= 2 else None
+    if latest_eps is not None and prev_eps is not None:
+        if prev_eps < 0 <= latest_eps:
+            score += 3; reasons.append("EPS 由虧轉盈")
+        elif latest_eps < 0 and prev_eps < 0 and latest_eps > prev_eps and abs(prev_eps) > 0 and (abs(prev_eps) - abs(latest_eps)) / abs(prev_eps) >= 0.5:
+            score += 2; reasons.append("EPS 虧損收斂超過 50%")
+    eps_improve = _consecutive_increase_count([value for value in eps_values if value is not None])
+    if eps_improve >= 3:
+        score += 3; reasons.append("EPS 連續 3 季改善")
+    elif eps_improve >= 2:
+        score += 2; reasons.append("EPS 連續 2 季改善")
+    gm_latest = _to_float(latest.get("Gross_Margin") or latest.get("gross_margin"))
+    gm_prev = _to_float(prev.get("Gross_Margin") or prev.get("gross_margin"))
+    if gm_latest is not None and gm_prev is not None and gm_latest > gm_prev:
+        score += 1.5; reasons.append("毛利率季增")
+    gm_improve = _consecutive_increase_count([_to_float(row.get("Gross_Margin") or row.get("gross_margin")) for row in rows if _to_float(row.get("Gross_Margin") or row.get("gross_margin")) is not None])
+    if gm_improve >= 2:
+        score += 2; reasons.append("毛利率連續改善")
+    op_latest = _to_float(latest.get("Operating_Margin") or latest.get("operating_margin"))
+    op_prev = _to_float(prev.get("Operating_Margin") or prev.get("operating_margin"))
+    if op_latest is not None and op_prev is not None:
+        if op_prev < 0 <= op_latest:
+            score += 3; reasons.append("營益率由負轉正")
+        elif op_latest < 0 and op_latest > op_prev:
+            score += 2; reasons.append("營益率虧損收斂")
+    net_latest = _to_float(latest.get("Net_Income") or latest.get("net_income"))
+    net_prev = _to_float(prev.get("Net_Income") or prev.get("net_income"))
+    if net_latest is not None and net_prev is not None and net_prev < 0 <= net_latest:
+        score += 2; reasons.append("稅後淨利轉正")
+    ocf = _to_float(latest.get("Operating_Cash_Flow") or latest.get("operating_cash_flow"))
+    fcf = _to_float(latest.get("Free_Cash_Flow") or latest.get("free_cash_flow"))
+    if ocf is not None and ocf > 0:
+        score += 2; reasons.append("營業現金流為正")
+    if fcf is not None and fcf > 0:
+        score += 1; reasons.append("自由現金流為正")
+    valuation = financial.get("valuation_data") or {}
+    latest_val = valuation.get("latest") if isinstance(valuation, dict) else {}
+    pb = _to_float((latest_val or {}).get("pb_ratio")) if isinstance(latest_val, dict) else None
+    if pb is not None and pb < 2 and (latest_eps is not None and (latest_eps > 0 or eps_improve >= 2)):
+        score += 1.5; reasons.append("PB 偏低且財報改善")
+    if ocf is not None and ocf < 0 and latest_eps is not None and latest_eps > 0:
+        score -= 2; risks.append("EPS 改善但營業現金流為負")
+    if gm_latest is not None and gm_prev is not None and gm_latest < gm_prev:
+        risks.append("毛利率下滑")
+    return _score_detail(score, 15, reasons, risks, {"latest": latest, "latest_eps": latest_eps, "pb_ratio": pb})
+
+
+def _score_chip_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    chip = snapshot.get("chip") or {}
+    reasons: list[str] = []
+    risks: list[str] = []
+    score = 0.0
+    for key, grade in (chip.get("grades") or {}).items():
+        grade_value = str(grade).upper()
+        score += {"S": 3.5, "A": 3.0, "B": 2.0, "C": 0.5}.get(grade_value, 0.5)
+        if grade_value in {"S", "A", "B"}:
+            reasons.append(f"{CHIP_STRATEGY_LABELS.get(key, key)} {grade_value}級")
+    revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history") or item.revenue_history)
+    latest_yoy = _to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) if revenue_rows else None
+    if latest_yoy is not None and latest_yoy >= 15 and any(str(grade).upper() in {"S", "A", "B"} for grade in (chip.get("grades") or {}).values()):
+        score += 1.5; reasons.append("營收轉強與籌碼初動同步")
+    institutional = _normalise_date_rows(chip.get("institutional_data") or [], "Date")
+    recent5 = institutional[-5:]
+    recent10 = institutional[-10:]
+    foreign5 = sum(_to_float(row.get("Foreign_Net_Lots")) or 0 for row in recent5)
+    foreign10 = sum(_to_float(row.get("Foreign_Net_Lots")) or 0 for row in recent10)
+    trust5 = sum(_to_float(row.get("Investment_Trust_Net_Lots")) or 0 for row in recent5)
+    dealer5 = sum(_to_float(row.get("Dealer_Net_Lots")) or 0 for row in recent5)
+    total5 = foreign5 + trust5 + dealer5
+    if foreign5 > 0:
+        score += 2; reasons.append("外資近 5 日買超")
+    if foreign10 > 0 and sum(_to_float(row.get("Foreign_Net_Lots")) or 0 for row in institutional[-20:-10]) < 0:
+        score += 2; reasons.append("外資近 10 日由賣轉買")
+    if trust5 > 0:
+        score += 2; reasons.append("投信近 5 日買超")
+    if dealer5 > 0:
+        score += 1; reasons.append("自營商近 5 日買超")
+    if total5 > 0:
+        score += 2; reasons.append("三大法人合計轉買")
+    tdcc = chip.get("tdcc_data") or {}
+    if isinstance(tdcc, dict):
+        large = _to_float(tdcc.get("large_holder_pct"))
+        retail = _to_float(tdcc.get("retail_holder_pct"))
+        if large is not None and large >= 60:
+            score += 2; reasons.append("TDCC 大戶持股集中")
+        if retail is not None and retail <= 35:
+            score += 1; reasons.append("散戶持股比偏低")
+    margin = _normalise_date_rows(chip.get("margin_data") or [], "Date")
+    if margin:
+        latest_margin = margin[-1]
+        financing_change = _to_float(latest_margin.get("Financing_Net_Change_Lots"))
+        short_ratio = _to_float(latest_margin.get("Short_Margin_Ratio"))
+        if financing_change is not None and financing_change <= 0:
+            score += 1; reasons.append("融資未明顯增加")
+        elif financing_change is not None and financing_change > 500 and total5 <= 0:
+            score -= 3; risks.append("融資暴增但法人未買")
+        if short_ratio is not None and short_ratio >= 30:
+            score += 1; reasons.append("券資比偏高具軋空可能")
+    if foreign5 < 0 and trust5 < 0 and total5 < 0:
+        score -= 2; risks.append("法人近期合計偏賣")
+    return _score_detail(score, 15, reasons, risks, {"foreign5": foreign5, "trust5": trust5, "dealer5": dealer5, "total5": total5})
+
+
+def _score_theme_news_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    theme = snapshot.get("theme_news") or {}
+    local_news = [row for row in theme.get("local_news") or [] if isinstance(row, dict)]
+    web_sources = [row for row in theme.get("web_sources") or [] if isinstance(row, dict)]
+    ai_sources = [row for row in theme.get("ai_sources") or [] if isinstance(row, dict)]
+    topic_context = theme.get("topic_context") if isinstance(theme.get("topic_context"), dict) else {}
+    reasons: list[str] = []
+    risks: list[str] = []
+    score = 0.0
+    all_titles = " ".join(str(row.get("title") or row.get("snippet") or "") for row in [*local_news, *web_sources, *ai_sources])
+    hot_terms = ("AI", "BBU", "CPO", "CoWoS", "高速傳輸", "散熱", "電動車", "機器人", "伺服器", "重電", "儲能", "半導體")
+    if any(term in all_titles for term in hot_terms):
+        score += 3; reasons.append("新聞/來源出現熱門題材關鍵字")
+    if local_news:
+        score += min(3, len(local_news) * 1.2); reasons.append("本地新聞資料有題材線索")
+    external_count = len(web_sources) + len(ai_sources)
+    if external_count:
+        score += min(3, external_count * 0.8); reasons.append("外部來源可交叉驗證")
+    matched_topics = topic_context.get("matched_topics") if isinstance(topic_context, dict) else []
+    if matched_topics:
+        score += 2; reasons.append("題材庫有對應主題")
+    company_rel = topic_context.get("company_topic_relations") if isinstance(topic_context, dict) else {}
+    if isinstance(company_rel, dict) and (_to_float(company_rel.get("direct_matches")) or 0) > 0:
+        score += 2; reasons.append("題材與公司關聯有直接匹配")
+    revenue_score = (snapshot.get("revenue") or {}).get("score")
+    if revenue_score is None:
+        revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history"))
+        revenue_score = 1 if revenue_rows and (_to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) or 0) > 0 else 0
+    if revenue_score:
+        score += 2; reasons.append("題材可與營收改善交叉觀察")
+    revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history"))
+    latest_yoy = _to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) if revenue_rows else None
+    if latest_yoy is not None and latest_yoy >= 15 and not matched_topics:
+        score += 1.5; reasons.append("營收改善但題材庫尚未明確映射，列為重估觀察")
+        risks.append("題材重估仍需補官方或產業鏈證據")
+    technical = snapshot.get("technical") or {}
+    chip_grades = (snapshot.get("chip") or {}).get("grades") or {}
+    if (
+        latest_yoy is not None
+        and latest_yoy >= 15
+        and (technical.get("status") == "ok")
+        and ((technical.get("volume_ratio") or 0) >= 1.2 or technical.get("price_up_volume_up"))
+        and any(str(grade).upper() in {"S", "A", "B"} for grade in chip_grades.values())
+    ):
+        score += 3
+        reasons.append("營收、價量與籌碼同步出現早期重估線索")
+    if any("注意" in str(row.get("title") or "") or "處置" in str(row.get("title") or "") for row in local_news):
+        risks.append("新聞含注意股/處置訊息")
+    if score > 0 and not local_news and external_count == 0 and not matched_topics:
+        risks.append("題材缺少可驗證來源")
+    return _score_detail(score, 15, reasons, risks, {"local_news_count": len(local_news), "external_source_count": external_count})
+
+
+def _score_sector_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
+    sector = snapshot.get("sector") or {}
+    count = int(sector.get("industry_candidate_count") or 0)
+    reasons: list[str] = []
+    score = 0.0
+    if count >= 2:
+        score += 1; reasons.append("同產業多檔同步進入候選")
+    if count >= 4:
+        score += 1; reasons.append("族群候選擴散")
+    if item.industry:
+        score += 0.5; reasons.append("具明確產業分類")
+    if (snapshot.get("theme_news") or {}).get("local_news") or (snapshot.get("theme_news") or {}).get("web_sources"):
+        score += 1; reasons.append("族群/題材新聞密度增加")
+    if (snapshot.get("chip") or {}).get("grades"):
+        score += 0.5; reasons.append("族群候選具籌碼評級輔助")
+    if (snapshot.get("revenue") or {}).get("history"):
+        score += 0.5; reasons.append("族群候選具營收資料支撐")
+    return _score_detail(score, 5, reasons, [], {"industry_candidate_count": count})
+
+
+def _apply_radar_score_caps(
+    total: int,
+    components: dict[str, int],
+    details: dict[str, dict[str, Any]],
+) -> tuple[int, list[str]]:
+    caps: list[tuple[int, str]] = []
+    technical = components.get("technical", 0)
+    revenue = components.get("revenue", 0)
+    financial = components.get("financial", 0)
+    theme = components.get("theme", 0)
+    chip = components.get("chip", 0)
+    if technical <= 0:
+        caps.append((60, "技術未觸發，總分最高 60"))
+    if technical >= 18 and revenue < 6 and financial < 4:
+        caps.append((65, "只有技術轉強，營收/財報弱，總分最高 65"))
+    if theme >= 8 and revenue < 6 and financial < 4:
+        caps.append((60, "只有題材，營收/財報弱，總分最高 60"))
+    theme_risks = " ".join(details.get("theme", {}).get("risks") or [])
+    if "缺少可驗證來源" in theme_risks:
+        caps.append((70, "題材無法驗證，總分最高 70"))
+    chip_risks = " ".join(details.get("chip", {}).get("risks") or [])
+    if "融資暴增" in chip_risks or (chip <= 3 and technical >= 20):
+        caps.append((70, "籌碼散戶化或缺乏法人支撐，總分最高 70"))
+    financial_risks = " ".join(details.get("financial", {}).get("risks") or [])
+    if "現金流" in financial_risks:
+        caps.append((75, "財報品質或現金流有疑慮，總分最高 75"))
+    technical_risks = " ".join(details.get("technical", {}).get("risks") or [])
+    if "乖離" in technical_risks:
+        caps.append((75, "技術短線過熱，總分最高 75"))
+    if technical >= 24 and revenue < 6 and financial < 4 and theme < 5:
+        caps.append((70, "短線大漲但基本面支撐不足，總分最高 70"))
+    if not caps:
+        return total, []
+    cap_value = min(cap for cap, _reason in caps)
+    return min(total, cap_value), [reason for _cap, reason in caps if _cap == cap_value or total > _cap]
+
+
+def _top_unique_reasons(details: dict[str, dict[str, Any]], limit: int) -> list[str]:
+    ordered: list[str] = []
+    for key in ("technical", "revenue", "financial", "chip", "theme", "sector"):
+        ordered.extend(str(reason) for reason in details.get(key, {}).get("reasons") or [])
+    return _unique_texts(ordered)[:limit]
+
+
+def _top_unique_risks(details: dict[str, dict[str, Any]], caps: list[str], limit: int) -> list[str]:
+    ordered: list[str] = []
+    for key in ("technical", "revenue", "financial", "chip", "theme", "sector"):
+        ordered.extend(str(risk) for risk in details.get(key, {}).get("risks") or [])
+    ordered.extend(caps)
+    return _unique_texts(ordered)[:limit]
+
+
+def _unique_texts(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _to_float(value: Any) -> float | None:
+    try:
+        if value is None or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct_from_low(close: float | None, low: float | None) -> float | None:
+    if close is None or low is None or low <= 0:
+        return None
+    return (close / low - 1) * 100
+
+
+def _parse_any_date(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+    except Exception:
+        return None
+    if pd.isna(parsed):
+        return None
+    return parsed.to_pydatetime()
+
+
+def _normalise_date_rows(rows: list[dict[str, Any]], date_key: str) -> list[dict[str, Any]]:
+    sortable: list[tuple[datetime, dict[str, Any]]] = []
+    fallback: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        parsed = _parse_any_date(row.get(date_key) or row.get(date_key.lower()) or row.get("date"))
+        if parsed:
+            sortable.append((parsed, dict(row)))
+        else:
+            fallback.append(dict(row))
+    return [row for _date, row in sorted(sortable, key=lambda item: item[0])] + fallback
+
+
+def _normalise_revenue_rows(rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    sortable: list[tuple[datetime, dict[str, Any]]] = []
+    fallback: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        if "yoy" not in item:
+            for key in ("YoY", "YoY%", "revenue_yoy"):
+                if key in item:
+                    item["yoy"] = item.get(key)
+                    break
+        parsed = _parse_any_date(item.get("month") or item.get("Month") or item.get("date"))
+        if parsed:
+            sortable.append((parsed, item))
+        else:
+            fallback.append(item)
+    return [row for _date, row in sorted(sortable, key=lambda item: item[0])] + fallback
+
+
+def _normalise_financial_rows(rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    sortable: list[tuple[str, dict[str, Any]]] = []
+    fallback: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        quarter = str(row.get("Quarter") or row.get("quarter") or "")
+        if quarter:
+            sortable.append((quarter, dict(row)))
+        else:
+            fallback.append(dict(row))
+    return [row for _quarter, row in sorted(sortable, key=lambda item: item[0])] + fallback
+
+
+def _consecutive_increase_count(values: list[float | None]) -> int:
+    clean = [value for value in values if value is not None]
+    if len(clean) < 2:
+        return 0
+    count = 0
+    for index in range(len(clean) - 1, 0, -1):
+        if clean[index] > clean[index - 1]:
+            count += 1
+        else:
+            break
+    return count
 
 
 def _score_technical(item: RadarCandidate) -> int:
@@ -1844,10 +2804,13 @@ def _build_ai_comment_payload(
         "score_components": {
             "technical": components.get("technical", 0),
             "revenue": components.get("revenue", 0),
+            "financial": components.get("financial", 0),
             "chip": components.get("chip", 0),
             "theme": components.get("theme", 0),
-            "market": components.get("market", 0),
+            "sector": _component_sector_score(components),
         },
+        "key_reasons": item.key_reasons[:5],
+        "risk_flags": item.risk_flags[:4],
         "strategies": sorted(item.strategy_codes),
         "technical_signal_summary": _technical_signal_line(item),
         "chip_summary": _chip_grade_line(item),
@@ -1906,6 +2869,10 @@ def _build_radar_ai_compact_pack(
         "revenue": {
             "history": item.revenue_history[:6],
             "score": item.score_components.get("revenue", 0),
+        },
+        "financial": {
+            "score": item.score_components.get("financial", 0),
+            "detail": item.score_details.get("financial", {}),
         },
         "chip": {
             "summary": _chip_grade_line(item),
@@ -2132,6 +3099,7 @@ def _chunks(items: list[Any], size: int) -> list[list[Any]]:
 def _result_to_record(result: RadarResult) -> dict[str, Any]:
     created = datetime.now().astimezone().isoformat(timespec="seconds")
     return {
+        "schema_version": "radar_cache_index_v2",
         "radar_id": f"radar_{result.report_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M%S')}",
         "report_date": result.report_date.isoformat(),
         "source": result.request.source,
@@ -2140,13 +3108,50 @@ def _result_to_record(result: RadarResult) -> dict[str, Any]:
         "ai_comment_enabled": result.request.ai_comment_enabled,
         "created_at": created,
         "ai_enriched_codes": result.ai_enriched_codes,
-        "diagnostics": result.diagnostics,
-        "candidates": [_candidate_to_dict(item) for item in result.candidates],
+        "diagnostics": _radar_diagnostics_cache_summary(result.diagnostics),
+        "candidate_count": len(result.candidates),
+        "candidate_snapshot": [_radar_candidate_cache_summary(item) for item in result.candidates],
+    }
+
+
+def _radar_diagnostics_cache_summary(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(diagnostics or {})
+    ai_analysis = payload.get("ai_analysis")
+    if isinstance(ai_analysis, dict):
+        payload["ai_analysis"] = {
+            key: ai_analysis.get(key)
+            for key in (
+                "chunk_count",
+                "success_count",
+                "failed_count",
+                "model",
+                "ai_workflow_coverage",
+            )
+            if key in ai_analysis
+        }
+    return payload
+
+
+def _radar_candidate_cache_summary(item: RadarCandidate) -> dict[str, Any]:
+    return {
+        "code": item.code,
+        "name": item.name,
+        "symbol": item.symbol,
+        "industry": item.industry,
+        "price": item.price,
+        "source_labels": item.source_labels[:8],
+        "strategy_codes": sorted(item.strategy_codes),
+        "score_components": dict(item.score_components or {}),
+        "total_score": item.total_score,
+        "tag": _radar_candidate_tag(item),
+        "key_reasons": item.key_reasons[:6],
+        "risk_flags": item.risk_flags[:4],
+        "ai_comment_status": (item.ai_comment or {}).get("status"),
     }
 
 
 def _candidate_to_dict(item: RadarCandidate) -> dict[str, Any]:
-    return {
+    payload = {
         "code": item.code,
         "name": item.name,
         "symbol": item.symbol,
@@ -2164,8 +3169,28 @@ def _candidate_to_dict(item: RadarCandidate) -> dict[str, Any]:
         "evidence_pack": item.evidence_pack,
         "ai_comment": item.ai_comment,
         "score_components": item.score_components,
+        "score_details": item.score_details,
+        "key_reasons": item.key_reasons,
+        "risk_flags": item.risk_flags,
+        "score_caps_applied": item.score_caps_applied,
+        "radar_feature_snapshot": item.radar_feature_snapshot,
         "total_score": item.total_score,
     }
+    payload["candidate_snapshot"] = candidate_snapshot_from_row(
+        payload,
+        source_command="radar",
+        source_pool="radar",
+    )
+    return payload
+
+
+def _radar_candidate_snapshot(item: RadarCandidate, result: RadarResult) -> dict[str, Any]:
+    return candidate_snapshot_from_row(
+        _candidate_to_dict(item),
+        source_command="radar",
+        source_pool=result.request.source,
+        data_date=result.report_date.isoformat(),
+    )
 
 
 def _json_safe(value: Any) -> Any:
@@ -2203,7 +3228,12 @@ def _record_to_result(record: dict[str, Any]) -> RadarResult:
         ai_comment_enabled=bool(record.get("ai_comment_enabled", True)),
     )
     candidates = []
-    for raw in record.get("candidates") or []:
+    raw_candidates = record.get("candidates")
+    if not raw_candidates:
+        raw_candidates = _load_radar_candidates_from_artifact(record)
+    if not raw_candidates:
+        raw_candidates = record.get("candidate_snapshot") or []
+    for raw in raw_candidates or []:
         item = RadarCandidate(
             code=str(raw.get("code") or ""),
             name=str(raw.get("name") or ""),
@@ -2222,8 +3252,17 @@ def _record_to_result(record: dict[str, Any]) -> RadarResult:
             evidence_pack=dict(raw.get("evidence_pack") or {}),
             ai_comment=dict(raw.get("ai_comment") or {}),
             score_components=dict(raw.get("score_components") or {}),
+            score_details=dict(raw.get("score_details") or {}),
+            key_reasons=list(raw.get("key_reasons") or []),
+            risk_flags=list(raw.get("risk_flags") or []),
+            score_caps_applied=list(raw.get("score_caps_applied") or []),
+            radar_feature_snapshot=dict(raw.get("radar_feature_snapshot") or {}),
             total_score=int(raw.get("total_score") or 0),
         )
+        if "financial" not in item.score_components:
+            item.score_components["financial"] = 0
+        if "sector" not in item.score_components and "market" in item.score_components:
+            item.score_components["sector"] = int(item.score_components.get("market") or 0)
         candidates.append(item)
     return RadarResult(
         request=request,
@@ -2234,8 +3273,36 @@ def _record_to_result(record: dict[str, Any]) -> RadarResult:
     )
 
 
+def _load_radar_candidates_from_artifact(record: dict[str, Any]) -> list[dict[str, Any]]:
+    artifact_paths = record.get("artifact_paths") if isinstance(record.get("artifact_paths"), dict) else {}
+    candidates_path = artifact_paths.get("candidates")
+    if not candidates_path:
+        candidates_path = _find_radar_candidates_artifact(record)
+    if not candidates_path:
+        return []
+    try:
+        data = json.loads(Path(candidates_path).read_text(encoding="utf-8-sig"))
+    except Exception:
+        return []
+    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
+
+def _find_radar_candidates_artifact(record: dict[str, Any]) -> str | None:
+    radar_id = str(record.get("radar_id") or "").strip()
+    report_date = str(record.get("report_date") or "").strip()
+    if not radar_id or not report_date:
+        return None
+    path = RADAR_REPORT_DIR / report_date / radar_id / "radar_candidates.json"
+    return str(path) if path.exists() else None
+
+
 def _load_radar_records(limit: int = 10) -> list[dict[str, Any]]:
     if not RADAR_CACHE_PATH.exists():
+        return []
+    try:
+        if RADAR_CACHE_PATH.stat().st_size > RADAR_CACHE_MAX_BYTES:
+            return _rebuild_radar_cache_index_from_artifacts(limit=limit)
+    except OSError:
         return []
     try:
         data = json.loads(RADAR_CACHE_PATH.read_text(encoding="utf-8-sig"))
@@ -2244,9 +3311,56 @@ def _load_radar_records(limit: int = 10) -> list[dict[str, Any]]:
     return [item for item in data if isinstance(item, dict)][:limit]
 
 
+def _rebuild_radar_cache_index_from_artifacts(limit: int = 30) -> list[dict[str, Any]]:
+    candidates_files = sorted(
+        RADAR_REPORT_DIR.glob("*/*/radar_candidates.json"),
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+        reverse=True,
+    )
+    records: list[dict[str, Any]] = []
+    for candidates_path in candidates_files[: max(1, limit)]:
+        radar_dir = candidates_path.parent
+        date_dir = radar_dir.parent
+        record = {
+            "schema_version": "radar_cache_index_v2",
+            "radar_id": radar_dir.name,
+            "report_date": date_dir.name,
+            "source": DEFAULT_SOURCE,
+            "ai_top": DEFAULT_AI_TOP,
+            "model": None,
+            "ai_comment_enabled": True,
+            "created_at": datetime.fromtimestamp(candidates_path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+            "ai_enriched_codes": [],
+            "diagnostics": {"cache_rebuilt_from_artifacts": True},
+            "candidate_count": None,
+            "candidate_snapshot": [],
+            "artifact_paths": {
+                "summary": str(radar_dir / "radar_summary.md"),
+                "candidates": str(candidates_path),
+                "evidence_pack": str(radar_dir / "evidence_pack.json"),
+                "ai_analysis": str(radar_dir / "ai_analysis.json"),
+                "sources": str(radar_dir / "sources.json"),
+            },
+        }
+        records.append(record)
+    if records:
+        try:
+            RADAR_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            RADAR_CACHE_PATH.write_text(json.dumps(_json_safe(records), ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+    return records[:limit]
+
+
 def _normalise_source(value: str) -> str:
     text = str(value or "").strip().lower()
     aliases = {
+        "combined": "combined",
+        "all": "combined",
+        "default": "combined",
+        "綜合": "combined",
+        "跨來源": "combined",
+        "跨來源候選池": "combined",
         "技術面選股結果": "technical",
         "技術面": "technical",
         "technical": "technical",
@@ -2291,6 +3405,7 @@ def _normalise_model(value: str) -> str:
 
 def _source_label(source: str) -> str:
     return {
+        "combined": "跨來源候選池",
         "technical": "技術面選股結果",
         "curated": "精選選股結果",
         "financial": "財報營收選股結果",

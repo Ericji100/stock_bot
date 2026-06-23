@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from data_fetcher import StockExportError
+from data_source_manager import SourceHealthManager
 
 from .command_parser import parse_command_text
 from .config import ROOT_DIR, ResearchCenterConfig, load_research_config
@@ -50,7 +52,6 @@ from .search_query_service import SEARCH_QUERY_TEMPLATE_VERSION
 from .required_data_gap_service import build_required_data_gap_summary, build_required_gap_fill_tasks
 from .search_source_normalizer import normalize_source_items
 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
-from .topic_models import TopicChangeStatus
 from .topic_repository import load_change_pack, save_change_pack, list_change_packs
 from .topic_maintain_service import run_topic_maintain, TopicMaintainAIError
 from .topic_seed_service import build_topic_seed_prompt
@@ -61,6 +62,7 @@ from .theme_report_context import save_theme_report_context
 from .topic_formatters import (
     format_change_pack_list,
     format_change_pack_detail,
+    format_change_pack_created_summary,
     format_apply_result,
     format_topic_profiles,
 )
@@ -119,6 +121,7 @@ class ResearchCenter:
             max_extract_urls_per_task=self.config.tavily_max_extract_urls_per_task,
         )
         self.quota_guard = SearchProviderQuotaGuard(ROOT_DIR / ".cache" / "search_provider_quota.json")
+        self.source_health = SourceHealthManager()
         self._gemini_discovery_runner = _GeminiDiscoveryRunner(self)
 
     def parse(self, raw_text: str, user_id: str | None = None) -> CommandRequest:
@@ -421,6 +424,7 @@ class ResearchCenter:
                     sources,
                     {**(structured_data.get("prompt_policy") or {}), "purpose": "parallel_model_report", "primary_model": self.config.model, "shared_prompt_path": shared_prompt_path, "model_key": "minimax"}))
                 _emit_progress(progress, f"MiniMax model prompt saved: {minimax_prompt_log_path}")
+                _emit_progress(progress, f"Calling parallel AI model: {self.config.minimax_model} prompt={len(prompt)} chars sources={len(sources)} timeout={getattr(self.minimax, 'timeout_seconds', None)}s")
                 minimax_result = self.minimax.generate_report(prompt)
                 markdown = minimax_result.markdown
                 raw = minimax_result.raw
@@ -592,11 +596,19 @@ class ResearchCenter:
                     self._store_segmented_diagnostics(structured_data, selected_ai_model, segmented_result.diagnostics)
                     structured_data["segmented_ai_analysis"] = segmented_result.diagnostics
                     structured_data["segmented_ai_prompt_paths"] = segmented_result.prompt_paths
+                    if segmented_result.diagnostics.get("final_status") != "success":
+                        raise RuntimeError(
+                            "segmented final AI synthesis failed: "
+                            f"{segmented_result.diagnostics.get('final_error') or 'unknown error'}"
+                        )
                 else:
                     prompt_log_path = write_prompt_log(request, prompt, final_model_name, final_grounding, prompt_sources, structured_data.get("prompt_policy"))
                     _emit_progress(progress, f"Prompt saved: {prompt_log_path}")
                     _emit_progress(progress, f"Prompt template={structured_data.get('prompt_policy', {}).get('template')}, length={len(prompt)} chars, grounding={final_grounding}, sources={len(sources)}")
-                    _emit_progress(progress, f"Calling AI model: {final_model_name}")
+                    if selected_ai_model == "minimax":
+                        _emit_progress(progress, f"Calling AI model: {final_model_name} prompt={len(prompt)} chars sources={len(prompt_sources)} timeout={getattr(self.minimax, 'timeout_seconds', None)}s")
+                    else:
+                        _emit_progress(progress, f"Calling AI model: {final_model_name}")
                     if selected_ai_model == "deepseek":
                         if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
                             raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
@@ -613,7 +625,53 @@ class ResearchCenter:
                     elif selected_ai_model == "minimax":
                         if not self.minimax.is_configured():
                             raise RuntimeError("MiniMax model is not configured or API key is missing.")
-                        minimax_result = self.minimax.generate_report(prompt)
+                        try:
+                            minimax_result = self.minimax.generate_report(prompt)
+                        except Exception as exc:
+                            if not _should_retry_minimax_research(request, exc, len(prompt)):
+                                raise
+                            retry_prompt = _build_minimax_research_retry_prompt(
+                                request,
+                                structured_data,
+                                prompt_sources,
+                                exc,
+                                original_prompt_chars=len(prompt),
+                            )
+                            retry_prompt_log_path = write_prompt_log(
+                                request,
+                                retry_prompt,
+                                f"{final_model_name}_retry_compact",
+                                False,
+                                prompt_sources[:40],
+                                {"template": "research_deep_minimax_retry_compact", "reason": "minimax_timeout_or_large_prompt"},
+                            )
+                            _emit_progress(
+                                progress,
+                                "MiniMax deep research 首次呼叫失敗，改用精簡高階入模包重試："
+                                f"original={len(prompt)} chars retry={len(retry_prompt)} chars prompt={retry_prompt_log_path}",
+                            )
+                            started_retry = time.monotonic()
+                            try:
+                                minimax_result = self.minimax.generate_report(retry_prompt)
+                            except Exception as retry_exc:
+                                structured_data["minimax_retry_diagnostics"] = {
+                                    "status": "failed",
+                                    "reason": str(retry_exc),
+                                    "original_error": str(exc),
+                                    "original_prompt_chars": len(prompt),
+                                    "retry_prompt_chars": len(retry_prompt),
+                                    "retry_prompt_path": str(retry_prompt_log_path),
+                                    "elapsed_seconds": round(time.monotonic() - started_retry, 2),
+                                }
+                                raise retry_exc
+                            structured_data["minimax_retry_diagnostics"] = {
+                                "status": "success",
+                                "original_error": str(exc),
+                                "original_prompt_chars": len(prompt),
+                                "retry_prompt_chars": len(retry_prompt),
+                                "retry_prompt_path": str(retry_prompt_log_path),
+                                "elapsed_seconds": round(time.monotonic() - started_retry, 2),
+                            }
                         markdown = minimax_result.markdown
                         gemini_raw = minimax_result.raw
                         actual_gemini_model = str(minimax_result.diagnostics.get("model") or self.config.minimax_model)
@@ -649,6 +707,7 @@ class ResearchCenter:
                             _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
                         sources = _merge_sources(sources, gemini_sources)
                 ai_used = True
+                structured_data["ai_status"] = "ai_success"
                 _emit_progress(progress, f"AI model completed: {actual_gemini_model or self.config.model}")
                 if selected_ai_model == "gemini" and self.config.enable_minimax_comparison and self.minimax.is_configured():
                     structured_data["comparison_reports"] = [{"model": self.config.minimax_model, "status": "pending"}]
@@ -672,6 +731,7 @@ class ResearchCenter:
                     operation="final_report_generation",
                 ).to_dict()
                 _emit_progress(progress, f"AI 模型失敗，改用本地 fallback：{fallback_reason}")
+                structured_data["ai_status"] = "fallback_success"
                 markdown = fallback_markdown(request, structured_data, sources, fallback_reason)
 
         _emit_progress(progress, "整理 Telegram 摘要與報告檔案")
@@ -695,7 +755,7 @@ class ResearchCenter:
         _emit_progress(progress, f"AI 投研任務完成：{artifacts.report_id}")
 
         return ResearchCenterResult(
-            status="success",
+            status="fallback_success" if fallback_reason else "success",
             request=request,
             summary=summary,
             markdown=markdown,
@@ -748,6 +808,7 @@ class ResearchCenter:
                     {**(structured_data.get("prompt_policy") or {}), "purpose": "comparison_report", "primary_model": self.config.model, "background": True},
                 ))
                 _emit_progress(progress, f"MiniMax comparison prompt saved: {minimax_prompt_log_path}")
+                _emit_progress(progress, f"Calling background comparison AI model: {self.config.minimax_model} prompt={len(prompt)} chars sources={len(sources)} timeout={getattr(self.minimax, 'timeout_seconds', None)}s")
                 minimax_result = self.minimax.generate_report(prompt)
                 markdown = minimax_result.markdown
                 comparison_data["analysis_provider"] = "minimax"
@@ -802,21 +863,7 @@ class ResearchCenter:
                 _emit_progress(progress, f"[AI題材庫] /topic_maintain | 判斷模式")
                 pack = run_topic_maintain(request, center=self, progress=progress)
                 _emit_progress(progress, f"[AI題材庫] /topic_maintain | 任務完成")
-                title = (
-                    "✅ 變更包已產生"
-                    if pack.status == TopicChangeStatus.PENDING
-                    else "⚠️ 變更包產生但未通過檢查"
-                )
-                summary = (
-                    f"{title}\n"
-                    f"ID：{pack.change_id}\n"
-                    f"模式：{pack.mode.value}\n"
-                    f"狀態：{pack.status.value}\n"
-                    f"信心度：{pack.confidence}\n"
-                    f"摘要：{pack.summary}\n"
-                    f"動作數：{len(pack.actions)}\n"
-                    f"\n下一步：/topic_review {pack.change_id} 查看詳情"
-                )
+                summary = format_change_pack_created_summary(pack)
 
             elif cmd == "topic_review":
                 change_id = request.target
@@ -979,11 +1026,24 @@ class ResearchCenter:
             total_cats = len({it.category for it in items if it.category})
             summary = format_news_refresh_result(meta.get("saved", 0), meta.get("skipped", 0), total_cats, items, meta)
             markdown = summary
+            classification_status = str(meta.get("classification_status") or "ai_success")
+            ai_status = "partial_success" if classification_status == "partial_success" else "ai_success"
+            ai_used = int(meta.get("ai_classified_count") or 0) > 0 or int(meta.get("local_fallback_count") or 0) > 0
             return ResearchCenterResult(
                 status="success", request=request, summary=summary, markdown=markdown,
-                report_json={"command": "news", "action": "refresh", "meta": meta},
+                report_json={
+                    "command": "news",
+                    "action": "refresh",
+                    "meta": meta,
+                    "metadata": {
+                        "ai_status": ai_status,
+                        "classification_status": classification_status,
+                        "ai_classified_count": int(meta.get("ai_classified_count") or 0),
+                        "local_fallback_count": int(meta.get("local_fallback_count") or 0),
+                    },
+                },
                 sources=[], artifacts=ReportArtifacts("news", "refresh", Path("__no_md__"), Path("__no_html__"), Path("__no_json__"), Path("__no_sources__")),
-                ai_used=False,
+                ai_used=ai_used,
             )
 
         if action == "7d":
@@ -1635,6 +1695,24 @@ class _GeminiDiscoveryRunner:
         return _should_run_gemini_search_fallback(request, sources, self._center.config, structured_data=structured_data)
 
     def _run_gemini(self, request, discovery_tasks, sources, structured_data, discovery_sources, discovery_runs, progress):
+        source_health = getattr(self._center, "source_health", None)
+        health_key = "gemini_search"
+        if source_health is not None and not source_health.is_available(health_key):
+            status = source_health.get_status(health_key)
+            structured_data["gemini_search_discovery"] = {
+                "enabled": False,
+                "reason": "source_cooldown",
+                "source_health": status,
+                "source_quality": structured_data.get("pre_gemini_source_quality"),
+            }
+            _append_search_provider_log(
+                structured_data,
+                provider="gemini_search",
+                source_count=0,
+                diagnostics=structured_data["gemini_search_discovery"],
+            )
+            _emit_progress(progress, f"Gemini Search skipped: source cooldown until {status.get('cooldown_until')}")
+            return
         _emit_progress(progress, f"Run Gemini Search discovery (fallback): {len(discovery_tasks)} compact prompts")
         for task_index, task in enumerate(discovery_tasks, 1):
             label = task.get("label") or f"task_{task_index}"
@@ -1685,15 +1763,27 @@ class _GeminiDiscoveryRunner:
                     "elapsed_seconds": round(time.monotonic() - started_at, 2),
                 })
                 _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] diagnostics: elapsed={time.monotonic() - started_at:.1f}s, model={discovery_result.diagnostics.get('actual_model') or discovery_result.diagnostics.get('model')}, metadata={discovery_result.diagnostics.get('grounding_metadata_present')}, queries={discovery_result.diagnostics.get('web_search_query_count')}, chunks={discovery_result.diagnostics.get('grounding_chunk_count')}, sources={len(task_sources)}, added={added}")
+                if source_health is not None:
+                    source_health.record_success(health_key)
             except Exception as exc:
                 elapsed = round(time.monotonic() - started_at, 2)
                 discovery_runs.append({"label": label, "status": "failed", "error": str(exc), "source_count": 0, "added_source_count": 0, "elapsed_seconds": elapsed})
                 _emit_progress(progress, f"Gemini Search discovery {task_index}/{len(discovery_tasks)} [{label}] failed after {elapsed:.1f}s; continue with existing sources. error={exc}")
+                if source_health is not None:
+                    source_health.record_failure(health_key, str(exc))
+                    if _looks_like_provider_cooldown_error(exc):
+                        source_health.record_failure(health_key, str(exc))
+                if source_health is not None and not source_health.is_available(health_key):
+                    status = source_health.get_status(health_key)
+                    _emit_progress(progress, f"Gemini Search discovery stopped: source cooldown until {status.get('cooldown_until')}")
+                    break
         structured_data["gemini_search_discovery"] = {
             "mode": "multi_stage", "task_count": len(discovery_tasks),
             "source_count": len(discovery_sources), "runs": discovery_runs,
             "source_quality": structured_data.get("pre_gemini_source_quality"),
         }
+        if source_health is not None:
+            structured_data["gemini_search_discovery"]["source_health"] = source_health.get_status(health_key)
         _append_search_provider_log(
             structured_data,
             provider="gemini_search",
@@ -1711,7 +1801,7 @@ def _fallback_threshold_key(request: CommandRequest) -> str:
         return f"research_{request.mode}"
     if request.command == "macro":
         return f"macro_{request.mode if request.mode == 'deep' else 'normal'}"
-    if request.command == "theme":
+    if request.command in {"theme", "theme_flow"}:
         return f"theme_{request.mode if request.mode == 'deep' else 'normal'}"
     if request.command == "value_scan":
         return f"value_scan_{request.mode if request.mode == 'deep' else 'normal'}"
@@ -1720,6 +1810,25 @@ def _fallback_threshold_key(request: CommandRequest) -> str:
 
 def _tavily_quota_provider_id(key_fingerprint: str | None) -> str:
     return f"tavily:{key_fingerprint or 'default'}"
+
+
+def _looks_like_provider_cooldown_error(exc: BaseException | str) -> bool:
+    text = str(exc).lower()
+    return any(
+        token in text
+        for token in (
+            "429",
+            "too many requests",
+            "quota",
+            "rate limit",
+            "resource_exhausted",
+            "403",
+            "forbidden",
+            "blocked",
+            "certificate_verify_failed",
+            "certificate verify failed",
+        )
+    )
 
 
 def _build_search_query_log(discovery_tasks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1854,7 +1963,7 @@ def _source_quality_summary(
         "minimax_error_reasons": minimax_error_reasons,
         "weak_discovery_tasks": weak_tasks,
     }
-    if request.command == "theme":
+    if request.command in {"theme", "theme_flow"}:
         terms = _theme_relevance_terms_for_request(request)
         relevant = sum(1 for s in sources if theme_source_relevance(s, terms) > 0)
         high_quality_relevant = sum(
@@ -1961,7 +2070,7 @@ def _gemini_quality_fallback_reasons(
     tavily_unavailable = not tavily_diag.get("enabled", bool(summary.get("by_provider", {}).get("tavily_search")))
     if tavily_unavailable and int(summary.get("high_quality") or 0) < int(thresholds.get("min_high_quality_when_tavily_empty", 8)):
         reasons.append("tavily_unavailable_and_high_quality_sources_low")
-    if request.command == "theme":
+    if request.command in {"theme", "theme_flow"}:
         if int(summary.get("theme_relevant") or 0) < int(thresholds.get("min_theme_relevant_sources", 8)):
             reasons.append("theme_relevant_sources_insufficient")
         if int(summary.get("theme_high_quality_relevant") or 0) < int(thresholds.get("min_theme_high_quality_relevant_sources", 3)):
@@ -2035,3 +2144,160 @@ def _format_ai_fallback_reason(
     prompt_note = f"; prompt_chars={len(prompt)}" if prompt else ""
     source_note = f"; sources={len(sources)}"
     return f"{selected_ai_model} ({model_label}) 調用失敗：{details}{prompt_note}{source_note}"
+
+
+def _should_retry_minimax_research(request: CommandRequest, exc: Exception, prompt_chars: int) -> bool:
+    """Retry only the large deep /research MiniMax final call with a compact faithful pack."""
+
+    if request.command != "research" or request.mode != "deep":
+        return False
+    if prompt_chars < 120_000:
+        return False
+    text = f"{type(exc).__name__} {exc}".lower()
+    diagnostics = getattr(exc, "diagnostics", None)
+    if isinstance(diagnostics, dict):
+        text += " " + " ".join(f"{key}={value}" for key, value in diagnostics.items())
+    retry_terms = (
+        "timeout",
+        "readtimeout",
+        "timed out",
+        "payload",
+        "prompt",
+        "context",
+        "too large",
+        "request body",
+        "status_code=400",
+        "status_code=413",
+    )
+    return any(term in text for term in retry_terms)
+
+
+def _build_minimax_research_retry_prompt(
+    request: CommandRequest,
+    structured_data: dict[str, Any],
+    sources: list[SourceItem],
+    exc: Exception,
+    *,
+    original_prompt_chars: int,
+) -> str:
+    """Build a smaller research prompt that preserves core evidence after MiniMax timeout."""
+
+    source_index = _retry_source_index(sources, limit=90)
+    payload = {
+        "target": request.target,
+        "command": request.raw_text,
+        "report_date": request.report_date.isoformat() if request.report_date else None,
+        "mode": request.mode,
+        "original_prompt_chars": original_prompt_chars,
+        "first_failure": str(exc),
+        "local_scores": structured_data.get("local_scores") or structured_data.get("local_score_summary"),
+        "required_data_gap_summary": structured_data.get("required_data_gap_summary"),
+        "data_gap_summary": structured_data.get("data_gap_summary"),
+        "ai_data_center": structured_data.get("ai_data_center"),
+        "high_model_input_package": structured_data.get("high_model_input_package"),
+        "low_model_digest": structured_data.get("low_model_digest"),
+        "unified_evidence_pack": structured_data.get("unified_evidence_pack"),
+        "research_summary": structured_data.get("research_summary"),
+        "financial_data": structured_data.get("financial_data"),
+        "revenue_data": structured_data.get("revenue_data"),
+        "institutional_data": structured_data.get("institutional_data"),
+        "margin_data": structured_data.get("margin_data"),
+        "tdcc_data": structured_data.get("tdcc_data"),
+        "news_events": structured_data.get("news_events"),
+        "source_index": source_index,
+    }
+    compact_payload = _compact_retry_payload(payload, depth=7, max_list=90, max_keys=120, max_string=1800)
+    payload_json = json.dumps(compact_payload, ensure_ascii=False, indent=2, default=str)
+    return (
+        "你是台股高階投研模型。前一次 MiniMax-M3 深度研究因逾時或資料量過大失敗，"
+        "以下是保真重試包，不是 fallback 報告。\n"
+        "請用繁體中文產出正式投研報告，必須重新判斷，不可照抄低階模型或本地評分。\n"
+        "本地評分、低階模型整理、來源索引都只能作為證據線索；若有反證、資料缺口或來源可信度不足，必須明確揭露。\n"
+        "報告必須包含：投資結論、關鍵催化、基本面、籌碼、技術位置、風險與反證、情境推演、後續驗證清單。\n"
+        "若資料不足，不可硬下結論；但仍要基於現有證據提出可驗證的預測路徑。\n\n"
+        "【保真重試資料包 JSON】\n"
+        f"{payload_json}\n"
+    )
+
+
+def _retry_source_index(sources: list[SourceItem], *, limit: int) -> list[dict[str, Any]]:
+    priority_terms = ("L1", "official", "公告", "法說", "財報", "營收", "風險", "反證")
+
+    def priority(source: SourceItem) -> tuple[int, str]:
+        text = " ".join(
+            str(value or "")
+            for value in (source.source_level, source.title, source.snippet, source.provider, source.provider_detail)
+        )
+        score = sum(1 for term in priority_terms if term.lower() in text.lower())
+        return (-score, source.source_id or source.url or source.title)
+
+    selected = sorted(sources, key=priority)[:limit]
+    rows: list[dict[str, Any]] = []
+    for idx, source in enumerate(selected, 1):
+        rows.append(
+            {
+                "id": source.source_id or f"S{idx:03d}",
+                "title": source.title,
+                "url": source.url,
+                "published_date": source.published_date,
+                "source_level": source.source_level,
+                "provider": source.provider,
+                "snippet": (source.snippet or "")[:900],
+            }
+        )
+    return rows
+
+
+def _compact_retry_payload(
+    value: Any,
+    *,
+    depth: int,
+    max_list: int,
+    max_keys: int,
+    max_string: int,
+) -> Any:
+    if depth <= 0:
+        return _compact_leaf(value, max_string=max_string)
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for idx, (key, item) in enumerate(value.items()):
+            if idx >= max_keys:
+                result["_remaining_key_count"] = len(value) - max_keys
+                break
+            result[str(key)] = _compact_retry_payload(
+                item,
+                depth=depth - 1,
+                max_list=max(12, max_list // 2),
+                max_keys=max(20, max_keys // 2),
+                max_string=max_string,
+            )
+        return result
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+        compacted = [
+            _compact_retry_payload(
+                item,
+                depth=depth - 1,
+                max_list=max(12, max_list // 2),
+                max_keys=max(20, max_keys // 2),
+                max_string=max_string,
+            )
+            for item in items[:max_list]
+        ]
+        if len(items) > max_list:
+            compacted.append({"_remaining_item_count": len(items) - max_list})
+        return compacted
+    return _compact_leaf(value, max_string=max_string)
+
+
+def _compact_leaf(value: Any, *, max_string: int) -> Any:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        if isinstance(value, str) and len(value) > max_string:
+            return value[:max_string] + f"...（已保留前 {max_string} 字，完整內容在來源與報告附錄）"
+        return value
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    return str(value)[:max_string]

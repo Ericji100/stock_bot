@@ -32,9 +32,10 @@ from .topic_repository import (
 )
 from .topic_quality import normalize_change_pack_quality
 from .topic_pipeline_service import run_topic_pipeline
+from .models import CandidateSnapshot
 
 
-TOPIC_AI_STAGE_TIMEOUT_SECONDS = 240.0
+TOPIC_AI_STAGE_TIMEOUT_SECONDS = 120.0
 
 
 def _load_prompt(name: str) -> str:
@@ -296,11 +297,16 @@ def _parse_ai_json_response(raw_response: Any) -> dict[str, Any]:
 
 def _clean_ai_json_text(raw_response: str) -> str:
     json_text = raw_response.strip()
-    json_text = re.sub(r"<think>.*?</think>", "", json_text, flags=re.DOTALL | re.IGNORECASE).strip()
+    json_text, _ = _strip_model_reasoning_text(json_text)
     if json_text.startswith("```"):
         json_text = re.sub(r"^```(?:json)?\s*", "", json_text)
         json_text = re.sub(r"\s*```$", "", json_text)
     return json_text.strip()
+
+
+def _strip_model_reasoning_text(raw_response: str) -> tuple[str, bool]:
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_response, flags=re.DOTALL | re.IGNORECASE).strip()
+    return cleaned, cleaned != raw_response.strip()
 
 
 def _extract_outer_json_object(text: str) -> str | None:
@@ -615,13 +621,26 @@ def run_topic_maintain(
                     raise TopicMaintainAIError("Gemini model not available")
                 result = center.gemini.generate_report(stage_prompt, enable_grounding=False)
                 raw_text = _ai_response_to_text(result)
-            raw_stages.append({"stage": stage_name, "raw": raw_text})
-            return _parse_ai_json_response(raw_text)
+            cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
+            parsed = _parse_ai_json_response(cleaned_raw_text)
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text}
+            if reasoning_stripped:
+                stage_log["model_reasoning_stripped"] = True
+            raw_stages.append(stage_log)
+            return parsed
         except json.JSONDecodeError as exc:
-            raw_stages.append({"stage": stage_name, "raw": raw_text, "error": str(exc)})
+            cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc)}
+            if reasoning_stripped:
+                stage_log["model_reasoning_stripped"] = True
+            raw_stages.append(stage_log)
             raise
         except Exception as exc:
-            raw_stages.append({"stage": stage_name, "raw": raw_text, "error": str(exc)})
+            cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc)}
+            if reasoning_stripped:
+                stage_log["model_reasoning_stripped"] = True
+            raw_stages.append(stage_log)
             raise
 
     # Run staged AI pipeline. AI returns small JSON fragments; local code assembles the pack.
@@ -648,6 +667,42 @@ def run_topic_maintain(
     pack.prompt_log_path = str(prompt_log_p)
     pack.company_knowledge_updates = _normalize_company_knowledge_updates(pack.company_knowledge_updates)
     pack.extra = dict(pack.extra or {})
+    try:
+        from .convergence_service import build_data_source_summary, build_report_metadata
+        from .models import CommandResult
+
+        pack.extra["report_metadata"] = build_report_metadata(
+            request,
+            structured_data,
+            ai_used=True,
+            fallback_reason=None,
+            report_id=change_id,
+            report_variant=f"topic_maintain_{mode.value}",
+        )
+        pack.extra["data_source_summary"] = build_data_source_summary(request, structured_data, list(discovery_sources or []))
+        pack.extra["command_result"] = asdict(
+            CommandResult(
+                command="topic_maintain",
+                args=[mode.value],
+                status=pack.status.value,
+                data_date=report_date,
+                artifacts={
+                    "change_pack_id": change_id,
+                    "change_pack_path": str(Path("data") / "topic" / "change_packs" / f"{change_id}.json"),
+                    "raw_response_path": str(raw_p),
+                    "prompt_log_path": str(prompt_log_p),
+                },
+                warnings=list(pack.warnings or []),
+                created_at=iso_ts,
+            )
+        )
+        pack.extra["candidate_snapshot"] = _build_topic_candidate_snapshots(
+            pack,
+            report_date=report_date,
+            created_at=iso_ts,
+        )
+    except Exception as exc:
+        pack.extra["metadata_warning"] = f"metadata build failed: {exc}"
     if low_model_digest:
         pack.extra["low_model_digest"] = {
             "status": low_model_digest.get("status"),
@@ -688,10 +743,86 @@ def run_topic_maintain(
     if pack.mode == TopicChangeMode.INITIAL:
         _validate_initial_change_pack_quality(pack)
 
+    if isinstance(pack.extra, dict) and isinstance(pack.extra.get("command_result"), dict):
+        pack.extra["command_result"]["status"] = pack.status.value
+        pack.extra["command_result"]["warnings"] = list(pack.warnings or [])
+
     # Save change pack
     save_change_pack(pack)
     emit(f"變更包已保存：{change_id}")
     return pack
+
+
+def _build_topic_candidate_snapshots(
+    pack: TopicChangePack,
+    *,
+    report_date: str,
+    created_at: str,
+) -> list[dict[str, Any]]:
+    snapshots: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for action in pack.actions or []:
+        companies = action.affected_companies or [action.company_code or action.company_name or action.target_theme_id or action.theme_name]
+        for company in companies:
+            code, name = _parse_topic_company_ref(company)
+            theme_name = action.theme_name or action.target_theme_id or ""
+            key = f"{code}|{name}|{theme_name}|{action.action_type.value}"
+            if key in seen:
+                continue
+            seen.add(key)
+            snapshot = CandidateSnapshot(
+                code=code,
+                name=name or theme_name,
+                source_command="topic_maintain",
+                source_strategy=action.action_type.value,
+                source_pool="topic_change_pack",
+                signal_date=report_date,
+                data_date=report_date,
+                signal_type="topic_library_update",
+                stage="watch_only",
+                theme_signals=[{
+                    "theme": theme_name,
+                    "change_reason": action.reason,
+                    "confidence": action.confidence.value if hasattr(action.confidence, "value") else str(action.confidence or ""),
+                }],
+                risk_flags=list(action.risk_notes or []),
+                early_stage_flags=list(action.missing_data or []),
+                evidence_refs=_topic_action_evidence_refs(action),
+                created_at=created_at,
+            )
+            snapshots.append(_drop_empty_snapshot(asdict(snapshot)))
+    return snapshots
+
+
+def _parse_topic_company_ref(value: Any) -> tuple[str, str]:
+    text = str(value or "").strip()
+    if not text:
+        return "", ""
+    match = re.match(r"^(?P<code>\d{4,6})(?:[.\-_\s　:：]+(?P<name>.+))?$", text)
+    if match:
+        return match.group("code"), (match.group("name") or "").strip()
+    return "", text
+
+
+def _topic_action_evidence_refs(action: TopicChangeAction) -> list[str]:
+    refs: list[str] = []
+    for field_name in ("source_refs", "evidence_refs", "sources"):
+        value = action.extra.get(field_name) if isinstance(action.extra, dict) else None
+        if isinstance(value, list):
+            refs.extend(str(item) for item in value if item)
+        elif value:
+            refs.append(str(value))
+    refs.extend(str(item) for item in (action.counter_evidence or []) if item)
+    return refs[:20]
+
+
+def _drop_empty_snapshot(value: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, item in value.items():
+        if item in (None, "", [], {}):
+            continue
+        result[key] = item
+    return result
 
 
 def _normalize_topic_action_defaults(action: TopicChangeAction) -> list[str]:
@@ -706,6 +837,22 @@ def _normalize_topic_action_defaults(action: TopicChangeAction) -> list[str]:
     if not action.missing_data:
         action.missing_data = ["待後續維護補強"]
         patched.append("missing_data")
+    if not action.counter_evidence:
+        action.counter_evidence = [{
+            "source": "system",
+            "source_level": TopicSourceLevel.L3_COMMUNITY.value,
+            "content": "尚未找到明確反證，需後續以官方公告、法說會或產業鏈資料交叉驗證。",
+            "score_contribution": 0,
+        }]
+        patched.append("counter_evidence")
+    action.extra = dict(action.extra or {})
+    if not action.extra.get("next_validation"):
+        action.extra["next_validation"] = [
+            "補官方公告、法說會或月營收證據",
+            "追蹤供應鏈上下游客戶與產品關聯",
+            "檢查是否存在反向新聞或營運風險",
+        ]
+        patched.append("next_validation")
     if not action.supply_chain_nodes:
         action.supply_chain_nodes = [{
             "company_code": "",

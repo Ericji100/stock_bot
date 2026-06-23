@@ -13,11 +13,49 @@ from research_center.gemini_service import GeminiResult, GeminiService
 from research_center.minimax_search_service import MiniMaxSearchService, _normalize_search_item
 from research_center.minimax_service import MiniMaxRequestError, MiniMaxResult, MiniMaxService, _extract_minimax_text
 from research_center.models import ReportArtifacts, ResearchCenterResult, SourceItem
-from research_center.orchestrator import ResearchCenter
+from research_center.orchestrator import (
+    ResearchCenter,
+    _build_minimax_research_retry_prompt,
+    _should_retry_minimax_research,
+)
 from research_center.report_builder import write_report_artifacts
 
 
 class MiniMaxIntegrationTests(unittest.TestCase):
+    def test_deep_research_minimax_timeout_is_retryable(self):
+        request = parse_command_text("/research 2241 --deep --model minimax")
+
+        self.assertTrue(_should_retry_minimax_research(request, TimeoutError("ReadTimeout"), 220_000))
+        self.assertFalse(_should_retry_minimax_research(request, TimeoutError("ReadTimeout"), 20_000))
+        self.assertFalse(_should_retry_minimax_research(parse_command_text("/theme AI電源 --model minimax"), TimeoutError("ReadTimeout"), 220_000))
+
+    def test_deep_research_retry_prompt_keeps_source_index_and_core_data(self):
+        request = parse_command_text("/research 2241 --deep --model minimax")
+        source = SourceItem(
+            source_id="S001",
+            title="2241 月營收公告",
+            url="https://example.com/revenue",
+            source_level="L1_official",
+            snippet="營收 YoY 轉正",
+        )
+
+        prompt = _build_minimax_research_retry_prompt(
+            request,
+            {
+                "revenue_data": [{"month": "2026-04", "yoy": 22}],
+                "data_gap_summary": {"missing": ["財報尚未反映"]},
+                "low_model_digest": {"facts": [{"fact": "營收轉強"}]},
+            },
+            [source],
+            TimeoutError("ReadTimeout"),
+            original_prompt_chars=220_000,
+        )
+
+        self.assertIn("保真重試資料包", prompt)
+        self.assertIn("2241 月營收公告", prompt)
+        self.assertIn("財報尚未反映", prompt)
+        self.assertIn("不是 fallback 報告", prompt)
+
     def test_minimax_search_item_normalizes_relative_date_from_date_field(self):
         item = _normalize_search_item({
             "title": "台股半導體新聞",
@@ -88,6 +126,27 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertEqual(config.gemini_discovery_model, "gemini-3.5-flash")
         self.assertEqual(config.minimax_model, "MiniMax-M3")
         self.assertEqual(config.minimax_low_model, "MiniMax-M3")
+
+    def test_research_center_low_model_client_uses_configured_m3(self):
+        from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
+
+        tmp = ensure_test_cache_dir("minimax_integration/test_research_center_low_model_client_uses_configured_m3")
+        center = None
+        try:
+            config = ResearchCenterConfig(
+                api_key="gemini",
+                minimax_api_key="mini",
+                minimax_model="MiniMax-M3",
+                minimax_low_model="MiniMax-M3",
+                database_path=tmp / "research.db",
+                report_root=tmp / "reports",
+            )
+            center = ResearchCenter(config)
+            self.assertEqual(center.low_model_minimax.model, "MiniMax-M3")
+        finally:
+            if center is not None:
+                center.database.close()
+            safe_remove_test_cache("minimax_integration/test_research_center_low_model_client_uses_configured_m3")
 
     def test_gemini_service_keeps_configured_fallback_chain(self):
         service = GeminiService(
@@ -165,6 +224,31 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertEqual(ctx.exception.diagnostics["timeout_seconds"], 1.5)
         self.assertEqual(ctx.exception.diagnostics["provider"], "minimax")
         self.assertGreater(ctx.exception.diagnostics["prompt_chars"], 0)
+
+    def test_minimax_timeout_is_not_retried(self):
+        calls = {"count": 0}
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def post(self, url, headers=None, json=None):
+                calls["count"] += 1
+                raise httpx.ReadTimeout("timed out")
+
+        service = MiniMaxService("key", model="MiniMax-M3", timeout_seconds=1.5, max_retries=1)
+        with patch("research_center.minimax_service.httpx.Client", FakeClient):
+            with self.assertRaises(MiniMaxRequestError) as ctx:
+                service.generate_report("timeout test")
+
+        self.assertEqual(calls["count"], 1)
+        self.assertEqual(ctx.exception.diagnostics["retry_skipped_reason"], "timeout_not_retried")
 
     def test_minimax_search_discover_builds_sources_without_network(self):
         # Create a service with a mock MCP session

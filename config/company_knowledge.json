@@ -19103,6 +19103,443 @@
       ],
       "confidence": "local_topic_reference",
       "updated_at": "2026-06-18T22:21:37+08:00"
+    },
+    "8183": {
+      "company_name": "精星",
+      "updated_at": "2026-06-26T21:38:08+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 24,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "TPEX"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:TPEX"
+      ],
+      "evidence_sources": [
+        {
+          "title": "法人日資料 8183 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 8183 2026-06-25",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-25",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 8183 2026-06-24",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-24",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 8183 2026-06-23",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-23",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 8183 2026-06-22",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-22",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 8183 2026-06-18",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-18",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
+    },
+    "9921": {
+      "company_name": "巨大",
+      "updated_at": "2026-06-27T11:43:44+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 29,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "AI",
+        "運動休閒"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:運動休閒"
+      ],
+      "evidence_sources": [
+        {
+          "title": "MOPS重大訊息查詢入口 9921",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=9921",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS公告查詢入口 9921",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=9921",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS重大訊息頁連線檢查",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS material_event parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=9921",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS announcement parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=9921",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "法人日資料 9921 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
+    },
+    "5392": {
+      "company_name": "能率",
+      "updated_at": "2026-06-27T11:43:44+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 29,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "AI",
+        "光電業"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:光電業"
+      ],
+      "evidence_sources": [
+        {
+          "title": "MOPS重大訊息查詢入口 5392",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=5392",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS公告查詢入口 5392",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=5392",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS重大訊息頁連線檢查",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS material_event parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=5392",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS announcement parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=5392",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "法人日資料 5392 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
+    },
+    "6226": {
+      "company_name": "光鼎",
+      "updated_at": "2026-06-27T11:43:44+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 29,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "AI",
+        "光電業"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:光電業"
+      ],
+      "evidence_sources": [
+        {
+          "title": "MOPS重大訊息查詢入口 6226",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=6226",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS公告查詢入口 6226",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=6226",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS重大訊息頁連線檢查",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS material_event parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=6226",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS announcement parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=6226",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "法人日資料 6226 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
+    },
+    "3011": {
+      "company_name": "今皓",
+      "updated_at": "2026-06-27T11:43:44+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 29,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "AI",
+        "PCB",
+        "電子零組件業"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "ai_server_component_or_system"
+      ],
+      "evidence_sources": [
+        {
+          "title": "MOPS重大訊息查詢入口 3011",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=3011",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS公告查詢入口 3011",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=3011",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS重大訊息頁連線檢查",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS material_event parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t05st02?co_id=3011",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "MOPS announcement parser unavailable",
+          "url": "https://mops.twse.com.tw/mops/web/t146sb05?co_id=3011",
+          "source_level": "Level 1",
+          "published_date": null,
+          "source_quality_score": 90,
+          "source_quality_level": "high"
+        },
+        {
+          "title": "法人日資料 3011 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
+    },
+    "1721": {
+      "company_name": "三晃",
+      "updated_at": "2026-07-01T16:14:00+08:00",
+      "confidence": "auto_high",
+      "auto_update": {
+        "method": "deterministic_source_quality_rules",
+        "source_count": 24,
+        "best_source_quality_score": 90
+      },
+      "product_lines": [
+        "TWSE"
+      ],
+      "customers": [],
+      "revenue_exposure": [],
+      "supply_chain_roles": [
+        "industry:TWSE"
+      ],
+      "evidence_sources": [
+        {
+          "title": "法人日資料 1721 2026-07-01",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-07-01",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 1721 2026-06-30",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-30",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 1721 2026-06-29",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-29",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 1721 2026-06-26",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-26",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 1721 2026-06-25",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-25",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        },
+        {
+          "title": "法人日資料 1721 2026-06-24",
+          "url": "https://api.finmindtrade.com/api/v4/data",
+          "source_level": "Level 2",
+          "published_date": "2026-06-24",
+          "source_quality_score": 75,
+          "source_quality_level": "medium"
+        }
+      ],
+      "missing_data": [
+        "customers",
+        "revenue_exposure"
+      ]
     }
   },
   "metadata": {
@@ -19114,7 +19551,7 @@
       "客戶名稱若公司未公開，請使用公開分類或供應鏈角色標籤，避免填入未授權或未驗證資訊。"
     ],
     "source": "topic_change_pack",
-    "auto_company_knowledge_updated_at": "2026-06-18T21:56:31+08:00",
+    "auto_company_knowledge_updated_at": "2026-07-01T16:14:00+08:00",
     "auto_company_knowledge_policy": "Only high-quality public sources are allowed; existing core fields are not overwritten.",
     "topic_library_fix_updated_at": "2026-06-18T22:21:37+08:00",
     "topic_library_fix_note": "Merged verified enrichment draft, corrected code/name conflicts, and added conservative local company knowledge placeholders where formal files referenced companies without company_knowledge.",

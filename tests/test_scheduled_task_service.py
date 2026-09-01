@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from research_center.command_runtime_service import CommandRuntimeService
 from research_center.resource_guard_service import ResourceGuardService
@@ -11,6 +14,7 @@ from research_center.scheduled_task_service import (
     ScheduledTaskService,
     ScheduledTaskSpec,
     format_registered_scheduled_jobs,
+    write_scheduled_task_audit_event,
 )
 
 
@@ -76,33 +80,56 @@ class ScheduledTaskServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task["status"], "failed")
         self.assertEqual(task["error"]["error_type"], "quota_exhausted")
 
-    async def test_timeout_can_be_marked_while_scheduled_task_is_running(self):
+    async def test_timeout_releases_queue_and_records_runtime(self):
         runtime = CommandRuntimeService()
-        service = ScheduledTaskService(runtime=runtime, sink=lambda message: None)
-        started = asyncio.Event()
-        release = asyncio.Event()
+        audit_events: list[tuple[str, str]] = []
+        service = ScheduledTaskService(
+            runtime=runtime,
+            sink=lambda message: None,
+            audit_sink=lambda spec, status, event: audit_events.append((spec.task_id, status)),
+        )
+        events: list[str] = []
 
         async def slow():
-            started.set()
-            await release.wait()
+            events.append("slow:start")
+            await asyncio.sleep(0.05)
+
+        async def second():
+            events.append("second")
 
         await service.enqueue(
-            ScheduledTaskSpec("job:timeout", "timeout", timeout_seconds=0.001),
+            ScheduledTaskSpec("job:timeout", "timeout", timeout_seconds=0.005),
             slow,
             create_task=asyncio.create_task,
         )
+        await service.enqueue(ScheduledTaskSpec("job:second", "second"), second, create_task=asyncio.create_task)
         self.worker = service.worker
-        await started.wait()
-        runtime._tasks["job:timeout"].started_at = (datetime.now().astimezone() - timedelta(seconds=5)).isoformat(timespec="seconds")
-
-        changed = runtime.mark_timeouts()
-        task = runtime.get_task("job:timeout")
-        release.set()
         await service.queue.join()
 
-        self.assertIn(changed, (0, 1))
-        self.assertEqual(task["status"], "timeout")
-        self.assertEqual(task["error"]["error_type"], "ai_timeout")
+        self.assertEqual(events, ["slow:start", "second"])
+        self.assertEqual(runtime.get_task("job:timeout")["status"], "failed")
+        self.assertEqual(runtime.get_task("job:second")["status"], "completed")
+        self.assertIn(("job:timeout", "timeout"), audit_events)
+        self.assertIn(("job:second", "completed"), audit_events)
+
+    def test_write_scheduled_task_audit_event_writes_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec = ScheduledTaskSpec("job:trigger", "triggered job", schedule="daily 10:00")
+            now = datetime(2026, 6, 30, 12, 0, tzinfo=timezone.utc)
+
+            write_scheduled_task_audit_event(
+                spec,
+                "triggered",
+                {"queue_size": 1},
+                audit_dir=Path(tmpdir),
+                now=now,
+            )
+
+            audit_file = Path(tmpdir) / "2026-06-30.jsonl"
+            payload = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(payload["status"], "triggered")
+            self.assertEqual(payload["task_id"], "job:trigger")
+            self.assertEqual(payload["queue_size"], 1)
 
     async def test_start_background_locks_duplicate_task(self):
         runtime = CommandRuntimeService()

@@ -843,15 +843,14 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertIn("MINIMAX_MCP_READY=0", lines[0])
         self.assertIn("MINIMAX_MCP_ERROR=not installed", lines[1])
 
-    def test_start_bat_minimax_block_has_single_main_entry(self):
-        """Verify 啟動機器人.bat has exactly one main.py, one pause, one ensure_minimax_mcp.py call."""
+    def test_runner_bat_minimax_block_has_single_main_entry(self):
+        """Verify runner bat keeps the original main.py and MiniMax MCP startup block."""
         import os
         from pathlib import Path
 
-        # Find the bat file at project root (not in tests/)
         project_root = Path(__file__).resolve().parent.parent
-        bat_files = list(project_root.glob("啟動機器人.bat"))
-        self.assertEqual(len(bat_files), 1, "Expected exactly one 啟動機器人.bat in project root")
+        bat_files = list(project_root.glob("啟動機器人_runner.bat"))
+        self.assertEqual(len(bat_files), 1, "Expected exactly one 啟動機器人_runner.bat in project root")
         bat_path = bat_files[0]
 
         text = bat_path.read_text(encoding="utf-8-sig")
@@ -876,6 +875,17 @@ class MiniMaxIntegrationTests(unittest.TestCase):
 
         # Verify no hardcoded username path
         self.assertNotIn("紀成達", text, "bat should not contain hardcoded username")
+
+    def test_start_bat_is_watchdog_entry_not_runner(self):
+        from pathlib import Path
+
+        project_root = Path(__file__).resolve().parent.parent
+        text = (project_root / "啟動機器人.bat").read_text(encoding="utf-8-sig")
+
+        self.assertIn("tools\\bot_watchdog.py", text)
+        self.assertIn("--launch 啟動機器人_runner.bat", text)
+        self.assertNotIn("ensure_minimax_mcp.py", text)
+        self.assertNotIn('"main.py"', text)
 
     def test_health_check_disabled_and_no_api_key(self):
         # API key not present, search disabled

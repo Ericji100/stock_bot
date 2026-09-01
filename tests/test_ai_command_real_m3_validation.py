@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from tools.ai_command_real_m3_validation import (
     _augment_record_with_runtime_issues,
@@ -11,6 +12,7 @@ from tools.ai_command_real_m3_validation import (
     _looks_like_command_failure_output,
     _parse_parameter_case,
     _quality_review,
+    _result_record_from_research,
     _run_parameter_matrix,
     _summary_markdown,
     _sync_quality_review_file,
@@ -306,6 +308,72 @@ class AiCommandRealM3ParameterMatrixTests(unittest.TestCase):
         self.assertFalse(review["checks"]["\u7121\u6a21\u578b\u601d\u8003\u5916\u9732"])
         self.assertFalse(review["checks"]["\u7121\u4e82\u78bc\u6216\u4e0d\u53ef\u8b80\u6587\u5b57"])
         self.assertFalse(review["pass"])
+
+    def test_quality_review_rejects_report_with_qa_warning(self) -> None:
+        review = _quality_review(
+            command="/theme AI電源 --model minimax",
+            output_text=(
+                "# AI電源題材研究報告\n\n"
+                "本報告具備資料日期、風險、反證、後續觀察與情境推演。[S001]\n\n"
+                "## 規格檢查提醒\n"
+                "- 缺少必要報告內容：全球需求變化\n"
+            ),
+            source_count=12,
+            prompt_chars=5000,
+            elapsed_seconds=60,
+            status="success",
+            error=None,
+        )
+
+        self.assertFalse(review["checks"]["無規格檢查提醒"])
+        self.assertFalse(review["pass"])
+
+    def test_result_record_reviews_saved_markdown_with_qa_notes(self) -> None:
+        root = ensure_test_cache_dir("ai_command_real_m3_validation/saved_markdown_review")
+        try:
+            markdown = root / "report.md"
+            html = root / "report.html"
+            json_path = root / "report.json"
+            sources = root / "report.sources.json"
+            markdown.write_text(
+                "# 測試報告\n\n"
+                "資料日期：2026-06-30。風險、反證、後續觀察與情境推演完整。[S001]\n\n"
+                "## 規格檢查提醒\n"
+                "- 缺少必要報告內容：AI 評分細項拆解\n",
+                encoding="utf-8",
+            )
+            html.write_text("<html></html>", encoding="utf-8")
+            json_path.write_text("{}", encoding="utf-8")
+            sources.write_text("[]", encoding="utf-8")
+            result = SimpleNamespace(
+                artifacts=SimpleNamespace(
+                    markdown_path=markdown,
+                    html_path=html,
+                    json_path=json_path,
+                    sources_path=sources,
+                ),
+                report_json={},
+                markdown="# 測試報告\n\n這是未帶 QA 提醒的原始內容。",
+                summary="測試摘要",
+                status="success",
+                fallback_reason=None,
+                sources=[],
+                ai_used=True,
+                ai_model="MiniMax-M3",
+            )
+
+            record = _result_record_from_research(
+                command="/theme AI電源 --model minimax",
+                command_dir=root,
+                result=result,
+                progress_messages=[],
+                elapsed_seconds=1.0,
+            )
+
+            self.assertFalse(record["quality_review"]["checks"]["無規格檢查提醒"])
+            self.assertFalse(record["quality_review"]["pass"])
+        finally:
+            safe_remove_test_cache("ai_command_real_m3_validation/saved_markdown_review")
 
     def test_summary_lists_partial_quality_as_issue(self) -> None:
         root = ensure_test_cache_dir("ai_command_real_m3_validation/summary_partial")

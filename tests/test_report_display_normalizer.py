@@ -466,6 +466,8 @@ def test_html_ai_audit_shows_not_required_core_sections_in_chinese():
 
     assert "題材排行" in html
     assert "本指令不需要" in html
+    assert "本指令不需要的資料類型" in html
+    assert "高階模型未直接收到的資料類型（完整資料仍在 JSON / HTML 附錄）</td><td data-label=\"說明\">無</td>" in html
 
 
 

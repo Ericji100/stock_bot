@@ -981,22 +981,31 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
 
     available = structured.get("available_sections") or []
     missing = structured.get("missing_sections") or []
+    not_required = []
     if core_sections:
+        direct_statuses = {"direct", "indexed", "deduped_or_indexed", "relation_indexed"}
         available = [
             _core_section_label(str(item.get("section") or ""))
             for item in core_sections
-            if item.get("status") == "direct"
+            if str(item.get("status") or "") in direct_statuses
         ]
         missing = [
             f"{_core_section_label(str(item.get('section') or ''))}（{_core_status_label(str(item.get('status') or ''))}）"
             for item in core_sections
-            if item.get("status") != "direct"
+            if str(item.get("status") or "") not in direct_statuses and str(item.get("status") or "") != "not_required"
+        ]
+        not_required = [
+            _core_section_label(str(item.get("section") or ""))
+            for item in core_sections
+            if str(item.get("status") or "") == "not_required"
         ]
 
     rows = ["| 項目 | 說明 |", "|---|---|"]
     rows.append(f"| AI 入模資料大小 | {display_value((audit.get('context_size') or {}).get('prompt_context_chars'))} 字 |")
     rows.append(f"| 高階模型已直接收到的資料類型 | {'、'.join(display_value(str(item)) for item in available) or '無'} |")
     rows.append(f"| 高階模型未直接收到的資料類型（完整資料仍在 JSON / HTML 附錄） | {'、'.join(display_value(str(item)) for item in missing) or '無'} |")
+    if not_required:
+        rows.append(f"| 本指令不需要的資料類型 | {'、'.join(display_value(str(item)) for item in not_required)} |")
     rows.append(f"| 未直接入模原因 | {display_value(ai_not_received.get('omitted_reason_counts') or '無')} |")
     parts.append(_markdown_table_to_html(rows))
 

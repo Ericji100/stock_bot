@@ -68,6 +68,12 @@ pip install -r requirements.txt
 
 `api_token` 與 `chat_id` 是 Bot 基本啟動必填；`fugle_api_key` 可作為資料備援。
 
+#### 監控清單與 ETF
+
+- `/add_m` 會先用官方清單自動補股票代號後綴與名稱；例如 `add_m 2330` 會轉成 `2330.TW (台積電)`，`add_m 5425` 會轉成 `5425.TWO (台半)`。
+- ETF 也支援同一套監控清單流程；例如 `add_m 00635U` 會優先用 TWSE OpenAPI / TWSE MIS 取得名稱，並轉成 `00635U.TW (期元大S&P黃金)`。
+- ETF 監控沿用既有即時價、日 K、21MA 與 105MA 訊號；ETF 不套用營收或籌碼選股條件。
+
 ### 3. 設定 AI 與搜尋金鑰
 
 AI 投研中心讀取 `config/research_center.json` 與 `config/secrets.json`。`config/research_center.json` 放公開設定，`config/secrets.json` 放金鑰，不要提交到 Git。
@@ -94,7 +100,7 @@ Windows 可直接執行：
 啟動機器人.bat
 ```
 
-啟動後會註冊 Telegram slash 指令，並建立每日排程：10:00 AI 題材庫維護（MiniMax M3）、12:30 監控掃描、13:50 午報、17:45 持股籌碼推播、08:45/18:00 新聞整理（預設使用 MiniMax M3 分類）、20:30 交易日全部選股、21:30 Radar 推播（預設使用 MiniMax M3 短評），以及籌碼與完整資料回補任務。
+`啟動機器人.bat` 是唯一日常入口，會在背景隱藏啟動外部 watchdog，再由 watchdog 判斷是否需要啟動可見的內部 runner；日常只會保留 runner CMD 視窗。runner 啟動後會註冊 Telegram slash 指令，並建立每日排程：10:00 AI 題材庫維護（MiniMax M3）、12:30 監控掃描、13:50 午報、17:45 持股籌碼推播、08:45/18:00 新聞整理（預設使用 MiniMax M3 分類）、20:30 交易日全部選股、21:30 Radar 推播（預設使用 MiniMax M3 短評），以及籌碼與完整資料回補任務。需要完整關閉時，請執行 `停止機器人.bat`，不要只關閉 runner 視窗，否則背景 watchdog 會在健康檢查時重新啟動 runner。
 
 ## 最常用指令
 
@@ -530,6 +536,16 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 - 17:45：持股報告。
 - 08:45、18:00：定時新聞整理與推播，預設使用 MiniMax M3 做新聞分類與整理。
 - 20:30：交易日執行全部選股，等同 `/scan` 選項 7，完成後發送 Telegram 訊息。
+### 定時任務可靠性與排查
+
+- 重要 `run_daily` 定時任務統一設定 `misfire_grace_time=1800` 秒，避免 Python event loop 短暫阻塞超過 APScheduler 預設 1 秒時，任務直接被略過。
+- 定時任務會經過 `ScheduledTaskService` 佇列執行，並依 `SCHEDULED_TASK_TIMEOUT_SECONDS` 套用真正 timeout。任務 timeout 後會釋放佇列，後續新聞、題材庫、監控、選股、Radar 等任務可繼續執行。
+- 排程 audit log 會寫入 `logs/scheduled_tasks/YYYY-MM-DD.jsonl`，狀態包含 `triggered`、`queued`、`started`、`completed`、`failed`、`timeout`、`skipped_duplicate`，並記錄 `task_id`、任務名稱、排程、耗時與錯誤摘要。
+- `.runtime/bot_heartbeat.json` 除既有 `updated_at`、`pid`、`job_queue_available` 外，會包含 `schedule_health`，可查看目前執行中的定時任務、佇列長度、最後觸發/開始/完成/失敗任務，以及最近 event loop lag。
+- event loop lag monitor 每 30 秒更新一次。若 lag 超過門檻，會寫入 audit log 並在 CMD 顯示 `schedule_health` 訊息，方便判斷是否因 event loop 阻塞造成排程延遲。
+- watchdog 不只檢查 process 是否存活，也會讀取 heartbeat 的 `schedule_health`。若排程健康狀態標示異常，會依既有 watchdog 流程重啟 runner。
+- 若早上定時任務未觸發，優先檢查三個檔案：`.runtime/bot_heartbeat.json`、`logs/scheduled_tasks/當日.jsonl`、runner CMD 視窗輸出。若 audit log 沒有 `triggered`，代表 APScheduler callback 未進入；若有 `started` 但沒有 `completed`，代表任務執行中卡住或 timeout。
+
 - 21:30：交易日執行 Radar 推播，原 20:30 Radar 已移到 21:30；定時 Radar 預設啟用 MiniMax M3 短評。
 - 16:30、18:30、21:00：籌碼快取回補；16:30 / 18:30 為今日回補，21:00 為完整回補。
 - 每 2 小時：完整資料回補健康檢查，啟動後 5 分鐘先檢查一次。
@@ -537,6 +553,19 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 - 回補類背景任務也會透過 `ScheduledTaskService` 接入 `CommandRuntimeService` 的任務鎖、狀態、錯誤分類與統一 CMD 格式，但不進入報告推播佇列，避免回補卡住選股、Radar、新聞、午報或持股推播。
 - 程式啟動時 CMD 會由 `SCHEDULED_JOB_REGISTRATIONS` 自動產生目前已註冊定時任務清單，並顯示每個排程的實際參數，避免啟動文字與實際排程不一致。
 - `JobQueue` 註冊名稱需與 `SCHEDULED_JOB_REGISTRATIONS` 的任務名稱一致，讓 08:45 / 18:00 新聞整理等同類任務仍有穩定 `task_id`，不會共用錯誤的任務鎖。
+
+### Bot 最小健康監控
+
+- Bot 啟動後會每 1 分鐘寫入 `.runtime/bot_heartbeat.json`，欄位包含 `updated_at`、`pid`、`job_queue_available`、`last_scheduled_event`、`last_scheduled_event_at`。
+- 一般 heartbeat 只更新 `updated_at`、`pid` 與 `job_queue_available`；既有定時任務觸發時才更新 `last_scheduled_event` 與 `last_scheduled_event_at`。
+- 這個機制只放在 runtime / 排程入口層，不修改新聞、題材、選股、監控策略邏輯。
+- 日常只需要執行 `啟動機器人.bat`；watchdog 會使用 `pythonw.exe` 在背景隱藏執行，內部 PowerShell、PID 檢查與 runner 啟動前的中介 CMD 也會使用 Windows 無視窗模式。`啟動機器人_runner.bat` 是內部 runner，專門啟動 `main.py` 並保留唯一可見的 CMD 視窗，不需要手動執行。
+- watchdog 是外部監控器，會定期檢查 heartbeat；若超過 10 分鐘未更新，或 heartbeat 中的 `pid` 已不存在，會關閉舊 bot 行程並重新啟動 `啟動機器人_runner.bat`，避免遞迴啟動 watchdog。
+- watchdog 使用 `.runtime/bot_watchdog.pid` 防止重複啟動；重複執行 `啟動機器人.bat` 不會建立第二個有效 watchdog。
+- watchdog 健康檢查與重啟原因會寫入 `logs/watchdog/watchdog.log`，單檔達 2 MB 後輪替，最多保留 3 份舊檔。
+- 需要完整關閉 Bot 與背景 watchdog 時，請執行 `停止機器人.bat`。只關閉 runner 視窗會被 watchdog 視為 Bot 停止，之後會自動重啟。
+- `啟動機器人_watchdog.bat` 只保留相容性；日常仍以 `啟動機器人.bat` 為唯一入口。
+- 若只想手動觀察狀態，可查看 `.runtime/bot_heartbeat.json` 的 `updated_at` 是否持續更新，以及 `last_scheduled_event` 是否記錄最近觸發的定時任務。
 
 ### 手動指令與定期任務差異
 
@@ -1211,3 +1240,21 @@ python tools/ai_report_coverage_check.py --root reports/_smoke_value_scan --limi
 - 題材細節擴寫若遇到 JSON 格式錯誤或 timeout，也會自動 retry 一次；未恢復的 timeout 才會被健檢工具標成 partial success。
 - 健檢工具現在會解析 `logs/topic_ai_raw/change_*.json` 的 stage 狀態，區分「已 retry 恢復」與「未恢復 fallback」，避免把已成功恢復的 MiniMax timeout 誤判成失敗。
 - 實測 `/topic_maintain --model minimax` 已產出 `ai_success`、`formal_ai_success=true`、品質 `14/14` 的變更包；完整測試 `python -m unittest discover tests` 通過，`1262 tests OK`。
+
+## 2026-06-30 AI 報告輸出契約補強
+
+- `/research` 深度版報告契約補回 AI 細項評分拆解、合理股價與目標價區間、獲利預估三情境、題材水分、財報裂縫、潛在催化、資金輪動與策略適配；驗證器會擋下缺少 AI 細項評分或目標價的報告。
+- `/value_scan`、`/macro`、`/theme`、`/theme_flow`、`/theme_radar`、`/sector_strength` 的 final output contract 已補強對應核心章節，避免分段整合後只剩泛用摘要。
+- 分段最終整合會依指令保留較完整的段落決策底稿；仍維持 bounded note，不重複塞完整 raw dump，但必須保留分數、估值、來源、風險、反證、資料缺口與後續條件。
+- `/radar` 顯示層會把技術策略代碼與 AI 信心標籤轉成繁體中文可讀說明；定時推播仍使用自動分段發送。
+- `/news refresh` 完成摘要會顯示新聞日期、分類、利多/利空/中性判讀、可信度線索、反證/風險、資料不足；較舊新聞會明確標示日期差距。
+- `/topic_maintain` 變更包摘要與詳情會顯示可審核資訊：模型、來源數、證據數、風險、反證、資料缺口、後續推演與 AI 狀態；完整 change JSON 仍是正式審核依據。
+## 2026-06-30 AI 報告輸出合約與 Live 驗證補強
+
+- `/research` 深度版正式輸出合約已強制恢復舊版核心格式：AI 四項最終評分、AI 細項評分拆解、合理股價與目標價區間、獲利預估與三情境、題材水分、財報裂縫、潛在催化、資金輪動與策略適配都必須獨立成章。若報告缺少核心章節，驗證器會列為未達標。
+- `/topic_maintain` 的 MiniMax M3 低階整理與細節擴寫已收斂批次數：低階整理只執行前 2 段，更新模式細節擴寫只執行前 3 批，其餘候選改用本地保真 fallback；完整來源、證據、風險、反證與資料缺口仍保留在 change JSON 與稽核資料中。
+- `/research` 高階分段會把「本地評分與入模稽核」併入本地核心資料段，減少一次額外高階模型呼叫；資料不刪除，只減少重複模型往返。
+- 真實 MiniMax M3 Live 驗證結果：
+  - `/topic_maintain --model minimax`：由 1200 秒超時改善為 603.8 秒完成，`ai_success`，品質 15/15。
+  - `/research 凌陽 --deep --model minimax`：由 1200 秒超時改善為 972.6 秒完成，`ai_success`，品質 15/15，來源 181 筆，prompt 299,171 字元。
+- 完整測試通過：`python -m unittest discover tests`，1316 tests OK，skipped=1。

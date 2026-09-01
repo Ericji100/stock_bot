@@ -424,10 +424,12 @@ def _quality_review(
     fallback_detected = bool(error) or status in {"fallback", "fallback_success", "failed"} or _looks_like_fallback_output(output_text)
     model_reasoning_exposed = _looks_like_model_reasoning_output(output_text)
     unreadable_text_detected = _looks_like_unreadable_output(output_text)
+    qa_warning_detected = _looks_like_qa_warning_output(output_text)
     prompt_not_runaway = _prompt_not_runaway(prompt_chars, max_prompt_chars)
     checks = {
         "執行成功": status == "success" and not fallback_detected,
         "非 fallback 報告": not fallback_detected,
+        "無規格檢查提醒": not qa_warning_detected,
         "有輸出內容": len(output_text.strip()) >= 500 or command_type in {"news", "topic_maintain", "radar"},
         "有資料來源": source_count > 0 or command_type in {"news", "topic_maintain"},
         "繁體中文可讀": _traditional_chinese_score(output_text) >= 0.05,
@@ -451,11 +453,12 @@ def _quality_review(
     pass_threshold = score >= max(7, total - 2)
     if command_type == "topic_maintain":
         pass_threshold = score == total
+    hard_fail = any(not checks.get(name, True) for name in _hard_fail_quality_checks())
     return {
         "command_type": command_type,
         "score": score,
         "total": total,
-        "pass": pass_threshold and not missing_terms and status == "success" and not fallback_detected,
+        "pass": pass_threshold and not hard_fail and not missing_terms and status == "success" and not fallback_detected and not qa_warning_detected,
         "checks": checks,
         "missing_required_terms": missing_terms,
         "issues": issues,
@@ -486,6 +489,23 @@ def _looks_like_fallback_output(output_text: str) -> bool:
             re.IGNORECASE,
         )
     )
+
+
+def _hard_fail_quality_checks() -> tuple[str, ...]:
+    return (
+        "執行成功",
+        "非 fallback 報告",
+        "無規格檢查提醒",
+        "無模型思考外露",
+        "無亂碼或不可讀文字",
+        "無明顯截斷標記",
+        "無內部欄位外露",
+    )
+
+
+def _looks_like_qa_warning_output(output_text: str) -> bool:
+    text = output_text or ""
+    return "規格檢查提醒" in text or "缺少必要報告內容" in text or "缺少或未明確命名章節" in text
 
 
 def _looks_like_command_failure_output(output_text: str) -> bool:
@@ -569,6 +589,9 @@ def _recalculate_review_result(record: dict[str, Any], review: dict[str, Any]) -
     command_type = str(review.get("command_type") or _command_name(str(record.get("command") or "")))
     missing_terms = list(review.get("missing_required_terms") or [])
     runtime_issues = list(review.get("runtime_issues") or record.get("runtime_issues") or [])
+    qa_warning_detected = _looks_like_qa_warning_output(str(record.get("summary") or record.get("output_text") or ""))
+    if qa_warning_detected and "無規格檢查提醒" not in checks:
+        checks["無規格檢查提醒"] = False
     score = sum(1 for ok in checks.values() if ok)
     total = len(checks)
     issues = [name for name, ok in checks.items() if not ok]
@@ -582,10 +605,11 @@ def _recalculate_review_result(record: dict[str, Any], review: dict[str, Any]) -
         pass_threshold = score == total
     status = str(record.get("status") or "")
     fallback_detected = bool(record.get("fallback_reason")) or record.get("ai_status") == "fallback_success" or status in {"fallback", "fallback_success", "failed"}
+    hard_fail = any(not checks.get(name, True) for name in _hard_fail_quality_checks())
     review["score"] = score
     review["total"] = total
     review["issues"] = issues
-    review["pass"] = pass_threshold and not missing_terms and status == "success" and not fallback_detected and not runtime_issues
+    review["pass"] = pass_threshold and not hard_fail and not missing_terms and status == "success" and not fallback_detected and not runtime_issues and not qa_warning_detected
 
 
 def _runtime_issue_patterns() -> list[tuple[str, str]]:
@@ -993,9 +1017,14 @@ def _result_record_from_research(
     progress_messages: list[str],
     elapsed_seconds: float,
 ) -> dict[str, Any]:
+    artifacts = result.artifacts
     prompt_paths = _extract_prompt_paths(progress_messages, result.report_json or {})
     prompt_chars = _estimate_prompt_chars(prompt_paths)
-    output_text = normalize_report_text(result.markdown or result.summary or "")
+    saved_markdown = ""
+    markdown_path = getattr(artifacts, "markdown_path", None)
+    if markdown_path and Path(markdown_path).exists():
+        saved_markdown = _read_text(Path(markdown_path))
+    output_text = normalize_report_text(saved_markdown or result.markdown or result.summary or "")
     command_failure_output = _looks_like_command_failure_output(output_text)
     effective_status = "failed" if command_failure_output else result.status
     effective_error = result.fallback_reason or ("command output indicates failure" if command_failure_output else None)
@@ -1008,7 +1037,6 @@ def _result_record_from_research(
         status=effective_status,
         error=effective_error,
     )
-    artifacts = result.artifacts
     output_path = command_dir / "output.md"
     telegram_path = command_dir / "telegram_summary.md"
     _write_text(output_path, output_text)

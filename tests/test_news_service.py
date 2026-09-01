@@ -1520,6 +1520,12 @@ class NewsFormatterTests(unittest.TestCase):
         self.assertIn("分類分布", text)
         self.assertIn("重點新聞", text)
         self.assertIn("台股AI供應鏈新聞", text)
+        self.assertIn("日期：2026-05-21", text)
+        self.assertIn("分類：", text)
+        self.assertIn("判讀：偏利多", text)
+        self.assertIn("可信度線索：", text)
+        self.assertIn("反證/風險：短線熱度偏高", text)
+        self.assertIn("資料不足：具備題材催化", text)
         self.assertIn("限制：", text)
 
 

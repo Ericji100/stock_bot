@@ -15,8 +15,9 @@ from chip_strategies import (
     build_market_context,
     get_tw_today,
 )
-from stock_scanner import scan_tw_market
+from stock_scanner import StockUniverseEntry, load_recent_revenue_history, scan_tw_market
 import technical_scanner as ts
+from telegram_stock_formatting import mark_stock_text
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -64,6 +65,7 @@ class CuratedScanResult:
     early_single_signal_candidates: list[dict[str, Any]]
     stock_info: dict[str, dict[str, object]]
     hits: dict[str, list[str]]
+    scores: dict[str, dict[str, Any]]
     report_text: str
 
 
@@ -86,12 +88,14 @@ def build_curated_scan_result(
         stock_info[candidate.code] = {
             "code": candidate.code,
             "name": candidate.name,
+            "symbol": str(getattr(candidate, "symbol", "") or ""),
             "industry": candidate.industry,
             "price": candidate.price,
             "avg_volume_20d": candidate.avg_volume_20d,
             "monthly_revenue": candidate.latest_monthly_revenue,
             "financial_group": candidate.revenue_group,
             "gross_margin_rating": candidate.gross_margin_rating,
+            "revenue_history": _normalise_revenue_history(getattr(candidate, "revenue_history", [])),
         }
         hits.setdefault(candidate.code, []).append(
             _financial_hit_label(candidate.revenue_group, candidate.gross_margin_rating)
@@ -105,12 +109,14 @@ def build_curated_scan_result(
                 {
                     "code": code,
                     "name": str(row.get("name", "")),
+                    "symbol": str(row.get("symbol", "")),
                     "industry": str(row.get("industry", "")),
                     "price": float(row["price"]) if pd.notna(row.get("price")) else None,
                     "avg_volume_20d": float(row["avg_volume_20d"]) if pd.notna(row.get("avg_volume_20d")) else None,
                     "monthly_revenue": float(row["monthly_revenue"]) if pd.notna(row.get("monthly_revenue")) else None,
                     "financial_group": None,
                     "gross_margin_rating": None,
+                    "revenue_history": [],
                 },
             )
 
@@ -145,6 +151,18 @@ def build_curated_scan_result(
         hits=hits,
         technical_signal_codes=technical_signal_codes,
     )
+    _backfill_selected_revenue_history(selected_codes, stock_info)
+
+    scores = _score_curated_candidates(
+        target_date=target_date,
+        selected_codes=selected_codes,
+        selected_by_signal=selected_by_signal,
+        stock_info=stock_info,
+        hits=hits,
+        chip_grade_maps=chip_grade_maps,
+    )
+    selected_by_signal = _sort_selected_by_signal(selected_by_signal, hits, scores)
+    selected_codes = _ordered_unique(code for codes in selected_by_signal.values() for code in codes)
 
     report_text = _format_curated_scan_report(
         target_date=target_date,
@@ -153,6 +171,7 @@ def build_curated_scan_result(
         early_single_signal_candidates=early_single_signal_candidates,
         stock_info=stock_info,
         hits=hits,
+        scores=scores,
         financial_candidate_count=len(financial_report.candidates),
         chip_candidate_count=len(chip_context.candidates),
         technical_hard_filter_passed=technical_result.hard_filter_passed,
@@ -167,6 +186,7 @@ def build_curated_scan_result(
         early_single_signal_candidates=early_single_signal_candidates,
         stock_info=stock_info,
         hits=hits,
+        scores=scores,
         report_text=report_text,
     )
 
@@ -248,6 +268,192 @@ def _load_recent_scan_results(limit: int = 30) -> list[dict[str, Any]]:
     return [item for item in data if isinstance(item, dict)][:limit]
 
 
+def _score_curated_candidates(
+    *,
+    target_date: date,
+    selected_codes: list[str],
+    selected_by_signal: dict[str, list[str]],
+    stock_info: dict[str, dict[str, object]],
+    hits: dict[str, list[str]],
+    chip_grade_maps: dict[str, dict[str, str]],
+) -> dict[str, dict[str, Any]]:
+    if not selected_codes:
+        return {}
+    from radar_service import RadarCandidate, resolve_radar_scoring_version, score_radar_candidates
+
+    signal_by_code: dict[str, list[str]] = {}
+    for signal, codes in selected_by_signal.items():
+        for code in codes:
+            signal_by_code.setdefault(code, []).append(signal)
+
+    candidates: list[RadarCandidate] = []
+    for code in selected_codes:
+        info = stock_info.get(code, {})
+        candidate = RadarCandidate(
+            code=code,
+            name=str(info.get("name") or ""),
+            symbol=str(info.get("symbol") or ""),
+            industry=str(info.get("industry") or ""),
+            price=_safe_float(info.get("price")),
+            source_labels=["精選選股", *signal_by_code.get(code, [])],
+            chip_grades={
+                key: grade_map[code]
+                for key, grade_map in chip_grade_maps.items()
+                if code in grade_map
+            },
+        )
+        candidate.technical_signals = [
+            {
+                "strategy_code": _technical_strategy_code_from_signal(signal),
+                "technical_signal_type": "curated_scan_signal",
+                "sub_signal_type": signal,
+                "signal_date": target_date.isoformat(),
+                "notes": signal,
+            }
+            for signal in signal_by_code.get(code, [])
+        ]
+        if info.get("financial_group"):
+            candidate.source_labels.append(str(info.get("financial_group")))
+        candidate.revenue_history = list(info.get("revenue_history") or [])
+        candidate.news_items = [{"title": hit} for hit in hits.get(code, [])]
+        candidates.append(candidate)
+
+    score_radar_candidates(
+        candidates,
+        target_date,
+        scoring_version=resolve_radar_scoring_version(),
+        reason_limit=4,
+        risk_limit=3,
+    )
+    return {
+        item.code: {
+            "total_score": item.total_score,
+            "components": dict(item.score_components),
+            "reasons": list(item.key_reasons),
+            "risks": list(item.risk_flags),
+            "caps": list(item.score_caps_applied),
+        }
+        for item in candidates
+    }
+
+
+def _technical_strategy_code_from_signal(signal: str) -> str:
+    text = str(signal or "")
+    for period in ts.MA_BREAKOUT_PERIODS:
+        if ts.ma_breakout_signal_label(period) == text or ts.ma_reclaim_signal_label(period) == text:
+            return f"MA{period}"
+    if "MACD" in text:
+        return "MACD"
+    if "KD" in text:
+        return "KD"
+    return "TECHNICAL"
+
+
+def _backfill_selected_revenue_history(
+    selected_codes: list[str],
+    stock_info: dict[str, dict[str, object]],
+) -> None:
+    missing_entries: list[StockUniverseEntry] = []
+    for code in selected_codes:
+        info = stock_info.get(code) or {}
+        if info.get("revenue_history"):
+            continue
+        symbol = str(info.get("symbol") or "")
+        if not symbol:
+            continue
+        missing_entries.append(
+            StockUniverseEntry(
+                code=code,
+                symbol=symbol,
+                market=_market_from_symbol(symbol),
+                name=str(info.get("name") or ""),
+                industry=str(info.get("industry") or ""),
+            )
+        )
+    if not missing_entries:
+        return
+    try:
+        history_by_code = load_recent_revenue_history(missing_entries)
+    except Exception:
+        return
+    for code in selected_codes:
+        info = stock_info.get(code)
+        if not info or info.get("revenue_history"):
+            continue
+        rows = _normalise_revenue_history(history_by_code.get(code) or [])
+        if rows:
+            info["revenue_history"] = rows
+            latest = rows[-1] if rows else {}
+            if info.get("monthly_revenue") in (None, ""):
+                info["monthly_revenue"] = latest.get("revenue")
+
+
+def _normalise_revenue_history(points: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for point in points or []:
+        if isinstance(point, dict):
+            month = point.get("month") or point.get("Month")
+            revenue = point.get("revenue") or point.get("Monthly_Revenue") or point.get("monthly_revenue")
+            yoy = point.get("yoy") if "yoy" in point else point.get("YoY") or point.get("YoY%") or point.get("revenue_yoy")
+            mom = point.get("mom") if "mom" in point else point.get("MoM") or point.get("MoM%") or point.get("revenue_mom")
+        else:
+            month = getattr(point, "month", None)
+            revenue = getattr(point, "revenue", None)
+            yoy = getattr(point, "yoy", None)
+            mom = getattr(point, "mom", None)
+        if not month:
+            continue
+        row = {
+            "month": str(month),
+            "revenue": _safe_float(revenue),
+            "yoy": _safe_float(yoy),
+        }
+        mom_value = _safe_float(mom)
+        if mom_value is not None:
+            row["mom"] = mom_value
+        rows.append(row)
+    return sorted(rows, key=lambda item: str(item.get("month") or ""))
+
+
+def _market_from_symbol(symbol: str) -> str:
+    upper = symbol.upper()
+    if upper.endswith(".TWO"):
+        return "TPEX"
+    if upper.endswith(".TW"):
+        return "TWSE"
+    return ""
+
+
+def _sort_selected_by_signal(
+    selected_by_signal: dict[str, list[str]],
+    hits: dict[str, list[str]],
+    scores: dict[str, dict[str, Any]],
+) -> dict[str, list[str]]:
+    return {
+        signal: sorted(
+            codes,
+            key=lambda code: (
+                -int((scores.get(code) or {}).get("total_score") or 0),
+                -len(hits.get(code, [])),
+                code,
+            ),
+        )
+        for signal, codes in selected_by_signal.items()
+    }
+
+
+def _ordered_unique(values: Any) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        code = str(value)
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        result.append(code)
+    return result
+
+
 def _format_curated_scan_report(
     *,
     target_date: date,
@@ -256,6 +462,7 @@ def _format_curated_scan_report(
     early_single_signal_candidates: list[dict[str, Any]],
     stock_info: dict[str, dict[str, object]],
     hits: dict[str, list[str]],
+    scores: dict[str, dict[str, Any]],
     financial_candidate_count: int,
     chip_candidate_count: int,
     technical_hard_filter_passed: int,
@@ -267,37 +474,35 @@ def _format_curated_scan_report(
         "⭐ 精選選股交叉命中報告",
         f"📅 日期：{target_date.isoformat()}",
         "",
-        "篩選邏輯：以技術面正面訊號為主要分類，列出同時命中營收財報或法人大戶 2 個以上策略的股票。",
+        "篩選邏輯：以技術面正面訊號為觸發，列出同時命中營收財報或法人大戶 2 個以上策略的股票。",
         "",
     ]
 
-    if not selected_by_signal:
+    if not selected_codes:
         lines.append("目前沒有技術面訊號且重複命中的股票。")
     else:
-        for signal in ts.BULLISH_SIGNAL_ORDER:
-            codes = selected_by_signal.get(signal)
-            if not codes:
-                continue
-            lines.extend(["", f"📂 {signal}", ""])
-            current_hit_count: int | None = None
-            for code in codes:
-                info = stock_info.get(code, {})
-                code_hits = hits.get(code, [])
-                hit_count = len(code_hits)
-                if current_hit_count != hit_count:
-                    current_hit_count = hit_count
-                    lines.extend(["", f"【命中 {hit_count} 個策略】", ""])
-                lines.append(
-                    (
-                        f"{code} {info.get('name', '')} | "
-                        f"產業：{info.get('industry') or '未分類'} | "
-                        f"股價：{_format_compact_price(info.get('price'))} | "
-                        f"20日均量：{_format_compact_number(info.get('avg_volume_20d'))} 張 | "
-                        f"月營收：{_format_compact_number(info.get('monthly_revenue'))} | "
-                        f"命中：{', '.join(code_hits)}"
-                    )
+        signals_by_code = _signals_by_code(selected_by_signal)
+        lines.extend(["", f"📂 技術訊號精選｜共 {len(selected_codes)} 檔", ""])
+        for code in selected_codes:
+            info = stock_info.get(code, {})
+            code_hits = hits.get(code, [])
+            stock_label = mark_stock_text(f"{code} {info.get('name', '')}".strip())
+            lines.append(
+                (
+                    f"{stock_label} | "
+                    f"{_format_curated_score_summary(scores.get(code))} | "
+                    f"產業：{info.get('industry') or '未分類'} | "
+                    f"股價：{_format_compact_price(info.get('price'))} | "
+                    f"20日均量：{_format_compact_number(info.get('avg_volume_20d'))} 張 | "
+                    f"月營收：{_format_compact_number(info.get('monthly_revenue'))} | "
+                    f"命中：{', '.join(code_hits)}"
                 )
-                lines.append("")
+            )
+            lines.append(f"  訊號：{_format_signal_list(signals_by_code.get(code) or [])}")
+            extra_lines = _format_curated_score_detail(scores.get(code))
+            if extra_lines:
+                lines.extend(extra_lines)
+            lines.append("")
 
     if early_single_signal_candidates:
         lines.extend(
@@ -310,9 +515,10 @@ def _format_curated_scan_report(
         )
         for item in early_single_signal_candidates[:20]:
             info = stock_info.get(str(item.get("code") or ""), {})
+            stock_label = mark_stock_text(f"{item.get('code')} {info.get('name', '')}".strip())
             lines.append(
                 (
-                    f"{item.get('code')} {info.get('name', '')} | "
+                    f"{stock_label} | "
                     f"{item.get('early_type')} | "
                     f"訊號：{', '.join(item.get('signals') or [])} | "
                     f"待驗證：{', '.join(item.get('validation_needed') or [])}"
@@ -333,6 +539,25 @@ def _format_curated_scan_report(
         ]
     )
     return "\n".join(lines).strip()
+
+
+def _signals_by_code(selected_by_signal: dict[str, list[str]]) -> dict[str, list[str]]:
+    signals: dict[str, list[str]] = {}
+    ordered_signals = [
+        *[signal for signal in ts.BULLISH_SIGNAL_ORDER if signal in selected_by_signal],
+        *[signal for signal in selected_by_signal if signal not in ts.BULLISH_SIGNAL_ORDER],
+    ]
+    for signal in ordered_signals:
+        for code in selected_by_signal.get(signal) or []:
+            code_signals = signals.setdefault(code, [])
+            if signal not in code_signals:
+                code_signals.append(signal)
+    return signals
+
+
+def _format_signal_list(signals: list[str]) -> str:
+    cleaned = [str(signal).strip() for signal in signals if str(signal).strip()]
+    return "、".join(cleaned) if cleaned else "未標示"
 
 
 def _build_early_single_signal_candidates(
@@ -398,6 +623,62 @@ def _format_compact_price(value: object) -> str:
     if value is None:
         return "無資料"
     return f"{float(value):,.2f}".rstrip("0").rstrip(".")
+
+
+def _format_curated_score_summary(score: dict[str, Any] | None) -> str:
+    if not score:
+        return "評分：待補"
+    components = score.get("components") if isinstance(score.get("components"), dict) else {}
+    return (
+        f"{int(score.get('total_score') or 0)}分"
+        f"（技術{int(components.get('technical') or 0)}"
+        f"/營收{int(components.get('revenue') or 0)}"
+        f"/財報{int(components.get('financial') or 0)}"
+        f"/籌碼{int(components.get('chip') or 0)}"
+        f"/題材{int(components.get('theme') or 0)}"
+        f"/族群{int(components.get('sector') or 0)}）"
+    )
+
+
+def _format_curated_score_detail(score: dict[str, Any] | None) -> list[str]:
+    if not score:
+        return []
+    lines: list[str] = []
+    reasons = _clean_display_items(score.get("reasons") or [], limit=3)
+    risks = _clean_display_items([*(score.get("risks") or []), *(score.get("caps") or [])], limit=2)
+    if reasons:
+        lines.append(f"  加分：{'、'.join(reasons)}")
+    if risks:
+        lines.append(f"  風險/缺口：{'、'.join(risks)}")
+    return lines
+
+
+def _clean_display_items(values: list[Any], *, limit: int) -> list[str]:
+    cleaned: list[str] = []
+    forbidden = ("true", "false", "_", "{", "}", "[", "]")
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(token in lowered for token in forbidden):
+            continue
+        if text not in cleaned:
+            cleaned.append(text)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def _safe_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _financial_hit_label(revenue_group: str, gross_margin_rating: str) -> str:

@@ -23,6 +23,7 @@ from data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
 from progress_logger import now_timestamp
+from telegram_stock_formatting import mark_stock_text
 
 # Singletons for health and quota tracking
 _CHIP_HEALTH = SourceHealthManager()
@@ -1598,7 +1599,8 @@ def _candidate_members(context: ChipMarketContext, selector: Callable[[str], str
             continue
         row = indexed_candidates.loc[code]
         industry = str(row.get("industry") or UNCLASSIFIED_INDUSTRY)
-        members[grade].setdefault(industry, []).append(f"{code} {row['name']} ({_format_price(float(row['price']))})")
+        stock_label = mark_stock_text(f"{code} {row['name']}".strip())
+        members[grade].setdefault(industry, []).append(f"{stock_label} ({_format_price(float(row['price']))})")
     return members
 
 

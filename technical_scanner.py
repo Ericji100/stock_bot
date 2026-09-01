@@ -21,6 +21,7 @@ from technical_strategy_engine import detect_technical_strategies
 
 from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 from progress_logger import now_timestamp
+from telegram_stock_formatting import mark_stock_text
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -38,12 +39,21 @@ KD_K_PERIOD = 9
 KD_D_PERIOD = 55
 MA_SHORT = 21
 MA_LONG = 105
+MA_BREAKOUT_PERIODS = (5, 13, 21, 55, 105, 144)
+MA_BREAKOUT_SIGNAL_LABELS = {period: f"突破 {period}MA" for period in MA_BREAKOUT_PERIODS}
+MA_RECLAIM_SIGNAL_LABELS = {period: f"跌破後收復 {period}MA" for period in MA_BREAKOUT_PERIODS}
+MA_SIGNAL_TRIGGER_BREAKOUT = "突破"
+MA_SIGNAL_TRIGGER_RECLAIM = "跌破後收復"
 ENABLE_MACD_PULLBACK_BREAKOUT = False
 ENABLE_DIVERGENCE_SIGNALS = False
 
+BULLISH_MA_SIGNAL_ORDER = [
+    label
+    for period in MA_BREAKOUT_PERIODS
+    for label in (MA_BREAKOUT_SIGNAL_LABELS[period], MA_RECLAIM_SIGNAL_LABELS[period])
+]
 BULLISH_SIGNAL_ORDER = [
-    "突破 21MA",
-    "突破 105MA",
+    *BULLISH_MA_SIGNAL_ORDER,
     "MACD 回測突破",
     "MACD 黃金交叉",
     "KD 黃金交叉",
@@ -56,6 +66,7 @@ BEARISH_SIGNAL_ORDER = [
     "MACD 高檔背離",
     "KD 高檔背離",
 ]
+TECHNICAL_MESSAGE_MAX_CHARS = 3500
 
 
 @dataclass(frozen=True)
@@ -249,7 +260,7 @@ def apply_indicators(history: pd.DataFrame) -> pd.DataFrame:
     frame = history.copy()
 
     # --- Moving averages ---
-    for period in [5, 13, 21, 60, 105, 144]:
+    for period in [5, 13, 21, 55, 60, 105, 144]:
         frame[f"MA{period}"] = frame["close"].rolling(period).mean()
 
     # --- MACD (21,55,55) ---
@@ -281,6 +292,65 @@ def _cross_up(prev_left: float, prev_right: float, now_left: float, now_right: f
 
 def _cross_down(prev_left: float, prev_right: float, now_left: float, now_right: float) -> bool:
     return pd.notna(prev_left) and pd.notna(prev_right) and pd.notna(now_left) and pd.notna(now_right) and prev_left > prev_right and now_left < now_right
+
+
+def ma_breakout_signal_label(period: int) -> str:
+    return MA_BREAKOUT_SIGNAL_LABELS.get(int(period), f"突破 {int(period)}MA")
+
+
+def ma_reclaim_signal_label(period: int) -> str:
+    return MA_RECLAIM_SIGNAL_LABELS.get(int(period), f"跌破後收復 {int(period)}MA")
+
+
+def ma_signal_label_from_triggers(period: int, triggers: list[str] | tuple[str, ...] | set[str]) -> str:
+    trigger_set = {str(trigger) for trigger in triggers}
+    if MA_SIGNAL_TRIGGER_BREAKOUT in trigger_set:
+        return ma_breakout_signal_label(period)
+    if MA_SIGNAL_TRIGGER_RECLAIM in trigger_set:
+        return ma_reclaim_signal_label(period)
+    return ma_breakout_signal_label(period)
+
+
+def detect_ma_breakout_signal_details(frame: pd.DataFrame) -> list[dict[str, object]]:
+    """Detect same-day MA breakout or intraday-break reclaim signals."""
+
+    if frame is None or len(frame) < 2:
+        return []
+    previous = frame.iloc[-2]
+    latest = frame.iloc[-1]
+    signals: list[dict[str, object]] = []
+    for period in MA_BREAKOUT_PERIODS:
+        ma_column = f"MA{period}"
+        if ma_column not in frame.columns:
+            continue
+        previous_close = previous.get("close")
+        previous_ma = previous.get(ma_column)
+        latest_close = latest.get("close")
+        latest_low = latest.get("low")
+        latest_ma = latest.get(ma_column)
+        if not all(pd.notna(value) for value in (previous_close, previous_ma, latest_close, latest_low, latest_ma)):
+            continue
+        triggers: list[str] = []
+        if float(previous_close) <= float(previous_ma) and float(latest_close) > float(latest_ma):
+            triggers.append(MA_SIGNAL_TRIGGER_BREAKOUT)
+        if float(latest_low) < float(latest_ma) and float(latest_close) > float(latest_ma):
+            triggers.append(MA_SIGNAL_TRIGGER_RECLAIM)
+        if triggers:
+            signals.append(
+                {
+                    "period": period,
+                    "label": ma_signal_label_from_triggers(period, triggers),
+                    "triggers": triggers,
+                    "ma_value": float(latest_ma),
+                    "close": float(latest_close),
+                    "low": float(latest_low),
+                }
+            )
+    return signals
+
+
+def detect_ma_breakout_signals(frame: pd.DataFrame) -> list[str]:
+    return [str(item["label"]) for item in detect_ma_breakout_signal_details(frame)]
 
 
 def _zone_summary(frame: pd.DataFrame, mask: pd.Series, price_column: str, indicator_column: str) -> pd.DataFrame:
@@ -386,10 +456,7 @@ def detect_signals(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
     bullish: list[str] = []
     bearish: list[str] = []
 
-    if _cross_up(previous["close"], previous[f"MA{MA_SHORT}"], latest["close"], latest[f"MA{MA_SHORT}"]):
-        bullish.append("突破 21MA")
-    if _cross_up(previous["close"], previous[f"MA{MA_LONG}"], latest["close"], latest[f"MA{MA_LONG}"]):
-        bullish.append("突破 105MA")
+    bullish.extend(detect_ma_breakout_signals(frame))
     if ENABLE_MACD_PULLBACK_BREAKOUT and is_macd_pullback_breakout(frame):
         bullish.append("MACD 回測突破")
     if _cross_up(previous["DIF"], previous["DEA"], latest["DIF"], latest["DEA"]):
@@ -489,12 +556,88 @@ def _render_signal_groups(lines: list[str], groups: dict[str, dict[str, list[str
         has_any = True
         lines.append(f"📂 {signal}")
         for industry in sorted(industries):
-            stocks = " | ".join(sorted(industries[industry]))
+            stocks = " | ".join(_mark_stock_member(item) for item in sorted(industries[industry]))
             lines.append(f"【{industry}】 {stocks}")
         lines.append("")
     if not has_any:
         lines.append("目前無符合標的。")
         lines.append("")
+
+
+def _count_signal_group_stocks(industries: dict[str, list[str]]) -> int:
+    return sum(len(stocks) for stocks in industries.values())
+
+
+def _signal_group_body_lines(industries: dict[str, list[str]]) -> list[str]:
+    lines: list[str] = []
+    for industry in sorted(industries):
+        stocks = sorted(industries[industry])
+        if not stocks:
+            continue
+        lines.append(f"【{industry}】")
+        lines.extend(_mark_stock_member(item) for item in stocks)
+        lines.append("")
+    while lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _technical_message_header(title: str, total_count: int, report_date: date, page: int, total_pages: int) -> str:
+    return f"📂 {title}｜共 {total_count} 檔｜第 {page}/{total_pages} 則\n資料日期：{report_date.isoformat()}"
+
+
+def _paginate_technical_body(
+    *,
+    title: str,
+    total_count: int,
+    report_date: date,
+    body_lines: list[str],
+    max_chars: int,
+) -> list[str]:
+    safe_max_chars = max(500, int(max_chars or TECHNICAL_MESSAGE_MAX_CHARS))
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    reserve_header = _technical_message_header(title, total_count, report_date, 999, 999)
+    reserve_len = len(reserve_header) + 2
+    for line in body_lines:
+        candidate = [*current, line]
+        candidate_text = "\n".join(candidate).strip()
+        if current and reserve_len + len(candidate_text) > safe_max_chars:
+            chunks.append(current)
+            current = [line]
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    if not chunks:
+        chunks = [[]]
+
+    total_pages = len(chunks)
+    messages: list[str] = []
+    for index, chunk in enumerate(chunks, start=1):
+        header = _technical_message_header(title, total_count, report_date, index, total_pages)
+        body = "\n".join(chunk).strip()
+        messages.append(f"{header}\n\n{body}".strip())
+    return messages
+
+
+def _signal_group_messages(
+    *,
+    result: TechnicalScanResult,
+    signal: str,
+    industries: dict[str, list[str]],
+    max_chars: int,
+) -> list[str]:
+    total_count = _count_signal_group_stocks(industries)
+    if total_count <= 0:
+        return []
+    return _paginate_technical_body(
+        title=signal,
+        total_count=total_count,
+        report_date=result.report_date,
+        body_lines=_signal_group_body_lines(industries),
+        max_chars=max_chars,
+    )
 
 
 def _strategy_lines(code: str, label: str, signals: list[dict]) -> list[str]:
@@ -523,17 +666,94 @@ def _strategy_lines(code: str, label: str, signals: list[dict]) -> list[str]:
             note_summary = _format_strategy_signal_summary(sig)
             stock_id = sig.get("stock_id", "")
             stock_name = sig.get("stock_name", "")
+            stock_label = mark_stock_text(f"{stock_id} {stock_name}".strip())
             if note_summary:
-                item = f"{stock_id} {stock_name} ({close:.1f})｜{note_summary}"
+                item = f"{stock_label} ({close:.1f})｜{note_summary}"
             else:
-                item = f"{stock_id} {stock_name} ({close:.1f})"
+                item = f"{stock_label} ({close:.1f})"
             industry_stocks.setdefault(industry, []).append(item)
         for industry in sorted(industry_stocks):
-            stocks = " | ".join(industry_stocks[industry])
-            lines.append(f"【{industry}】 {stocks}")
+            lines.append(f"[{industry}]")
+            lines.extend(industry_stocks[industry])
+            lines.append("")
         lines.append("")
 
     return lines
+
+
+def _mark_stock_member(member: object) -> str:
+    text = str(member or "").strip()
+    if not text:
+        return ""
+    if " (" in text:
+        stock_text, suffix = text.split(" (", 1)
+        return f"{mark_stock_text(stock_text)} ({suffix}"
+    return mark_stock_text(text)
+
+
+def _strategy_body_lines(code: str, label: str, signals: list[dict]) -> list[str]:
+    body: list[str] = []
+    header = f"策略 {code}：{label}"
+    for line in _strategy_lines(code, label, signals):
+        text = str(line or "").strip()
+        if text == header:
+            continue
+        if not text:
+            if body and body[-1] != "":
+                body.append("")
+            continue
+        body.append(text)
+    while body and body[-1] == "":
+        body.pop()
+    return body
+
+
+def format_technical_report_messages(
+    result: TechnicalScanResult,
+    *,
+    max_chars: int = TECHNICAL_MESSAGE_MAX_CHARS,
+) -> list[str]:
+    messages: list[str] = []
+    for signal in BULLISH_SIGNAL_ORDER:
+        industries = result.bullish.get(signal)
+        if industries:
+            messages.extend(_signal_group_messages(result=result, signal=signal, industries=industries, max_chars=max_chars))
+    for signal in BEARISH_SIGNAL_ORDER:
+        industries = result.bearish.get(signal)
+        if industries:
+            messages.extend(_signal_group_messages(result=result, signal=signal, industries=industries, max_chars=max_chars))
+
+    strategy_blocks = [
+        ("A", "多頭延續回檔突破", result.strategy_signals.get("A", [])),
+        ("B", "強勢紅柱回測突破", result.strategy_signals.get("B", [])),
+        ("C", "低檔背離反轉突破", result.strategy_signals.get("C", [])),
+        ("D", "強勢股急跌收復", result.strategy_signals.get("D", [])),
+    ]
+    for code, label, signals in strategy_blocks:
+        if not signals:
+            continue
+        messages.extend(
+            _paginate_technical_body(
+                title=f"策略 {code}：{label}",
+                total_count=len(signals),
+                report_date=result.report_date,
+                body_lines=_strategy_body_lines(code, label, signals),
+                max_chars=max_chars,
+            )
+        )
+
+    if not messages:
+        return [
+            "\n".join(
+                [
+                    "🔍 今日技術面選股掃描報告",
+                    f"📅 日期：{result.report_date.isoformat()}",
+                    "",
+                    "目前沒有符合技術條件股票。",
+                ]
+            )
+        ]
+    return messages
 
 
 STRATEGY_SUB_SIGNAL_LABELS: dict[str, str] = {
@@ -664,3 +884,12 @@ def format_technical_report(result: TechnicalScanResult) -> str:
 
 def build_technical_scan_report(scan_settings: dict[str, float] | None = None, report_date: date | None = None) -> str:
     return format_technical_report(run_technical_scan(scan_settings, report_date))
+
+
+def build_technical_scan_messages(
+    scan_settings: dict[str, float] | None = None,
+    report_date: date | None = None,
+    *,
+    max_chars: int = TECHNICAL_MESSAGE_MAX_CHARS,
+) -> list[str]:
+    return format_technical_report_messages(run_technical_scan(scan_settings, report_date), max_chars=max_chars)

@@ -59,13 +59,26 @@ class TestTopicFormatters(unittest.TestCase):
                     confidence=TopicConfidence.HIGH,
                     reason="需求爆發",
                     evidence=[],
+                    risk_notes=["題材熱度過高"],
+                    missing_data=["缺少客戶占比"],
+                    counter_evidence=[{"content": "部分公司尚未揭露 AI 電源營收"}],
+                    extra={"follow_up": "追蹤月營收與法說會客戶資訊"},
                 )
             ],
             warnings=["Coverage low"],
+            sources=[{"title": "來源一"}],
+            extra={"command_result": {"data_date": "2026-06-22", "ai_status": "ai_success"}},
         )
         result = formatters.format_change_pack_detail(pack)
         self.assertIn("change_detail_test", result)
         self.assertIn("AI伺服器", result)
+        self.assertIn("可審核資訊", result)
+        self.assertIn("來源數：1", result)
+        self.assertIn("AI 狀態：正式 AI 成功", result)
+        self.assertIn("風險：題材熱度過高", result)
+        self.assertIn("反證：部分公司尚未揭露 AI 電源營收", result)
+        self.assertIn("資料缺口：缺少客戶占比", result)
+        self.assertIn("後續推演：追蹤月營收與法說會客戶資訊", result)
         self.assertIn("⚠️ 警告", result)
         self.assertIn("下一步", result)
 

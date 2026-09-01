@@ -197,6 +197,37 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertTrue(any(log.get("stage") == "detail_expand_1_recovered" for log in logs))
         self.assertFalse(any(log.get("stage") == "detail_expand_1_local_fallback" for log in logs))
 
+    def test_update_mode_limits_ai_detail_batches_and_falls_back_locally(self):
+        stages = []
+
+        def call_ai_json(_prompt, stage):
+            stages.append(stage)
+            if stage == "candidate_extract":
+                return {
+                    "candidates": [
+                        {"theme_id": f"topic_{idx}", "theme_name": f"題材{idx}"}
+                        for idx in range(1, 9)
+                    ]
+                }
+            return {"actions": [{"theme_id": f"topic_{len(stages)}", "theme_name": "AI 擴寫題材"}]}
+
+        pack, logs = run_topic_pipeline(
+            mode=TopicChangeMode.UPDATE,
+            ai_model="minimax",
+            change_id="change_test",
+            iso_ts="2026-05-31T10:00:00+0800",
+            structured_data={"existing_topic_profiles": []},
+            prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,
+            call_ai_json=call_ai_json,
+        )
+
+        self.assertEqual(pack.status, TopicChangeStatus.PENDING)
+        detail_calls = [stage for stage in stages if stage.startswith("detail_expand_")]
+        self.assertEqual(detail_calls, ["detail_expand_1", "detail_expand_2", "detail_expand_3"])
+        self.assertTrue(any(log.get("stage") == "detail_expand_4_local_budget_fallback" for log in logs))
+
     def test_pipeline_compacts_large_detail_stage_inputs(self):
         prompts = {}
         variables = self._variables()

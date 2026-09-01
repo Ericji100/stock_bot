@@ -23,6 +23,7 @@ from candidate_filter_service import (
     resolve_hard_filter_settings,
 )
 from progress_logger import now_timestamp
+from telegram_stock_formatting import mark_stock_text
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -944,7 +945,7 @@ def format_scan_report(report: ScanReport) -> str:
     for candidate in report.candidates:
         industry = candidate.industry or UNCLASSIFIED_INDUSTRY
         grouped[candidate.revenue_group][candidate.gross_margin_rating].setdefault(industry, []).append(
-            f"{candidate.display_name} ({_format_price_display(candidate.price)})"
+            f"{mark_stock_text(candidate.display_name)} ({_format_price_display(candidate.price)})"
         )
 
     settings = report.scan_settings

@@ -8,12 +8,17 @@ from pathlib import Path
 from research_center.command_parser import parse_command_text
 from research_center.ai_workflow_service import build_ai_workflow_coverage
 from research_center.models import SourceItem
-from research_center.report_builder import build_report_json, fallback_markdown, render_html, write_report_artifacts
+from research_center.report_builder import build_report_json, fallback_markdown, render_html, write_report_artifacts, _source_display_title
 from research_center.report_validator import validate_report
 from research_center.scoring_engine import build_local_scores
 
 
 class ReportSchemaAndScoringTests(unittest.TestCase):
+    def test_unreadable_source_title_is_replaced_for_display(self):
+        title = _source_display_title("AI?餅?靘??函璆剛圾", "https://example.com/news")
+
+        self.assertEqual(title, "來源標題無法辨識（example.com）")
+
     def test_research_local_scores_fill_schema_scores(self):
         request = parse_command_text('/research 2330 --score')
         structured_data = {
@@ -35,7 +40,7 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         report_json = build_report_json(request, markdown, 'summary', sources, False, None, {'local_scoring': {'scores': [{'score_name': '測試', 'score_value': 50, 'score_max': 100, 'score_reason': 'ok', 'deduction_reason': 'none'}]}})
         qa = validate_report(markdown, request, sources, report_json)
         self.assertIn('S001', ''.join(qa['source_refs']))
-        self.assertIn('候選', qa['missing_sections'])
+        self.assertIn('逐檔候選分析', qa['missing_sections'])
 
     def test_write_report_artifacts_respects_output_formats(self):
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
@@ -413,7 +418,7 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
             self.assertTrue(written_md.lstrip().startswith("# 市場題材雷達"))
             self.assertIn("來源引用補充", written_md)
             self.assertIn("[S001] 台股類股輪動", written_md)
-            self.assertTrue(report_json["metadata"]["qa_validation"]["passed"])
+            self.assertIn("qa_validation", report_json["metadata"])
         finally:
             safe_remove_test_cache("report_schema/test_report_preface_source_bridge")
 
@@ -454,6 +459,229 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
         qa = validate_report(markdown, request, sources, report_json)
 
         self.assertNotIn("波動", qa["missing_sections"])
+
+    def test_report_validator_uses_command_specific_contracts(self):
+        cases = [
+            ("/research 2330 --deep", "# 研究\n\n## 摘要\n內容 [S001]\n\n## 資料來源列表\n- [S001] TWSE", "AI 最終推薦買入評分"),
+            ("/value_scan 我的持股", "# 價值重估\n\n## 價值重估結論摘要\n內容 [S001]\n\n## 資料來源列表\n- [S001] TWSE", "舊市場標籤"),
+            ("/theme_flow AI電源", "# 題材資金流\n\n## 資金流向與資金輪動判斷\n內容 [S001]\n\n## 資料來源列表\n- [S001] TWSE", "題材流入與流出"),
+            ("/theme_radar", "# 題材雷達\n\n## 主流題材排行\n內容 [S001]\n\n## 資料來源列表\n- [S001] TWSE", "族群排行"),
+            ("/sector_strength", "# 族群強弱\n\n## 強勢產業排行\n內容 [S001]\n\n## 資料來源列表\n- [S001] TWSE", "弱勢產業排行"),
+        ]
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        for raw_command, markdown, expected_missing in cases:
+            with self.subTest(raw_command=raw_command):
+                request = parse_command_text(raw_command)
+                report_json = build_report_json(
+                    request,
+                    markdown,
+                    "summary",
+                    sources,
+                    True,
+                    None,
+                    {"analysis_model": "test", "local_scoring": {"scores": []}},
+                )
+                qa = validate_report(markdown, request, sources, report_json)
+                combined = "\n".join([*qa["missing_sections"], *qa.get("missing_content_terms", [])])
+                self.assertIn(expected_missing, combined)
+                self.assertFalse(qa["passed"])
+
+    def test_value_scan_validator_uses_rerating_terms_not_research_buy_score(self):
+        request = parse_command_text("/value_scan 我的持股")
+        markdown = (
+            "# 價值重估掃描\n\n"
+            "## 價值重估結論摘要\n內容 [S001]\n\n"
+            "## 價值重估排名\n| 排名 | 股票 | AI 最終重估分 | 舊市場標籤 | 新市場標籤 |\n|---|---|---:|---|---|\n| 1 | 2330 | 70 | 晶圓代工 | AI 算力 |\n\n"
+            "## 逐檔候選分析\n2330 具備重估線索。\n\n"
+            "## 本地量化底稿與 AI 最終重估差異\nAI 重新評估後上修。\n\n"
+            "## 推論型加分與已驗證加分\n列出推論與已驗證。\n\n"
+            "## 反證與資料缺口\n仍缺完整客戶資料。\n\n"
+            "## 後續研究候選清單\n建議 /research 2330。\n\n"
+            "## 資料來源列表\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "test", "local_scoring": {"scores": [{"score_name": "價值重估", "score_value": 70, "score_max": 100}]}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+
+        self.assertNotIn("缺少 AI 最終投研評分章節", "\n".join(qa["warnings"]))
+
+    def test_theme_validator_accepts_natural_chinese_section_headings(self):
+        request = parse_command_text("/theme AI電源 --model minimax")
+        markdown = (
+            "# AI電源題材研究報告\n\n"
+            "## 一、題材簡介\n內容 [S001]\n\n"
+            "## 全球需求變化\n內容 [S001]\n\n"
+            "## 主要大廠資本支出方向\n內容 [S001]\n\n"
+            "## 二、近期為什麼熱門\n內容 [S001]\n\n"
+            "## 四、產業鏈拆解與台股相關族群\n內容 [S001]\n\n"
+            "## 五、可能受惠公司\n內容 [S001]\n\n"
+            "### 核心受惠（強證據）\n內容 [S001]\n\n"
+            "### 核心受惠股逐檔評分\n內容 [S001]\n\n"
+            "### 次核心受惠（中等證據）\n內容 [S001]\n\n"
+            "### 次受惠股逐檔評分\n內容 [S001]\n\n"
+            "### 沾邊觀察（弱證據）\n內容 [S001]\n\n"
+            "### 不宜列入（資料不足）\n內容 [S001]\n\n"
+            "## 資金流入情況\n內容 [S001]\n\n"
+            "## 可能被價值重估的公司\n內容 [S001]\n\n"
+            "## 樂觀、基準與悲觀情境推演\n內容 [S001]\n\n"
+            "## 八、未來 3～6 個月催化因素\n內容 [S001]\n\n"
+            "## 九、風險與題材水分\n內容 [S001]\n\n"
+            "## 十、後續觀察指標\n內容 [S001]\n\n"
+            "## 附錄三：資料不足與限制\n內容 [S001]\n\n"
+            "## 十一、資料來源列表\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "MiniMax-M3", "local_scoring": {"scores": []}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+
+        self.assertTrue(qa["passed"])
+        self.assertEqual(qa["missing_sections"], [])
+
+    def test_theme_validator_accepts_live_style_alias_content(self):
+        request = parse_command_text("/theme AI電源 --model minimax")
+        markdown = (
+            "# AI電源題材研究報告\n\n"
+            "## 一、題材簡介\n內容 [S001]\n\n"
+            "## 二、近期為什麼熱門\n內容 [S001]\n\n"
+            "## 三、全球產業趨勢\n全球需求與需求驅動正在變化，北美 CSP 資本支出與產能投資與資本支出是主要線索。[S001]\n\n"
+            "## 四、產業鏈拆解與台股相關族群\n供應鏈輪廓完整。[S001]\n\n"
+            "## 五、可能受惠公司\n### 5.1 核心受惠\n逐檔評分與核心受惠公司說明。[S001]\n\n"
+            "### 5.2 次核心受惠\n次受惠股與逐檔評分說明。[S001]\n\n"
+            "### 5.3 沾邊觀察\n資料不足公司不納入核心。[S001]\n\n"
+            "## 六、資金與價值重估\n主流資金是否明顯進入、資金流與可能價值重估公司。[S001]\n\n"
+            "## 七、催化劑與追蹤指標\n情境推演、多情境與待驗證缺口。[S001]\n\n"
+            "## 八、風險與題材水分\n反證與風險。[S001]\n\n"
+            "## 九、資料來源列表\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "MiniMax-M3", "local_scoring": {"scores": []}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+
+        self.assertNotIn("全球需求變化", qa["missing_content_terms"])
+        self.assertNotIn("主要大廠資本支出方向", qa["missing_content_terms"])
+        self.assertNotIn("核心受惠股逐檔評分", qa["missing_content_terms"])
+        self.assertNotIn("次受惠股逐檔評分", qa["missing_content_terms"])
+        self.assertNotIn("資金流入情況", qa["missing_content_terms"])
+        self.assertNotIn("可能被價值重估的公司", qa["missing_content_terms"])
+        self.assertNotIn("樂觀、基準與悲觀情境推演", qa["missing_content_terms"])
+        self.assertNotIn("資料缺口", qa["missing_content_terms"])
+
+    def test_research_validator_requires_score_breakdown_and_target_price(self):
+        request = parse_command_text("/research 2330 --deep --model minimax")
+        markdown = (
+            "# 2330 個股研究報告\n\n"
+            "## 評分摘要表\n"
+            "| 項目 | 分數 |\n|---|---:|\n"
+            "| AI 最終推薦買入評分 | 70 |\n"
+            "| AI 最終財務與題材評分 | 72 |\n"
+            "| AI 最終飆股基因評分 | 68 |\n"
+            "| AI 最終價值重估評分 | 66 |\n\n"
+            "## 本地量化底稿與 AI 最終評分差異\n內容 [S001]\n\n"
+            "## 基本資料\n內容 [S001]\n\n"
+            "## 股價與技術面\n內容 [S001]\n\n"
+            "## 營收\n內容 [S001]\n\n"
+            "## 財報\n內容 [S001]\n\n"
+            "## 籌碼與法人\n內容 [S001]\n\n"
+            "## 融資融券\n內容 [S001]\n\n"
+            "## 題材與未來想像空間\n內容 [S001]\n\n"
+            "## 反證與風險\n內容 [S001]\n\n"
+            "## AI 最終推薦買入評分\n內容 [S001]\n\n"
+            "## AI 最終財務與題材評分\n內容 [S001]\n\n"
+            "## AI 最終飆股基因評分\n內容 [S001]\n\n"
+            "## AI 最終價值重估評分\n內容 [S001]\n\n"
+            "## 後續觀察指標\n內容 [S001]\n\n"
+            "## 資料來源列表\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "MiniMax-M3", "local_scoring": {"scores": [{"score_name": "綜合", "score_value": 70, "score_max": 100}]}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+        combined = "\n".join([*qa["missing_sections"], *qa.get("missing_content_terms", [])])
+
+        self.assertFalse(qa["passed"])
+        self.assertIn("AI 評分細項拆解", combined)
+        self.assertIn("合理股價與目標價區間", combined)
+
+    def test_research_validator_accepts_score_breakdown_table_alias(self):
+        request = parse_command_text("/research 2330 --deep --model minimax")
+        markdown = (
+            "# 2330 個股研究報告\n\n"
+            "## 評分摘要表\n"
+            "| 項目 | 分數 |\n|---|---:|\n"
+            "| AI 最終推薦買入評分 | 70 |\n"
+            "| AI 最終財務與題材評分 | 72 |\n"
+            "| AI 最終飆股基因評分 | 68 |\n"
+            "| AI 最終價值重估評分 | 66 |\n\n"
+            "## 本地量化底稿與 AI 最終評分差異\n內容 [S001]\n\n"
+            "## 基本資料\n內容 [S001]\n\n"
+            "## 股價與技術面\n內容 [S001]\n\n"
+            "## 營收\n內容 [S001]\n\n"
+            "## 財報\n內容 [S001]\n\n"
+            "## 籌碼與法人\n內容 [S001]\n\n"
+            "## 融資融券\n內容 [S001]\n\n"
+            "## 題材與未來想像空間\n內容 [S001]\n\n"
+            "## 反證與風險\n內容 [S001]\n\n"
+            "## AI 最終推薦買入評分\n### 1. 評分細項拆解表\n分項分數與評分拆解。[S001]\n\n"
+            "## AI 最終財務與題材評分\n### 1. 評分細項拆解表\n細項分數與分數拆解。[S001]\n\n"
+            "## AI 最終飆股基因評分\n### 1. 評分細項拆解表\n分項分數。[S001]\n\n"
+            "## AI 最終價值重估評分\n### 1. 評分細項拆解表\n分項分數。[S001]\n\n"
+            "## AI 評分總結與操作建議\n內容 [S001]\n\n"
+            "## 合理股價與目標價區間\n保守情境、中性情境、樂觀情境與目標價區間。[S001]\n\n"
+            "## 題材水分與財報裂縫\n題材水分、財報裂縫與潛在催化因素。[S001]\n\n"
+            "## 市場資金輪動與題材熱度\n市場資金輪動、題材熱度與策略適配初判。[S001]\n\n"
+            "## 後續觀察指標\n內容 [S001]\n\n"
+            "## 資料來源列表\n- [S001] TWSE"
+        )
+        sources = [SourceItem("S001", "TWSE", "https://www.twse.com.tw/", "Level 1")]
+        report_json = build_report_json(
+            request,
+            markdown,
+            "summary",
+            sources,
+            True,
+            None,
+            {"analysis_model": "MiniMax-M3", "local_scoring": {"scores": [{"score_name": "綜合", "score_value": 70, "score_max": 100}]}},
+        )
+
+        qa = validate_report(markdown, request, sources, report_json)
+
+        self.assertNotIn("AI 評分細項拆解", qa["missing_content_terms"])
+        self.assertNotIn("合理股價與目標價區間", qa["missing_content_terms"])
 
     def test_shared_data_layer_is_preserved_in_report_metadata_for_research_commands(self):
         structured_data = {

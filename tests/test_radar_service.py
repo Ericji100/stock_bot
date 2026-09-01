@@ -9,9 +9,11 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import radar_service as radar
 from research_center.models import SourceItem
+from telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
 class RadarDataMaximizationTests(unittest.TestCase):
@@ -414,6 +416,30 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
         self.assertTrue(all(len(line) < 190 for line in lines))
         self.assertTrue(all(line.endswith("...") for line in lines))
 
+    def test_radar_report_uses_readable_strategy_and_ai_labels_unittest(self):
+        candidate = radar.RadarCandidate(
+            code="2241",
+            name="艾姆勒",
+            total_score=72,
+            strategy_codes={"B"},
+            score_components={"technical": 18, "revenue": 10, "financial": 4, "chip": 8, "theme": 7, "sector": 6},
+            ai_comment={"status": "ok", "priority": "中", "reason": "營收轉強但仍需追蹤毛利"},
+        )
+        result = radar.RadarResult(
+            request=radar.RadarRequest(source="combined", report_date=date(2026, 6, 5), ai_comment_enabled=True, model="minimax"),
+            report_date=date(2026, 6, 5),
+            candidates=[candidate],
+            ai_enriched_codes=["2241"],
+            diagnostics={},
+        )
+
+        text = radar.format_radar_report(result, limit=1)
+
+        self.assertIn(STOCK_MARK_START, text)
+        self.assertIn("技術策略：B（", text)
+        self.assertIn("AI短評信心：中", text)
+        self.assertNotIn("｜策略 B｜AI 中", text)
+
 
 def test_parse_radar_args_defaults_to_combined_top15():
     request = radar.parse_radar_args([])
@@ -421,6 +447,7 @@ def test_parse_radar_args_defaults_to_combined_top15():
     assert request.report_date is None
     assert request.ai_top == 15
     assert request.model == "minimax"
+    assert request.scoring_version == "v2"
 
 
 def test_parse_radar_args_accepts_source_date_ai_top():
@@ -434,6 +461,17 @@ def test_parse_radar_args_accepts_model_and_no_ai_comment():
     request = radar.parse_radar_args(["--model", "deepseek", "--no-ai-comment"])
     assert request.model == "deepseek"
     assert request.ai_comment_enabled is False
+    assert request.scoring_version == "v2"
+
+
+def test_parse_radar_args_accepts_scoring_version():
+    request = radar.parse_radar_args(["--scoring", "v1"])
+    assert request.scoring_version == "v1"
+
+
+def test_parse_radar_args_rejects_unknown_scoring_version():
+    with pytest.raises(ValueError):
+        radar.parse_radar_args(["--scoring", "v3"])
 
 
 def test_run_radar_accepts_raw_arg_list(monkeypatch):
@@ -450,6 +488,7 @@ def test_run_radar_accepts_raw_arg_list(monkeypatch):
 
     assert result.request.source == "technical"
     assert result.request.report_date == date(2026, 5, 20)
+    assert result.request.scoring_version == "v2"
     assert result.report_date == date(2026, 5, 20)
     assert captured == {"source": "technical", "target_date": date(2026, 5, 20)}
 
@@ -732,6 +771,158 @@ def test_score_candidates_uses_early_wave_components(monkeypatch):
     assert candidate.radar_feature_snapshot is snapshot
 
 
+def test_prepare_radar_scoring_data_backfills_structured_fields_before_scoring(monkeypatch):
+    candidate = radar.RadarCandidate(
+        code="3011",
+        name="今皓",
+        symbol="3011.TW",
+        industry="電子零組件業",
+        strategy_codes={"B", "D"},
+        technical_signals=[{"strategy_code": "B"}, {"strategy_code": "D"}],
+        revenue_history=[{"month": "2026-05-01", "revenue": 100, "yoy": 20}],
+    )
+
+    class FakeFetcher:
+        def resolve_stock(self, code):
+            return SimpleNamespace(code=code, symbol=f"{code}.TW", market="TWSE", name="今皓")
+
+        def fetch_quarterly_financials(self, meta):
+            return pd.DataFrame(
+                [
+                    {
+                        "Quarter": "2026Q1",
+                        "EPS": 0.2,
+                        "Gross_Margin": 18,
+                        "Operating_Margin": 3,
+                        "Net_Income": 20,
+                        "Operating_Cash_Flow": 30,
+                        "Free_Cash_Flow": 10,
+                    }
+                ]
+            )
+
+        def fetch_margin_daily(self, meta, trading_dates):
+            return pd.DataFrame(
+                [
+                    {
+                        "Date": "2026-06-26",
+                        "Financing_Net_Change_Lots": -10,
+                        "Short_Margin_Ratio": 35,
+                    }
+                ]
+            )
+
+    monkeypatch.setattr(radar, "StockDataFetcher", FakeFetcher)
+    monkeypatch.setattr(radar, "_load_radar_structured_snapshot", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(
+        radar,
+        "_load_radar_institutional_cache",
+        lambda codes, analysis_date: {
+            "3011": [
+                {"Date": "2026-06-24", "Foreign_Net_Lots": 5, "Investment_Trust_Net_Lots": 1, "Dealer_Net_Lots": 0},
+                {"Date": "2026-06-25", "Foreign_Net_Lots": 6, "Investment_Trust_Net_Lots": 1, "Dealer_Net_Lots": 0},
+                {"Date": "2026-06-26", "Foreign_Net_Lots": 7, "Investment_Trust_Net_Lots": 1, "Dealer_Net_Lots": 0},
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        radar,
+        "_load_radar_tdcc_cache",
+        lambda codes, analysis_date: {"3011": {"status": "covered", "large_holder_pct": 62, "retail_holder_pct": 28}},
+    )
+    monkeypatch.setattr(
+        radar,
+        "build_stock_topic_context",
+        lambda code, name: {"matched_topics": [{"theme_id": "ai_connector"}], "company_topic_relations": {"direct_matches": 1}},
+    )
+    monkeypatch.setattr(radar, "save_research_structured_cache", lambda *args, **kwargs: None)
+
+    radar.prepare_radar_scoring_data([candidate], date(2026, 6, 26))
+    snapshot = radar._build_radar_feature_snapshot(candidate, [candidate], {candidate.industry: 1}, date(2026, 6, 26))
+
+    assert snapshot["financial"]["financial_data"]
+    assert snapshot["chip"]["institutional_data"]
+    assert snapshot["chip"]["margin_data"]
+    assert snapshot["chip"]["tdcc_data"]["large_holder_pct"] == 62
+    assert snapshot["theme_news"]["topic_context"]["company_topic_relations"]["direct_matches"] == 1
+
+    radar.score_radar_candidate_from_snapshot(candidate, snapshot, scoring_version="v2")
+
+    assert candidate.score_components["financial"] > 0
+    assert not any("財報資料缺漏" in risk for risk in candidate.risk_flags)
+    assert candidate.data_coverage["checks"]["financial"] == "ok"
+    assert candidate.data_coverage["checks"]["institutional"] == "ok"
+    assert candidate.data_coverage["checks"]["margin"] == "ok"
+    assert candidate.data_coverage["checks"]["tdcc"] == "ok"
+    assert candidate.data_coverage["checks"]["topic_context"] == "ok"
+
+
+def test_prepare_radar_scoring_data_marks_true_missing_when_sources_unavailable(monkeypatch):
+    candidate = radar.RadarCandidate(code="9999", name="無資料", revenue_history=[])
+
+    class EmptyFetcher:
+        def resolve_stock(self, code):
+            return SimpleNamespace(code=code, symbol=f"{code}.TW", market="TWSE", name="無資料")
+
+        def fetch_quarterly_financials(self, meta):
+            return pd.DataFrame()
+
+        def fetch_margin_daily(self, meta, trading_dates):
+            return pd.DataFrame()
+
+    monkeypatch.setattr(radar, "StockDataFetcher", EmptyFetcher)
+    monkeypatch.setattr(radar, "_load_radar_structured_snapshot", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(radar, "_load_radar_institutional_cache", lambda *args, **kwargs: {})
+    monkeypatch.setattr(radar, "_load_radar_tdcc_cache", lambda *args, **kwargs: {})
+    monkeypatch.setattr(radar, "build_stock_topic_context", lambda code, name: {})
+    monkeypatch.setattr(radar, "save_research_structured_cache", lambda *args, **kwargs: None)
+
+    radar.prepare_radar_scoring_data([candidate], date(2026, 6, 26))
+    radar._score_candidates([candidate], date(2026, 6, 26), scoring_version="v2")
+    radar._attach_base_evidence_packs([candidate], date(2026, 6, 26))
+
+    assert candidate.data_coverage["checks"]["financial"] == "missing"
+    assert candidate.data_coverage["checks"]["margin"] == "missing"
+    assert candidate.data_coverage["checks"]["institutional"] == "missing"
+    assert candidate.data_coverage["checks"]["tdcc"] == "missing"
+    assert any("財報資料缺漏" in risk for risk in candidate.risk_flags)
+
+
+def test_score_candidates_keeps_v1_and_v2_scoring_separate(monkeypatch):
+    snapshot = {
+        "technical": {
+            "status": "ok",
+            "above_ma": {"ma20": True, "ma21": True},
+            "reclaim_ma": {"ma20": True, "ma21": True},
+            "ma_slopes": {"ma5": "up"},
+            "volume_ratio": 1.8,
+            "price_up_volume_up": True,
+            "distance_from_60d_low_pct": 12,
+            "distance_from_120d_low_pct": 25,
+            "ma20_deviation_pct": 5,
+            "below_ma21_streak": 12,
+            "change_pct_20d": 6,
+            "price_metrics": {},
+        },
+        "revenue": {"history": []},
+        "financial": {"financial_data": []},
+        "chip": {"grades": {}, "institutional_data": [], "margin_data": [], "tdcc_data": {}},
+        "theme_news": {"local_news": [], "web_sources": [], "ai_sources": [], "topic_context": {}},
+        "sector": {"industry": "電子零組件業", "industry_candidate_count": 1, "same_industry_codes": ["2330"]},
+    }
+    monkeypatch.setattr(radar, "_build_radar_feature_snapshot", lambda *args, **kwargs: snapshot)
+    v1 = radar.RadarCandidate(code="2330", name="台積電", strategy_codes={"D"})
+    v2 = radar.RadarCandidate(code="2330", name="台積電", strategy_codes={"D"})
+
+    radar._score_candidates([v1], date(2026, 5, 22), scoring_version="v1")
+    radar._score_candidates([v2], date(2026, 5, 22), scoring_version="v2")
+
+    assert v2.total_score >= v1.total_score
+    assert not any("v2" in reason for reason in v1.key_reasons)
+    assert not any("v2" in reason for reason in v1.score_details["technical"]["reasons"])
+    assert any("v2" in reason for reason in v2.score_details["technical"]["reasons"])
+
+
 def test_score_candidates_preserves_early_turnaround_when_financial_missing(monkeypatch):
     candidate = radar.RadarCandidate(
         code="2241",
@@ -773,8 +964,13 @@ def test_score_candidates_preserves_early_turnaround_when_financial_missing(monk
     assert candidate.score_components["financial"] > 0
     assert candidate.score_components["revenue"] >= 8
     assert candidate.total_score >= 45
-    assert any("早期" in reason or "尚未反映" in reason for reason in candidate.key_reasons)
-    assert any("重估" in reason for reason in candidate.key_reasons)
+    all_reasons = [
+        reason
+        for detail in candidate.score_details.values()
+        for reason in detail.get("reasons", [])
+    ]
+    assert any("早期" in reason or "尚未反映" in reason for reason in all_reasons)
+    assert any("重估" in reason for reason in all_reasons)
     assert any("財報資料缺漏" in risk for risk in candidate.risk_flags)
 
 
@@ -863,7 +1059,12 @@ def test_early_turnaround_candidate_survives_top15_among_technical_only_pool(mon
 
     assert "2241" in top15_codes
     assert early.total_score > max(item.total_score for item in ordinary)
-    assert any("早期" in reason or "尚未反映" in reason for reason in early.key_reasons)
+    all_reasons = [
+        reason
+        for detail in early.score_details.values()
+        for reason in detail.get("reasons", [])
+    ]
+    assert any("早期" in reason or "尚未反映" in reason for reason in all_reasons)
     assert any("財報資料缺漏" in risk for risk in early.risk_flags)
 
 
@@ -1046,6 +1247,7 @@ def test_save_radar_artifacts_writes_evidence_pack(monkeypatch):
     paths = radar._save_radar_artifacts(result, {"radar_id": "radar_test"})
 
     assert Path(paths["summary"]).exists()
+    assert STOCK_MARK_START not in Path(paths["summary"]).read_text(encoding="utf-8")
     evidence = json.loads(Path(paths["evidence_pack"]).read_text(encoding="utf-8"))
     assert evidence[0]["candidate"]["code"] == "2330"
 
@@ -1081,6 +1283,7 @@ def test_format_radar_report_uses_chinese_signal_and_chip_labels():
 
     text = radar.format_radar_report(result)
 
+    assert "評分版本：v2" in text
     assert "B2_short_reclaim_after_break_ma" not in text
     assert "D1_reclaim_ma_after_break" not in text
     assert "chip_1" not in text
@@ -1109,7 +1312,7 @@ def test_format_radar_report_shows_ai_comment():
 
     text = radar.format_radar_report(result)
 
-    assert "AI 高" in text
+    assert "AI短評信心：高" in text
     assert "AI短評：技術與題材同步。" in text
     assert "風險：追高風險。" in text
     assert "觀察：觀察量能。" in text
@@ -1171,10 +1374,12 @@ def test_format_radar_report_defaults_to_top15():
     )
 
     text = radar.format_radar_report(result)
+    clean_text = strip_stock_markers(text)
 
-    assert "15. 2314 Stock14" in text
-    assert "16. 2315 Stock15" not in text
-    assert "完整名單共 16 檔" in text
+    assert STOCK_MARK_START in text
+    assert "15. 2314 Stock14" in clean_text
+    assert "16. 2315 Stock15" not in clean_text
+    assert "完整名單共 16 檔" in clean_text
 
 
 def test_format_radar_push_summary_is_concise_and_keeps_full_report_separate():
@@ -1200,10 +1405,12 @@ def test_format_radar_push_summary_is_concise_and_keeps_full_report_separate():
 
     push_text = radar.format_radar_push_summary(result, limit=5)
     full_text = radar.format_radar_report(result)
+    clean_push_text = strip_stock_markers(push_text)
 
-    assert "5. 2304 Stock4" in push_text
-    assert "6. 2305 Stock5" not in push_text
-    assert "完整名單共 12 檔" in push_text
+    assert STOCK_MARK_START in push_text
+    assert "5. 2304 Stock4" in clean_push_text
+    assert "6. 2305 Stock5" not in clean_push_text
+    assert "完整名單共 12 檔" in clean_push_text
     assert len(push_text) < len(full_text)
 
 
@@ -1625,7 +1832,7 @@ def test_load_radar_records_rebuilds_large_cache_from_artifacts(monkeypatch):
     for name in ("radar_summary.md", "evidence_pack.json", "ai_analysis.json", "sources.json"):
         (radar_dir / name).write_text("{}" if name.endswith(".json") else "summary", encoding="utf-8")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text("x" * 200, encoding="utf-8")
+    cache_path.write_text("x" * 5000, encoding="utf-8")
 
     monkeypatch.setattr(radar, "RADAR_CACHE_PATH", cache_path)
     monkeypatch.setattr(radar, "RADAR_REPORT_DIR", report_dir)
@@ -1637,4 +1844,4 @@ def test_load_radar_records_rebuilds_large_cache_from_artifacts(monkeypatch):
     assert records[0]["schema_version"] == "radar_cache_index_v2"
     assert Path(records[0]["artifact_paths"]["candidates"]).exists()
     assert result.candidates[0].code == "2330"
-    assert cache_path.stat().st_size < 200
+    assert cache_path.stat().st_size < 5000

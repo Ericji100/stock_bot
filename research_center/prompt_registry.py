@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ROOT_DIR
+from .final_output_contracts import prompt_rules_for_command
 from .models import CommandRequest, SourceItem
 from .preferred_sources import build_site_queries
 from .prompt_manifest_service import prompt_bundle_for_request
@@ -489,6 +490,7 @@ def build_prompt_from_request(
     # load rules based on command/mode
     rules_blocks = _rules_for_request(request)
     local_scoring_rules = _read_rule_prompt("local_scoring_and_ai_final_scoring.md")
+    final_output_contract_rules = _final_output_contract_rules(request)
 
     return f"""{base}
 
@@ -517,8 +519,21 @@ def build_prompt_from_request(
 
 {rules_blocks}
 
+{final_output_contract_rules}
+
 請用繁體中文產出正式 Markdown 報告，不要輸出內部參數名稱、程式欄位名稱或不可讀的英文標籤。
 """.strip()
+
+
+def _final_output_contract_rules(request: CommandRequest) -> str:
+    rules = prompt_rules_for_command(request.command)
+    if not rules:
+        return ""
+    return "\n".join([
+        "---",
+        "正式輸出合約",
+        *rules,
+    ])
 
 
 def _safe_task_id(value: str) -> str:

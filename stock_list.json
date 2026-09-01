@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-22T18:10:30",
+  "generated_at": "2026-09-01T16:30:59",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -1763,13 +1763,6 @@
       "industry": "生技醫療業"
     },
     {
-      "code": "4130",
-      "symbol": "4130.TWO",
-      "market": "TPEX",
-      "name": "健亞",
-      "industry": "生技醫療業"
-    },
-    {
       "code": "4131",
       "symbol": "4131.TWO",
       "market": "TPEX",
@@ -2109,7 +2102,7 @@
       "code": "4530",
       "symbol": "4530.TWO",
       "market": "TPEX",
-      "name": "宏易",
+      "name": "天意能創",
       "industry": "觀光餐旅"
     },
     {
@@ -2354,7 +2347,7 @@
       "code": "4747",
       "symbol": "4747.TWO",
       "market": "TPEX",
-      "name": "強生製藥",
+      "name": "強生*",
       "industry": "生技醫療業"
     },
     {
@@ -2713,13 +2706,6 @@
       "market": "TPEX",
       "name": "雷笛克光學",
       "industry": "光電業"
-    },
-    {
-      "code": "5236",
-      "symbol": "5236.TWO",
-      "market": "TPEX",
-      "name": "凌陽創新",
-      "industry": "半導體業"
     },
     {
       "code": "5245",
@@ -3334,7 +3320,7 @@
       "code": "5904",
       "symbol": "5904.TWO",
       "market": "TPEX",
-      "name": "寶雅",
+      "name": "寶雅*",
       "industry": "居家生活"
     },
     {
@@ -5123,6 +5109,13 @@
       "industry": "其他電子業"
     },
     {
+      "code": "6986",
+      "symbol": "6986.TWO",
+      "market": "TPEX",
+      "name": "和迅",
+      "industry": "生技醫療業"
+    },
+    {
       "code": "6996",
       "symbol": "6996.TWO",
       "market": "TPEX",
@@ -5387,6 +5380,13 @@
       "market": "TPEX",
       "name": "民盛",
       "industry": "運動休閒"
+    },
+    {
+      "code": "7814",
+      "symbol": "7814.TWO",
+      "market": "TPEX",
+      "name": "海昌生技",
+      "industry": "生技醫療業"
     },
     {
       "code": "7819",
@@ -6036,7 +6036,7 @@
       "code": "8472",
       "symbol": "8472.TWO",
       "market": "TPEX",
-      "name": "夠麻吉",
+      "name": "納維康",
       "industry": "數位雲端"
     },
     {
@@ -8018,6 +8018,13 @@
       "symbol": "2236.TW",
       "market": "TWSE",
       "name": "百達-KY",
+      "industry": "汽車工業"
+    },
+    {
+      "code": "2237",
+      "symbol": "2237.TW",
+      "market": "TWSE",
+      "name": "華德動能-創",
       "industry": "汽車工業"
     },
     {
@@ -11409,6 +11416,13 @@
       "industry": "光電業"
     },
     {
+      "code": "5236",
+      "symbol": "5236.TW",
+      "market": "TWSE",
+      "name": "凌陽創新",
+      "industry": "半導體業"
+    },
+    {
       "code": "5243",
       "symbol": "5243.TW",
       "market": "TWSE",
@@ -12613,13 +12627,6 @@
       "industry": "電子零組件業"
     },
     {
-      "code": "6806",
-      "symbol": "6806.TW",
-      "market": "TWSE",
-      "name": "森崴能源",
-      "industry": "綠能環保"
-    },
-    {
       "code": "6807",
       "symbol": "6807.TW",
       "market": "TWSE",
@@ -12858,6 +12865,13 @@
       "industry": "綠能環保"
     },
     {
+      "code": "6947",
+      "symbol": "6947.TW",
+      "market": "TWSE",
+      "name": "台鎔科技",
+      "industry": "綠能環保"
+    },
+    {
       "code": "6949",
       "symbol": "6949.TW",
       "market": "TWSE",
@@ -12947,6 +12961,13 @@
       "market": "TWSE",
       "name": "聚賢研發-創",
       "industry": "其他電子業"
+    },
+    {
+      "code": "7689",
+      "symbol": "7689.TW",
+      "market": "TWSE",
+      "name": "大鵬科CLMX",
+      "industry": "通信網路業"
     },
     {
       "code": "7705",
@@ -13129,6 +13150,20 @@
       "market": "TWSE",
       "name": "漢康-KY創",
       "industry": "生技醫療業"
+    },
+    {
+      "code": "7835",
+      "symbol": "7835.TW",
+      "market": "TWSE",
+      "name": "永悅健康-創",
+      "industry": "數位雲端"
+    },
+    {
+      "code": "7855",
+      "symbol": "7855.TW",
+      "market": "TWSE",
+      "name": "和運租車",
+      "industry": "其他"
     },
     {
       "code": "8011",

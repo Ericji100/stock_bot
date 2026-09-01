@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from .final_output_contracts import prompt_rules_for_command
 from .models import CommandRequest, SourceItem
 from .prompt_logging import write_prompt_log
 
@@ -707,6 +708,15 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
             },
         },
     ]
+    if package.get("command") == "research":
+        plans[0]["payload"]["local_scoring_and_audit"] = {
+            "local_scoring": package.get("local_scoring"),
+            "ai_data_center_summary": package.get("ai_data_center_summary"),
+            "ai_input_audit": package.get("ai_input_audit"),
+            "workflow_policy": package.get("workflow_policy"),
+            "token_budget_policy": package.get("token_budget_policy"),
+        }
+        plans = plans[:3]
     return [plan for plan in plans if _has_payload_value(plan.get("payload"))]
 
 
@@ -775,7 +785,7 @@ def _build_final_prompt(
         _json(_final_local_summary(data)),
         "",
         "Segment analysis notes:",
-        _json(_segment_outputs_state(outputs)),
+        _json(_segment_outputs_state(outputs, request.command)),
         "",
         "Source index:",
         _json(_source_refs(sources)),
@@ -783,6 +793,9 @@ def _build_final_prompt(
 
 
 def _final_synthesis_command_rules(command: str) -> list[str]:
+    rules = prompt_rules_for_command(command)
+    if rules:
+        return rules
     if command == "theme_flow":
         return [
             "- The final report must include an explicit section named 「資金流向與資金輪動判斷」.",
@@ -828,7 +841,7 @@ def _build_compact_final_retry_prompt(
                 "title": item.get("title"),
                 "status": item.get("status"),
                 "error": item.get("error"),
-                "note_excerpt": _truncate_segment_text(markdown, 600),
+                "note_excerpt": _truncate_segment_text(markdown, _final_retry_excerpt_limit(request.command)),
             }
         )
     retry_sources = _source_refs(sources[:80])
@@ -898,11 +911,12 @@ def _prior_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _segment_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
+def _segment_outputs_state(outputs: list[dict[str, Any]], command: str = "") -> dict[str, Any]:
     """Summarize segment outputs for final synthesis without quadratic growth."""
 
     rows: list[dict[str, Any]] = []
     status_counts: dict[str, int] = {}
+    excerpt_limit = _final_segment_excerpt_limit(command)
     for item in outputs:
         if not isinstance(item, dict):
             continue
@@ -916,15 +930,44 @@ def _segment_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
                 "status": status,
                 "error": item.get("error"),
                 "output_chars": len(markdown),
-                "note_excerpt": _truncate_segment_text(markdown, 900),
+                "note_excerpt": _truncate_segment_text(markdown, excerpt_limit),
             }
         )
     return {
-        "policy": "final synthesis receives one bounded note per segment; full intermediate Markdown remains in prompt logs and diagnostics.",
+        "policy": (
+            "final synthesis receives one bounded but decision-rich note per segment; "
+            "the note must preserve scores, target price logic, risks, counter-evidence, source IDs, "
+            "data gaps, candidate names and follow-up conditions. Full intermediate Markdown remains in prompt logs and diagnostics."
+        ),
+        "note_excerpt_limit": excerpt_limit,
         "segment_count": len(rows),
         "status_counts": status_counts,
         "segments": rows,
     }
+
+
+def _final_segment_excerpt_limit(command: str) -> int:
+    return {
+        "research": 3600,
+        "value_scan": 3200,
+        "macro": 2800,
+        "theme": 3000,
+        "theme_flow": 3000,
+        "theme_radar": 1600,
+        "sector_strength": 2800,
+    }.get(command, 2200)
+
+
+def _final_retry_excerpt_limit(command: str) -> int:
+    return {
+        "research": 1800,
+        "value_scan": 1600,
+        "macro": 1400,
+        "theme": 1500,
+        "theme_flow": 1500,
+        "theme_radar": 1600,
+        "sector_strength": 1400,
+    }.get(command, 1000)
 
 
 def _truncate_segment_text(value: Any, limit: int) -> str:

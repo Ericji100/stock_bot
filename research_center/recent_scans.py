@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .convergence_service import candidate_snapshot_from_row
+from telegram_stock_formatting import strip_stock_markers
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"
@@ -20,7 +21,8 @@ def save_recent_scan_result(
     selected_codes: list[str] | None = None,
 ) -> dict[str, Any]:
     records = load_recent_scan_results(limit=20)
-    codes = _normalise_stock_codes(selected_codes) if selected_codes is not None else extract_stock_codes(report_text)
+    clean_report_text = strip_stock_markers(report_text or "")
+    codes = _normalise_stock_codes(selected_codes) if selected_codes is not None else extract_stock_codes(clean_report_text)
     record = {
         "scan_id": f"{_safe(scan_type)}_{report_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M%S')}",
         "scan_type": scan_type,
@@ -30,7 +32,7 @@ def save_recent_scan_result(
         "codes": codes,
         "selected_codes": codes,
         "candidate_snapshot": _build_recent_scan_candidate_snapshots(scan_type, report_date, codes),
-        "summary": report_text[:3000],
+        "summary": clean_report_text[:3000],
     }
     records.insert(0, record)
     deduped: list[dict[str, Any]] = []
@@ -69,6 +71,7 @@ def find_recent_scan(scan_id: str | None = None) -> dict[str, Any] | None:
 
 
 def extract_stock_codes(text: str) -> list[str]:
+    text = strip_stock_markers(text or "")
     valid_codes = _load_valid_stock_codes()
     codes: list[str] = []
     seen: set[str] = set()

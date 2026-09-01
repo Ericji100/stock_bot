@@ -608,8 +608,8 @@ class ScanMenuTests(unittest.TestCase):
                 {},
             )
 
-        def fake_build_technical_scan_report(*args, **kwargs):
-            return "技術報告 6666"
+        def fake_build_technical_scan_messages(*args, **kwargs):
+            return ["技術報告 6666"]
 
         def fake_build_curated_scan_result(*args, **kwargs):
             return SimpleNamespace(report_text="精選報告 7777", selected_codes=["7777"])
@@ -621,7 +621,7 @@ class ScanMenuTests(unittest.TestCase):
         original_load_config = main.load_config
         original_run_tw_market_scan = main.run_tw_market_scan
         original_build_chip_reports = main.build_chip_reports
-        original_build_technical_scan_report = main.ts.build_technical_scan_report
+        original_build_technical_scan_messages = main.ts.build_technical_scan_messages
         original_build_curated_scan_result = main.curated_scan_service.build_curated_scan_result
         original_save_recent_scan_result = main.save_recent_scan_result
         try:
@@ -629,7 +629,7 @@ class ScanMenuTests(unittest.TestCase):
             main.load_config = lambda: {"scan_settings": {}}
             main.run_tw_market_scan = fake_run_tw_market_scan
             main.build_chip_reports = fake_build_chip_reports
-            main.ts.build_technical_scan_report = fake_build_technical_scan_report
+            main.ts.build_technical_scan_messages = fake_build_technical_scan_messages
             main.curated_scan_service.build_curated_scan_result = fake_build_curated_scan_result
             main.save_recent_scan_result = fake_save_recent_scan_result
 
@@ -639,7 +639,7 @@ class ScanMenuTests(unittest.TestCase):
             main.load_config = original_load_config
             main.run_tw_market_scan = original_run_tw_market_scan
             main.build_chip_reports = original_build_chip_reports
-            main.ts.build_technical_scan_report = original_build_technical_scan_report
+            main.ts.build_technical_scan_messages = original_build_technical_scan_messages
             main.curated_scan_service.build_curated_scan_result = original_build_curated_scan_result
             main.save_recent_scan_result = original_save_recent_scan_result
 

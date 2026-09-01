@@ -109,6 +109,8 @@ class PromptContractTests(unittest.TestCase):
         self.assertIn('AI 最終財務與題材評分', prompt)
         self.assertIn('AI 最終飆股基因評分', prompt)
         self.assertIn('AI 最終價值重估評分', prompt)
+        self.assertIn('不得只放在摘要表或合併到其他段落', prompt)
+        self.assertIn('## 合理股價與目標價區間', prompt)
 
     def test_prompts_define_inference_bonus_categories(self):
         request = parse_command_text('/research 2330 --score')
@@ -228,6 +230,20 @@ class PromptContractTests(unittest.TestCase):
         self.assertIn('不得只因題材庫已有相近題材', prompt)
         self.assertIn('重新驗證', prompt)
         self.assertIn('以最新證據為準', prompt)
+
+    def test_direct_theme_prompt_includes_final_output_contract(self):
+        request = parse_command_text('/theme AI電源 --model minimax')
+        prompt = build_prompt(
+            request,
+            structured_data={'theme': 'AI電源', 'matched_companies': []},
+            source_list=[],
+        )
+        self.assertIn('正式輸出合約', prompt)
+        self.assertIn('主要大廠資本支出方向', prompt)
+        self.assertIn('資金流入情況', prompt)
+        self.assertIn('可能被價值重估的公司', prompt)
+        self.assertIn('樂觀、基準與悲觀情境推演', prompt)
+        self.assertIn('不得只用「全球產業趨勢」', prompt)
 
     def test_research_structured_data_includes_topic_context(self):
         """Research structured prompt data should include topic_context if present."""

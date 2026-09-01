@@ -1,6 +1,7 @@
 """Telegram news formatters for categorized news digest messages."""
 from __future__ import annotations
 
+from datetime import date, datetime
 from html import escape
 
 from .news_categories import news_category_label
@@ -28,6 +29,39 @@ def _news_id_label(item: NewsItem) -> str:
 def _tag_label_text(item: NewsItem) -> str:
     labels = [NEWS_SIGNAL_TAGS.get(tag, tag) for tag in (item.tags or [])[:3]]
     return " / ".join(labels)
+
+
+def _impact_label(item: NewsItem) -> str:
+    raw = str(item.impact_direction or "").strip().lower()
+    if raw in {"positive", "bullish", "利多"}:
+        return "利多"
+    if raw in {"negative", "bearish", "利空"}:
+        return "利空"
+    if "counter_evidence" in (item.tags or []):
+        return "偏反證"
+    if int(item.news_signal_score or 0) >= 55:
+        return "偏利多"
+    if int(item.news_heat_risk_score or 0) >= 45:
+        return "中性但有過熱風險"
+    return "中性"
+
+
+def _freshness_label(item: NewsItem, meta: dict | None = None) -> str:
+    published = str(item.published_at or "")[:10]
+    if not published:
+        return "日期不明"
+    ref_raw = ""
+    if isinstance(meta, dict):
+        ref_raw = str(meta.get("report_date") or meta.get("refresh_date") or meta.get("data_date") or "")
+    try:
+        pub_date = date.fromisoformat(published)
+        ref_date = date.fromisoformat(ref_raw[:10]) if ref_raw else datetime.now().date()
+    except Exception:
+        return published
+    age_days = (ref_date - pub_date).days
+    if age_days >= 4:
+        return f"{published}（較舊，距基準日 {age_days} 天）"
+    return published
 
 
 def format_news_digest(digests: list[NewsDigest], period_label: str = "最新") -> str:
@@ -121,20 +155,24 @@ def format_news_refresh_result(
         lines.append("重點新聞：")
         for index, item in enumerate(ranked[:5], 1):
             category = news_category_label(item.category)
-            pub = item.published_at[:10] if item.published_at else "日期不明"
+            pub = _freshness_label(item, meta)
             symbols = " ".join((item.related_symbols or [])[:4])
             topics = "、".join((item.related_topics or [])[:3])
             suffix_parts = [part for part in (symbols, topics) if part]
             suffix = f"（{'；'.join(suffix_parts)}）" if suffix_parts else ""
             lines.append(f"{index}. {item.title}{suffix}")
-            lines.append(f"   {category}｜{item.source or '來源不明'}｜{pub}｜重要度 {int(item.importance_score or 0)}")
+            tag_text = _tag_label_text(item) or "未標示"
+            lines.append(
+                f"   日期：{pub}｜分類：{category}｜判讀：{_impact_label(item)}｜"
+                f"可信度線索：{tag_text}｜來源：{item.source or '來源不明'}｜重要度 {int(item.importance_score or 0)}"
+            )
             summary = (item.summary or item.full_text or "").strip().replace("\n", " ")
             if summary:
                 lines.append(f"   摘要：{summary[:140]}")
             risk = item.news_heat_risk_reason or ""
             signal = item.news_signal_reason or ""
-            if signal or risk:
-                lines.append(f"   判讀：{signal or '未標示利多/利空'}；{risk or '未標示熱度風險'}")
+            lines.append(f"   反證/風險：{risk or ('含反證標籤' if 'counter_evidence' in (item.tags or []) else '未見明確反證')}")
+            lines.append(f"   資料不足：{signal or '缺少更完整正文或官方確認時，僅作新聞線索參考'}")
     if int(meta.get("webfetch_success", 0) or 0) == 0 and int(meta.get("search_sources", 0) or 0) > 0:
         lines.append("")
         lines.append("限制：本次多數來源只有搜尋摘要，缺少正文補取，分類可作快訊參考，重要結論仍需搭配來源原文確認。")

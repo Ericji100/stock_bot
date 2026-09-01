@@ -426,7 +426,7 @@ class LowModelDigestTests(unittest.TestCase):
             return_value=Path("logs/ai_prompts/segmented_size_guard.json"),
         ):
             digest = run_low_model_digest_for_payload(
-                _request(),
+                _request_for("theme_radar"),
                 payload,
                 sources=_sources(),
                 minimax=minimax,
@@ -473,9 +473,11 @@ class LowModelDigestTests(unittest.TestCase):
         minimax = CountingMiniMax()
         with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
             "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TARGET_CHARS", 1000
+        ), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_MAX_SEGMENTS", 10
         ):
             digest = run_low_model_digest_for_payload(
-                _request(),
+                _request_for("news"),
                 payload,
                 sources=_sources(),
                 minimax=minimax,
@@ -610,6 +612,32 @@ class LowModelDigestTests(unittest.TestCase):
                 if run.get("status") == "skipped_segment_limit"
             )
         )
+
+    def test_research_low_model_limits_executed_segments(self) -> None:
+        payload = {
+            "command": "research",
+            "target": "2330",
+            "items": [{"source_id": f"S{index:03d}", "text": "投研證據 " + ("x" * 3000)} for index in range(32)],
+        }
+        minimax = CountingMiniMax()
+        with patch("research_center.ai_workflow_service.LOW_MODEL_PROMPT_SOFT_LIMIT_CHARS", 1000), patch(
+            "research_center.ai_workflow_service.LOW_MODEL_SEGMENT_TARGET_CHARS", 3000
+        ), patch(
+            "research_center.ai_workflow_service.write_prompt_log",
+            return_value=Path("logs/ai_prompts/research_limited.json"),
+        ):
+            digest = run_low_model_digest_for_payload(
+                _request(),
+                payload,
+                sources=_sources(),
+                minimax=minimax,
+                enabled=True,
+                purpose="unit_test_research_segment_limit",
+            )
+
+        self.assertLessEqual(len(minimax.prompts), 4)
+        self.assertEqual(len([run for run in digest["segment_runs"] if run["status"] == "success"]), 4)
+        self.assertTrue(any(run["status"] == "skipped_segment_limit" for run in digest["segment_runs"]))
 
     def test_low_model_fingerprint_ignores_volatile_timestamps(self) -> None:
         first = {

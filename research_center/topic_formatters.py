@@ -41,11 +41,16 @@ def _action_label(value: Any) -> str:
         "create_theme": "新增題材",
         "update_theme": "更新題材",
         "merge_theme": "合併題材",
+        "rename_theme": "重新命名題材",
         "deprecate_theme": "退場題材",
         "add_company": "新增公司關聯",
         "update_company": "更新公司關聯",
+        "add_company_relation": "新增公司關聯",
+        "update_company_relation": "更新公司關聯",
+        "remove_company_relation": "移除公司關聯",
         "add_supply_chain_node": "新增供應鏈節點",
         "update_supply_chain_node": "更新供應鏈節點",
+        "remove_supply_chain_node": "移除供應鏈節點",
     }.get(str(raw), str(raw).replace("_", " "))
 
 
@@ -67,6 +72,19 @@ def _satisfaction_label(value: Any) -> str:
     }.get(raw, raw.replace("_", " "))
 
 
+def _ai_status_label(value: Any) -> str:
+    raw = str(value or "")
+    return {
+        "ai_success": "正式 AI 成功",
+        "fallback_success": "AI 失敗但 fallback 成功",
+        "partial_success": "部分成功",
+        "failed": "失敗",
+        "success": "成功",
+        "timeout": "逾時",
+        "quota_exhausted": "額度不足",
+    }.get(raw, raw.replace("_", " "))
+
+
 def _pack_data_date(pack: TopicChangePack) -> str:
     extra = pack.extra if isinstance(pack.extra, dict) else {}
     command_result = extra.get("command_result") if isinstance(extra.get("command_result"), dict) else {}
@@ -76,6 +94,48 @@ def _pack_data_date(pack: TopicChangePack) -> str:
         if value:
             return str(value)[:10]
     return str(pack.created_at or "")[:10]
+
+
+def _pack_meta_lines(pack: TopicChangePack) -> list[str]:
+    extra = pack.extra if isinstance(pack.extra, dict) else {}
+    command_result = extra.get("command_result") if isinstance(extra.get("command_result"), dict) else {}
+    report_metadata = extra.get("report_metadata") if isinstance(extra.get("report_metadata"), dict) else {}
+    data_source_summary = extra.get("data_source_summary") if isinstance(extra.get("data_source_summary"), list) else []
+    evidence_count = sum(len(action.evidence or []) for action in pack.actions)
+    risk_count = sum(len(action.risk_notes or []) for action in pack.actions)
+    counter_count = sum(len(action.counter_evidence or []) for action in pack.actions)
+    missing_count = sum(len(action.missing_data or []) for action in pack.actions)
+    source_count = len(pack.sources or []) or len(data_source_summary)
+    model = pack.model or command_result.get("analysis_model") or report_metadata.get("analysis_model") or "未標示"
+    lines = [
+        f"模型：{model}",
+        f"來源數：{source_count}｜證據數：{evidence_count}｜風險 {risk_count}｜反證 {counter_count}｜資料缺口 {missing_count}",
+    ]
+    if command_result:
+        status = command_result.get("ai_status") or command_result.get("status")
+        if status:
+            lines.append(f"AI 狀態：{_ai_status_label(status)}")
+    return lines
+
+
+def _action_quality_lines(action: TopicChangeAction) -> list[str]:
+    lines: list[str] = []
+    if action.risk_notes:
+        lines.append("   風險：" + "；".join(str(item) for item in action.risk_notes[:2]))
+    if action.counter_evidence:
+        readable = []
+        for item in action.counter_evidence[:2]:
+            if isinstance(item, dict):
+                readable.append(str(item.get("content") or item.get("text") or item.get("reason") or item))
+            else:
+                readable.append(str(item))
+        lines.append("   反證：" + "；".join(readable))
+    if action.missing_data:
+        lines.append("   資料缺口：" + "；".join(str(item) for item in action.missing_data[:2]))
+    follow_up = action.extra.get("follow_up") if isinstance(action.extra, dict) else None
+    if follow_up:
+        lines.append(f"   後續推演：{follow_up}")
+    return lines
 
 
 def format_change_pack_created_summary(pack: TopicChangePack) -> str:
@@ -90,6 +150,7 @@ def format_change_pack_created_summary(pack: TopicChangePack) -> str:
         f"信心度：{_confidence_label(pack.confidence)}",
         f"摘要：{pack.summary}",
         f"變更動作數：{len(pack.actions)}",
+        *_pack_meta_lines(pack),
         "",
         f"下一步：/topic_review {pack.change_id} 查看詳情",
     ])
@@ -122,6 +183,9 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
         f"信心度：{_confidence_label(pack.confidence)}",
         f"摘要：{pack.summary}",
         "",
+        "📊 可審核資訊：",
+        *_pack_meta_lines(pack),
+        "",
         "📌 變更動作：",
     ]
 
@@ -134,6 +198,7 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
         if action.evidence:
             ev = action.evidence[0]
             lines.append(f"   證據：{ev.source} ({_source_level_label(ev.source_level)})")
+        lines.extend(_action_quality_lines(action))
 
     if pack.warnings:
         lines.append("")

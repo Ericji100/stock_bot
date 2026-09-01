@@ -10,8 +10,18 @@ import yfinance as yf
 
 from chip_strategies import get_tw_today
 from fugle_data import fetch_fugle_history
+from technical_scanner import (
+    MA_BREAKOUT_PERIODS,
+    MA_BREAKOUT_SIGNAL_LABELS,
+    MA_RECLAIM_SIGNAL_LABELS,
+    MA_SIGNAL_TRIGGER_BREAKOUT,
+    MA_SIGNAL_TRIGGER_RECLAIM,
+    ma_breakout_signal_label,
+    ma_signal_label_from_triggers,
+)
 
 from progress_logger import now_timestamp
+from telegram_stock_formatting import mark_stock_text
 
 
 OFFICIAL_NAME_CACHE: dict[str, str] = {}
@@ -20,7 +30,33 @@ OFFICIAL_NAME_CACHE_EXPIRES_AT: datetime | None = None
 OFFICIAL_NAME_CACHE_TTL = timedelta(hours=12)
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+TWSE_SECURITY_DAILY_API_URL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+TWSE_MIS_QUOTE_API_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 MONITOR_DATA_SOURCE = "Yahoo Finance / TWSE MIS / Fugle / 本機快取"
+MONITOR_MA_PERIODS = MA_BREAKOUT_PERIODS
+
+
+def _looks_like_twse_etf_code(code: str) -> bool:
+    normalized_code = str(code).upper().strip()
+    return normalized_code.startswith("00") and len(normalized_code) >= 5 and normalized_code.isalnum()
+
+
+def _cache_symbol_name(target_cache: dict[str, str], code: str, suffix: str, name: str) -> None:
+    normalized_code = str(code).upper().strip()
+    normalized_name = str(name).strip()
+    if not normalized_code or not normalized_name:
+        return
+
+    target_cache[f"{normalized_code}.{suffix}"] = normalized_name
+    target_cache.setdefault(normalized_code, normalized_name)
+
+
+def _remember_official_symbol_name(code: str, suffix: str, name: str) -> str:
+    normalized_code = str(code).upper().strip()
+    symbol = f"{normalized_code}.{suffix}"
+    _cache_symbol_name(OFFICIAL_NAME_CACHE, normalized_code, suffix, name)
+    OFFICIAL_SYMBOL_CACHE[normalized_code] = symbol
+    return symbol
 
 
 def fetch_official_stock_name_cache() -> dict[str, str]:
@@ -39,8 +75,7 @@ def fetch_official_stock_name_cache() -> dict[str, str]:
                 code = str(item.get("公司代號", "")).strip()
                 name = str(item.get("公司簡稱") or item.get("公司名稱") or "").strip()
                 if code and name:
-                    updated_cache[f"{code}.TW"] = name
-                    updated_cache.setdefault(code, name)
+                    _cache_symbol_name(updated_cache, code, "TW", name)
 
             tpex_response = client.get(TPEX_NAME_API_URL)
             tpex_response.raise_for_status()
@@ -48,8 +83,18 @@ def fetch_official_stock_name_cache() -> dict[str, str]:
                 code = str(item.get("SecuritiesCompanyCode", "")).strip()
                 name = str(item.get("CompanyAbbreviation") or item.get("CompanyName") or "").strip()
                 if code and name:
-                    updated_cache[f"{code}.TWO"] = name
-                    updated_cache.setdefault(code, name)
+                    _cache_symbol_name(updated_cache, code, "TWO", name)
+
+            try:
+                twse_daily_response = client.get(TWSE_SECURITY_DAILY_API_URL)
+                twse_daily_response.raise_for_status()
+                for item in twse_daily_response.json():
+                    code = str(item.get("Code", "")).strip()
+                    name = str(item.get("Name") or "").strip()
+                    if _looks_like_twse_etf_code(code) and name:
+                        _cache_symbol_name(updated_cache, code, "TW", name)
+            except Exception as exc:
+                print(f"[{now_timestamp()}] ⚠️ 取得 TWSE ETF 名稱清單失敗，改用 MIS 單檔查詢備援：{exc}")
 
         OFFICIAL_NAME_CACHE.clear()
         OFFICIAL_NAME_CACHE.update(updated_cache)
@@ -66,6 +111,40 @@ def fetch_official_stock_name_cache() -> dict[str, str]:
     return OFFICIAL_NAME_CACHE
 
 
+def _fetch_twse_mis_stock_name(symbol: str) -> str:
+    normalized_symbol = str(symbol).upper().strip()
+    if not normalized_symbol:
+        return ""
+
+    base_symbol = normalized_symbol.split(".", 1)[0]
+    if not _looks_like_twse_etf_code(base_symbol):
+        return ""
+
+    try:
+        with httpx.Client(timeout=10.0, follow_redirects=True, verify=False) as client:
+            response = client.get(
+                TWSE_MIS_QUOTE_API_URL,
+                params={
+                    "ex_ch": build_official_realtime_channel(f"{base_symbol}.TW"),
+                    "json": "1",
+                    "delay": "0",
+                },
+                headers={"Referer": "https://mis.twse.com.tw/stock/fibest.jsp"},
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        print(f"[{now_timestamp()}] ⚠️ 取得 TWSE MIS 名稱失敗 {symbol}: {exc}")
+        return ""
+
+    msg = (data.get("msgArray") or [{}])[0]
+    returned_code = str(msg.get("c") or "").upper().strip()
+    name = str(msg.get("n") or "").strip()
+    if returned_code == base_symbol and name:
+        return name
+    return ""
+
+
 def get_official_stock_name(symbol: str) -> str:
     normalized_symbol = str(symbol).upper().strip()
     if not normalized_symbol:
@@ -76,7 +155,17 @@ def get_official_stock_name(symbol: str) -> str:
         return cache[normalized_symbol]
 
     base_symbol = normalized_symbol.split(".", 1)[0]
-    return cache.get(base_symbol, "")
+    cached_name = cache.get(base_symbol, "")
+    if cached_name:
+        return cached_name
+
+    if _looks_like_twse_etf_code(base_symbol):
+        etf_name = _fetch_twse_mis_stock_name(f"{base_symbol}.TW")
+        if etf_name:
+            _remember_official_symbol_name(base_symbol, "TW", etf_name)
+            return etf_name
+
+    return ""
 
 
 def get_canonical_stock_symbol(symbol: str) -> str:
@@ -89,7 +178,18 @@ def get_canonical_stock_symbol(symbol: str) -> str:
     canonical_symbol = OFFICIAL_SYMBOL_CACHE.get(base_symbol)
 
     if "." in normalized_symbol:
+        suffix = normalized_symbol.split(".", 1)[1]
+        if suffix == "TW" and _looks_like_twse_etf_code(base_symbol) and normalized_symbol not in OFFICIAL_NAME_CACHE:
+            etf_name = _fetch_twse_mis_stock_name(normalized_symbol)
+            if etf_name:
+                _remember_official_symbol_name(base_symbol, "TW", etf_name)
+                return normalized_symbol
         return normalized_symbol if normalized_symbol in OFFICIAL_NAME_CACHE else (canonical_symbol or normalized_symbol)
+
+    if not canonical_symbol and _looks_like_twse_etf_code(base_symbol):
+        etf_name = _fetch_twse_mis_stock_name(f"{base_symbol}.TW")
+        if etf_name:
+            canonical_symbol = _remember_official_symbol_name(base_symbol, "TW", etf_name)
 
     return canonical_symbol or normalized_symbol
 
@@ -110,9 +210,14 @@ def normalize_stock_entry(stock: Any) -> dict[str, str] | None:
 
 def get_monitor_stocks(config: dict[str, Any]) -> list[dict[str, str]]:
     normalized_stocks = []
+    seen_symbols: set[str] = set()
     for stock in config.get("monitor_stocks", []):
         normalized_stock = normalize_stock_entry(stock)
         if normalized_stock:
+            symbol = normalized_stock["symbol"]
+            if symbol in seen_symbols:
+                continue
+            seen_symbols.add(symbol)
             if not normalized_stock["name"]:
                 normalized_stock["name"] = get_official_stock_name(normalized_stock["symbol"])
             normalized_stocks.append(normalized_stock)
@@ -138,7 +243,7 @@ def find_stock_index(stocks: list[Any], symbol: str) -> int:
 
 def build_monitor_list_message(config: dict[str, Any]) -> str:
     stocks = get_monitor_stocks(config)
-    stock_lines = [format_stock_display(stock) for stock in stocks]
+    stock_lines = [mark_stock_text(format_stock_display(stock)) for stock in stocks]
     return "📋 目前監控清單：\n" + ("\n".join(stock_lines) if stock_lines else "監控清單空白")
 
 
@@ -148,12 +253,13 @@ def add_monitor_stock_to_config(config: dict[str, Any], args: list[str]) -> tupl
 
     stock = get_canonical_stock_symbol(args[0])
     stock_name = " ".join(args[1:]).strip() or get_official_stock_name(stock)
+    stock_display = mark_stock_text(format_stock_display({"symbol": stock, "name": stock_name}))
     if find_stock_index(config.get("monitor_stocks", []), stock) != -1:
-        return False, f"⚠️ 已在監控清單：{format_stock_display({'symbol': stock, 'name': stock_name})}"
+        return False, f"⚠️ 已在監控清單：{stock_display}"
 
     entry: dict[str, str] | str = {"symbol": stock, "name": stock_name} if stock_name else stock
     config.setdefault("monitor_stocks", []).append(entry)
-    return True, f"✅ 已加入：{format_stock_display({'symbol': stock, 'name': stock_name})}"
+    return True, f"✅ 已加入：{stock_display}"
 
 
 def remove_monitor_stock_from_config(config: dict[str, Any], args: list[str]) -> tuple[bool, str]:
@@ -166,7 +272,7 @@ def remove_monitor_stock_from_config(config: dict[str, Any], args: list[str]) ->
 
     removed_stock = normalize_stock_entry(config["monitor_stocks"][stock_index])
     config["monitor_stocks"].pop(stock_index)
-    return True, f"🗑️ 已從監控清單刪除：{format_stock_display(removed_stock)}"
+    return True, f"🗑️ 已從監控清單刪除：{mark_stock_text(format_stock_display(removed_stock))}"
 
 
 def get_tw_local_now() -> datetime:
@@ -216,7 +322,7 @@ def get_official_realtime_price(symbol: str) -> tuple[float | None, str | None, 
     try:
         with httpx.Client(timeout=10.0, follow_redirects=True, verify=False) as client:
             response = client.get(
-                "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+                TWSE_MIS_QUOTE_API_URL,
                 params={
                     "ex_ch": build_official_realtime_channel(symbol),
                     "json": "1",
@@ -318,34 +424,143 @@ def _prepare_daily_frame(symbol: str, minimum_rows: int) -> pd.DataFrame:
     return frame.copy()
 
 
-def check_signal(stock: dict[str, str]) -> str | None:
+def _format_price(value: object) -> str:
+    if value is None:
+        return "未知"
+    try:
+        if pd.isna(value):
+            return "未知"
+        return f"{float(value):,.2f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return "未知"
+
+
+def _monitor_minimum_rows(period: int) -> int:
+    return max(int(period) + 2, 30)
+
+
+def check_ma_breakout_signal(stock: dict[str, str], period: int) -> dict[str, object] | None:
     symbol = stock["symbol"]
     stock_display = format_stock_display(stock)
-    print(f"[{now_timestamp()}] 🔎 檢查監控策略：21MA 突破 {stock_display}...")
+    label = ma_breakout_signal_label(period)
+    print(f"[{now_timestamp()}] 檢查監控策略：{label} {stock_display}...")
     try:
-        frame = _prepare_daily_frame(symbol, 30)
-        if frame.empty:
+        frame = _prepare_daily_frame(symbol, _monitor_minimum_rows(period))
+        if frame.empty or len(frame) < period + 2:
             return None
 
-        frame["MA21"] = frame["Close"].rolling(window=21).mean()
+        ma_column = f"MA{period}"
+        frame[ma_column] = frame["Close"].rolling(window=period).mean()
         latest_close = frame["Close"].iloc[-1].item()
         current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
-        today_ma = frame["MA21"].iloc[-1].item()
-        yesterday_price = frame["Close"].iloc[-2].item()
-        yesterday_ma = frame["MA21"].iloc[-2].item()
+        if current_price is None:
+            return None
 
-        if yesterday_price < yesterday_ma and current_price and current_price > today_ma:
-            stop_loss = frame["Low"].iloc[-3:].min().item()
-            return (
-                "🚨 21MA 突破訊號\n"
-                f"股票：{stock_display}\n"
-                f"現價：{current_price:,.2f} (MA21: {today_ma:,.2f})\n"
-                f"價格來源：{price_source}\n"
-                f"參考停損：{stop_loss:,.2f} (近 3 日低點)"
-            )
+        today_ma = frame[ma_column].iloc[-1].item()
+        yesterday_price = frame["Close"].iloc[-2].item()
+        yesterday_ma = frame[ma_column].iloc[-2].item()
+        today_low = frame["Low"].iloc[-1].item()
+        if pd.isna(today_ma) or pd.isna(yesterday_ma):
+            return None
+
+        triggers: list[str] = []
+        if float(yesterday_price) <= float(yesterday_ma) and float(current_price) > float(today_ma):
+            triggers.append(MA_SIGNAL_TRIGGER_BREAKOUT)
+        if float(today_low) < float(today_ma) and float(current_price) > float(today_ma):
+            triggers.append(MA_SIGNAL_TRIGGER_RECLAIM)
+        if not triggers:
+            return None
+
+        return {
+            "symbol": symbol,
+            "stock_display": stock_display,
+            "period": period,
+            "label": ma_signal_label_from_triggers(period, triggers),
+            "trigger_type": " / ".join(triggers),
+            "current_price": float(current_price),
+            "ma_value": float(today_ma),
+            "stop_loss": float(frame["Low"].iloc[-3:].min().item()),
+            "price_source": price_source,
+        }
     except Exception as exc:
-        print(f"[{now_timestamp()}] ⚠️ 21MA 策略檢查失敗 {stock_display}: {exc}")
+        print(f"[{now_timestamp()}] ⚠️ {label} 策略檢查失敗 {stock_display}: {exc}")
     return None
+
+
+def _format_monitor_signal(signal: dict[str, object]) -> str:
+    period = int(signal.get("period") or 0)
+    stock_display = mark_stock_text(signal.get("stock_display") or "")
+    label = str(signal.get("label") or ma_signal_label_from_triggers(period, str(signal.get("trigger_type") or "").split(" / ")))
+    return (
+        f"{stock_display} | "
+        f"現價：{_format_price(signal.get('current_price'))} | "
+        f"停損：{_format_price(signal.get('stop_loss'))} | "
+        f"來源：{signal.get('price_source') or '未知'}\n"
+        f"訊號：{label}\n"
+        f"MA：MA{period} {_format_price(signal.get('ma_value'))}"
+    )
+
+
+def _unique_texts(values: list[object]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _merge_monitor_stock_signals(signals: list[dict[str, object]]) -> dict[str, object]:
+    first = signals[0]
+    stop_losses = [
+        float(signal["stop_loss"])
+        for signal in signals
+        if signal.get("stop_loss") is not None and pd.notna(signal.get("stop_loss"))
+    ]
+    return {
+        "symbol": first.get("symbol"),
+        "stock_display": first.get("stock_display"),
+        "current_price": first.get("current_price"),
+        "stop_loss": min(stop_losses) if stop_losses else first.get("stop_loss"),
+        "price_source": " / ".join(_unique_texts([signal.get("price_source") for signal in signals])),
+        "signals": _unique_texts([signal.get("label") for signal in signals]),
+        "ma_values": [
+            {
+                "period": int(signal.get("period") or 0),
+                "ma_value": signal.get("ma_value"),
+                "trigger_type": signal.get("trigger_type"),
+                "label": signal.get("label"),
+            }
+            for signal in signals
+        ],
+    }
+
+
+def _format_monitor_signal_item(item: dict[str, object]) -> str:
+    ma_values = item.get("ma_values") if isinstance(item.get("ma_values"), list) else []
+    ma_text = "、".join(
+        f"MA{int(row.get('period') or 0)} {_format_price(row.get('ma_value'))}"
+        for row in ma_values
+        if isinstance(row, dict)
+    )
+    signal_text = "、".join(_unique_texts(list(item.get("signals") or []))) or "未標示"
+    stock_display = mark_stock_text(item.get("stock_display") or "")
+    return (
+        f"{stock_display} | "
+        f"現價：{_format_price(item.get('current_price'))} | "
+        f"停損：{_format_price(item.get('stop_loss'))} | "
+        f"來源：{item.get('price_source') or '未知'}\n"
+        f"訊號：{signal_text}\n"
+        f"MA：{ma_text or '未標示'}"
+    )
+
+
+def check_signal(stock: dict[str, str]) -> str | None:
+    signal = check_ma_breakout_signal(stock, 21)
+    return _format_monitor_signal(signal) if signal else None
 
 
 def check_advanced_signal(stock: dict[str, str]) -> str | None:
@@ -396,7 +611,7 @@ def check_advanced_signal(stock: dict[str, str]) -> str | None:
             stop_loss = frame["Low"].iloc[-3:].min().item()
             return (
                 "🚨 MACD 紅柱突破訊號\n"
-                f"股票：{stock_display}\n"
+                f"股票：{mark_stock_text(stock_display)}\n"
                 f"現價：{current_price:,.2f}\n"
                 f"價格來源：{price_source}\n"
                 f"條件：紅柱期間曾回測 21MA，今日第一次突破回測前高 {period_high:,.2f}\n"
@@ -408,47 +623,53 @@ def check_advanced_signal(stock: dict[str, str]) -> str | None:
 
 
 def check_ma105_signal(stock: dict[str, str]) -> str | None:
-    symbol = stock["symbol"]
-    stock_display = format_stock_display(stock)
-    print(f"[{now_timestamp()}] 🔎 檢查監控策略：105MA 突破 {stock_display}...")
-    try:
-        frame = _prepare_daily_frame(symbol, 110)
-        if frame.empty:
-            return None
+    signal = check_ma_breakout_signal(stock, 105)
+    return _format_monitor_signal(signal) if signal else None
 
-        frame["MA105"] = frame["Close"].rolling(window=105).mean()
-        latest_close = frame["Close"].iloc[-1].item()
-        current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
-        today_ma = frame["MA105"].iloc[-1].item()
-        yesterday_price = frame["Close"].iloc[-2].item()
-        yesterday_ma = frame["MA105"].iloc[-2].item()
 
-        if yesterday_price < yesterday_ma and current_price and current_price > today_ma:
-            stop_loss = frame["Low"].iloc[-3:].min().item()
-            return (
-                "🚨 105MA 突破訊號\n"
-                f"股票：{stock_display}\n"
-                f"現價：{current_price:,.2f} (MA105: {today_ma:,.2f})\n"
-                f"價格來源：{price_source}\n"
-                f"參考停損：{stop_loss:,.2f} (近 3 日低點)"
-            )
-    except Exception as exc:
-        print(f"[{now_timestamp()}] ⚠️ 105MA 策略檢查失敗 {stock_display}: {exc}")
-    return None
+def collect_monitor_signal_groups(config: dict[str, Any]) -> dict[str, list[dict[str, object]]]:
+    labels = {
+        label
+        for period in MONITOR_MA_PERIODS
+        for label in (MA_BREAKOUT_SIGNAL_LABELS[period], MA_RECLAIM_SIGNAL_LABELS[period])
+    }
+    grouped_signals: dict[str, list[dict[str, object]]] = {label: [] for label in labels}
+    for stock in get_monitor_stocks(config):
+        for period in MONITOR_MA_PERIODS:
+            signal = check_ma_breakout_signal(stock, period)
+            if signal:
+                grouped_signals.setdefault(str(signal["label"]), []).append(signal)
+    return {label: items for label, items in grouped_signals.items() if items}
+
+
+def collect_monitor_signal_items(config: dict[str, Any]) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    for stock in get_monitor_stocks(config):
+        stock_signals: list[dict[str, object]] = []
+        for period in MONITOR_MA_PERIODS:
+            signal = check_ma_breakout_signal(stock, period)
+            if signal:
+                stock_signals.append(signal)
+        if stock_signals:
+            items.append(_merge_monitor_stock_signals(stock_signals))
+    return items
+
+
+def _format_monitor_signal_groups(groups: dict[str, list[dict[str, object]]]) -> list[str]:
+    blocks: list[str] = []
+    for period in MONITOR_MA_PERIODS:
+        for label in (MA_BREAKOUT_SIGNAL_LABELS[period], MA_RECLAIM_SIGNAL_LABELS[period]):
+            signals = groups.get(label) or []
+            if not signals:
+                continue
+            lines = [f"📂 {label}"]
+            lines.extend(_format_monitor_signal(signal) for signal in signals)
+            blocks.append("\n".join(lines))
+    return blocks
 
 
 def collect_monitor_signals(config: dict[str, Any]) -> list[str]:
-    final_signals = []
-    for stock in get_monitor_stocks(config):
-        signal = check_signal(stock)
-        if signal:
-            final_signals.append(signal)
-
-        ma105_signal = check_ma105_signal(stock)
-        if ma105_signal:
-            final_signals.append(ma105_signal)
-
-    return final_signals
+    return [_format_monitor_signal_item(item) for item in collect_monitor_signal_items(config)]
 
 
 def append_monitor_data_footer(text: str) -> str:
@@ -465,7 +686,7 @@ def build_monitor_scan_report(
     no_signal_text: str = "目前無突破訊號。",
 ) -> str:
     signals = collect_monitor_signals(config)
-    body = "\n\n".join(signals) if signals else no_signal_text
+    body = f"觸發：{len(signals)} 檔\n\n" + "\n\n".join(signals) if signals else no_signal_text
     if title:
         body = f"{title}\n\n{body}"
     return append_monitor_data_footer(body)

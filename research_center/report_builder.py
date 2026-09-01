@@ -770,8 +770,8 @@ def _append_complete_source_appendix(markdown: str, sources: list[SourceItem]) -
     lines.append("| ID | 層級 | 來源 | 日期 | 標題 | URL |")
     lines.append("|---|---|---|---|---|---|")
     for item in sources[:max_markdown_sources]:
-        title = _truncate_source_text(item.title or item.url, 90)
-        provider = _truncate_source_text(item.provider or "unknown", 32)
+        title = _truncate_source_text(_source_display_title(item.title, item.url), 90)
+        provider = _truncate_source_text(_source_display_provider(item.provider), 32)
         date_part = item.published_date or "-"
         lines.append(
             f"| {item.source_id} | {item.source_level} | {provider} | {date_part} | {title} | {item.url} |"
@@ -788,6 +788,37 @@ def _truncate_source_text(value: Any, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _source_display_title(title: Any, url: Any) -> str:
+    text = re.sub(r"\s+", " ", str(title or "")).strip()
+    if text and not _looks_like_unreadable_source_text(text):
+        return text
+    url_text = str(url or "").strip()
+    domain = _source_domain(url_text)
+    return f"來源標題無法辨識（{domain}）" if domain else "來源標題無法辨識（請查看原始連結）"
+
+
+def _source_display_provider(provider: Any) -> str:
+    text = re.sub(r"\s+", " ", str(provider or "")).strip()
+    if text and not _looks_like_unreadable_source_text(text):
+        return text
+    return "外部搜尋來源"
+
+
+def _source_domain(url: str) -> str:
+    match = re.search(r"https?://([^/]+)", url)
+    return match.group(1) if match else ""
+
+
+def _looks_like_unreadable_source_text(text: str) -> bool:
+    if not text:
+        return False
+    private_use = len(re.findall(r"[\ue000-\uf8ff]", text))
+    replacement = text.count("\ufffd")
+    question_marks = text.count("?")
+    mojibake_markers = len(re.findall(r"[蝬餅靘撣憿摰閬頛銝嚗]", text))
+    return private_use >= 1 or replacement > 0 or question_marks >= 2 or mojibake_markers >= 8
 
 def render_html(report_json: dict[str, Any], markdown: str) -> str:
     from .report_html_renderer import render_report_html
@@ -967,12 +998,14 @@ def _sources_to_html(report_json: dict[str, Any]) -> str:
     for item in sources:
         sid = html.escape(str(item.get("source_id") or ""))
         level = html.escape(str(item.get("source_level") or ""))
-        title = html.escape(str(item.get("title") or item.get("url") or ""))
+        title = html.escape(_source_display_title(item.get("title"), item.get("url")))
         url = html.escape(str(item.get("url") or ""))
         date = html.escape(str(item.get("published_date") or ""))
-        snippet = html.escape(str(item.get("snippet") or ""))
-        provider = html.escape(str(item.get("provider") or "unknown"))
-        provider_detail = html.escape(str(item.get("provider_detail") or ""))
+        raw_snippet = str(item.get("snippet") or "")
+        snippet = html.escape("" if _looks_like_unreadable_source_text(raw_snippet) else raw_snippet)
+        provider = html.escape(_source_display_provider(item.get("provider")))
+        raw_provider_detail = str(item.get("provider_detail") or "")
+        provider_detail = html.escape("" if _looks_like_unreadable_source_text(raw_provider_detail) else raw_provider_detail)
         link = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>' if url.startswith(("http://", "https://")) else url
         meta_parts = [part for part in [level, provider, date] if part]
         if provider_detail:

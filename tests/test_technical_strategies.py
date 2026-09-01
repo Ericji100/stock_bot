@@ -6,9 +6,20 @@ from datetime import date, timedelta
 import pandas as pd
 
 from technical_scanner import apply_indicators, MACD_FAST, MACD_SLOW, MACD_SIGNAL
+from technical_scanner import (
+    BULLISH_SIGNAL_ORDER,
+    MA_BREAKOUT_SIGNAL_LABELS,
+    MA_RECLAIM_SIGNAL_LABELS,
+    TechnicalScanResult,
+    detect_ma_breakout_signal_details,
+    detect_ma_breakout_signals,
+    format_technical_report,
+    format_technical_report_messages,
+)
 from technical_scanner import KD_RSV_PERIOD, KD_K_PERIOD, KD_D_PERIOD
 from technical_scanner import is_macd_pullback_breakout
 from technical_strategy_engine import detect_technical_strategies
+from telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
 # -------------------------------------------------------------------
@@ -96,6 +107,11 @@ class TestApplyIndicatorsColumns(unittest.TestCase):
         out = _apply(df)
         self.assertIn("MA21", out.columns)
 
+    def test_ma55_present(self):
+        df = _make_daily([100 + i for i in range(150)])
+        out = _apply(df)
+        self.assertIn("MA55", out.columns)
+
     def test_ma60_present(self):
         df = _make_daily([100 + i for i in range(150)])
         out = _apply(df)
@@ -133,6 +149,215 @@ class TestApplyIndicatorsColumns(unittest.TestCase):
         out = _apply(df)
         self.assertIn("K", out.columns)
         self.assertIn("D", out.columns)
+
+
+class TestMaBreakoutSignals(unittest.TestCase):
+    def _prepared_frame(self, period: int, *, yesterday_close: float, yesterday_ma: float, today_low: float, today_close: float, today_ma: float):
+        df = _make_daily([100.0] * 180)
+        out = _apply(df)
+        ma_column = f"MA{period}"
+        out.loc[out.index[-2], "close"] = yesterday_close
+        out.loc[out.index[-2], ma_column] = yesterday_ma
+        out.loc[out.index[-1], "low"] = today_low
+        out.loc[out.index[-1], "close"] = today_close
+        out.loc[out.index[-1], ma_column] = today_ma
+        return out
+
+    def test_today_breakout_requires_yesterday_not_above_ma(self):
+        frame = self._prepared_frame(21, yesterday_close=99, yesterday_ma=100, today_low=101, today_close=103, today_ma=100)
+
+        signals = detect_ma_breakout_signal_details(frame)
+
+        ma21 = [item for item in signals if item["period"] == 21]
+        self.assertEqual(ma21[0]["label"], "突破 21MA")
+        self.assertIn("突破", ma21[0]["triggers"])
+
+    def test_intraday_break_then_reclaim_triggers_same_day_signal(self):
+        frame = self._prepared_frame(13, yesterday_close=105, yesterday_ma=100, today_low=98, today_close=103, today_ma=100)
+
+        signals = detect_ma_breakout_signal_details(frame)
+
+        ma13 = [item for item in signals if item["period"] == 13]
+        self.assertEqual(ma13[0]["label"], "跌破後收復 13MA")
+        self.assertIn("跌破後收復", ma13[0]["triggers"])
+
+    def test_breakout_takes_priority_when_breakout_and_reclaim_both_trigger(self):
+        frame = self._prepared_frame(21, yesterday_close=99, yesterday_ma=100, today_low=98, today_close=103, today_ma=100)
+
+        details = detect_ma_breakout_signal_details(frame)
+        labels = detect_ma_breakout_signals(frame)
+
+        ma21 = [item for item in details if item["period"] == 21]
+        self.assertEqual(ma21[0]["label"], "突破 21MA")
+        self.assertIn("突破", ma21[0]["triggers"])
+        self.assertIn("跌破後收復", ma21[0]["triggers"])
+        self.assertIn("突破 21MA", labels)
+        self.assertNotIn("跌破後收復 21MA", labels)
+
+    def test_already_above_ma_does_not_count_as_today_breakout(self):
+        frame = self._prepared_frame(55, yesterday_close=105, yesterday_ma=100, today_low=101, today_close=106, today_ma=100)
+
+        signals = detect_ma_breakout_signal_details(frame)
+
+        self.assertFalse([item for item in signals if item["period"] == 55])
+
+    def test_no_intraday_break_does_not_count_as_reclaim(self):
+        frame = self._prepared_frame(5, yesterday_close=105, yesterday_ma=100, today_low=100.5, today_close=103, today_ma=100)
+
+        signals = detect_ma_breakout_signal_details(frame)
+
+        self.assertFalse([item for item in signals if item["period"] == 5])
+
+    def test_insufficient_ma_data_does_not_trigger_or_crash(self):
+        df = _make_daily([100.0] * 20)
+        out = _apply(df)
+
+        signals = detect_ma_breakout_signal_details(out)
+
+        self.assertFalse([item for item in signals if item["period"] == 144])
+
+    def test_bullish_order_includes_all_ma_breakout_groups_first(self):
+        expected = [
+            label
+            for period in (5, 13, 21, 55, 105, 144)
+            for label in (MA_BREAKOUT_SIGNAL_LABELS[period], MA_RECLAIM_SIGNAL_LABELS[period])
+        ]
+
+        self.assertEqual(BULLISH_SIGNAL_ORDER[:12], expected)
+
+    def test_technical_report_renders_ma_breakout_groups(self):
+        bullish = {
+            MA_BREAKOUT_SIGNAL_LABELS[period]: {"測試產業": [f"1{period:03d} 測試股 ({period:.1f})"]}
+            for period in (5, 13, 21, 55, 105, 144)
+        }
+        bullish.update(
+            {
+                MA_RECLAIM_SIGNAL_LABELS[period]: {"測試產業": [f"2{period:03d} 收復股 ({period:.1f})"]}
+                for period in (5, 13, 21, 55, 105, 144)
+            }
+        )
+        result = TechnicalScanResult(
+            report_date=date(2026, 6, 30),
+            total_symbols=12,
+            hard_filter_passed=12,
+            matched_symbols=12,
+            bullish=bullish,
+            bearish={},
+            sources={"unit"},
+            strategy_signals={"A": [], "B": [], "C": [], "D": []},
+        )
+
+        text = format_technical_report(result)
+
+        for period in (5, 13, 21, 55, 105, 144):
+            self.assertIn(MA_BREAKOUT_SIGNAL_LABELS[period], text)
+            self.assertIn(MA_RECLAIM_SIGNAL_LABELS[period], text)
+        self.assertIn(STOCK_MARK_START, text)
+        self.assertIn("1005 測試股 (5.0)", strip_stock_markers(text))
+        self.assertIn("2005 收復股 (5.0)", strip_stock_markers(text))
+
+    def test_technical_report_messages_split_by_signal_without_mixing(self):
+        ma5_stocks = [f"5{i:03d} 測試五{i:02d} ({10 + i:.1f})" for i in range(45)]
+        ma13_stocks = [f"13{i:02d} 測試十三{i:02d} ({20 + i:.1f})" for i in range(3)]
+        result = TechnicalScanResult(
+            report_date=date(2026, 6, 30),
+            total_symbols=48,
+            hard_filter_passed=48,
+            matched_symbols=48,
+            bullish={
+                MA_BREAKOUT_SIGNAL_LABELS[5]: {"半導體業": ma5_stocks},
+                MA_RECLAIM_SIGNAL_LABELS[13]: {"電子零組件業": ma13_stocks},
+            },
+            bearish={},
+            sources={"unit"},
+            strategy_signals={"A": [], "B": [], "C": [], "D": []},
+        )
+
+        messages = format_technical_report_messages(result, max_chars=500)
+        ma5_messages = [message for message in messages if message.startswith("📂 突破 5MA")]
+        ma13_messages = [message for message in messages if message.startswith("📂 跌破後收復 13MA")]
+
+        self.assertGreater(len(ma5_messages), 1)
+        self.assertEqual(len(ma13_messages), 1)
+        self.assertIn("第 1/", ma5_messages[0].splitlines()[0])
+        self.assertTrue(all("跌破後收復 13MA" not in message for message in ma5_messages))
+        self.assertTrue(all("突破 5MA" not in message for message in ma13_messages))
+        joined = "\n".join(messages)
+        self.assertIn(STOCK_MARK_START, joined)
+        clean_joined = strip_stock_markers(joined)
+        for stock in [*ma5_stocks, *ma13_stocks]:
+            self.assertIn(stock, clean_joined)
+
+    def test_technical_report_messages_empty_result_has_reasonable_message(self):
+        result = TechnicalScanResult(
+            report_date=date(2026, 6, 30),
+            total_symbols=0,
+            hard_filter_passed=0,
+            matched_symbols=0,
+            bullish={},
+            bearish={},
+            sources={"unit"},
+            strategy_signals={"A": [], "B": [], "C": [], "D": []},
+        )
+
+        messages = format_technical_report_messages(result)
+
+        self.assertEqual(len(messages), 1)
+        self.assertIn("目前沒有符合技術條件股票", messages[0])
+
+    def test_strategy_messages_render_industry_and_one_stock_per_line(self):
+        def make_sig(stock_id, stock_name, industry, retracement):
+            return {
+                "stock_id": stock_id,
+                "stock_name": stock_name,
+                "signal_date": "2026-07-02",
+                "strategy_code": "A",
+                "technical_signal_type": "test",
+                "sub_signal_type": "A1_direct_ma21_breakout",
+                "close": 77.0,
+                "ma_context": {},
+                "macd_context": {},
+                "kd_context": {},
+                "volume_quality": True,
+                "technical_setup_score": 5,
+                "initial_invalid_price": 70.0,
+                "structural_invalid_price": 60.0,
+                "risk_distance_pct": None,
+                "risk_distance_atr": 5.0,
+                "notes": "wave_return=23.1%",
+                "features": {"retracement_ratio": retracement},
+                "industry": industry,
+            }
+
+        result = TechnicalScanResult(
+            report_date=date(2026, 7, 2),
+            total_symbols=3,
+            hard_filter_passed=3,
+            matched_symbols=3,
+            bullish={},
+            bearish={},
+            sources={"unit"},
+            strategy_signals={
+                "A": [
+                    make_sig("2374", "佳能", "光電業", 0.89),
+                    make_sig("5484", "慧友", "光電業", 0.72),
+                    make_sig("1711", "永光", "化學工業", 0.53),
+                ],
+                "B": [],
+                "C": [],
+                "D": [],
+            },
+        )
+
+        messages = format_technical_report_messages(result)
+        strategy_message = next(message for message in messages if message.startswith("📂 策略 A"))
+        clean_message = strip_stock_markers(strategy_message)
+
+        self.assertIn("A1｜直接突破型", clean_message)
+        self.assertIn("[光電業]\n2374 佳能 (77.0)｜前波漲幅 23.1%、回檔比例 89%\n5484 慧友", clean_message)
+        self.assertIn("[化學工業]\n1711 永光 (77.0)｜前波漲幅 23.1%、回檔比例 53%", clean_message)
+        self.assertNotIn("2374 佳能 (77.0)｜前波漲幅 23.1%、回檔比例 89% | 5484 慧友", clean_message)
+        self.assertIn(STOCK_MARK_START, strategy_message)
 
 
 # -------------------------------------------------------------------
@@ -1228,7 +1453,8 @@ class TestReportFormat(unittest.TestCase):
         self.assertIn("策略 A：多頭延續回檔突破\n\nA1｜直接突破型\n\n", report)
         self.assertIn("策略 B：強勢紅柱回測突破\n\nB3｜回測 MA13/MA21 後突破前高\n\n", report)
         # Verify industry grouping appears
-        self.assertIn("【未分類】 2330 台積電 (900.0)", report)
+        self.assertIn(STOCK_MARK_START, report)
+        self.assertIn("[未分類]\n2330 台積電 (900.0)", strip_stock_markers(report))
 
     def test_report_strategy_blocks_group_by_industry(self):
         """Strategy stocks must be grouped by industry under each sub-signal."""
@@ -1263,14 +1489,14 @@ class TestReportFormat(unittest.TestCase):
         )
         report = format_technical_report(result)
         # Industry groups should be sorted alphabetically
-        self.assertIn("【半導體業】", report)
-        self.assertIn("【電子零組件業】", report)
-        # Same-industry stocks should be joined by " | "
-        self.assertIn("3372 典範 (900.0) | 2330 台積電 (900.0)", report)
-        self.assertIn("6282 康舒 (900.0)", report)
-        # Should NOT have per-stock lines without industry brackets
-        self.assertNotRegex(report, r"^\s+6282 康舒")
-        self.assertNotRegex(report, r"^\s+2330 台積電")
+        self.assertIn("[半導體業]", report)
+        self.assertIn("[電子零組件業]", report)
+        # Same-industry stocks should be rendered one stock per line.
+        clean_report = strip_stock_markers(report)
+        self.assertIn(STOCK_MARK_START, report)
+        self.assertIn("[半導體業]\n3372 典範 (900.0)\n2330 台積電 (900.0)", clean_report)
+        self.assertIn("6282 康舒 (900.0)", clean_report)
+        self.assertNotIn("3372 典範 (900.0) | 2330 台積電 (900.0)", clean_report)
 
 
 # -------------------------------------------------------------------

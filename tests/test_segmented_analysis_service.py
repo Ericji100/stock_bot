@@ -11,6 +11,8 @@ from research_center.ai_workflow_service import build_high_model_input_package
 from research_center.orchestrator import ResearchCenter
 from research_center.segmented_analysis_service import (
     SEGMENTED_ANALYSIS_PROMPT_THRESHOLD,
+    _build_final_prompt,
+    _segment_plans,
     run_segmented_theme_analysis,
     should_use_segmented_analysis,
 )
@@ -191,6 +193,128 @@ def test_should_use_segmented_analysis_uses_prompt_size_for_all_models():
     assert should_use_segmented_analysis(parse_command_text("/research 2330 --model minimax"), "minimax", prompt_chars=large_prompt) is True
     assert should_use_segmented_analysis(parse_command_text("/research 2330 --brief --model minimax"), "minimax", prompt_chars=large_prompt) is False
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model minimax"), "minimax") is False
+
+
+def test_segmented_final_prompt_contains_command_specific_contracts():
+    expected_terms = {
+        "/research 2330 --deep --model minimax": [
+            "AI 最終推薦買入評分",
+            "AI 最終財務與題材評分",
+            "AI 最終飆股基因評分",
+            "AI 最終價值重估評分",
+            "本地量化底稿與 AI 最終評分差異",
+            "AI 評分細項拆解",
+            "合理股價與目標價區間",
+            "目標價",
+            "細項分數拆解表",
+            "題材水分與財報裂縫",
+            "市場資金輪動與題材熱度",
+        ],
+        "/value_scan 我的持股 --model minimax": [
+            "AI 最終重估分",
+            "價值重估排名",
+            "舊市場標籤",
+            "新市場標籤",
+            "逐檔候選分析",
+            "候選池與資料狀態",
+            "重估證據交叉驗證",
+        ],
+        "/macro 台股 --model minimax": [
+            "市場總結",
+            "指數結構",
+            "資金面與成交量",
+            "多情境推演",
+            "全球市場與國際局勢",
+            "央行利率、匯率與美元流動性",
+        ],
+        "/theme AI電源 --model minimax": [
+            "題材結論",
+            "供應鏈輪廓",
+            "核心受惠公司",
+            "反證與風險",
+            "全球需求變化",
+            "可能被價值重估的公司",
+        ],
+        "/theme_flow AI電源 --model minimax": [
+            "資金流向與資金輪動判斷",
+            "題材流入與流出",
+            "個股與子族群承接狀況",
+            "短線是否過熱",
+            "資料過少警示與缺口",
+        ],
+        "/theme_radar --model minimax": [
+            "主流題材排行",
+            "族群排行",
+            "子族群排行",
+            "命中公司與代表股",
+            "供應鏈輪廓",
+            "低階模型底稿",
+            "來源對照",
+        ],
+        "/sector_strength --model minimax": [
+            "強勢產業排行",
+            "弱勢產業排行",
+            "子族群強弱",
+            "代表股與排除股",
+            "資金集中度判斷",
+        ],
+    }
+    for raw_command, terms in expected_terms.items():
+        request = parse_command_text(raw_command)
+        prompt = _build_final_prompt(
+            request,
+            {"report_date": "2026-06-26"},
+            outputs=[],
+            sources=[],
+        )
+        for term in terms:
+            assert term in prompt
+
+
+class SegmentedAnalysisPlanTests(unittest.TestCase):
+    def test_research_merges_local_scoring_into_core_packet(self):
+        plans = _segment_plans(
+            parse_command_text("/research 2330 --deep --model minimax"),
+            {
+                "high_model_input_package": {
+                    "command": "research",
+                    "command_specific_data": {
+                        "schema_version": "unit",
+                        "input_mode": "compact",
+                        "core_input_audit": {"ok": True},
+                        "payload": {"stock": {"code": "2330"}},
+                    },
+                    "local_scoring": {"buy_rating": 4},
+                    "ai_input_audit": {"received": True},
+                    "workflow_policy": {"目的": "unit"},
+                    "token_budget_policy": {"quality_first": True},
+                    "unified_evidence_pack": {"risks": [{"title": "需求放緩"}]},
+                    "low_model_digest": {"status": "success", "facts": [{"fact": "法說會提到需求"}]},
+                    "selected_sources": [{"source_id": "S001", "title": "法說會", "url": "https://example.com"}],
+                    "complete_source_index": {"sources": [{"source_id": "S001", "title": "法說會"}]},
+                }
+            },
+        )
+
+        labels = [plan["label"] for plan in plans]
+        self.assertEqual(labels, ["local_core_packet", "evidence_and_low_model", "sources_and_excerpts"])
+        self.assertIn("local_scoring_and_audit", plans[0]["payload"])
+
+
+def test_segmented_final_prompt_preserves_longer_decision_notes():
+    request = parse_command_text("/research 2330 --deep --model minimax")
+    long_note = "AI 評分細項拆解\n" + ("評分、目標價、風險與反證。" * 220)
+
+    prompt = _build_final_prompt(
+        request,
+        {"report_date": "2026-06-26"},
+        outputs=[{"label": "research", "title": "研究底稿", "status": "success", "markdown": long_note}],
+        sources=[],
+    )
+
+    assert "note_excerpt_limit" in prompt
+    assert "AI 評分細項拆解" in prompt
+    assert len(prompt) > 2500
 
 
 def test_segmented_theme_analysis_calls_multiple_small_prompts():

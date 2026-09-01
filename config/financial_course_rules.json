@@ -1,0 +1,484 @@
+{
+  "schema_version": "1.0",
+  "rule_set_id": "financial_course_20220813_v1",
+  "course_date": "2022-08-13",
+  "purpose": "Stock ranking and review signals only; no automatic order authorization.",
+  "source_labels": [
+    "course_explicit",
+    "course_derived",
+    "backtest_default",
+    "manual_evidence"
+  ],
+  "point_in_time_required": true,
+  "missing_data_policy": {
+    "critical": "insufficient_data",
+    "manual_evidence": "needs_review",
+    "noncritical": "neutral_no_points"
+  },
+  "minimum_history": {
+    "monthly_revenue_months": 24,
+    "quarterly_financials_quarters": 8,
+    "price_trading_days": 252,
+    "source": {
+      "monthly_revenue_months": "course_explicit",
+      "quarterly_financials_quarters": "backtest_default",
+      "price_trading_days": "backtest_default"
+    }
+  },
+  "required_fields": {
+    "identity": [
+      "symbol",
+      "industry",
+      "business_model",
+      "as_of_timestamp"
+    ],
+    "monthly_revenue": [
+      "period",
+      "revenue",
+      "yoy_pct",
+      "mom_pct",
+      "cumulative_yoy_pct",
+      "published_at"
+    ],
+    "quarterly_income": [
+      "revenue",
+      "gross_profit",
+      "gross_margin_pct",
+      "operating_expenses",
+      "operating_income",
+      "operating_margin_pct",
+      "non_operating_income",
+      "pre_tax_income",
+      "net_income",
+      "eps",
+      "published_at"
+    ],
+    "quarterly_balance_sheet": [
+      "inventory",
+      "contract_liabilities",
+      "paid_in_capital",
+      "total_assets",
+      "total_liabilities",
+      "current_assets",
+      "current_liabilities",
+      "quick_assets",
+      "accounts_payable",
+      "interest_bearing_debt"
+    ],
+    "context": [
+      "peer_symbols",
+      "upstream_symbols",
+      "downstream_symbols",
+      "inventory_regime",
+      "demand_direction",
+      "product_price_direction",
+      "shipment_quantity_direction",
+      "order_backlog_direction",
+      "customer_deposit_terms_changed",
+      "fx_exposure_ratio",
+      "usd_twd_yoy_pct",
+      "main_commodity_yoy_pct",
+      "guidance_revenue_low",
+      "guidance_revenue_high",
+      "guidance_fx_assumption",
+      "recurring_revenue_ratio",
+      "high_margin_product_mix_direction"
+    ]
+  },
+  "parameters": {
+    "revenue": {
+      "positive_growth_pct": 0.0,
+      "positive_streak_months": 2,
+      "deceleration_warning_pp": 10.0,
+      "seasonal_zscore_positive": 1.0,
+      "peer_min_count": 3,
+      "peer_breadth_ratio": 0.6,
+      "guidance_required_run_rate_multiple_warning": 1.25,
+      "sources": {
+        "positive_growth_pct": "course_derived",
+        "positive_streak_months": "course_derived",
+        "deceleration_warning_pp": "backtest_default",
+        "seasonal_zscore_positive": "backtest_default",
+        "peer_min_count": "course_explicit",
+        "peer_breadth_ratio": "backtest_default",
+        "guidance_required_run_rate_multiple_warning": "backtest_default"
+      }
+    },
+    "profitability": {
+      "trend_quarters": 3,
+      "non_operating_share_warning": 0.3,
+      "sources": {
+        "trend_quarters": "course_derived",
+        "non_operating_share_warning": "backtest_default"
+      }
+    },
+    "contract_liabilities": {
+      "capital_ratio_min": 0.05,
+      "trend_quarters": 2,
+      "lead_quarters_min": 1,
+      "lead_quarters_max": 3,
+      "sources": {
+        "capital_ratio_min": "course_explicit",
+        "trend_quarters": "course_derived",
+        "lead_quarters_min": "course_explicit",
+        "lead_quarters_max": "course_explicit"
+      }
+    },
+    "liquidity": {
+      "preferred_ratio": 2.0,
+      "concern_ratio": 1.0,
+      "current_quick_gap_warning": 0.5,
+      "sources": {
+        "preferred_ratio": "course_explicit",
+        "concern_ratio": "course_explicit",
+        "current_quick_gap_warning": "backtest_default"
+      }
+    },
+    "price": {
+      "preannouncement_runup_days": 20,
+      "preannouncement_runup_warning_pct": 30.0,
+      "sources": {
+        "preannouncement_runup_days": "backtest_default",
+        "preannouncement_runup_warning_pct": "backtest_default"
+      }
+    },
+    "score_cutoffs": {
+      "priority_candidate": 70,
+      "candidate": 55,
+      "watch": 40,
+      "source": "backtest_default"
+    }
+  },
+  "formulas": {
+    "jan_feb_yoy_pct": "100 * (sum(revenue[current_year, Jan:Feb]) / sum(revenue[prior_year, Jan:Feb]) - 1)",
+    "constant_currency_yoy_pct": "reported_yoy_pct - fx_exposure_ratio * usd_twd_yoy_pct",
+    "guidance_attainment": "quarter_to_date_revenue / guidance_target",
+    "guidance_required_run_rate": "(guidance_target - quarter_to_date_revenue) / remaining_months",
+    "gross_margin_pct": "100 * gross_profit / revenue",
+    "operating_margin_pct": "100 * operating_income / revenue",
+    "non_operating_share": "abs(non_operating_income) / max(abs(pre_tax_income), epsilon)",
+    "inventory_turnover": "ttm_cogs / average_inventory",
+    "contract_liability_capital_ratio": "contract_liabilities / paid_in_capital",
+    "contract_liability_revenue_ratio": "contract_liabilities / ttm_revenue",
+    "debt_ratio": "total_liabilities / total_assets",
+    "current_ratio": "current_assets / current_liabilities",
+    "quick_ratio": "quick_assets / current_liabilities"
+  },
+  "industry_routes": {
+    "standard_manufacturing": {
+      "enabled_modules": [
+        "revenue",
+        "profitability",
+        "contract_liabilities",
+        "inventory",
+        "liquidity",
+        "valuation"
+      ]
+    },
+    "component_shortage": {
+      "inventory_increase_positive_only_if": [
+        "demand_direction == 'up'",
+        "order_backlog_direction == 'up'",
+        "critical_component_shortage == true",
+        "peer_inventory_breadth_confirmed == true"
+      ]
+    },
+    "destocking_3c": {
+      "inventory_focus": [
+        "inventory_turnover_direction",
+        "inventory_yoy_pct",
+        "gross_margin_direction",
+        "contract_liability_direction"
+      ],
+      "inventory_increase_default": "negative"
+    },
+    "commodity_cyclical": {
+      "required_context": [
+        "main_commodity_yoy_pct",
+        "demand_direction",
+        "price_pass_through_evidence"
+      ],
+      "valuation_method": "normalized_earnings_or_price_to_book"
+    },
+    "project_construction": {
+      "disable_rules": [
+        "monthly_revenue_continuity_hard_gate"
+      ],
+      "disabled_score_rules": [
+        "REV_TWO_MONTH_POSITIVE",
+        "REV_ACCELERATION",
+        "SEASONAL_POSITIVE_SURPRISE"
+      ],
+      "required_context": [
+        "project_completion_schedule",
+        "order_backlog_direction",
+        "contract_liability_direction"
+      ]
+    },
+    "license_or_milestone": {
+      "disable_rules": [
+        "raw_yoy_low_base_bonus"
+      ],
+      "required_context": [
+        "recurring_revenue_ratio",
+        "license_revenue_classification"
+      ]
+    },
+    "retail_supplier_financed": {
+      "disable_rules": [
+        "current_ratio_hard_gate",
+        "quick_ratio_hard_gate"
+      ],
+      "disabled_score_rules": [
+        "LIQUIDITY_HEALTHY",
+        "LOW_INVENTORY_LIQUIDITY_DEPENDENCE"
+      ],
+      "positive_exception_requires": [
+        "accounts_payable_growth_explains_liability_growth == true",
+        "cash_direction != 'down_sharply'",
+        "operating_cash_flow_ttm > 0",
+        "interest_bearing_debt_not_worsening == true"
+      ]
+    },
+    "funeral_prepaid": {
+      "disable_rules": [
+        "contract_liability_revenue_lead"
+      ],
+      "disabled_score_rules": [
+        "CONTRACT_LIABILITY_SIGNIFICANT",
+        "CONTRACT_LIABILITY_RISING"
+      ]
+    },
+    "financial": {
+      "result": "needs_review",
+      "reason": "Course rules do not adequately cover financial institutions."
+    }
+  },
+  "score_dimensions": {
+    "revenue_momentum_quality": {
+      "max_points": 30,
+      "rules": [
+        {
+          "id": "REV_TWO_MONTH_POSITIVE",
+          "points": 5,
+          "when": "latest_n(monthly_revenue.yoy_pct, 2) > positive_growth_pct",
+          "source": "course_derived"
+        },
+        {
+          "id": "REV_ACCELERATION",
+          "points": 5,
+          "when": "slope(latest_n(monthly_revenue.yoy_pct, 3)) > 0",
+          "source": "course_derived"
+        },
+        {
+          "id": "SEASONAL_POSITIVE_SURPRISE",
+          "points": 5,
+          "when": "seasonal_revenue_zscore >= seasonal_zscore_positive",
+          "source": "backtest_default"
+        },
+        {
+          "id": "PEER_BREADTH",
+          "points": 5,
+          "when": "peer_positive_count >= peer_min_count and peer_positive_ratio >= peer_breadth_ratio",
+          "source": "course_explicit_and_backtest_default"
+        },
+        {
+          "id": "CONSTANT_CURRENCY_GROWTH",
+          "points": 4,
+          "when": "constant_currency_yoy_pct > 0",
+          "source": "course_derived"
+        },
+        {
+          "id": "GUIDANCE_ON_TRACK",
+          "points": 6,
+          "when": "guidance_status in ['on_track', 'likely_beat']",
+          "source": "course_derived"
+        }
+      ]
+    },
+    "profitability_quality": {
+      "max_points": 25,
+      "rules": [
+        {
+          "id": "GROSS_MARGIN_RISING",
+          "points": 7,
+          "when": "strictly_rising(latest_n(gross_margin_pct, 3))",
+          "source": "course_derived"
+        },
+        {
+          "id": "OPERATING_MARGIN_RISING",
+          "points": 5,
+          "when": "slope(latest_n(operating_margin_pct, 3)) > 0",
+          "source": "course_derived"
+        },
+        {
+          "id": "RECURRING_EPS_POSITIVE",
+          "points": 5,
+          "when": "recurring_eps_ttm > 0",
+          "source": "course_derived"
+        },
+        {
+          "id": "HIGH_MARGIN_PRODUCT_MIX",
+          "points": 4,
+          "when": "high_margin_product_mix_direction == 'up'",
+          "source": "manual_evidence"
+        },
+        {
+          "id": "LOW_NON_OPERATING_DEPENDENCE",
+          "points": 4,
+          "when": "non_operating_share < non_operating_share_warning",
+          "source": "backtest_default"
+        }
+      ]
+    },
+    "leading_indicators": {
+      "max_points": 25,
+      "rules": [
+        {
+          "id": "CONTRACT_LIABILITY_SIGNIFICANT",
+          "points": 5,
+          "when": "contract_liability_capital_ratio >= 0.05",
+          "source": "course_explicit"
+        },
+        {
+          "id": "CONTRACT_LIABILITY_RISING",
+          "points": 7,
+          "when": "strictly_rising(latest_n(contract_liabilities, 2)) and customer_deposit_terms_changed != true",
+          "source": "course_derived"
+        },
+        {
+          "id": "INVENTORY_REGIME_POSITIVE",
+          "points": 7,
+          "when": "inventory_signal == 'positive'",
+          "source": "course_derived"
+        },
+        {
+          "id": "SUPPLY_CHAIN_CONFIRMATION",
+          "points": 6,
+          "when": "peer_or_supply_chain_breadth_confirmed == true",
+          "source": "course_explicit"
+        }
+      ]
+    },
+    "balance_sheet_risk": {
+      "max_points": 10,
+      "rules": [
+        {
+          "id": "LIQUIDITY_HEALTHY",
+          "points": 4,
+          "when": "current_ratio >= 2.0 and quick_ratio >= 2.0",
+          "source": "course_explicit"
+        },
+        {
+          "id": "DEBT_COMPOSITION_HEALTHY",
+          "points": 3,
+          "when": "debt_composition_signal == 'healthy'",
+          "source": "course_derived"
+        },
+        {
+          "id": "LOW_INVENTORY_LIQUIDITY_DEPENDENCE",
+          "points": 3,
+          "when": "current_ratio - quick_ratio <= current_quick_gap_warning",
+          "source": "backtest_default"
+        }
+      ]
+    },
+    "valuation_and_price": {
+      "max_points": 10,
+      "rules": [
+        {
+          "id": "RELATIVE_VALUATION_ATTRACTIVE",
+          "points": 5,
+          "when": "valuation_percentile_within_industry <= 0.4 and normalized_earnings_available == true",
+          "source": "backtest_default"
+        },
+        {
+          "id": "NO_PREANNOUNCEMENT_RUNUP",
+          "points": 5,
+          "when": "preannouncement_runup_pct < preannouncement_runup_warning_pct",
+          "source": "backtest_default"
+        }
+      ]
+    }
+  },
+  "penalties": [
+    {
+      "id": "REVENUE_DECELERATION",
+      "points": -8,
+      "when": "latest_yoy_pct <= mean(previous_3_yoy_pct) - deceleration_warning_pp",
+      "source": "backtest_default"
+    },
+    {
+      "id": "LOW_BASE_OR_ONE_OFF_REVENUE",
+      "points": -10,
+      "when": "recurring_revenue_ratio < 0.5 or one_off_revenue_flag == true",
+      "source": "course_derived_and_backtest_default"
+    },
+    {
+      "id": "RAW_MATERIAL_REVENUE_INFLATION",
+      "points": -6,
+      "when": "reported_yoy_pct > 0 and gross_profit_yoy_pct <= 0",
+      "source": "course_derived"
+    },
+    {
+      "id": "GUIDANCE_LIKELY_MISS",
+      "points": -10,
+      "when": "guidance_status == 'likely_miss'",
+      "source": "course_derived"
+    },
+    {
+      "id": "CONTRACT_LIABILITY_FALLING",
+      "points": -8,
+      "when": "contract_liability_direction == 'down' and customer_deposit_terms_changed != true",
+      "source": "course_derived"
+    },
+    {
+      "id": "DESTOCKING_RISK",
+      "points": -8,
+      "when": "inventory_direction == 'up' and inventory_turnover_direction == 'down' and demand_direction != 'up'",
+      "source": "course_derived"
+    },
+    {
+      "id": "HIGH_PRICE_INVENTORY_RISK",
+      "points": -8,
+      "when": "inventory_direction == 'up' and main_commodity_direction == 'down' and gross_margin_direction == 'down'",
+      "source": "course_derived"
+    },
+    {
+      "id": "NON_OPERATING_DEPENDENCE",
+      "points": -6,
+      "when": "non_operating_share >= non_operating_share_warning",
+      "source": "backtest_default"
+    },
+    {
+      "id": "PREANNOUNCEMENT_RUNUP",
+      "points": -5,
+      "when": "preannouncement_runup_pct >= preannouncement_runup_warning_pct",
+      "source": "backtest_default"
+    }
+  ],
+  "result_policy": {
+    "priority_candidate_requires": [
+      "score >= 70",
+      "critical_data_complete == true",
+      "industry_route_resolved == true",
+      "manual_evidence_pending == false",
+      "one_off_revenue_unresolved == false"
+    ],
+    "candidate": "score >= 55",
+    "watch": "score >= 40",
+    "exclude": "score < 40",
+    "never_emit": [
+      "automatic_buy_order",
+      "automatic_position_size"
+    ]
+  },
+  "existing_project_discrepancies": {
+    "revenue_group_2_decline_limit_pct": {
+      "current_code": -15.0,
+      "legacy_written_spec": -5.0,
+      "course_video": null,
+      "action": "Compare -5 and -15 with walk-forward out-of-sample tests before changing production."
+    }
+  }
+}

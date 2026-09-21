@@ -260,7 +260,6 @@ class BotWatchdogTests(unittest.TestCase):
     def test_windows_batch_entries_use_crlf_line_endings(self):
         for path in (
             Path("啟動機器人.bat"),
-            Path("啟動機器人_watchdog.bat"),
             Path("停止機器人.bat"),
         ):
             data = path.read_bytes()

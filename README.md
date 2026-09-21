@@ -618,7 +618,6 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 - watchdog 使用 `.runtime/bot_watchdog.pid` 防止重複啟動；重複執行 `啟動機器人.bat` 不會建立第二個有效 watchdog。
 - watchdog 健康檢查與重啟原因會寫入 `logs/watchdog/watchdog.log`，單檔達 2 MB 後輪替，最多保留 3 份舊檔。
 - 需要完整關閉 Bot 與背景 watchdog 時，請執行 `停止機器人.bat`。只關閉 runner 視窗會被 watchdog 視為 Bot 停止，之後會自動重啟。
-- `啟動機器人_watchdog.bat` 只保留相容性；日常仍以 `啟動機器人.bat` 為唯一入口。
 - 若只想手動觀察狀態，可查看 `.runtime/bot_heartbeat.json` 的 `updated_at` 是否持續更新，以及 `last_scheduled_event` 是否記錄最近觸發的定時任務。
 
 ### 手動指令與定期任務差異

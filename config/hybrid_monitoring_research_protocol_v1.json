@@ -1,0 +1,51 @@
+{
+  "protocol_version": "hybrid-monitoring-research-protocol-v1",
+  "status": "FINAL_RESEARCH_LOCKED",
+  "classification": "RESEARCH_BACKTEST_NOT_COURSE_VALIDATED",
+  "semantic_output_protocol_version": "hybrid-monitoring-protocol-v2",
+  "strategy_rule_version": "ENLIGHTENMENT_AI_JUDGEMENT_V3_UNCHANGED",
+  "candidate_universe": "HYBRID_MONITORING_CANDIDATE3",
+  "as_of_period": {
+    "monitoring_start": "2023-06-01",
+    "monitoring_end": "2024-02-02"
+  },
+  "execution": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "same_prompt_schema_policy_for_every_case": true,
+    "ai_role": "ATOMIC_STRUCTURE_SEMANTICS_ONLY",
+    "ai_may_decide_trade_permission_or_position_size": false,
+    "programmatic_policy_decides_permission": true
+  },
+  "causal_guards": {
+    "identity_hidden": true,
+    "future_data_hidden": true,
+    "performance_hidden_until_full_semantic_ledger_locked": true,
+    "prior_ai_outputs_hidden": true,
+    "outcome_may_not_relabel_this_run": true
+  },
+  "validation_sequence": [
+    "LOCK_OUTCOME_BLIND_CANDIDATE3_SOURCE",
+    "LOCK_PRIMARY_AND_TWO_RESERVE_BLOCKS",
+    "THREE_RUN_REPEATABILITY_ON_PRIMARY",
+    "LOCK_FULL_SEMANTIC_LEDGER",
+    "UNSEAL_HISTORICAL_PERFORMANCE"
+  ],
+  "repeatability_acceptance": {
+    "schema_and_causal_fields": 1.0,
+    "material_permission": 0.95,
+    "scenario_and_left_right_phase": 0.9,
+    "unsupported_disagreement_policy": "DOWNGRADE_TO_UNKNOWN_AND_NO_TRADE"
+  },
+  "course_correctness": {
+    "human_course_gold_status": "DEFERRED_BY_USER_FOR_INITIAL_PERFORMANCE_CHECK",
+    "course_fidelity_claim_allowed": false,
+    "human_review_artifacts_may_be_completed_later": true
+  },
+  "permitted_claim": "AI_OPERATIONAL_RESEARCH_BACKTEST_ONLY",
+  "forbidden_claims": [
+    "COURSE_VALIDATED",
+    "FORMAL_PRODUCTION_READY",
+    "PROVEN_FUTURE_PROFITABLE"
+  ]
+}

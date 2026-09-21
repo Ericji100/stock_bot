@@ -1,0 +1,50 @@
+{
+  "execution_version": "hybrid-v3-execution-freeze-v1",
+  "status": "FROZEN_BEFORE_FORMAL_CONSISTENCY_RESTART_AND_PERFORMANCE_UNSEAL",
+  "semantic_protocol_version": "hybrid-monitoring-protocol-v1",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "execution": {
+    "signal_basis": "DAILY_CLOSE",
+    "fill": "NEXT_TRADING_DAY_OPEN",
+    "nominal_twd_per_tranche": 10000.0,
+    "maximum_chase_atr14": 0.5,
+    "chase_tick_tolerance": 1,
+    "cancel_if_adjusted_open_lte_stop": true,
+    "same_stock_same_signal_day_deduplication": true
+  },
+  "costs": {
+    "buy_commission_rate": 0.001425,
+    "sell_commission_rate": 0.001425,
+    "sell_tax_rate": 0.003
+  },
+  "position_variants": {
+    "V3_FIXED_10K": {"maximum_tranches": 1},
+    "V3_ADD2_10K": {
+      "maximum_tranches": 3,
+      "maximum_adds": 2,
+      "requires_positive_net_liquidation_pnl_at_signal_close": true,
+      "requires_later_signal_day": true,
+      "requires_unused_independent_structure_key": true
+    }
+  },
+  "reentry": {
+    "same_campaign_requires_unused_independent_structure_key": true,
+    "campaign_key_reset_requires_upstream_reselection_after_removal": true
+  },
+  "profit_protect": {
+    "activation": "INTRADAY_HIGH_REACHES_MOTHER_ENTRY_PLUS_2R",
+    "pre_activation_exit": "CLOSE_BELOW_DYNAMIC_OR_POSITION_DEFENSE",
+    "activation_floor": "WEIGHTED_ADJUSTED_ENTRY_COST",
+    "post_activation_exit": ["CLOSE_BELOW_DYNAMIC_OR_POSITION_DEFENSE", "TWO_CONSECUTIVE_CLOSES_BELOW_MA21"],
+    "small_pivot_break_alone": "WARNING_ONLY",
+    "defenses_never_decrease": true
+  },
+  "corporate_actions": {
+    "technical_coordinate": "ADJUSTED_PRICE",
+    "cash_coordinate": "RAW_PRICE",
+    "cash_dividend_before_same_day_execution": true,
+    "split_share_adjustment_before_same_day_execution": true,
+    "unresolved_action_policy": "FAIL_CLOSED"
+  }
+}

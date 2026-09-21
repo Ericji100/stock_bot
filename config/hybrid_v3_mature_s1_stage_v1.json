@@ -1,0 +1,85 @@
+{
+  "stage_protocol_version": "hybrid-v3-mature-s1-stage-v1",
+  "status": "REJECTED_PREFLIGHT_INFEASIBLE",
+  "classification": "OUTCOME_BLIND_SAMPLING_PREFLIGHT_REJECTED_NO_AI_RUN",
+  "rejection_reason": "MATURE_MACRO_DEFENSE_INVALIDATED had zero eligible source cases; allocation reached 32 of 36 before any AI execution",
+  "superseded_by": "hybrid-v3-mature-s1-stage-v2",
+  "target": {
+    "primary_scenario": "MATURE_TREND_PULLBACK",
+    "trade_route": "V2_CORE",
+    "label_zh": "長多慣性拉回再發動完整合格",
+    "other_scenarios_are_negative_controls": true,
+    "other_v3_routes_suspended": true
+  },
+  "source": {
+    "stocks": 1029,
+    "monitoring_start": "2023-06-01",
+    "monitoring_end": "2024-02-02",
+    "event_driven": true,
+    "outcome_blind": true,
+    "identity_visible": false,
+    "future_or_performance_visible": false
+  },
+  "consistency_sample": {
+    "seed": "HYBRID_V3_MATURE_S1_20260908_V1",
+    "runs": 3,
+    "cases": 36,
+    "one_case_per_anonymous_stock": true,
+    "minimum_distinct_months": 6,
+    "maximum_cases_per_month": 9,
+    "focus_order": [
+      "MATURE_OBJECTIVE_PROXY",
+      "COMPETING_MACRO_ONLY",
+      "COMPETING_FRESH_ONLY",
+      "COMPETING_BEAR_ONLY",
+      "MATURE_MACRO_DEFENSE_INVALIDATED",
+      "WAIT_NO_CAUSAL_STOP",
+      "WAIT_MATERIAL_CONFLICT"
+    ],
+    "quotas": {
+      "MATURE_OBJECTIVE_PROXY": 12,
+      "COMPETING_MACRO_ONLY": 4,
+      "COMPETING_FRESH_ONLY": 4,
+      "COMPETING_BEAR_ONLY": 4,
+      "MATURE_MACRO_DEFENSE_INVALIDATED": 4,
+      "WAIT_NO_CAUSAL_STOP": 4,
+      "WAIT_MATERIAL_CONFLICT": 4
+    },
+    "sampling_focus_is_validation_only": true,
+    "sampling_focus_must_not_enter_ai_packet": true,
+    "all_scenario_hypotheses_remain_visible_to_ai": true
+  },
+  "repeatability_acceptance": {
+    "schema_and_causal_fields": 1.0,
+    "material_permission": 0.95,
+    "scenario_and_left_right_phase": 0.9,
+    "minimum_unanimous_s1_trade_cases": 3,
+    "minimum_unanimous_s1_nontrade_cases": 3
+  },
+  "disagreement_policy": "UNANIMOUS_ELSE_UNKNOWN_AND_NO_TRADE",
+  "sequence": [
+    "FREEZE_SINGLE_ROUTE_TRACK",
+    "RUN_THREE_WAY_REPEATABILITY",
+    "LOCK_CONSERVATIVE_COMMON_LEDGER",
+    "RUN_OUTCOME_BLIND_COURSE_FIDELITY_AUDIT",
+    "UNSEAL_V3_S1_FIXED_PERFORMANCE",
+    "IF_FIXED_CONCLUDED_THEN_RUN_V3_S1_ADD2",
+    "STOP_BEFORE_SCENARIO_2"
+  ],
+  "performance_acceptance": {
+    "minimum_completed_trades_for_directional_claim": 30,
+    "net_profit_after_costs_must_be_positive": true,
+    "minimum_profit_factor": 1.2,
+    "fixed_median_return_must_not_be_materially_negative": true,
+    "single_largest_winner_must_not_explain_all_profit": true,
+    "win_rate_is_diagnostic_not_a_gate": true
+  },
+  "position_order": [
+    "V3_S1_FIXED",
+    "V3_S1_ADD2"
+  ],
+  "budget_guard": {
+    "stop_when_remaining_percent_at_or_below": 20,
+    "preserve_resume_checkpoint": true
+  }
+}

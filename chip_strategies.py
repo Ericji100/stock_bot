@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import time
@@ -13,7 +13,7 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
-from candidate_filter_service import (
+from stock_ai_bot.selection.candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
     apply_basic_hard_filter,
     hard_filter_display_text,

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 def _load_api_key() -> str | None:

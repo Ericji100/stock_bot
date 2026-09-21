@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-import laoxiao_scan_service as lx
+import stock_ai_bot.selection.laoxiao_scan_service as lx
 from stock_ai_bot.market.market_risk_service import MarketRiskResult
 
 

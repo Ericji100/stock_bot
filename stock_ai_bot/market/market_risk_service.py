@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache" / "market_risk"
 SOURCE_URLS = {
     "twse_attention": "https://openapi.twse.com.tw/v1/announcement/notice",

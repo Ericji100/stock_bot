@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-import curated_scan_service as curated
+import stock_ai_bot.selection.curated_scan_service as curated
 import stock_ai_bot.monitoring.radar_service as radar_service
 from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 

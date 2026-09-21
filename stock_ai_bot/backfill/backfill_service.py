@@ -25,7 +25,7 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 from pathlib import Path
 from typing import Any, Callable
 
-from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
+from stock_ai_bot.selection.candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 
 DEFAULT_CORE_RESEARCH_LIMIT = 80
 DEFAULT_STRUCTURED_TIMEOUT_SECONDS = 30
@@ -58,7 +58,7 @@ from research_center.backfill_scheduler_service import build_backfill_priority_p
 from research_center.recent_scans import load_recent_scan_results
 from research_center.structured_cache import load_research_structured_cache
 from research_center.free_sources import warmup_valuation_history_cache
-from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
+from stock_ai_bot.selection.curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 from stock_ai_bot.scanning.stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
 from stock_ai_bot.scanning.technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
 from stock_ai_bot.market.market_risk_service import load_market_risk_map

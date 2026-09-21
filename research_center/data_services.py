@@ -16,7 +16,7 @@ from stock_ai_bot.market.market_summary import MarketSummaryError, build_morning
 from portfolio_manager import list_portfolio, resolve_stock_reference
 from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
 from chip_strategies import get_tw_today
-from curated_scan_service import (
+from stock_ai_bot.selection.curated_scan_service import (
     CURATED_SCAN_TYPE,
     build_curated_scan_result,
     find_cached_curated_scan,

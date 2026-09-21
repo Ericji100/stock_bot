@@ -3,7 +3,7 @@ import unittest
 import chip_strategies
 import stock_ai_bot.scanning.stock_scanner as stock_scanner
 
-from candidate_filter_service import (
+from stock_ai_bot.selection.candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
     apply_basic_hard_filter,
     hard_filter_display_text,

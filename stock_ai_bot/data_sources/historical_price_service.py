@@ -20,7 +20,7 @@ import yfinance as yf
 from stock_ai_bot.scanning.technical_indicator_service import INDICATOR_VERSION
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 HISTORICAL_PRICE_CACHE_DIR = ROOT_DIR / ".cache" / "historical_scan" / "daily_prices"
 REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
 

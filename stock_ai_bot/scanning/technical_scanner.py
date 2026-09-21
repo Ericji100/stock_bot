@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import time
 import re
@@ -21,7 +21,7 @@ from stock_ai_bot.scanning.stock_scanner import (
 )
 from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
 
-from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
+from stock_ai_bot.selection.candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 from progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 from stock_ai_bot.scanning.technical_indicator_service import (
@@ -36,7 +36,7 @@ from stock_ai_bot.scanning.technical_indicator_service import (
 )
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 TECH_CACHE_DIR = ROOT_DIR / ".cache" / "technical_daily"
 TECH_CACHE_TTL_SECONDS = 12 * 60 * 60
 HISTORY_DAYS = 320

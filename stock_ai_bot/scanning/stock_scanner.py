@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import math
@@ -16,7 +16,7 @@ import yfinance as yf
 
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 
-from candidate_filter_service import (
+from stock_ai_bot.selection.candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
     apply_basic_hard_filter,
     hard_filter_display_text,
@@ -27,7 +27,7 @@ from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 from unified_financial_scoring import effective_revenue_rows
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache"
 MONTHLY_CACHE_DIR = CACHE_DIR / "monthly_revenue"
 PRICE_CACHE_PATH = CACHE_DIR / "price_metrics.json"

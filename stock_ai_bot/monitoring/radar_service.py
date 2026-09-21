@@ -11,8 +11,8 @@ from typing import Any, Callable
 
 import pandas as pd
 
-import curated_scan_service
-import laoxiao_scan_service
+import stock_ai_bot.selection.curated_scan_service as curated_scan_service
+import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service
 import stock_ai_bot.scanning.technical_scanner as ts
 from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
 from stock_ai_bot.monitoring.monitor_service import get_monitor_stocks

@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from stock_ai_bot.backfill.backfill_service import warmup_market_screening_cache
 from chip_strategies import TARGET_DAILY_TRADING_DAYS, warmup_chip_data_cache
-from candidate_filter_service import resolve_hard_filter_settings
+from stock_ai_bot.selection.candidate_filter_service import resolve_hard_filter_settings
 from stock_ai_bot.scanning.stock_scanner import load_stock_universe, scan_tw_market
 
 

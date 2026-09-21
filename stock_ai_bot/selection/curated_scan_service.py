@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from candidate_filter_service import hard_filter_display_text, resolve_hard_filter_settings
+from stock_ai_bot.selection.candidate_filter_service import hard_filter_display_text, resolve_hard_filter_settings
 from chip_strategies import (
     CHIP_STRATEGY_NAMES,
     build_chip_grade_maps,
@@ -20,7 +20,7 @@ import stock_ai_bot.scanning.technical_scanner as ts
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"
 CURATED_SCAN_TYPE = "精選選股"
 CURATED_SCAN_ALIASES = {CURATED_SCAN_TYPE, "精選選股交叉命中", "curated"}

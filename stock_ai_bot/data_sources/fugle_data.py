@@ -17,7 +17,7 @@ from stock_ai_bot.data_sources.data_source_manager import SourceHealthManager, F
 _FUGLE_HEALTH = SourceHealthManager()
 _FUGLE_LIMITER = FugleRateLimiter()
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT_DIR / "config.json"
 FUGLE_HISTORICAL_CANDLES_URL = "https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/{symbol}"
 FUGLE_MIN_INTERVAL_SECONDS = 1.05

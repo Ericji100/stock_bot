@@ -9,8 +9,8 @@ from typing import Awaitable, Callable
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
-import curated_scan_service
-import laoxiao_scan_service
+import stock_ai_bot.selection.curated_scan_service as curated_scan_service
+import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service
 from stock_ai_bot.backfill.scheduled_all_scan_prepare_service import (
     format_scheduled_all_scan_prepare_message,
     prepare_scheduled_all_scan_data,

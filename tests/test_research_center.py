@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import curated_scan_service
+import stock_ai_bot.selection.curated_scan_service as curated_scan_service
 import research_center.recent_scans as recent_scans
 import research_center.orchestrator as orchestrator_module
 from research_center.command_parser import parse_command_text

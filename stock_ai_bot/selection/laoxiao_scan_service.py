@@ -18,7 +18,7 @@ from stock_ai_bot.scanning.technical_scanner import fetch_daily_history
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT_DIR / "config" / "laoxiao_scoring.json"
 SCAN_TYPE = "老蕭選股"
 SCORING_VERSION = "laoxiao_v1"

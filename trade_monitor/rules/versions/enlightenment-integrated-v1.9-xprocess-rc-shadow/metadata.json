@@ -1,0 +1,52 @@
+{
+  "version_id": "enlightenment-integrated-v1.9-xprocess-rc-shadow",
+  "purpose": "Integrate the X-course decision process into the existing single monitoring system in isolated RC Shadow mode",
+  "source": [
+    "enlightenment-integrated-v1.8-cclass",
+    "course_knowledge_base\\X戰法班\\整理成果\\X戰法班_完整課程整理.md",
+    "course_knowledge_base\\X戰法班\\整理成果\\X戰法班_一頁複習速查表.md",
+    "course_knowledge_base\\X戰法班\\整理成果\\來源索引與圖片說明.md"
+  ],
+  "prompt_sha256": "fbdd80a6c68294c110d3ba269e4ebfbe481316377bdcc7a7923ddb26db2174ec",
+  "prompt_utf8_bytes": 106474,
+  "analysis_rules_version": "enlightenment-integrated-v1.9-xprocess-rc-shadow-analysis",
+  "analysis_rules_sha256": "db3b4b27c289f3be8a6b5d2f80282b10eddbd45fd9d67cbb652644058f49bef9",
+  "compatible_schema_version": "trade-monitor-analysis-v7",
+  "schema_sha256": "50bce9344459eb20a36a771a4e8f48beb89dcf7a45c09f042b86c4912f7bc564",
+  "contract_version": 7,
+  "market_structure_state_version": 5,
+  "decision_chain_context_version": 1,
+  "cclass_context_version": 1,
+  "anchor_context_version": 1,
+  "dual_scale_state_version": 1,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "ab6d83e1d41c6620e4dd19a940990257f7db8b291913bd90714da09b4481014d",
+  "restore_point": "pre-xprocess-v1.8-20260902",
+  "status": "rc_shadow_validated_requires_forward_observation",
+  "created_at": "2026-09-02T20:36:10+08:00",
+  "replay": {
+    "source_bars": 22791,
+    "day_sessions": 20,
+    "day_bars": 5991,
+    "n2_confirmed_legs": 809,
+    "n3_confirmed_legs": 664,
+    "causal_endpoint_samples": 20,
+    "report": "trade_monitor/reports/xprocess-v19-n2-n3-2026-08.md"
+  },
+  "isolated_shadow": {
+    "valid_cycles": 3,
+    "analysis_seconds": [70.061, 71.955, 98.27],
+    "average_analysis_seconds": 80.095,
+    "telegram_status": "dry_run",
+    "state_v5_persisted": true,
+    "dual_scale_overview_status": "UNAVAILABLE"
+  },
+  "formal_environment_preserved": {
+    "active_version": "enlightenment-integrated-v1.8-cclass",
+    "automation_status": "PAUSED",
+    "automation_toml_sha256": "882e6f1d514cf4caa7ff665fbe407c2d9ac3a06bd3926c54722d6106ce53b4fd",
+    "formal_scheduler_config_sha256": "c6f7925518ad13611694e62f12b96cd09f61cad6f0fbfae65359f3a6d8dfbcea",
+    "active_version_file_sha256": "c67ab5b24346d3d90e94a924d4079a025cd601a1c013ab04750d1089d50aac27"
+  },
+  "description": "X is implemented as an ordered evidence and setup-quality decision chain inside the existing four-pattern, nine-section, one-contract system. This RC is validated but not formally deployed; multi-day forward Shadow remains pending."
+}

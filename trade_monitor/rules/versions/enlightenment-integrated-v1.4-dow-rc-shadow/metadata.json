@@ -1,0 +1,52 @@
+{
+  "version_id": "enlightenment-integrated-v1.4-dow-rc-shadow",
+  "status": "rc_shadow",
+  "purpose": "Validate Dow pivot persistence and n=2/n=3 causal replay without changing active monitoring",
+  "parent_analysis_rules_version": "enlightenment-integrated-v1.1",
+  "parent_analysis_rules_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "source": [
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-dow-three-brothers-integrated-draft.md",
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-dow-three-brothers-integration-review.md"
+  ],
+  "source_sha256": {
+    "integrated_draft": "8a1eede92cbec85f03f7ae21d56c522083c2393dfc58908e389281768f86c8a4",
+    "integration_review": "be7ced157180edd65dcd8204fab6801e1b4b3ca7b56f9f0d32c3bd3a244dc66d"
+  },
+  "prompt_sha256": "b548da14946f46fe2693d5c1e44625d7a406efa800d85fc457a5c0fef8be7820",
+  "prompt_utf8_bytes": 51827,
+  "compatible_schema_version": "trade-monitor-analysis-v3",
+  "schema_sha256": "12b5c54df45aee539ea640e594f1958fc06509a8a2b2f20b898164c61cae3b43",
+  "contract_version": 3,
+  "market_structure_state_version": 1,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "local_scheduler_config_version": 1,
+  "replay": {
+    "source_bars": 22791,
+    "source_period": "2026-08",
+    "n2_local_pivots": 5101,
+    "n3_local_pivots": 3680,
+    "common_local_pivots": 3680,
+    "n2_only_local_pivots": 1421,
+    "n3_only_local_pivots": 0,
+    "jaccard": 0.7214,
+    "report_sha256": "5844f91a53dcb7490c8bab2556c38fcab8cd6683f1379d421e2d25215134cf58"
+  },
+  "automation": {
+    "automation_id": "1-k",
+    "changed_by_this_version": false,
+    "formal_status_preserved": true,
+    "telegram_delivery_enabled": false,
+    "runtime_isolated": true
+  },
+  "validation": {
+    "status": "passed_for_formal_candidate_creation",
+    "test_count": 105,
+    "consecutive_shadow_cycles": 5,
+    "non_empty_pivot_persistence_verified": true,
+    "telegram_sent": false,
+    "report_sha256": "33fb3c5ba400ccb4a579ef0256f9d1edfbec3de0f947bcff65f9ccb0d437ca32"
+  },
+  "created_at": "2026-09-02T12:09:08.2062151+08:00",
+  "description": "RC shadow version: v3 internal market_structure_state, atomic pivot/defense persistence, causal n=2/n=3 replay, and unchanged nine-field rendering."
+}

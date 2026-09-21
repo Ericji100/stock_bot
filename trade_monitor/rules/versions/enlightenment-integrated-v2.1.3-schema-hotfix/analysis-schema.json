@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trade-monitor-analysis-v8",
+  "$defs": {
+    "textList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "strategyMethod": {
+      "type": "string",
+      "enum": [
+        "NONE",
+        "OPENING_RANGE_BREAKOUT_RETEST",
+        "TREND_PULLBACK_CONTINUATION",
+        "INTRADAY_COMPRESSION_BREAKOUT",
+        "FALSE_BREAK_REVERSAL",
+        "QUADRANT_Q1_MOMENTUM_BREAKOUT",
+        "QUADRANT_Q2_COUNTER_PULLBACK",
+        "QUADRANT_Q3_QUALIFIED_BOX",
+        "QUADRANT_Q4_TREND_ZONE",
+        "BOX_QUALIFIED_BOUNDARY_BREAK",
+        "BOX_FALSE_BREAK_REVERSAL",
+        "DOW_SECONDARY_RETEST",
+        "DOW_TYPE2_REVERSAL",
+        "DOW_TYPE3_REVERSAL",
+        "LEFT_LEFT_REVERSAL",
+        "LEFT_RIGHT_REVERSAL",
+        "RIGHT_LEFT_RETEST",
+        "RIGHT_RIGHT_CONTINUATION",
+        "TAIJI_COPY_AFTER_CORRECTION",
+        "TAIJI_REANCHOR_AFTER_FAILURE",
+        "YIZHI_CENTRIFUGAL",
+        "YIZHI_DRAGON_EARLY",
+        "YIZHI_LIFE_DEATH_GATE"
+      ]
+    },
+    "pivot": {
+      "type": "object",
+      "properties": {
+        "pivot_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "kind": {"type": "string", "enum": ["HIGH", "LOW"]},
+        "state": {"type": "string", "enum": ["CANDIDATE", "LOCAL_CONFIRMED", "PAIRED_CONFIRMED", "INVALIDATED", "REPLACED"]},
+        "bar_time": {"type": "string", "format": "date-time"},
+        "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "first_seen_at": {"type": "string", "format": "date-time"},
+        "locally_confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "paired_confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "terminal_at": {"type": ["string", "null"], "format": "date-time"},
+        "replaced_by": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "proportionality": {"type": "string", "enum": ["NORMAL", "MICRO", "SUSPECT", "UNKNOWN"]}
+      },
+      "required": ["pivot_id", "kind", "state", "bar_time", "price_estimate", "first_seen_at", "locally_confirmed_at", "paired_confirmed_at", "terminal_at", "replaced_by", "proportionality"],
+      "additionalProperties": false
+    },
+    "defense": {
+      "type": ["object", "null"],
+      "properties": {
+        "direction": {"type": "string", "enum": ["BULL", "BEAR"]},
+        "pivot_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "qualified_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+        "ended_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["direction", "pivot_id", "price_estimate", "qualified_at", "status", "ended_at"],
+      "additionalProperties": false
+    },
+    "priceZone": {
+      "type": "object",
+      "properties": {
+        "low": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "high": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "reliability": {"type": "string", "enum": ["DIRECT", "ESTIMATED", "UNAVAILABLE"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 160}
+      },
+      "required": ["low", "high", "reliability", "reason"],
+      "additionalProperties": false
+    },
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "anchor_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "grade": {"type": "string", "enum": ["LARGE", "SMALL"]},
+        "direction": {"type": "string", "enum": ["BULL", "BEAR"]},
+        "status": {"type": "string", "enum": ["FORMING", "CONFIRMED", "INVALIDATED", "REPLACED"]},
+        "source": {"type": "string", "enum": ["OPENING_FIRST_VALID", "OR_BREAK", "SESSION_EXTREME_BREAK", "STRUCTURE_BREAK", "DEFENSE_BREAK", "TYPE_3_DOUBLE_DEFENSE", "HEAD_BOTTOM_SEQUENCE"]},
+        "start_bar_time": {"type": "string", "format": "date-time"},
+        "extreme_bar_time": {"type": "string", "format": "date-time"},
+        "start_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "extreme_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "first_seen_at": {"type": "string", "format": "date-time"},
+        "confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "terminal_at": {"type": ["string", "null"], "format": "date-time"},
+        "replaced_by": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "quality": {"type": "string", "enum": ["CLEAN", "CAUTION", "UNQUALIFIED", "UNKNOWN"]},
+        "destructive_evidence": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["NONE", "OPENING_DIRECTION_HOLD", "OR_BREAK", "SESSION_EXTREME_BREAK", "STRUCTURE_BREAK", "SMALL_DEFENSE_BREAK", "LARGE_DEFENSE_BREAK", "TYPE_3_DOUBLE_DEFENSE", "HEAD_BOTTOM_SEQUENCE"]},
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "invalidation_zone": {"$ref": "#/$defs/priceZone"},
+        "parent_anchor_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}, "minItems": 1, "maxItems": 3}
+      },
+      "required": ["anchor_id", "grade", "direction", "status", "source", "start_bar_time", "extreme_bar_time", "start_price_estimate", "extreme_price_estimate", "first_seen_at", "confirmed_at", "terminal_at", "replaced_by", "quality", "destructive_evidence", "invalidation_zone", "parent_anchor_id", "notes"],
+      "additionalProperties": false
+    },
+    "anchorContext": {
+      "type": "object",
+      "properties": {
+        "anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}, "maxItems": 32},
+        "active_large_anchor_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "active_small_anchor_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "controlling_grade": {"type": "string", "enum": ["LARGE", "SMALL", "UNDEFINED"]},
+        "grade_relation": {"type": "string", "enum": ["ALIGNED", "CONFLICT", "ONLY_LARGE", "ONLY_SMALL", "UNDEFINED"]},
+        "control_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "control_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "trend_dynamics": {"type": "string", "enum": ["INCREASING", "DECREASING", "UNCLEAR"]},
+        "volatility_dynamics": {"type": "string", "enum": ["EXPANDING", "CONTRACTING", "UNSTABLE", "UNCLEAR"]},
+        "working_quadrant": {"type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "TRANSITION", "UNDEFINED"]},
+        "primary_quadrant_candidate": {"type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "UNDEFINED"]},
+        "secondary_quadrant_candidate": {"type": ["string", "null"], "enum": ["Q1", "Q2", "Q3", "Q4", null]},
+        "eliminated_quadrants": {"type": "array", "items": {"type": "string", "enum": ["Q1", "Q2", "Q3", "Q4"]}, "maxItems": 4},
+        "quadrant_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "quadrant_changed_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["anchors", "active_large_anchor_id", "active_small_anchor_id", "controlling_grade", "grade_relation", "control_reason", "control_changed_at", "trend_dynamics", "volatility_dynamics", "working_quadrant", "primary_quadrant_candidate", "secondary_quadrant_candidate", "eliminated_quadrants", "quadrant_reason", "quadrant_changed_at"],
+      "additionalProperties": false
+    },
+    "setupContext": {
+      "type": "object",
+      "properties": {
+        "setup_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "pattern": {"$ref": "#/$defs/strategyMethod"},
+        "direction": {"type": ["string", "null"], "enum": ["LONG", "SHORT", null]},
+        "stage": {"type": "string", "enum": ["NONE", "FORMING", "ARMED", "AGGRESSIVE_CONFIRMED", "CONSERVATIVE_CONFIRMED", "INVALIDATED", "NO_CHASE"]},
+        "first_seen_at": {"type": ["string", "null"], "format": "date-time"},
+        "stage_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "observation_zone": {"$ref": "#/$defs/priceZone"},
+        "trigger_zone": {"$ref": "#/$defs/priceZone"},
+        "invalidation_zone": {"$ref": "#/$defs/priceZone"},
+        "nearest_obstacle_zone": {"$ref": "#/$defs/priceZone"}
+      },
+      "required": ["setup_id", "pattern", "direction", "stage", "first_seen_at", "stage_changed_at", "observation_zone", "trigger_zone", "invalidation_zone", "nearest_obstacle_zone"],
+      "additionalProperties": false
+    },
+    "scenarioContext": {
+      "type": "object",
+      "properties": {
+        "wave_phase": {"type": "string", "enum": ["INITIAL", "MIDDLE", "LATE", "PULLBACK", "REBOUND", "TRANSITION", "RANGE", "UNDEFINED"]},
+        "locations": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["NEAR_SUPPORT", "NEAR_RESISTANCE", "PRIOR_HIGH", "PRIOR_LOW", "RANGE_EDGE", "RANGE_MIDDLE", "BREAKOUT_RETEST", "DEFENSE_RETEST", "UNDEFINED"]},
+          "minItems": 1,
+          "maxItems": 4
+        },
+        "grade_alignment": {"type": "string", "enum": ["ALIGNED", "PARTIAL", "MISALIGNED", "UNDEFINED"]},
+        "hold_scenario": {"type": "string", "minLength": 1, "maxLength": 240},
+        "break_scenario": {"type": "string", "minLength": 1, "maxLength": 240},
+        "setup": {"$ref": "#/$defs/setupContext"}
+      },
+      "required": ["wave_phase", "locations", "grade_alignment", "hold_scenario", "break_scenario", "setup"],
+      "additionalProperties": false
+    },
+    "taijiLeg": {
+      "type": "object",
+      "properties": {
+        "leg_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "sequence": {"type": "string", "enum": ["ANCHOR_1", "CORRECTION_2", "COPY_3", "CORRECTION_4", "COPY_5", "POST_5"]},
+        "role": {"type": "string", "enum": ["ANCHOR", "CORRECTION", "COPY", "POST_TREND"]},
+        "direction": {"type": "string", "enum": ["BULL", "BEAR"]},
+        "status": {"type": "string", "enum": ["FORMING", "CONFIRMED", "COMPLETED", "INVALIDATED"]},
+        "start_bar_time": {"type": "string", "format": "date-time"},
+        "extreme_bar_time": {"type": "string", "format": "date-time"},
+        "first_seen_at": {"type": "string", "format": "date-time"},
+        "confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "terminal_at": {"type": ["string", "null"], "format": "date-time"},
+        "parent_leg_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "copy_quality": {"type": "string", "enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "NOT_APPLICABLE", "UNKNOWN"]},
+        "correction_quality": {"type": "string", "enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "NOT_APPLICABLE", "UNKNOWN"]},
+        "amplitude_relation": {"type": "string", "enum": ["STRONGER", "SIMILAR", "WEAKER", "NOT_APPLICABLE", "UNKNOWN"]},
+        "duration_relation": {"type": "string", "enum": ["STRONGER", "SIMILAR", "WEAKER", "NOT_APPLICABLE", "UNKNOWN"]},
+        "slope_relation": {"type": "string", "enum": ["STRONGER", "SIMILAR", "WEAKER", "NOT_APPLICABLE", "UNKNOWN"]},
+        "cleanliness_relation": {"type": "string", "enum": ["STRONGER", "SIMILAR", "WEAKER", "NOT_APPLICABLE", "UNKNOWN"]},
+        "destructive_relation": {"type": "string", "enum": ["STRONGER", "SIMILAR", "WEAKER", "NOT_APPLICABLE", "UNKNOWN"]},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 180}, "minItems": 1, "maxItems": 3}
+      },
+      "required": ["leg_id", "sequence", "role", "direction", "status", "start_bar_time", "extreme_bar_time", "first_seen_at", "confirmed_at", "terminal_at", "parent_leg_id", "copy_quality", "correction_quality", "amplitude_relation", "duration_relation", "slope_relation", "cleanliness_relation", "destructive_relation", "notes"],
+      "additionalProperties": false
+    },
+    "taijiContext": {
+      "type": "object",
+      "properties": {
+        "dynasty_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "anchor_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "active_leg_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "legs": {"type": "array", "items": {"$ref": "#/$defs/taijiLeg"}, "maxItems": 12},
+        "anchor_time_status": {"type": "string", "enum": ["FRESH", "DECAYING", "STALE", "UNDEFINED"]},
+        "previous_context_alignment": {"type": "string", "enum": ["ALIGNED", "OPPOSED", "NEUTRAL", "UNDEFINED"]},
+        "assessment_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "assessment_changed_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["dynasty_id", "anchor_id", "active_leg_id", "legs", "anchor_time_status", "previous_context_alignment", "assessment_reason", "assessment_changed_at"],
+      "additionalProperties": false
+    },
+    "momentumContext": {
+      "type": "object",
+      "properties": {
+        "episode_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "stage": {"type": "string", "enum": ["NONE", "CENTRIFUGAL_FORMING", "CENTRIFUGAL_CONFIRMED", "DRAGON_EARLY", "DRAGON_MIDDLE", "DRAGON_LATE", "LIFE_DEATH_GATE_FORMING", "LIFE_DEATH_GATE_ARMED", "EXHAUSTION_WARNING", "FAILED"]},
+        "direction": {"type": ["string", "null"], "enum": ["BULL", "BEAR", null]},
+        "first_seen_at": {"type": ["string", "null"], "format": "date-time"},
+        "stage_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "location": {"type": "string", "enum": ["SESSION_EXTERNAL", "SESSION_INTERNAL", "BOUNDARY", "UNDEFINED"]},
+        "quality": {"type": "string", "enum": ["STRONG", "ACCEPTABLE", "CAUTION", "UNQUALIFIED", "UNKNOWN"]},
+        "dragon_grade": {"type": "string", "enum": ["GOLD", "K_GOLD", "EARTH", "CROOKED", "NOT_APPLICABLE", "UNKNOWN"]},
+        "distance_phase": {"type": "string", "enum": ["EARLY", "MIDDLE", "LATE", "UNDEFINED"]},
+        "bar_expansion": {"type": "string", "enum": ["EXPANDING", "STABLE", "CONTRACTING", "UNSTABLE", "UNKNOWN"]},
+        "pivot_pressure": {"type": "string", "enum": ["NONE", "MICRO", "STRUCTURAL", "UNKNOWN"]},
+        "gate_balance": {"type": "string", "enum": ["CONTINUATION_STRONGER", "REVERSAL_STRONGER", "BALANCED", "NOT_APPLICABLE", "UNKNOWN"]},
+        "mapped_pattern": {"$ref": "#/$defs/strategyMethod"},
+        "failure_reason": {"type": "string", "minLength": 1, "maxLength": 240}
+      },
+      "required": ["episode_id", "stage", "direction", "first_seen_at", "stage_changed_at", "location", "quality", "dragon_grade", "distance_phase", "bar_expansion", "pivot_pressure", "gate_balance", "mapped_pattern", "failure_reason"],
+      "additionalProperties": false
+    },
+    "thesisContext": {
+      "type": "object",
+      "properties": {
+        "bias": {"type": "string", "enum": ["BULLISH", "BEARISH", "NEUTRAL", "CONDITIONAL", "UNDEFINED"]},
+        "current_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "hold_condition": {"type": "string", "minLength": 1, "maxLength": 240},
+        "downgrade_condition": {"type": "string", "minLength": 1, "maxLength": 240},
+        "neutralize_condition": {"type": "string", "minLength": 1, "maxLength": 240},
+        "reverse_condition": {"type": "string", "minLength": 1, "maxLength": 240},
+        "changed_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["bias", "current_reason", "hold_condition", "downgrade_condition", "neutralize_condition", "reverse_condition", "changed_at"],
+      "additionalProperties": false
+    },
+    "cclassContext": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "integer", "const": 1},
+        "as_of": {"type": "string", "format": "date-time"},
+        "engine_mode": {"type": "string", "enum": ["TAIJI_ORDERED", "YIZHI_MOMENTUM", "UNORDERED", "RESETTING", "UNDEFINED"]},
+        "engine_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "order_state": {"type": "string", "enum": ["ORDERED", "UNORDERED", "TRANSITION", "UNDEFINED"]},
+        "order_reason": {"type": "string", "minLength": 1, "maxLength": 240},
+        "taiji_context": {"$ref": "#/$defs/taijiContext"},
+        "momentum_context": {"$ref": "#/$defs/momentumContext"},
+        "thesis_context": {"$ref": "#/$defs/thesisContext"}
+      },
+      "required": ["version", "as_of", "engine_mode", "engine_changed_at", "order_state", "order_reason", "taiji_context", "momentum_context", "thesis_context"],
+      "additionalProperties": false
+    },
+    "decisionChainOpeningContext": {
+      "type": "object",
+      "properties": {
+        "cash_gap_source": {"type": "string", "enum": ["VERIFIED_CASH", "FUTURES_PROXY", "UNAVAILABLE"]},
+        "gap_direction": {"type": "string", "enum": ["BULL", "BEAR", "FLAT", "UNDEFINED"]},
+        "gap_size": {"type": "string", "enum": ["SMALL", "MODERATE", "LARGE", "EXHAUSTED", "UNDEFINED"]},
+        "previous_cash_close": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "cash_open": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "gap_observed_at": {"type": ["string", "null"], "format": "date-time"},
+        "opening_direction_relation": {"type": "string", "enum": ["SAME", "OPPOSITE", "MIXED", "UNDEFINED"]},
+        "pre_cash_open_quality": {"type": "string", "enum": ["CLEAN", "MIXED", "NOISY", "OVERHEATED", "UNAVAILABLE"]},
+        "first_endpoint_side": {"type": "string", "enum": ["DH", "DL", "NONE"]},
+        "first_endpoint_style": {"type": "string", "enum": ["PENDING", "TRUE_LIKE", "FALSE_LIKE", "MIXED", "UNAVAILABLE"]},
+        "endpoint_first_seen_at": {"type": ["string", "null"], "format": "date-time"},
+        "endpoint_confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "evidence_reason": {"type": "string", "minLength": 1, "maxLength": 300}
+      },
+      "required": ["cash_gap_source", "gap_direction", "gap_size", "previous_cash_close", "cash_open", "gap_observed_at", "opening_direction_relation", "pre_cash_open_quality", "first_endpoint_side", "first_endpoint_style", "endpoint_first_seen_at", "endpoint_confirmed_at", "evidence_reason"],
+      "additionalProperties": false
+    },
+    "decisionChainStructureContext": {
+      "type": "object",
+      "properties": {
+        "confirmed_leg_count": {"type": "integer", "minimum": 0, "maximum": 12},
+        "analysis_lens": {"type": "string", "enum": ["UNDEFINED", "OPENING_EVIDENCE_ONLY", "TAIJI_PRIMARY", "QUADRANT_PRIMARY", "COMBINED_CONFIRMATION", "YIZHI_OVERRIDE"]},
+        "lens_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "family_dna": {"type": "string", "enum": ["CONSISTENT", "CHANGING", "BROKEN", "UNAVAILABLE"]},
+        "confluences": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["SAME_QUADRANT", "SMALL_Q1", "COPY_CORRECTION"]},
+          "maxItems": 3
+        },
+        "structure_reason": {"type": "string", "minLength": 1, "maxLength": 300}
+      },
+      "required": ["confirmed_leg_count", "analysis_lens", "lens_changed_at", "family_dna", "confluences", "structure_reason"],
+      "additionalProperties": false
+    },
+    "decisionChainOpportunityContext": {
+      "type": "object",
+      "properties": {
+        "mapped_pattern": {"$ref": "#/$defs/strategyMethod"},
+        "probability_evidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW", "UNAVAILABLE"]},
+        "payoff_evidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW", "UNAVAILABLE"]},
+        "course_grade": {"type": "string", "enum": ["A_CANDIDATE", "B_CANDIDATE", "C_CANDIDATE", "OBSERVE", "UNDEFINED"]},
+        "grade_reason": {"type": "string", "minLength": 1, "maxLength": 300},
+        "expected_behavior": {"type": "string", "minLength": 1, "maxLength": 300},
+        "max_wait_bars": {"type": ["integer", "null"], "minimum": 1, "maximum": 10},
+        "behavior_invalidation": {"type": "string", "minLength": 1, "maxLength": 300},
+        "recovery_round_policy": {"type": "string", "enum": ["NOT_APPLICABLE", "EXIT_ON_FIRST_VALID_RECOVERY"]}
+      },
+      "required": ["mapped_pattern", "probability_evidence", "payoff_evidence", "course_grade", "grade_reason", "expected_behavior", "max_wait_bars", "behavior_invalidation", "recovery_round_policy"],
+      "additionalProperties": false
+    },
+    "decisionChainContext": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "integer", "const": 1},
+        "as_of": {"type": "string", "format": "date-time"},
+        "process_stage": {"type": "string", "enum": ["UNDEFINED", "SESSION_OPEN_PENDING", "OPENING_EVIDENCE", "FIRST_ENDPOINT_SAMPLE", "STRUCTURE_BUILDING", "SETUP_EVALUATION", "LATE_OR_RESETTING"]},
+        "stage_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "opening_context": {"$ref": "#/$defs/decisionChainOpeningContext"},
+        "structure_context": {"$ref": "#/$defs/decisionChainStructureContext"},
+        "opportunity_context": {"$ref": "#/$defs/decisionChainOpportunityContext"},
+        "assessment_changed_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["version", "as_of", "process_stage", "stage_changed_at", "opening_context", "structure_context", "opportunity_context", "assessment_changed_at"],
+      "additionalProperties": false
+    },
+    "prospectiveHypothesis": {
+      "type": "object",
+      "properties": {
+        "hypothesis_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "direction": {"type": "string", "enum": ["BULL", "BEAR", "RANGE", "UNDEFINED"]},
+        "status": {"type": "string", "enum": ["POTENTIAL", "STRENGTHENING", "NEAR_CONFIRMATION", "CONFIRMED", "DEGRADED", "CANCELLED", "UNDEFINED"]},
+        "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW", "UNAVAILABLE"]},
+        "title": {"type": "string", "minLength": 1, "maxLength": 100},
+        "thesis": {"type": "string", "minLength": 1, "maxLength": 360},
+        "supporting_methods": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["OPENING_RANGE", "NUMBER_BOARD", "BOX", "PIVOT", "DOW_STRUCTURE", "LEFT_RIGHT", "ANCHOR", "TAIJI", "YIZHI", "QUADRANT", "CCLASS", "XPROCESS", "ORIGINAL_PATTERN"]},
+          "maxItems": 13
+        },
+        "supporting_evidence": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 220}, "maxItems": 5},
+        "conflicting_evidence": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 220}, "maxItems": 5},
+        "confirmation_conditions": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 260}, "minItems": 1, "maxItems": 4},
+        "downgrade_conditions": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 260}, "minItems": 1, "maxItems": 4},
+        "cancellation_conditions": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 260}, "minItems": 1, "maxItems": 4},
+        "next_scenario": {"type": "string", "minLength": 1, "maxLength": 300},
+        "first_seen_at": {"type": ["string", "null"], "format": "date-time"},
+        "status_changed_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["hypothesis_id", "direction", "status", "confidence", "title", "thesis", "supporting_methods", "supporting_evidence", "conflicting_evidence", "confirmation_conditions", "downgrade_conditions", "cancellation_conditions", "next_scenario", "first_seen_at", "status_changed_at"],
+      "additionalProperties": false
+    },
+    "prospectivePlaybook": {
+      "type": "object",
+      "properties": {
+        "direction": {"type": "string", "enum": ["LONG", "SHORT"]},
+        "status": {"type": "string", "enum": ["WAITING_STRUCTURE", "WATCHING", "ARMED", "PROHIBITED", "UNAVAILABLE"]},
+        "mapped_pattern": {"$ref": "#/$defs/strategyMethod"},
+        "execution_style": {"type": "string", "enum": ["NOT_APPLICABLE", "STANDARD_STRUCTURAL", "MOMENTUM_STRIKE", "WOODPECKER", "ONE_ROUND"]},
+        "method_selection_reason": {"type": "string", "minLength": 1, "maxLength": 300},
+        "observation_zone": {"$ref": "#/$defs/priceZone"},
+        "trigger_zone": {"$ref": "#/$defs/priceZone"},
+        "invalidation_zone": {"$ref": "#/$defs/priceZone"},
+        "first_obstacle_zone": {"$ref": "#/$defs/priceZone"},
+        "required_k_behavior": {"type": "string", "minLength": 1, "maxLength": 300},
+        "close_trigger": {"type": "string", "minLength": 1, "maxLength": 300},
+        "next_bar_entry": {"type": "string", "minLength": 1, "maxLength": 260},
+        "structural_stop": {"type": "string", "minLength": 1, "maxLength": 260},
+        "no_chase": {"type": "string", "minLength": 1, "maxLength": 240},
+        "expected_behavior": {"type": "string", "minLength": 1, "maxLength": 300},
+        "max_wait_bars": {"type": ["integer", "null"], "minimum": 1, "maximum": 10},
+        "behavior_invalidation": {"type": "string", "minLength": 1, "maxLength": 300},
+        "exit_plan": {"type": "string", "minLength": 1, "maxLength": 300},
+        "switch_condition": {"type": "string", "minLength": 1, "maxLength": 300}
+      },
+      "required": ["direction", "status", "mapped_pattern", "execution_style", "method_selection_reason", "observation_zone", "trigger_zone", "invalidation_zone", "first_obstacle_zone", "required_k_behavior", "close_trigger", "next_bar_entry", "structural_stop", "no_chase", "expected_behavior", "max_wait_bars", "behavior_invalidation", "exit_plan", "switch_condition"],
+      "additionalProperties": false
+    },
+    "taijiEvolution": {
+      "type": "object",
+      "properties": {
+        "active_sequence": {"type": "string", "enum": ["NONE", "ANCHOR_1", "CORRECTION_2", "COPY_3", "CORRECTION_4", "COPY_5", "POST_5"]},
+        "active_role": {"type": "string", "enum": ["NONE", "ANCHOR", "CORRECTION", "COPY", "POST_TREND"]},
+        "active_direction": {"type": ["string", "null"], "enum": ["BULL", "BEAR", null]},
+        "copy_outcomes": {"type": "array", "items": {"type": "string", "enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "UNKNOWN"]}, "maxItems": 4},
+        "correction_outcomes": {"type": "array", "items": {"type": "string", "enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "UNKNOWN"]}, "maxItems": 4},
+        "copy_amplitude_trend": {"type": "string", "enum": ["EXPANDING", "STABLE", "CONTRACTING", "UNDEFINED"]},
+        "copy_duration_trend": {"type": "string", "enum": ["LONGER", "STABLE", "SHORTER", "UNDEFINED"]},
+        "correction_amplitude_trend": {"type": "string", "enum": ["EXPANDING", "STABLE", "CONTRACTING", "UNDEFINED"]},
+        "correction_duration_trend": {"type": "string", "enum": ["LONGER", "STABLE", "SHORTER", "UNDEFINED"]},
+        "structural_assessment": {"type": "string", "enum": ["STRENGTHENING", "HEALTHY", "WEAKENING", "REVERSAL_RISK", "UNDEFINED"]},
+        "interpretation": {"type": "string", "minLength": 1, "maxLength": 360},
+        "continuation_condition": {"type": "string", "minLength": 1, "maxLength": 300},
+        "regime_change_condition": {"type": "string", "minLength": 1, "maxLength": 300}
+      },
+      "required": ["active_sequence", "active_role", "active_direction", "copy_outcomes", "correction_outcomes", "copy_amplitude_trend", "copy_duration_trend", "correction_amplitude_trend", "correction_duration_trend", "structural_assessment", "interpretation", "continuation_condition", "regime_change_condition"],
+      "additionalProperties": false
+    },
+    "prospectiveContext": {
+      "type": "object",
+      "properties": {
+        "version": {"type": "integer", "const": 1},
+        "as_of": {"type": "string", "format": "date-time"},
+        "market_bias": {"type": "string", "enum": ["BULL_PRIMARY", "BEAR_PRIMARY", "RANGE_PRIMARY", "BALANCED", "UNDEFINED"]},
+        "primary_hypothesis": {"$ref": "#/$defs/prospectiveHypothesis"},
+        "alternative_hypothesis": {"$ref": "#/$defs/prospectiveHypothesis"},
+        "long_playbook": {"$ref": "#/$defs/prospectivePlaybook"},
+        "short_playbook": {"$ref": "#/$defs/prospectivePlaybook"},
+        "taiji_evolution": {"$ref": "#/$defs/taijiEvolution"},
+        "assessment_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 240}, "minItems": 1, "maxItems": 4}
+      },
+      "required": ["version", "as_of", "market_bias", "primary_hypothesis", "alternative_hypothesis", "long_playbook", "short_playbook", "taiji_evolution", "assessment_changed_at", "notes"],
+      "additionalProperties": false
+    },
+    "constitutionEvent": {
+      "type": "object",
+      "properties": {
+        "event_type": {"type": "string", "enum": ["NONE", "SIM_ENTER", "SIM_STOP", "SIM_EXIT", "COOLDOWN_REQUALIFIED"]},
+        "event_id": {"type": "string", "minLength": 1},
+        "setup_id": {"type": ["string", "null"], "minLength": 1},
+        "position_id": {"type": ["string", "null"], "minLength": 1},
+        "direction": {"type": ["string", "null"], "enum": ["LONG", "SHORT", null]},
+        "entry_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "stop_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "risk_points": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "latest_closed_bar_time": {"type": "string", "format": "date-time"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "required": ["event_type", "event_id", "setup_id", "position_id", "direction", "entry_price_estimate", "stop_price_estimate", "risk_points", "latest_closed_bar_time", "reason"],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "original_decision": {"type": "string", "enum": ["NOTIFY", "DONT_NOTIFY"]},
+    "notification_reason": {"type": "string", "minLength": 1},
+    "latest_closed_k_price_estimate": {"type": "string", "minLength": 1},
+    "latest_closed_k_details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 4},
+    "large_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {"type": "string", "enum": ["強勢偏多", "偏多但回檔", "盤整", "偏空但反彈", "強勢偏空", "資料不足"]},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "current_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {"type": "string", "enum": ["偏多", "偏空", "盤整", "轉換中"]},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "market_state": {"$ref": "#/$defs/textList"},
+    "pattern_observation": {
+      "type": "object",
+      "properties": {
+        "status": {"type": "string", "enum": ["觀望", "條件式偏多", "條件式偏空", "可評估進場", "不宜追價／禁止"]},
+        "pattern": {"type": "string", "minLength": 1},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["status", "pattern", "details"],
+      "additionalProperties": false
+    },
+    "missing_conditions_or_trigger": {"$ref": "#/$defs/textList"},
+    "entry_and_structural_stop": {"$ref": "#/$defs/textList"},
+    "risk_and_nearest_obstacle": {"$ref": "#/$defs/textList"},
+    "single_contract_management_or_prohibition": {"$ref": "#/$defs/textList"},
+    "constitution_event": {"$ref": "#/$defs/constitutionEvent"},
+    "market_structure_state": {
+      "type": "object",
+      "description": "內部樞紐與道氏防線快照；不得渲染成通知欄位。",
+      "properties": {
+        "version": {"type": "integer", "const": 6},
+        "as_of": {"type": "string", "format": "date-time"},
+        "session_key": {"type": "string", "minLength": 1, "maxLength": 80},
+        "primary_pivots": {"type": "array", "items": {"$ref": "#/$defs/pivot"}, "maxItems": 96},
+        "secondary_pivots": {"type": "array", "items": {"$ref": "#/$defs/pivot"}, "maxItems": 48},
+        "defense_lines": {
+          "type": "object",
+          "properties": {
+            "small_bull": {"$ref": "#/$defs/defense"},
+            "small_bear": {"$ref": "#/$defs/defense"},
+            "large_bull": {"$ref": "#/$defs/defense"},
+            "large_bear": {"$ref": "#/$defs/defense"}
+          },
+          "required": ["small_bull", "small_bear", "large_bull", "large_bear"],
+          "additionalProperties": false
+        },
+        "provisional_invalidation_boundaries": {
+          "type": "object",
+          "properties": {
+            "bull": {
+              "type": ["object", "null"],
+              "properties": {
+                "kind": {"type": "string", "enum": ["OR_OPPOSITE", "STRUCTURE_BOUNDARY", "SESSION_EXTREME"]},
+                "direction": {"type": "string", "const": "BULL"},
+                "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "established_at": {"type": "string", "format": "date-time"},
+                "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+                "ended_at": {"type": ["string", "null"], "format": "date-time"}
+              },
+              "required": ["kind", "direction", "price_estimate", "established_at", "status", "ended_at"],
+              "additionalProperties": false
+            },
+            "bear": {
+              "type": ["object", "null"],
+              "properties": {
+                "kind": {"type": "string", "enum": ["OR_OPPOSITE", "STRUCTURE_BOUNDARY", "SESSION_EXTREME"]},
+                "direction": {"type": "string", "const": "BEAR"},
+                "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "established_at": {"type": "string", "format": "date-time"},
+                "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+                "ended_at": {"type": ["string", "null"], "format": "date-time"}
+              },
+              "required": ["kind", "direction", "price_estimate", "established_at", "status", "ended_at"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["bull", "bear"],
+          "additionalProperties": false
+        },
+        "dow_state_small": {"type": "string", "enum": ["BULL", "BEAR", "TRANSITION", "UNDEFINED"]},
+        "dow_state_large": {"type": "string", "enum": ["BULL", "BEAR", "TRANSITION", "UNDEFINED"]},
+        "reversal_type": {"type": "string", "enum": ["NONE", "TYPE_1", "TYPE_2", "TYPE_3"]},
+        "maturity": {"type": "string", "enum": ["NONE", "LEFT_LEFT", "LEFT_RIGHT", "RIGHT_LEFT", "RIGHT_RIGHT"]},
+        "scenario_context": {"$ref": "#/$defs/scenarioContext"},
+        "anchor_context": {"$ref": "#/$defs/anchorContext"},
+        "cclass_context": {"$ref": "#/$defs/cclassContext"},
+        "decision_chain_context": {"$ref": "#/$defs/decisionChainContext"},
+        "prospective_context": {"$ref": "#/$defs/prospectiveContext"},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 240}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["version", "as_of", "session_key", "primary_pivots", "secondary_pivots", "defense_lines", "provisional_invalidation_boundaries", "dow_state_small", "dow_state_large", "reversal_type", "maturity", "scenario_context", "anchor_context", "cclass_context", "decision_chain_context", "prospective_context", "notes"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["original_decision", "notification_reason", "latest_closed_k_price_estimate", "latest_closed_k_details", "large_trend", "current_trend", "market_state", "pattern_observation", "missing_conditions_or_trigger", "entry_and_structural_stop", "risk_and_nearest_obstacle", "single_contract_management_or_prohibition", "constitution_event", "market_structure_state"],
+  "additionalProperties": false
+}

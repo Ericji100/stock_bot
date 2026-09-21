@@ -1,0 +1,16 @@
+{
+  "version_id": "pre-scenario-context-v1.4-20260902",
+  "purpose": "Immutable restore point before scenario-context and symmetric defense changes",
+  "automation_id": "1-k",
+  "automation_name": "台指期1分K趨勢與交易機會監控",
+  "automation_status": "PAUSED",
+  "rrule": "FREQ=MINUTELY;INTERVAL=1",
+  "target_thread_id": "01a05aa6-d062-7df3-88dd-8e3023be05f1",
+  "execution_version": "enlightenment-integrated-v1.4-dow-dual-mode",
+  "analysis_version": "enlightenment-integrated-v1.4-dow-analysis",
+  "schema_version": "trade-monitor-analysis-v3",
+  "market_structure_state_version": 1,
+  "immutable": true,
+  "created_at": "2026-09-02T14:06:57.3641379+08:00",
+  "description": "本次加入情境階段、四向防線與左右通知前的實際 Automation、執行規則、分析規則、schema 及本機排程設定還原點。"
+}

@@ -1,0 +1,17 @@
+{
+  "version_id": "enlightenment-integrated-v1.2-local-clock",
+  "automation_id": "1-k",
+  "purpose": "Move minute-close triggering to a local second-aligned scheduler and relay the same canonical message to the existing Codex task",
+  "source_version": "enlightenment-integrated-v1.1",
+  "prompt_sha256": "ff37b4a29ae1b8b22a0a56dc7726844aa9d64d11d1da298d44cfcc9fc7189373",
+  "prompt_utf8_bytes": 37888,
+  "analysis_rules_version": "enlightenment-integrated-v1.1",
+  "analysis_rules_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "compatible_schema_version": "trade-monitor-analysis-v2",
+  "contract_version": 2,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "local_scheduler_config_version": 1,
+  "created_at": "2026-09-02T10:20:04.7441134+08:00",
+  "description": "只改變本機第05秒喚醒、純圖表裁切、Codex CLI分析與heartbeat relay；交易規則逐字沿用v1.1。"
+}

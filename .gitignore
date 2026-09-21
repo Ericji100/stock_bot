@@ -43,3 +43,14 @@ manual_*/
 manual_*.txt
 topic_library_fix/
 topic_live_audit/
+
+# Local Codex / experiment scratch areas
+.codex_tmp/
+.v7bridge/
+.v7s1/
+outputs/
+scratch_*.py
+scratch_*.json
+
+# Ad-hoc research exports should be promoted into docs/ or config/ before commit.
+*.inspect.json

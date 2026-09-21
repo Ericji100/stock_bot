@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "course-state-v2.1.8-replay-adapter-v31",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor_replay/rules/replay-semantic-v6.json",
+  "replay_schema_sha256": "0b2056a163a9a85a8f74de377a4ea193935df2d2f18e6996ae8373227ed26c7c",
+  "contract_version": 6,
+  "memory_version": 3,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "preserve a continuous causal one-minute series across an isolated no-trade minute",
+  "notes": "正式v2.1.8規則維持唯讀。v31延續v30全部程式契約；期交所逐筆資料若只缺少一個、且前後分鐘均有成交，資料層以此前一分鐘收盤建立OHLC相同、成交量0的無成交1分K。連續缺少2分鐘以上仍保留缺口並由連續性守門器拒絕，不以補值掩蓋斷線或資料損壞。"
+}

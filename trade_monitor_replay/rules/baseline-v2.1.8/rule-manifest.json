@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "baseline-v2.1.8",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor_replay/rules/replay-analysis-v1.json",
+  "replay_schema_sha256": "8a1b10006e3da6a7e21a60cb3fa0cf1bd79d8a5d7117a1660a4736ada220d0ef",
+  "contract_version": 1,
+  "memory_version": 1,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "2026-08-27 initial causal replay",
+  "notes": "交易判斷規則固定引用正式 v2.1.8；只有 Chrome、Automation、heartbeat 與傳輸責任由回放執行限制取代。MiniMax使用精簡memory避免每分鐘重建正式v8龐大內部狀態，使用者九欄格式不變。"
+}

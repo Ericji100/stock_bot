@@ -1,0 +1,20 @@
+{
+  "version_id": "enlightenment-integrated-v1.4-dow-dual-mode",
+  "automation_id": "1-k",
+  "purpose": "Preserve v1.3 local-second and dual-mode delivery while deploying Dow-integrated analysis rules",
+  "source_version": "enlightenment-integrated-v1.3-dual-mode",
+  "prompt_sha256": "0dea718d6dd91a3a373dd93fe507fd5db0fb996c70e1a2a526f23d21005f68f7",
+  "prompt_utf8_bytes": 55621,
+  "analysis_rules_version": "enlightenment-integrated-v1.4-dow-analysis",
+  "analysis_rules_sha256": "dec982c6fce9c5e4f64dbd23a5f9053b53b90911f77cabcc5d5e4867f0075aa0",
+  "compatible_schema_version": "trade-monitor-analysis-v3",
+  "schema_sha256": "12b5c54df45aee539ea640e594f1958fc06509a8a2b2f20b898164c61cae3b43",
+  "contract_version": 3,
+  "market_structure_state_version": 1,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "3c7e46e5fca3763f184a925e3674ee1179976ea023dd9e030b66863b15577d3b",
+  "created_at": "2026-09-02T12:29:19.5539608+08:00",
+  "description": "Self-contained Automation prompt that preserves the v1.3 heartbeat relay and canonical dual-mode delivery while binding the local scheduler to the v1.4 Dow analysis prompt and v3 internal market structure state."
+}

@@ -1,0 +1,48 @@
+{
+  "version_id": "enlightenment-integrated-v2.1-prospective",
+  "purpose": "Prospective all-course market interpretation with strategy-native entry and exit rules",
+  "source": [
+    "enlightenment-integrated-v2.0-unified",
+    "course_knowledge_base\\啟蒙交易班\\整理成果\\啟蒙交易班_課程整理.md",
+    "course_knowledge_base\\啟蒙交易班\\整理成果\\四象限戰法強化_完整課程整理.md",
+    "course_knowledge_base\\道氏三兄弟\\整理成果\\道氏三兄弟_完整課程整理.md",
+    "course_knowledge_base\\戰法C班\\整理成果\\戰法C班_完整課程整理.md",
+    "course_knowledge_base\\X戰法班\\整理成果\\X戰法班_完整課程整理.md"
+  ],
+  "prompt_sha256": "45d3b8bec831d6d32d6569e5f43cc96c0ae1d746c5deebf836cbbefb69a029ba",
+  "prompt_utf8_bytes": 122175,
+  "analysis_rules_version": "enlightenment-integrated-v2.1-prospective-analysis",
+  "analysis_rules_sha256": "23f004b974385244a471a057cb291685a9d7446f444396e02403b6559ee99efe",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "466c354cab5bee4bbe130d1738f4511125b2d184e2823041fa8a6d1205d6bbdf",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 1,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "413a79e95415c311586afcaae514e08ea14e29a586abbee2bcb1d40e7b270ead",
+  "restore_point": "enlightenment-integrated-v2.0-unified",
+  "status": "production_release_readback_verified_paused",
+  "created_at": "2026-09-03T00:41:30.9057333+08:00",
+  "validation": {
+    "tests": "234 trade_monitor tests passed before formal deployment",
+    "schema_example": "valid-analysis-v8.json passed Draft 2020-12 validation",
+    "historical_replay": "not rerun for v2.1 strategy-native execution expansion",
+    "forward_shadow_gate": "not completed",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "PAUSED",
+    "automation_toml_sha256": "4e40d32c1030615c1504a5aedd57d86600f613f4c82064dd0b641632f6c423aa",
+    "active_version_file_sha256": "93df28c038e8da3b2f76848e16417b2c4cf10ac2e9b96b9960f953ff6f072279",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to exact readback bytes without semantic change"
+  },
+  "description": "所有課程戰法均參與盤勢判讀；由唯一主控戰法決定其專屬進場、停損、應有行為與出場。新增主要／備用情境、雙向預案及太極複製修正演化持久狀態，固定九欄與單一標準訊息不變。"
+}

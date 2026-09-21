@@ -1,0 +1,53 @@
+{
+  "version_id": "enlightenment-integrated-v2.0-unified",
+  "purpose": "Production unified course trading-system integration",
+  "source": [
+    "enlightenment-integrated-v2.0-unified-rc-shadow",
+    "enlightenment-integrated-v1.9-xprocess",
+    "course_knowledge_base\\啟蒙交易班",
+    "course_knowledge_base\\戰法C班",
+    "course_knowledge_base\\X戰法班",
+    "pre-unified-v1.9-20260902"
+  ],
+  "prompt_sha256": "e1407c4ad1ec3770d64dcbe439760f82d938d08919c21f14955cd2edbd7c8ee0",
+  "prompt_utf8_bytes": 110171,
+  "analysis_rules_version": "enlightenment-integrated-v2.0-unified-analysis",
+  "analysis_rules_sha256": "6506bf6ed8ff990e86db691c4d109d15be34678b4a53f62d4ac8f03f90d3e67b",
+  "compatible_schema_version": "trade-monitor-analysis-v7",
+  "schema_sha256": "50bce9344459eb20a36a771a4e8f48beb89dcf7a45c09f042b86c4912f7bc564",
+  "contract_version": 7,
+  "market_structure_state_version": 5,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 1,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "49849aeddc7b4aeef0824de0d203249c1b78aacf42e6a732c7cecdc9b5de99e4",
+  "restore_point": "pre-unified-v1.9-20260902",
+  "status": "production_release_readback_verified_active_user_accepted_forward_limit",
+  "created_at": "2026-09-02T22:18:38.3601203+08:00",
+  "validation": {
+    "tests": "218 passed after price-axis capture and gap-wording hotfix",
+    "pivot_replay": "trade_monitor/reports/unified-v20-pivot-n2-n3-2026-08.md",
+    "decision_process_replay": "trade_monitor/reports/unified-v20-xprocess-n2-n3-2026-08.md",
+    "replay_bars": 22791,
+    "replay_day_sessions": 20,
+    "forward_shadow_gate": "not_completed_user_explicitly_accepted_for_promotion",
+    "profitability_backtest": "not_claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "ACTIVE",
+    "automation_toml_sha256": "dcbf0c09efb047450868dcf7d88383a1b32a0068d1ecc94f144430d496e373cc",
+    "active_version_file_sha256": "410c608df74852796b5b11affbf972cdd9780977bb5f9f6665fc07701acedd9b",
+    "deployed_at": "2026-09-02T22:26:48.6098110+08:00",
+    "activated_at": "2026-09-02T22:44:16.9607759+08:00",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to the exact readback bytes without semantic change",
+    "structured_market_data_enabled": false,
+    "previous_active_version": "enlightenment-integrated-v1.9-xprocess"
+  },
+  "description": "完整課程統一正式版：兩腳後依清晰度選主判讀工具，定錨後結構為四象限主要標準，使用者可見術語全中文，並保留預設關閉的唯讀結構化行情介面。"
+}

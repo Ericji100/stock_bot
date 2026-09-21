@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "course-state-v2.1.8-replay-adapter-v26",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor_replay/rules/replay-semantic-v6.json",
+  "replay_schema_sha256": "0b2056a163a9a85a8f74de377a4ea193935df2d2f18e6996ae8373227ed26c7c",
+  "contract_version": 6,
+  "memory_version": 3,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "make numbered-market direction and the X/method audit deterministic",
+  "notes": "正式v2.1.8規則維持唯讀。v26延續v25交易憲法，新增程式化號盤生命週期：只有具同向作用中道氏防線的首個session錨建立0號；只有舊方向防線先被收盤破壞、反向同級錨與道氏完成且沒有反向大級父結構阻擋的Type2，或正式Type2／Type3大級接管，才能增加為1號或2號以上。級數升級、重分類與小級雜訊不得增加號數。號盤方向及2號以上只允許外圍假突破的限制已接入進場閘門、重認證、事件與重現指紋；同時保存X階段與全方法稽核，其中尚未程式化的OR回踩與SSTV壓縮會明確標為NOT_IMPLEMENTED，禁止由AI暗中補齊。"
+}

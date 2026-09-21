@@ -1,0 +1,2 @@
+9956d4f3a17bfaf2d49e3fe754062851d8344a8d7eca16abc730fc7b57ea77df  prompt.md
+f4f09496de71da50c311f97bb110b6bf6c47bea4f0ac0b8a09463ea3dd2bc29b  automation.toml

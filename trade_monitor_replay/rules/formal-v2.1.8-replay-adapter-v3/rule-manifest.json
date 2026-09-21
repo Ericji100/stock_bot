@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "formal-v2.1.8-replay-adapter-v3",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "replay_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "contract_version": 8,
+  "memory_version": 6,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "production-contract full-fidelity causal replay",
+  "notes": "本manifest不複製或修改交易規則；prompt與schema均直接唯讀引用正式v2.1.8。只有歷史資料輸入、回放runtime與模擬Telegram出口隔離。"
+}

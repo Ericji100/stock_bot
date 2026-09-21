@@ -1,0 +1,44 @@
+{
+  "version_id": "enlightenment-integrated-v2.1.3-schema-hotfix",
+  "purpose": "Restore Codex Structured Outputs compatibility without changing trading rules",
+  "source": [
+    "enlightenment-integrated-v2.1.3-type-terms",
+    "Codex API schema rejection observed on 2026-09-03"
+  ],
+  "prompt_sha256": "b50343db35d54f1f0bf2baeaad3686be5e43226445e823b8334042c8c3e2cadf",
+  "prompt_utf8_bytes": 122804,
+  "analysis_rules_version": "enlightenment-integrated-v2.1.3-type-terms-analysis",
+  "analysis_rules_sha256": "75db3815fb820df33983bc3ce76e288f0c456b405ae9fa0ffe88830db6655b7a",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 4,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "1b343e4a96ff50a0e6714c0d01fef5c8cf8b627ad2ef291b94d5de35544431d1",
+  "restore_point": "enlightenment-integrated-v2.1.3-type-terms",
+  "status": "production_schema_hotfix_active",
+  "created_at": "2026-09-03T08:55:30+08:00",
+  "validation": {
+    "tests": "240 trade_monitor tests passed after hotfix",
+    "schema_example": "v8 schema with unsupported uniqueItems keyword removed",
+    "historical_replay": "not required for schema-only compatibility fix",
+    "forward_shadow_gate": "unchanged from v2.1",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "ACTIVE",
+    "automation_toml_sha256": "aafa5757b0f66e851754d28594c57d2c47db568538efd6ef8a0d12419a2d023b",
+    "active_version_file_sha256": "5b458d021976b40ce927716ce1141042d0f9eb0dd67e847727434ae0352853eb",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to exact readback bytes without semantic change"
+  },
+  "description": "只移除 Codex Structured Outputs 不接受的 uniqueItems 關鍵字；陣列去重與其他交易不變條件仍由 Python contract 驗證。分析提示詞、交易邏輯、狀態版本、九欄格式與排程頻率完全不變。"
+}

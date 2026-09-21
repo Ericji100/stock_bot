@@ -1,0 +1,19 @@
+{
+  "version_id": "pre-dual-scale-v1.5-20260902",
+  "purpose": "Immutable restore point before Chrome dual-scale RC development",
+  "source": "Actual Automation 1-k, active v1.5 execution and analysis prompts, schema, and local scheduler configuration",
+  "prompt_sha256": "9db29f522f50cf8cb0c15f3c88324c890cc6ff1c31d5621854bbf80e1d3be139",
+  "analysis_rules_version": "enlightenment-integrated-v1.5-scenario-analysis",
+  "analysis_rules_sha256": "33f1405aecdd0ed49fa78131aea8f2b1c1a69ebb09b00da10062e09072d37ffa",
+  "schema_version": "trade-monitor-analysis-v4",
+  "schema_sha256": "9985f15c2ce426d73210a84bd334aca6d46804cc5caeccb3ceae4c9dc74c31d8",
+  "local_scheduler_config_sha256": "a12cb456833d51d80bf734778ff404bee2c85263ab5b04536d63c42ed49a7617",
+  "automation_toml_sha256": "0161b24e23e44c941c01583b2237cfd439c08077eaf7c5043614d4b46c91c4b8",
+  "automation_id": "1-k",
+  "automation_status": "PAUSED",
+  "rrule": "FREQ=MINUTELY;INTERVAL=1",
+  "target_thread_id": "01a05aa6-d062-7df3-88dd-8e3023be05f1",
+  "immutable": true,
+  "created_at": "2026-09-02T15:17:03.9427183+08:00",
+  "description": "Chrome雙視角RC開發前的完整可驗證還原點；未啟動或更新Automation。"
+}

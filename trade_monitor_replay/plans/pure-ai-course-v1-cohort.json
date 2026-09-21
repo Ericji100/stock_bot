@@ -1,0 +1,42 @@
+{
+  "plan_version": "tmf-enlightenment-pure-ai-cohort-v1",
+  "selection_policy": "Exactly five distinct dates from July and five from August; four DAY and four NIGHT_US sessions per month. August dates are development because prior work inspected them. July 2/9 are validation; July 16/23/28 are sealed blind dates. Selection was fixed before pure-AI performance execution.",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "analysis_every_bars": 2,
+  "persistent_session": true,
+  "max_session_turns": 8,
+  "system_prompt_sha256": "ee30b92b7848567003cb0ac341440142ef408095fb4f4ab715acd8a3ee5a863e",
+  "continuation_prompt_sha256": "73167ac982f8b41b20cbe6ea139400cfe1f6886ac78c2fd87725712704dfc252",
+  "prompt_template_sha256": "65d19ce4e9eadd2a5c77dee5a84cd2fdd0897ff17cd6d13c3bf415be9e2a66e4",
+  "contract_sha256": "b69172fa06a2e9d6010a05e40052b0b51aab27df4886743183f6a16ba6275209",
+  "schema_sha256": "806c162700ecd4707cf47360b1470e7d282b7daae15771ed01554de7b37ed01d",
+  "execution": {
+    "position_size": "ONE_TMF",
+    "point_value_ntd": 10,
+    "entry": "ENTER_LONG decision after close, fill next available 1m open",
+    "exit": "EXIT_LONG decision after close, fill next available 1m open",
+    "protective_stop": "AI-declared structural stop checked every 1m; gap fills at worse observed open",
+    "session_boundary": "force close at final session bar close",
+    "round_trip_cost_ntd": 50,
+    "slippage_scenarios_points_per_side": [0, 1, 2]
+  },
+  "sessions": [
+    {"session_key": "2026-08-11:DAY", "date": "2026-08-11", "session_kind": "DAY", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-11:NIGHT_US", "date": "2026-08-11", "session_kind": "NIGHT_US", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-20:DAY", "date": "2026-08-20", "session_kind": "DAY", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-20:NIGHT_US", "date": "2026-08-20", "session_kind": "NIGHT_US", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-24:DAY", "date": "2026-08-24", "session_kind": "DAY", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-24:NIGHT_US", "date": "2026-08-24", "session_kind": "NIGHT_US", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-26:DAY", "date": "2026-08-26", "session_kind": "DAY", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-08-27:NIGHT_US", "date": "2026-08-27", "session_kind": "NIGHT_US", "source_month": "2026-08", "source_sha256": "b50d46c39e6d39d843457020fed305c0df78ca2bdd249f4fab5c7a531ba32da1", "classification": "DEVELOPMENT"},
+    {"session_key": "2026-07-02:DAY", "date": "2026-07-02", "session_kind": "DAY", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "VALIDATION"},
+    {"session_key": "2026-07-02:NIGHT_US", "date": "2026-07-02", "session_kind": "NIGHT_US", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "VALIDATION"},
+    {"session_key": "2026-07-09:DAY", "date": "2026-07-09", "session_kind": "DAY", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "VALIDATION"},
+    {"session_key": "2026-07-09:NIGHT_US", "date": "2026-07-09", "session_kind": "NIGHT_US", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "VALIDATION"},
+    {"session_key": "2026-07-16:DAY", "date": "2026-07-16", "session_kind": "DAY", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "BLIND"},
+    {"session_key": "2026-07-16:NIGHT_US", "date": "2026-07-16", "session_kind": "NIGHT_US", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "BLIND"},
+    {"session_key": "2026-07-23:DAY", "date": "2026-07-23", "session_kind": "DAY", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "BLIND"},
+    {"session_key": "2026-07-28:NIGHT_US", "date": "2026-07-28", "session_kind": "NIGHT_US", "source_month": "2026-07", "source_sha256": "83b0a5be29980d3856d28ae1c990fa628bb8597328cd84c694ab51dc50fd03b6", "classification": "BLIND"}
+  ]
+}

@@ -1,0 +1,414 @@
+{
+  "original_decision": "NOTIFY",
+  "notification_reason": "一級低點樞紐完成配對確認，市場結構狀態已更新。",
+  "latest_closed_k_price_estimate": "收盤約 46,820～46,825（圖面估計）。",
+  "latest_closed_k_details": [
+    "屬夜盤、美股開盤前時段。"
+  ],
+  "large_trend": {
+    "classification": "偏多但回檔",
+    "details": [
+      "二級樞紐仍維持多方推進，大級多頭防線有效（圖面估計）。"
+    ]
+  },
+  "current_trend": {
+    "classification": "轉換中",
+    "details": [
+      "一級低點樞紐已確認，但尚未突破拉回小區間。"
+    ]
+  },
+  "market_state": [
+    "夜盤 0 號盤向上；第四象限，趨勢高、波動低。"
+  ],
+  "pattern_observation": {
+    "status": "條件式偏多",
+    "pattern": "趨勢拉回延續",
+    "details": [
+      "右左階段；等待已收盤 K 向上重新發動。"
+    ]
+  },
+  "missing_conditions_or_trigger": [
+    "等待已收盤 1 分 K 突破最近拉回小區間上緣。"
+  ],
+  "entry_and_structural_stop": [
+    "尚未觸發；不得建立模擬持倉。"
+  ],
+  "risk_and_nearest_obstacle": [
+    "尚無進場價，無法可靠計算 1R。"
+  ],
+  "single_contract_management_or_prohibition": [
+    "目前觀望；不追價、不加碼、不放寬停損。"
+  ],
+  "constitution_event": {
+    "event_type": "NONE",
+    "event_id": "NONE|2026-09-02T19:11:00+08:00",
+    "setup_id": null,
+    "position_id": null,
+    "direction": null,
+    "entry_price_estimate": null,
+    "stop_price_estimate": null,
+    "risk_points": null,
+    "latest_closed_bar_time": "2026-09-02T19:11:00+08:00",
+    "reason": "本輪沒有模擬持倉或交易憲法狀態異動。"
+  },
+  "market_structure_state": {
+    "version": 5,
+    "as_of": "2026-09-02T19:11:00+08:00",
+    "session_key": "2026-09-02-NIGHT",
+    "primary_pivots": [
+      {
+        "pivot_id": "P1-H-1903",
+        "kind": "HIGH",
+        "state": "PAIRED_CONFIRMED",
+        "bar_time": "2026-09-02T19:03:00+08:00",
+        "price_estimate": 46842,
+        "first_seen_at": "2026-09-02T19:03:00+08:00",
+        "locally_confirmed_at": "2026-09-02T19:06:00+08:00",
+        "paired_confirmed_at": "2026-09-02T19:11:00+08:00",
+        "terminal_at": null,
+        "replaced_by": null,
+        "proportionality": "NORMAL"
+      },
+      {
+        "pivot_id": "P1-L-1908",
+        "kind": "LOW",
+        "state": "PAIRED_CONFIRMED",
+        "bar_time": "2026-09-02T19:08:00+08:00",
+        "price_estimate": 46805,
+        "first_seen_at": "2026-09-02T19:08:00+08:00",
+        "locally_confirmed_at": "2026-09-02T19:10:00+08:00",
+        "paired_confirmed_at": "2026-09-02T19:11:00+08:00",
+        "terminal_at": null,
+        "replaced_by": null,
+        "proportionality": "NORMAL"
+      }
+    ],
+    "secondary_pivots": [],
+    "defense_lines": {
+      "small_bull": {
+        "direction": "BULL",
+        "pivot_id": "P1-L-1908",
+        "price_estimate": 46805,
+        "qualified_at": "2026-09-02T19:11:00+08:00",
+        "status": "ACTIVE",
+        "ended_at": null
+      },
+      "small_bear": null,
+      "large_bull": null,
+      "large_bear": null
+    },
+    "provisional_invalidation_boundaries": {
+      "bull": null,
+      "bear": null
+    },
+    "dow_state_small": "BULL",
+    "dow_state_large": "UNDEFINED",
+    "reversal_type": "NONE",
+    "maturity": "RIGHT_LEFT",
+    "scenario_context": {
+      "wave_phase": "PULLBACK",
+      "locations": [
+        "NEAR_SUPPORT",
+        "DEFENSE_RETEST"
+      ],
+      "grade_alignment": "ALIGNED",
+      "hold_scenario": "多頭防線守住且已收盤 K 重新突破拉回小區間，可延續 0 號向上。",
+      "break_scenario": "若收盤跌破多頭防線，先轉換中並等待 Type 2，而非立即反手做空。",
+      "setup": {
+        "setup_id": "TREND_PULLBACK_LONG|2026-09-02T19:08:00+08:00",
+        "pattern": "TREND_PULLBACK_CONTINUATION",
+        "direction": "LONG",
+        "stage": "ARMED",
+        "first_seen_at": "2026-09-02T19:10:00+08:00",
+        "stage_changed_at": "2026-09-02T19:11:00+08:00",
+        "observation_zone": {
+          "low": 46805,
+          "high": 46815,
+          "reliability": "ESTIMATED",
+          "reason": "多頭防線與拉回結構重疊區（圖面估計）。"
+        },
+        "trigger_zone": {
+          "low": 46824,
+          "high": 46830,
+          "reliability": "ESTIMATED",
+          "reason": "拉回小區間上緣（圖面估計）。"
+        },
+        "invalidation_zone": {
+          "low": 46798,
+          "high": 46803,
+          "reliability": "ESTIMATED",
+          "reason": "完整拉回低點外含最低緩衝（圖面估計）。"
+        },
+        "nearest_obstacle_zone": {
+          "low": 46838,
+          "high": 46845,
+          "reliability": "ESTIMATED",
+          "reason": "前高與最近壓力區（圖面估計）。"
+        }
+      }
+    },
+    "anchor_context": {
+      "anchors": [
+        {
+          "anchor_id": "A-LARGE-BULL-1850",
+          "grade": "LARGE",
+          "direction": "BULL",
+          "status": "CONFIRMED",
+          "source": "STRUCTURE_BREAK",
+          "start_bar_time": "2026-09-02T18:20:00+08:00",
+          "extreme_bar_time": "2026-09-02T19:03:00+08:00",
+          "start_price_estimate": 46762,
+          "extreme_price_estimate": 46842,
+          "first_seen_at": "2026-09-02T18:50:00+08:00",
+          "confirmed_at": "2026-09-02T18:51:00+08:00",
+          "terminal_at": null,
+          "replaced_by": null,
+          "quality": "CLEAN",
+          "destructive_evidence": [
+            "STRUCTURE_BREAK",
+            "SESSION_EXTREME_BREAK"
+          ],
+          "invalidation_zone": {
+            "low": 46758,
+            "high": 46764,
+            "reliability": "ESTIMATED",
+            "reason": "大級多方錨起點與原結構外緣（圖面估計）。"
+          },
+          "parent_anchor_id": null,
+          "notes": [
+            "大級多方錨已確認，後續以此比較趨勢性與波動率。"
+          ]
+        },
+        {
+          "anchor_id": "A-SMALL-BULL-1908",
+          "grade": "SMALL",
+          "direction": "BULL",
+          "status": "FORMING",
+          "source": "DEFENSE_BREAK",
+          "start_bar_time": "2026-09-02T19:08:00+08:00",
+          "extreme_bar_time": "2026-09-02T19:11:00+08:00",
+          "start_price_estimate": 46805,
+          "extreme_price_estimate": 46825,
+          "first_seen_at": "2026-09-02T19:11:00+08:00",
+          "confirmed_at": null,
+          "terminal_at": null,
+          "replaced_by": null,
+          "quality": "CAUTION",
+          "destructive_evidence": [
+            "NONE"
+          ],
+          "invalidation_zone": {
+            "low": 46798,
+            "high": 46803,
+            "reliability": "ESTIMATED",
+            "reason": "小級反彈錨起點外含最低緩衝（圖面估計）。"
+          },
+          "parent_anchor_id": "A-LARGE-BULL-1850",
+          "notes": [
+            "小級多方錨形成中，尚缺突破拉回小區間。"
+          ]
+        }
+      ],
+      "active_large_anchor_id": "A-LARGE-BULL-1850",
+      "active_small_anchor_id": "A-SMALL-BULL-1908",
+      "controlling_grade": "SMALL",
+      "grade_relation": "ALIGNED",
+      "control_reason": "大級多方錨有效，小級拉回後重新轉強，短線由小級錨負責進場時機。",
+      "control_changed_at": "2026-09-02T19:11:00+08:00",
+      "trend_dynamics": "INCREASING",
+      "volatility_dynamics": "CONTRACTING",
+      "working_quadrant": "Q4",
+      "primary_quadrant_candidate": "Q4",
+      "secondary_quadrant_candidate": "Q1",
+      "eliminated_quadrants": [
+        "Q2",
+        "Q3"
+      ],
+      "quadrant_reason": "大級方向延續且防線未破，拉回後推進仍同向但振幅收斂，Q4優先、Q1次之。",
+      "quadrant_changed_at": "2026-09-02T19:11:00+08:00"
+    },
+    "cclass_context": {
+      "version": 1,
+      "as_of": "2026-09-02T19:11:00+08:00",
+      "engine_mode": "TAIJI_ORDERED",
+      "engine_changed_at": "2026-09-02T18:50:00+08:00",
+      "order_state": "ORDERED",
+      "order_reason": "多方定錨後的推進與修正仍能依父子波段因果辨識。",
+      "taiji_context": {
+        "dynasty_id": "TAIJI-BULL-1850",
+        "anchor_id": "A-LARGE-BULL-1850",
+        "active_leg_id": "TAIJI-BULL-LEG4-1903",
+        "legs": [
+          {
+            "leg_id": "TAIJI-BULL-LEG1-1820",
+            "sequence": "ANCHOR_1",
+            "role": "ANCHOR",
+            "direction": "BULL",
+            "status": "COMPLETED",
+            "start_bar_time": "2026-09-02T18:20:00+08:00",
+            "extreme_bar_time": "2026-09-02T18:50:00+08:00",
+            "first_seen_at": "2026-09-02T18:50:00+08:00",
+            "confirmed_at": "2026-09-02T18:51:00+08:00",
+            "terminal_at": "2026-09-02T18:55:00+08:00",
+            "parent_leg_id": null,
+            "copy_quality": "NOT_APPLICABLE",
+            "correction_quality": "NOT_APPLICABLE",
+            "amplitude_relation": "NOT_APPLICABLE",
+            "duration_relation": "NOT_APPLICABLE",
+            "slope_relation": "NOT_APPLICABLE",
+            "cleanliness_relation": "NOT_APPLICABLE",
+            "destructive_relation": "NOT_APPLICABLE",
+            "notes": [
+              "乾淨、有肉且突破原結構的多方定錨段。"
+            ]
+          },
+          {
+            "leg_id": "TAIJI-BULL-LEG2-1851",
+            "sequence": "CORRECTION_2",
+            "role": "CORRECTION",
+            "direction": "BEAR",
+            "status": "COMPLETED",
+            "start_bar_time": "2026-09-02T18:51:00+08:00",
+            "extreme_bar_time": "2026-09-02T18:58:00+08:00",
+            "first_seen_at": "2026-09-02T18:55:00+08:00",
+            "confirmed_at": "2026-09-02T18:56:00+08:00",
+            "terminal_at": "2026-09-02T18:59:00+08:00",
+            "parent_leg_id": "TAIJI-BULL-LEG1-1820",
+            "copy_quality": "NOT_APPLICABLE",
+            "correction_quality": "ACCEPTABLE",
+            "amplitude_relation": "WEAKER",
+            "duration_relation": "STRONGER",
+            "slope_relation": "WEAKER",
+            "cleanliness_relation": "SIMILAR",
+            "destructive_relation": "WEAKER",
+            "notes": [
+              "修正幅度較小且未破壞多方定錨起點。"
+            ]
+          },
+          {
+            "leg_id": "TAIJI-BULL-LEG3-1858",
+            "sequence": "COPY_3",
+            "role": "COPY",
+            "direction": "BULL",
+            "status": "COMPLETED",
+            "start_bar_time": "2026-09-02T18:58:00+08:00",
+            "extreme_bar_time": "2026-09-02T19:03:00+08:00",
+            "first_seen_at": "2026-09-02T18:59:00+08:00",
+            "confirmed_at": "2026-09-02T19:00:00+08:00",
+            "terminal_at": "2026-09-02T19:04:00+08:00",
+            "parent_leg_id": "TAIJI-BULL-LEG1-1820",
+            "copy_quality": "ACCEPTABLE",
+            "correction_quality": "NOT_APPLICABLE",
+            "amplitude_relation": "SIMILAR",
+            "duration_relation": "STRONGER",
+            "slope_relation": "STRONGER",
+            "cleanliness_relation": "SIMILAR",
+            "destructive_relation": "SIMILAR",
+            "notes": [
+              "第三段以較短時間完成接近父代的同向推進。"
+            ]
+          },
+          {
+            "leg_id": "TAIJI-BULL-LEG4-1903",
+            "sequence": "CORRECTION_4",
+            "role": "CORRECTION",
+            "direction": "BEAR",
+            "status": "FORMING",
+            "start_bar_time": "2026-09-02T19:03:00+08:00",
+            "extreme_bar_time": "2026-09-02T19:08:00+08:00",
+            "first_seen_at": "2026-09-02T19:08:00+08:00",
+            "confirmed_at": null,
+            "terminal_at": null,
+            "parent_leg_id": "TAIJI-BULL-LEG3-1858",
+            "copy_quality": "NOT_APPLICABLE",
+            "correction_quality": "ACCEPTABLE",
+            "amplitude_relation": "WEAKER",
+            "duration_relation": "SIMILAR",
+            "slope_relation": "WEAKER",
+            "cleanliness_relation": "SIMILAR",
+            "destructive_relation": "WEAKER",
+            "notes": [
+              "第四段修正形成中，等待守住防線後評估第五段複製。"
+            ]
+          }
+        ],
+        "anchor_time_status": "FRESH",
+        "previous_context_alignment": "ALIGNED",
+        "assessment_reason": "第三段複製合格，第四段修正尚未破壞大級多方定錨。",
+        "assessment_changed_at": "2026-09-02T19:11:00+08:00"
+      },
+      "momentum_context": {
+        "episode_id": null,
+        "stage": "NONE",
+        "direction": null,
+        "first_seen_at": null,
+        "stage_changed_at": null,
+        "location": "UNDEFINED",
+        "quality": "UNKNOWN",
+        "dragon_grade": "NOT_APPLICABLE",
+        "distance_phase": "UNDEFINED",
+        "bar_expansion": "UNKNOWN",
+        "pivot_pressure": "UNKNOWN",
+        "gate_balance": "NOT_APPLICABLE",
+        "mapped_pattern": "NONE",
+        "failure_reason": "目前沒有離心力、一條龍或生死門事件。"
+      },
+      "thesis_context": {
+        "bias": "BULLISH",
+        "current_reason": "太極多方第四段修正，原方向仍有效但尚未完成第五段觸發。",
+        "hold_condition": "多頭防線守住且已收盤 K 重新突破修正小區間。",
+        "downgrade_condition": "第四段修正時間延長、品質轉弱或定錨時間效力衰減。",
+        "neutralize_condition": "收盤跌破多頭防線，或複製轉為更大級修正。",
+        "reverse_condition": "反向防線破壞、反向錨確認並完成第一次右左後才可翻空。",
+        "changed_at": "2026-09-02T19:11:00+08:00"
+      }
+    },
+    "notes": [
+      "一級低點樞紐首次於本輪完成配對確認。"
+    ],
+    "decision_chain_context": {
+      "version": 1,
+      "as_of": "2026-09-02T19:11:00+08:00",
+      "process_stage": "SETUP_EVALUATION",
+      "stage_changed_at": "2026-09-02T19:11:00+08:00",
+      "opening_context": {
+        "cash_gap_source": "UNAVAILABLE",
+        "gap_direction": "UNDEFINED",
+        "gap_size": "UNDEFINED",
+        "previous_cash_close": null,
+        "cash_open": null,
+        "gap_observed_at": null,
+        "opening_direction_relation": "UNDEFINED",
+        "pre_cash_open_quality": "UNAVAILABLE",
+        "first_endpoint_side": "NONE",
+        "first_endpoint_style": "UNAVAILABLE",
+        "endpoint_first_seen_at": null,
+        "endpoint_confirmed_at": null,
+        "evidence_reason": "夜盤沒有現貨開盤跳空條件，沿用夜盤 OR 與時段結構。"
+      },
+      "structure_context": {
+        "confirmed_leg_count": 4,
+        "analysis_lens": "COMBINED_CONFIRMATION",
+        "lens_changed_at": "2026-09-02T19:11:00+08:00",
+        "family_dna": "CONSISTENT",
+        "confluences": [
+          "SAME_QUADRANT",
+          "COPY_CORRECTION"
+        ],
+        "structure_reason": "四腳結構已形成，四象限與太極修正提供同一多方情境。"
+      },
+      "opportunity_context": {
+        "mapped_pattern": "TREND_PULLBACK_CONTINUATION",
+        "probability_evidence": "HIGH",
+        "payoff_evidence": "MEDIUM",
+        "course_grade": "B_CANDIDATE",
+        "grade_reason": "大小方向與複製修正一致，但最近障礙令可用空間只有中等。",
+        "expected_behavior": "觸發後三至五根已收盤 K 應重新離開拉回區並向上推進。",
+        "max_wait_bars": 5,
+        "behavior_invalidation": "五根內無推進或重新收回觸發區即評估退出。",
+        "recovery_round_policy": "NOT_APPLICABLE"
+      },
+      "assessment_changed_at": "2026-09-02T19:11:00+08:00"
+    }
+  }
+}

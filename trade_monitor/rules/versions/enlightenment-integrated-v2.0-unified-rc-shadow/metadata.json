@@ -1,0 +1,47 @@
+{
+  "version_id": "enlightenment-integrated-v2.0-unified-rc-shadow",
+  "purpose": "Unified course trading-system integration in isolated RC Shadow mode",
+  "source": [
+    "enlightenment-integrated-v1.9-xprocess",
+    "course_knowledge_base\\啟蒙交易班",
+    "course_knowledge_base\\戰法C班",
+    "course_knowledge_base\\X戰法班",
+    "pre-unified-v1.9-20260902"
+  ],
+  "prompt_sha256": "39fd8e9e43f77fe356baf226bbe955d3f447c10168e6d75bd20c111d05eff578",
+  "prompt_utf8_bytes": 110023,
+  "analysis_rules_version": "enlightenment-integrated-v2.0-unified-rc-shadow-analysis",
+  "analysis_rules_sha256": "8873458a05ff0bf82ce88276678f833a1d868557a79368ada6ece215dff85b58",
+  "compatible_schema_version": "trade-monitor-analysis-v7",
+  "schema_sha256": "50bce9344459eb20a36a771a4e8f48beb89dcf7a45c09f042b86c4912f7bc564",
+  "contract_version": 7,
+  "market_structure_state_version": 5,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 1,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "cc6ddaee02bea73e00d8c49e590bba0ab6cc03169a36d9b82eed82f164691b2b",
+  "restore_point": "pre-unified-v1.9-20260902",
+  "status": "rc_shadow_code_and_historical_replay_validated_not_deployed",
+  "created_at": "2026-09-02T21:58:27.8191817+08:00",
+  "validation": {
+    "tests": "213 passed",
+    "pivot_replay": "trade_monitor/reports/unified-v20-pivot-n2-n3-2026-08.md",
+    "decision_process_replay": "trade_monitor/reports/unified-v20-xprocess-n2-n3-2026-08.md",
+    "replay_bars": 22791,
+    "replay_day_sessions": 20,
+    "forward_shadow_gate": "not_started",
+    "profitability_backtest": "not_claimed"
+  },
+  "deployment": {
+    "deployed": false,
+    "automation_id": "1-k",
+    "automation_status": "PAUSED",
+    "structured_market_data_enabled": false,
+    "active_version_unchanged": "enlightenment-integrated-v1.9-xprocess"
+  },
+  "description": "課程統一候選：兩腳後依清晰度選主判讀工具，定錨後結構為四象限主要標準，使用者可見術語全中文，並提供預設關閉的唯讀結構化行情介面。"
+}

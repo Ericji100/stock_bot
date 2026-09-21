@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "baseline-v2.1.8-replay-v2",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor_replay/rules/replay-analysis-v2.json",
+  "replay_schema_sha256": "1c3d6659482613a8ee1aa766d99564c4824168949a37709cb2ba70793a1a9107",
+  "contract_version": 1,
+  "memory_version": 1,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "2026-08-27 compact causal replay",
+  "notes": "完整交易規則仍固定引用正式v2.1.8；回放v2只縮小各九欄的重複敘述數與文字上限，以降低MiniMax回覆延遲，未移除任何欄位、方向、戰法或交易條件。"
+}

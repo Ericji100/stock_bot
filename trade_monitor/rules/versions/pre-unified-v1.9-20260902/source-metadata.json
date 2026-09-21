@@ -1,0 +1,45 @@
+{
+  "version_id": "enlightenment-integrated-v1.9-xprocess",
+  "purpose": "Production X-course ordered decision-process integration",
+  "source": [
+    "enlightenment-integrated-v1.9-xprocess-rc-shadow",
+    "course_knowledge_base\\X戰法班\\整理成果\\X戰法班_完整課程整理.md",
+    "course_knowledge_base\\X戰法班\\整理成果\\X戰法班_一頁複習速查表.md",
+    "course_knowledge_base\\X戰法班\\整理成果\\來源索引與圖片說明.md"
+  ],
+  "prompt_sha256": "4e50fa1a0621bb0d9e100402b93a11dde4c00d2708a8766c3cf6a8fe0f4acaad",
+  "prompt_utf8_bytes": 106320,
+  "analysis_rules_version": "enlightenment-integrated-v1.9-xprocess-analysis",
+  "analysis_rules_sha256": "1f0056668e13fb8ade52441b2d9a86f60589720a387fb0c4797a89163700c2bf",
+  "compatible_schema_version": "trade-monitor-analysis-v7",
+  "schema_sha256": "50bce9344459eb20a36a771a4e8f48beb89dcf7a45c09f042b86c4912f7bc564",
+  "contract_version": 7,
+  "market_structure_state_version": 5,
+  "decision_chain_context_version": 1,
+  "cclass_context_version": 1,
+  "anchor_context_version": 1,
+  "dual_scale_state_version": 1,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "d96e2290e90a58b44e0b27d47555c4e6c625d02d26358a48150dc9ac9e40bc80",
+  "restore_point": "pre-xprocess-v1.8-20260902",
+  "status": "production_release_readback_verified_paused_user_accepted_forward_limit",
+  "created_at": "2026-09-02T20:53:33.8993269+08:00",
+  "validation": {
+    "tests": "198 passed",
+    "replay_report": "trade_monitor/reports/xprocess-v19-n2-n3-2026-08.md",
+    "isolated_shadow_valid_cycles": 3,
+    "average_analysis_seconds": 80.095,
+    "forward_shadow_gate": "not_completed_user_explicitly_accepted_for_promotion"
+  },
+  "deployment": {
+    "deployed_at": "2026-09-02T21:07:13.3745815+08:00",
+    "automation_id": "1-k",
+    "automation_status": "PAUSED",
+    "automation_toml_sha256": "8329a4405ec513c3929130c28c4abe5cb87b4be0193dea03d65171d846e0939c",
+    "active_version_file_sha256": "d760575ee626d07cbc65b5977c455e301cf32259ce68782bbee40d6bdb566fd6",
+    "scheduler_task_state": "Running",
+    "scheduler_daemon_count": 1,
+    "paused_validation": "passed_no_capture"
+  },
+  "description": "Promotes the validated X decision chain into the existing four-pattern, nine-section, one-contract production system while preserving one-lot management and causal state."
+}

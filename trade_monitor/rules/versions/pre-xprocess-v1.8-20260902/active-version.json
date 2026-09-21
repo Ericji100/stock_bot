@@ -1,0 +1,16 @@
+{
+  "automation_id": "1-k",
+  "version_id": "enlightenment-integrated-v1.8-cclass",
+  "prompt_sha256": "510eddf16b13f0820aba06c9ee59ea13cf89e25b50eff5dc24ce849da191248e",
+  "analysis_rules_version": "enlightenment-integrated-v1.8-cclass-analysis",
+  "analysis_rules_sha256": "653137176451710e8f549083be764083fc0a95989f08cc70ca2c05dc0aa56397",
+  "schema_version": "trade-monitor-analysis-v6",
+  "schema_sha256": "cce2a76baf06a119bd8f0c9914d59d045d2115e3e7697f9046a89e6f79ddbec8",
+  "market_structure_state_version": 4,
+  "dual_scale_state_version": 1,
+  "local_scheduler_config_sha256": "c6f7925518ad13611694e62f12b96cd09f61cad6f0fbfae65359f3a6d8dfbcea",
+  "automation_toml_sha256": "882e6f1d514cf4caa7ff665fbe407c2d9ac3a06bd3926c54722d6106ce53b4fd",
+  "verified_at": "2026-09-02T19:34:53.0232062+08:00",
+  "status": "active_version_readback_verified_paused",
+  "automation_status": "PAUSED"
+}

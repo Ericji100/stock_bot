@@ -1,0 +1,44 @@
+{
+  "version_id": "enlightenment-integrated-v2.1.6-anchor-hierarchy",
+  "purpose": "Keep large and small anchors as a causal parent-child hierarchy and reject under-graded session moves",
+  "source": [
+    "enlightenment-integrated-v2.1.5-defense-consistency",
+    "2026-09-03 live diagnosis of a 10:00-11:21 major bullish anchor stored as the only small anchor"
+  ],
+  "prompt_sha256": "c3d713fef82adbbfb1f5fb4cebd413e860c43893dea5eb5ba0c14a7292adefc2",
+  "prompt_utf8_bytes": 130840,
+  "analysis_rules_version": "enlightenment-integrated-v2.1.6-anchor-hierarchy-analysis",
+  "analysis_rules_sha256": "077efe4a46faab0fbcbe28f9b314913623d6024540e3df0cfaef1e77a1c0c17b",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 4,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "22e3853beba2da15fc6ee2b7724a5ab9eab31d3849a11a8fbcc43ec314721cff",
+  "restore_point": "enlightenment-integrated-v2.1.5-defense-consistency",
+  "status": "production_release_readback_verified_active",
+  "created_at": "2026-09-03T11:52:26+08:00",
+  "validation": {
+    "tests": "267 passed in full tests/trade_monitor regression suite",
+    "regression_case": "a 39-minute small anchor with structure and session-extreme breaks must have an active large parent",
+    "historical_replay": "wrong-grade legacy anchors terminate before causal parent-child reconstruction",
+    "forward_shadow_gate": "unchanged from v2.1",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "ACTIVE",
+    "automation_toml_sha256": "8263881c90463d74ce38a37c742bd118cf62c9cc9192680d7d68293e69ffdcc4",
+    "verification_result": "prompt, RRULE, target task, ACTIVE status and scheduler config read back successfully",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to exact readback bytes"
+  },
+  "description": "大錨與小錨以父子關係並存；跨越主要結構與時段極值的長推進不得被降級成唯一小錨，錨的時間與估計價必須成對對齊。"
+}

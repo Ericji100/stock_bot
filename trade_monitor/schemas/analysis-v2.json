@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "original_decision": {
+      "type": "string",
+      "enum": ["NOTIFY", "DONT_NOTIFY"]
+    },
+    "notification_reason": { "type": "string", "minLength": 1 },
+    "latest_closed_k_price_estimate": {
+      "type": "string",
+      "minLength": 1,
+      "description": "只寫價格或價格區間與圖面估計標記；不得包含日期、K棒時間、擷取時間或時區。"
+    },
+    "latest_closed_k_details": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 4
+    },
+    "large_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["強勢偏多", "偏多但回檔", "盤整", "偏空但反彈", "強勢偏空", "資料不足"]
+        },
+        "details": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "maxItems": 5
+        }
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "current_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["偏多", "偏空", "盤整", "轉換中"]
+        },
+        "details": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "maxItems": 5
+        }
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "market_state": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "pattern_observation": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["觀望", "條件式偏多", "條件式偏空", "可評估進場", "不宜追價／禁止"]
+        },
+        "pattern": { "type": "string", "minLength": 1 },
+        "details": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "maxItems": 5
+        }
+      },
+      "required": ["status", "pattern", "details"],
+      "additionalProperties": false
+    },
+    "missing_conditions_or_trigger": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "entry_and_structural_stop": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "risk_and_nearest_obstacle": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "single_contract_management_or_prohibition": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "constitution_event": {
+      "type": "object",
+      "description": "內部持久狀態事件；不得渲染成第十個通知欄位。",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": ["NONE", "SIM_ENTER", "SIM_STOP", "SIM_EXIT", "COOLDOWN_REQUALIFIED"]
+        },
+        "event_id": { "type": "string", "minLength": 1 },
+        "setup_id": { "type": ["string", "null"], "minLength": 1 },
+        "position_id": { "type": ["string", "null"], "minLength": 1 },
+        "direction": { "type": ["string", "null"], "enum": ["LONG", "SHORT", null] },
+        "entry_price_estimate": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "stop_price_estimate": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "risk_points": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "latest_closed_bar_time": { "type": "string", "format": "date-time" },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "event_type",
+        "event_id",
+        "setup_id",
+        "position_id",
+        "direction",
+        "entry_price_estimate",
+        "stop_price_estimate",
+        "risk_points",
+        "latest_closed_bar_time",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "original_decision",
+    "notification_reason",
+    "latest_closed_k_price_estimate",
+    "latest_closed_k_details",
+    "large_trend",
+    "current_trend",
+    "market_state",
+    "pattern_observation",
+    "missing_conditions_or_trigger",
+    "entry_and_structural_stop",
+    "risk_and_nearest_obstacle",
+    "single_contract_management_or_prohibition",
+    "constitution_event"
+  ],
+  "additionalProperties": false
+}

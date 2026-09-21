@@ -1,0 +1,23 @@
+{
+  "version_id": "pre-dow-three-brothers-v1.3-20260902",
+  "automation_id": "1-k",
+  "purpose": "Immutable restore point immediately before Dow Three Brothers integration",
+  "source": "Actual Automation 1-k and local scheduler configuration read immediately before deployment",
+  "execution_version": "enlightenment-integrated-v1.3-dual-mode",
+  "prompt_sha256": "3d27217cf020ec955b29f55bb4cac06de6b5c340be6e6db0fb07f53502558e71",
+  "prompt_utf8_bytes": 39095,
+  "automation_toml_sha256": "45cb011d259a18c1f38ed0c0365418b5dc3436aacf8f9b733518622995f86a17",
+  "analysis_rules_version": "enlightenment-integrated-v1.1",
+  "analysis_rules_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "schema_sha256": "bc371c0d6785921c8b0846e05f9584bc176d27a9a932f306222bf289e35d4803",
+  "schema_version": "trade-monitor-analysis-v2",
+  "local_scheduler_config_sha256": "bd378025cd34fdbf43aa9c43460c7d99133bf8e8c0197f156eaa9bbd80a7e9e3",
+  "local_scheduler_config_version": 1,
+  "automation_status": "ACTIVE",
+  "rrule": "FREQ=MINUTELY;INTERVAL=1",
+  "target_thread_id": "01a05aa6-d062-7df3-88dd-8e3023be05f1",
+  "scheduled_task_name": "StockAiBot-TradeMonitorLocalClock",
+  "scheduled_task_state": "Running",
+  "created_at": "2026-09-02T12:25:51.8589628+08:00",
+  "immutable": true
+}

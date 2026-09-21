@@ -1,0 +1,18 @@
+{
+  "version_id": "enlightenment-integrated-v1.5-scenario-analysis",
+  "purpose": "Symmetric scenario lifecycle, four-direction defense persistence, and adaptive notifications",
+  "source": "enlightenment-integrated-v1.4-dow-analysis plus the 2026-09-02 scenario and notification review",
+  "prompt_sha256": "33f1405aecdd0ed49fa78131aea8f2b1c1a69ebb09b00da10062e09072d37ffa",
+  "prompt_utf8_bytes": 57948,
+  "parent_analysis_version": "enlightenment-integrated-v1.4-dow-analysis",
+  "parent_analysis_sha256": "dec982c6fce9c5e4f64dbd23a5f9053b53b90911f77cabcc5d5e4867f0075aa0",
+  "compatible_schema_version": "trade-monitor-analysis-v4",
+  "schema_sha256": "9985f15c2ce426d73210a84bd334aca6d46804cc5caeccb3ceae4c9dc74c31d8",
+  "contract_version": 4,
+  "market_structure_state_version": 2,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "local_scheduler_config_sha256": "a12cb456833d51d80bf734778ff404bee2c85263ab5b04536d63c42ed49a7617",
+  "created_at": "2026-09-02T14:06:57.3641379+08:00",
+  "description": "所有方向鏡像；新增波段階段、所在位置、兩條情境、級數一致性、全型態候選生命週期、四組點位區及大小級多空防線。"
+}

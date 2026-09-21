@@ -1,0 +1,85 @@
+{
+  "original_decision": "NOTIFY",
+  "notification_reason": "一級低點樞紐完成配對確認，市場結構狀態已更新。",
+  "latest_closed_k_price_estimate": "收盤約 46,820～46,825（圖面估計）。",
+  "latest_closed_k_details": ["屬夜盤、美股開盤前時段。"],
+  "large_trend": {
+    "classification": "偏多但回檔",
+    "details": ["二級樞紐仍維持多方推進，大級多頭防線有效（圖面估計）。"]
+  },
+  "current_trend": {
+    "classification": "轉換中",
+    "details": ["一級低點樞紐已確認，但尚未突破拉回小區間。"]
+  },
+  "market_state": ["夜盤 0 號盤向上；第四象限，趨勢高、波動低。"],
+  "pattern_observation": {
+    "status": "條件式偏多",
+    "pattern": "趨勢拉回延續",
+    "details": ["右左階段；等待已收盤 K 向上重新發動。"]
+  },
+  "missing_conditions_or_trigger": ["等待已收盤 1 分 K 突破最近拉回小區間上緣。"],
+  "entry_and_structural_stop": ["尚未觸發；不得建立模擬持倉。"],
+  "risk_and_nearest_obstacle": ["尚無進場價，無法可靠計算 1R。"],
+  "single_contract_management_or_prohibition": ["目前觀望；不追價、不加碼、不放寬停損。"],
+  "constitution_event": {
+    "event_type": "NONE",
+    "event_id": "NONE|2026-09-02T19:11:00+08:00",
+    "setup_id": null,
+    "position_id": null,
+    "direction": null,
+    "entry_price_estimate": null,
+    "stop_price_estimate": null,
+    "risk_points": null,
+    "latest_closed_bar_time": "2026-09-02T19:11:00+08:00",
+    "reason": "本輪沒有模擬持倉或交易憲法狀態異動。"
+  },
+  "market_structure_state": {
+    "version": 1,
+    "as_of": "2026-09-02T19:11:00+08:00",
+    "session_key": "2026-09-02-NIGHT",
+    "primary_pivots": [
+      {
+        "pivot_id": "P1-H-1903",
+        "kind": "HIGH",
+        "state": "PAIRED_CONFIRMED",
+        "bar_time": "2026-09-02T19:03:00+08:00",
+        "price_estimate": 46842,
+        "first_seen_at": "2026-09-02T19:03:00+08:00",
+        "locally_confirmed_at": "2026-09-02T19:06:00+08:00",
+        "paired_confirmed_at": "2026-09-02T19:11:00+08:00",
+        "terminal_at": null,
+        "replaced_by": null,
+        "proportionality": "NORMAL"
+      },
+      {
+        "pivot_id": "P1-L-1908",
+        "kind": "LOW",
+        "state": "PAIRED_CONFIRMED",
+        "bar_time": "2026-09-02T19:08:00+08:00",
+        "price_estimate": 46805,
+        "first_seen_at": "2026-09-02T19:08:00+08:00",
+        "locally_confirmed_at": "2026-09-02T19:10:00+08:00",
+        "paired_confirmed_at": "2026-09-02T19:11:00+08:00",
+        "terminal_at": null,
+        "replaced_by": null,
+        "proportionality": "NORMAL"
+      }
+    ],
+    "secondary_pivots": [],
+    "small_defense_line": {
+      "direction": "BULL",
+      "pivot_id": "P1-L-1908",
+      "price_estimate": 46805,
+      "qualified_at": "2026-09-02T19:11:00+08:00",
+      "status": "ACTIVE",
+      "ended_at": null
+    },
+    "large_defense_line": null,
+    "provisional_invalidation_boundary": null,
+    "dow_state_small": "BULL",
+    "dow_state_large": "UNDEFINED",
+    "reversal_type": "NONE",
+    "maturity": "RIGHT_LEFT",
+    "notes": ["一級低點樞紐首次於本輪完成配對確認。"]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "automation_id": "1-k",
+  "version_id": "enlightenment-integrated-v1.9-xprocess",
+  "prompt_sha256": "4e50fa1a0621bb0d9e100402b93a11dde4c00d2708a8766c3cf6a8fe0f4acaad",
+  "analysis_rules_version": "enlightenment-integrated-v1.9-xprocess-analysis",
+  "analysis_rules_sha256": "1f0056668e13fb8ade52441b2d9a86f60589720a387fb0c4797a89163700c2bf",
+  "schema_version": "trade-monitor-analysis-v7",
+  "schema_sha256": "50bce9344459eb20a36a771a4e8f48beb89dcf7a45c09f042b86c4912f7bc564",
+  "market_structure_state_version": 5,
+  "decision_chain_context_version": 1,
+  "dual_scale_state_version": 1,
+  "local_scheduler_config_sha256": "d96e2290e90a58b44e0b27d47555c4e6c625d02d26358a48150dc9ac9e40bc80",
+  "automation_toml_sha256": "8329a4405ec513c3929130c28c4abe5cb87b4be0193dea03d65171d846e0939c",
+  "verified_at": "2026-09-02T21:07:13.3745815+08:00",
+  "status": "active_version_readback_verified_paused",
+  "automation_status": "PAUSED"
+}

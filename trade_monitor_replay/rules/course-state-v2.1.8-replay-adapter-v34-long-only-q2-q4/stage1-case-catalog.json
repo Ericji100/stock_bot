@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "purpose": "第一階段多方Q2／Q4因果校正案例；時間只作定位，不包含預期買賣答案或未來績效",
+  "scope": {
+    "instrument": "TMF",
+    "session": "DAY",
+    "trade_direction_policy": "LONG_ONLY",
+    "trade_setup_policy": "LONG_Q2_Q4_ONLY",
+    "dataset_role": "CALIBRATION"
+  },
+  "cases": [
+    {
+      "case_id": "tmf-20260811-q2-1028",
+      "target_date": "2026-08-11",
+      "locator_time": "10:28",
+      "family_hypothesis": "Q2",
+      "analysis_start": "10:18",
+      "analysis_end": "10:36",
+      "analysis_every_bars": 2,
+      "audit_focus": ["合格邊界", "跌破與收復", "掃低極值停損", "快速應有行為"]
+    },
+    {
+      "case_id": "tmf-20260821-relaunch-1000",
+      "target_date": "2026-08-21",
+      "locator_time": "10:00",
+      "family_hypothesis": "Q2_OR_Q4",
+      "analysis_start": "09:50",
+      "analysis_end": "10:14",
+      "analysis_every_bars": 2,
+      "audit_focus": ["作用中多方定錨", "修正或反向候選", "重新發動", "候選家族取捨"]
+    },
+    {
+      "case_id": "tmf-20260825-prepare-1126",
+      "target_date": "2026-08-25",
+      "locator_time": "11:26",
+      "family_hypothesis": "Q2_OR_Q4",
+      "analysis_start": "11:16",
+      "analysis_end": "11:42",
+      "analysis_every_bars": 2,
+      "audit_focus": ["觀察到準備", "ENTRY_ELIGIBLE", "下一根成交", "管理與取消"]
+    },
+    {
+      "case_id": "tmf-20260826-q4-0944",
+      "target_date": "2026-08-26",
+      "locator_time": "09:44",
+      "family_hypothesis": "Q4",
+      "analysis_start": "09:34",
+      "analysis_end": "09:50",
+      "analysis_every_bars": 2,
+      "audit_focus": ["結構升級", "完整同級修正", "Q4重新發動", "修正低點外停損"]
+    },
+    {
+      "case_id": "tmf-20260826-q2-0950",
+      "target_date": "2026-08-26",
+      "locator_time": "09:50",
+      "family_hypothesis": "Q2",
+      "analysis_start": "09:42",
+      "analysis_end": "10:00",
+      "analysis_every_bars": 2,
+      "audit_focus": ["Q4失敗或降級", "假跌破收復", "停損後等待", "重新進場"]
+    },
+    {
+      "case_id": "tmf-20260826-q4-1010",
+      "target_date": "2026-08-26",
+      "locator_time": "10:10",
+      "family_hypothesis": "Q4",
+      "analysis_start": "10:00",
+      "analysis_end": "10:22",
+      "analysis_every_bars": 2,
+      "audit_focus": ["太極修正", "Q4收斂", "重新發動", "前高檢查點管理"]
+    }
+  ]
+}

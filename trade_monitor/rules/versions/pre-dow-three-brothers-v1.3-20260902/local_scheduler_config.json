@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "automation_id": "1-k",
+  "align_second": 5,
+  "analysis_timeout_seconds": 50,
+  "keep_capture_count": 5,
+  "prompt_version": "enlightenment-integrated-v1.1",
+  "prompt_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v1.1/prompt.md",
+  "schema_path": "trade_monitor/schemas/analysis-v2.json",
+  "capture_script_path": "trade_monitor/chart_capture.ps1",
+  "capture": {
+    "crop_x": 8,
+    "crop_y": 92,
+    "crop_width": 1390,
+    "crop_height": 940,
+    "minimum_window_width": 1500,
+    "minimum_window_height": 1000,
+    "minimum_dark_ratio": 0.55,
+    "minimum_signal_samples": 12
+  }
+}

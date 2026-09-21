@@ -1,0 +1,44 @@
+{
+  "version_id": "enlightenment-integrated-v2.1.5-defense-consistency",
+  "purpose": "Reconstruct visible causal pivots and keep confirmed Dow states consistent with active defenses",
+  "source": [
+    "enlightenment-integrated-v2.1.4-same-grade-quadrant",
+    "2026-09-03 live diagnosis of three visible bearish attacks with empty pivot and defense state"
+  ],
+  "prompt_sha256": "24f36be9fd45e89a9c28294971310122397824485e045d7b533d84957aebb8f4",
+  "prompt_utf8_bytes": 127516,
+  "analysis_rules_version": "enlightenment-integrated-v2.1.5-defense-consistency-analysis",
+  "analysis_rules_sha256": "b1a356a2921b851036d79cc8ebb384958612c70860cd7b437678c190f2b4257b",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 4,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "d89ec24b645c9419de7e936c6b60d039bcfc14cc010f6c370a529429a65bbcc1",
+  "restore_point": "enlightenment-integrated-v2.1.4-same-grade-quadrant",
+  "status": "production_release_readback_verified_active",
+  "created_at": "2026-09-03T10:44:35+08:00",
+  "validation": {
+    "tests": "263 passed in full tests/trade_monitor regression suite",
+    "regression_case": "confirmed small BEAR with three visible legs must retain a paired high pivot and active small-bear defense",
+    "historical_replay": "visible-history recovery is causal at the current snapshot and cannot create retroactive entries",
+    "forward_shadow_gate": "unchanged from v2.1",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "ACTIVE",
+    "automation_toml_sha256": "76eb73f0b95c834a3f836005349a8df8ab645be82b5cb29ff587e7c414aa14c6",
+    "verification_result": "prompt, RRULE, target task and ACTIVE status read back successfully",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to exact readback bytes"
+  },
+  "description": "可見歷史中已完成的攻擊與創高／創低因果必須在當前輪建檔；確認的道氏方向必須有同級作用中防線與已配對來源樞紐。"
+}

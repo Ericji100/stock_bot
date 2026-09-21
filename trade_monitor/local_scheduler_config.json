@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "automation_id": "1-k",
+  "align_second": 5,
+  "analysis_timeout_seconds": 240,
+  "keep_capture_count": 5,
+  "prompt_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "capture_script_path": "trade_monitor/chart_capture.ps1",
+  "market_structure_state_enabled": true,
+  "market_structure_state_version": 6,
+  "unified_lens_selection_enabled": true,
+  "dual_scale": {
+    "enabled": true,
+    "state_path": ".runtime/trade_monitor/dual_scale_state.json",
+    "detail_bar_count": 180,
+    "overview_bar_count": 296,
+    "overview_interval_minutes": 15,
+    "max_defer_minutes": 2,
+    "lease_seconds": 45,
+    "overview_max_age_minutes": 20,
+    "controller": "CHROME_CONTROL_ONLY"
+  },
+  "structured_market_data": {
+    "enabled": false,
+    "source_path": ".runtime/trade_monitor/structured-market-data.json",
+    "max_age_seconds": 90
+  },
+  "capture": {
+    "crop_x": 8,
+    "crop_y": 92,
+    "crop_width": 1810,
+    "crop_height": 940,
+    "minimum_window_width": 1500,
+    "minimum_window_height": 1000,
+    "minimum_dark_ratio": 0.55,
+    "minimum_signal_samples": 12
+  }
+}

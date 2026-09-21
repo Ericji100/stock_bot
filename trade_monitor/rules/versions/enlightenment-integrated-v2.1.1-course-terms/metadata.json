@@ -1,0 +1,45 @@
+{
+  "version_id": "enlightenment-integrated-v2.1.1-course-terms",
+  "purpose": "Preserve the course-standard names ATR14 and A/B/C grade points in user-visible monitoring output",
+  "source": [
+    "enlightenment-integrated-v2.1-prospective",
+    "course_knowledge_base\\X戰法班\\整理成果\\逐段轉錄_自動辨識初稿\\X戰法說明會.txt",
+    "User terminology correction on 2026-09-03"
+  ],
+  "prompt_sha256": "2accccd3f39b2a6672126468960c9a3c4cc1cb717dd6f73da709a54173cc1730",
+  "prompt_utf8_bytes": 122296,
+  "analysis_rules_version": "enlightenment-integrated-v2.1.1-course-terms-analysis",
+  "analysis_rules_sha256": "da7c3e2de51f33b56c0df3a5db90dc46d3cb81b251e89feed84a9975c55993c2",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "466c354cab5bee4bbe130d1738f4511125b2d184e2823041fa8a6d1205d6bbdf",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 2,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "4ecf333e45893e2b679064cc254aded8974c8322304a52a08c4bcf50534ac783",
+  "restore_point": "enlightenment-integrated-v2.1-prospective",
+  "status": "production_release_readback_verified_paused",
+  "created_at": "2026-09-03T08:02:17.3889051+08:00",
+  "validation": {
+    "tests": "236 trade_monitor tests passed before formal deployment",
+    "schema_example": "unchanged v8 schema",
+    "historical_replay": "not required for presentation-only terminology change",
+    "forward_shadow_gate": "unchanged from v2.1",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "PAUSED",
+    "automation_toml_sha256": "af3b0c5148150864ef3bfbf99f62433b738f3a161ae845166481172ef99c8e97",
+    "active_version_file_sha256": "0fd1eb059e3a6d937c49a9ad8b8a182fde474a29db34ef90a00088b44b09a32e",
+    "prompt_eof_normalization": "Automation removed one trailing LF; version prompt normalized to exact readback bytes without semantic change"
+  },
+  "description": "只修正使用者可見術語：保留 ATR14，並將內部 A_CANDIDATE／B_CANDIDATE／C_CANDIDATE 顯示為 A級點／B級點／C級點。交易邏輯、schema、狀態版本、九欄格式與排程頻率不變。"
+}

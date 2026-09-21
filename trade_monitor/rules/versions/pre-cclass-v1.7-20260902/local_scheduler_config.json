@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "automation_id": "1-k",
+  "align_second": 5,
+  "analysis_timeout_seconds": 90,
+  "keep_capture_count": 5,
+  "prompt_version": "enlightenment-integrated-v1.7-anchor-analysis",
+  "prompt_sha256": "b4d2492c9db9eaf396c9daf7f7d0b76e61d8f5e97c605224161b60632f60aebf",
+  "prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v1.7-anchor/analysis-prompt.md",
+  "schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v1.7-anchor/analysis-schema.json",
+  "capture_script_path": "trade_monitor/chart_capture.ps1",
+  "market_structure_state_enabled": true,
+  "market_structure_state_version": 3,
+  "dual_scale": {
+    "enabled": true,
+    "state_path": ".runtime/trade_monitor/dual_scale_state.json",
+    "detail_bar_count": 180,
+    "overview_bar_count": 296,
+    "overview_interval_minutes": 15,
+    "max_defer_minutes": 2,
+    "lease_seconds": 45,
+    "overview_max_age_minutes": 20,
+    "controller": "CHROME_CONTROL_ONLY"
+  },
+  "capture": {
+    "crop_x": 8,
+    "crop_y": 92,
+    "crop_width": 1390,
+    "crop_height": 940,
+    "minimum_window_width": 1500,
+    "minimum_window_height": 1000,
+    "minimum_dark_ratio": 0.55,
+    "minimum_signal_samples": 12
+  }
+}

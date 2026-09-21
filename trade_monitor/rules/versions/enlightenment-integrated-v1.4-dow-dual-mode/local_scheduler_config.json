@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "automation_id": "1-k",
+  "align_second": 5,
+  "analysis_timeout_seconds": 50,
+  "keep_capture_count": 5,
+  "prompt_version": "enlightenment-integrated-v1.4-dow-analysis",
+  "prompt_sha256": "dec982c6fce9c5e4f64dbd23a5f9053b53b90911f77cabcc5d5e4867f0075aa0",
+  "prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v1.4-dow-analysis/prompt.md",
+  "schema_path": "trade_monitor/schemas/analysis-v3.json",
+  "capture_script_path": "trade_monitor/chart_capture.ps1",
+  "market_structure_state_enabled": true,
+  "capture": {
+    "crop_x": 8,
+    "crop_y": 92,
+    "crop_width": 1390,
+    "crop_height": 940,
+    "minimum_window_width": 1500,
+    "minimum_window_height": 1000,
+    "minimum_dark_ratio": 0.55,
+    "minimum_signal_samples": 12
+  }
+}

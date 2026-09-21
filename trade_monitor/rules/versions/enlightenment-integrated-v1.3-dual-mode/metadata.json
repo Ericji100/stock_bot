@@ -1,0 +1,17 @@
+{
+  "version_id": "enlightenment-integrated-v1.3-dual-mode",
+  "automation_id": "1-k",
+  "purpose": "Use one decision-selected canonical message for both Telegram and the Codex task",
+  "source_version": "enlightenment-integrated-v1.2-local-clock",
+  "prompt_sha256": "3d27217cf020ec955b29f55bb4cac06de6b5c340be6e6db0fb07f53502558e71",
+  "prompt_utf8_bytes": 39095,
+  "analysis_rules_version": "enlightenment-integrated-v1.1",
+  "analysis_rules_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "compatible_schema_version": "trade-monitor-analysis-v2",
+  "contract_version": 2,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "local_scheduler_config_version": 1,
+  "created_at": "2026-09-02T10:51:12.8258812+08:00",
+  "description": "NOTIFY 兩邊使用同一份完整九欄；DONT_NOTIFY 兩邊使用同一則固定短版。交易規則逐字沿用 v1.1。"
+}

@@ -1,0 +1,18 @@
+{
+  "version_id": "enlightenment-integrated-v1",
+  "automation_id": "1-k",
+  "purpose": "Formal enlightenment course integration",
+  "prompt_sha256": "0ce53b597ee255db72034571218c76c0f07aac411157a386eea4fc06742288a4",
+  "prompt_utf8_bytes": 34323,
+  "schema_sha256": "bc371c0d6785921c8b0846e05f9584bc176d27a9a932f306222bf289e35d4803",
+  "schema_version": "trade-monitor-analysis-v2",
+  "contract_version": 2,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "source_sha256": {
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-enlightenment-integrated.md": "dbea404c44f69bd604812d3f5438f40ea3d3dd467ef2b5b2f3c855a756d30199",
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-enlightenment-integration-review.md": "5b52820c33f38ca19add64e4b6c00e266c18bd23e13c9ead662a2f42927f0c1d",
+    "course_knowledge_base/啟蒙交易班/整理成果/啟蒙交易班_課程整理.md": "314b30de3c946552e58eb52a50bb053a50397c629ab2444e7ffe2f340f3391f8"
+  },
+  "created_at": "2026-09-02T09:07:53+08:00"
+}

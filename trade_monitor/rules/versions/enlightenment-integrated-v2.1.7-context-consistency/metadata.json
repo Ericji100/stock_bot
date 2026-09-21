@@ -1,0 +1,44 @@
+{
+  "version_id": "enlightenment-integrated-v2.1.7-context-consistency",
+  "purpose": "Keep Taiji history, controlling-grade quadrant, active-anchor trend and forward scenarios mutually consistent",
+  "source": [
+    "enlightenment-integrated-v2.1.6-anchor-hierarchy",
+    "2026-09-03 live diagnosis of missing Taiji reconstruction and a small bearish Q4 move misclassified as Q3"
+  ],
+  "prompt_sha256": "2219fcd3c26b277e02af65d3ff00153eba13af69cbbaa9b679818353b6e22e3a",
+  "prompt_utf8_bytes": 135069,
+  "analysis_rules_version": "enlightenment-integrated-v2.1.7-context-consistency-analysis",
+  "analysis_rules_sha256": "420a7096c0409642b4186586da5f93c4096e4042170675798705e6e2126b7106",
+  "compatible_schema_version": "trade-monitor-analysis-v8",
+  "schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "contract_version": 8,
+  "market_structure_state_version": 6,
+  "prospective_context_version": 1,
+  "decision_chain_context_version": 1,
+  "anchor_context_version": 1,
+  "cclass_context_version": 1,
+  "dual_scale_state_version": 1,
+  "structured_market_data_contract_version": 1,
+  "user_visible_chinese_presentation_version": 4,
+  "local_scheduler_config_version": 1,
+  "local_scheduler_config_sha256": "767212dd730bb3c0921d436dbed06c1d4b5df746fd1939a5252529a2d81f6331",
+  "restore_point": "enlightenment-integrated-v2.1.6-anchor-hierarchy",
+  "status": "production_release_readback_verified_active",
+  "created_at": "2026-09-03T12:17:47+08:00",
+  "validation": {
+    "tests": "273 passed in full tests/trade_monitor regression suite",
+    "regression_case": "active large anchor, retained Taiji legs, same-grade quadrant and two-direction hypotheses must agree",
+    "historical_replay": "visible historical legs are rebuilt with current first-seen timestamps and no retroactive trades",
+    "forward_shadow_gate": "one isolated live-chart run passed in one analysis attempt; no Telegram delivery or simulated trade; formal timeout guard raised from 180 to 240 seconds after the first formal run timed out",
+    "profitability_backtest": "not claimed"
+  },
+  "deployment": {
+    "deployed": true,
+    "automation_id": "1-k",
+    "automation_status": "ACTIVE",
+    "automation_toml_sha256": "c7ecad94ce5305da5a94107b912258cbacc0cb75bc9becb9389ac2d5b88d7117",
+    "verification_result": "prompt, RRULE, target task, ACTIVE status and scheduler config read back successfully",
+    "prompt_eof_normalization": "version prompt and Automation prompt are byte-identical"
+  },
+  "description": "作用中大錨、太極可見歷史、控制級數象限、雙向情境與使用者可見位置說明必須形成同一個可執行盤勢答案。"
+}

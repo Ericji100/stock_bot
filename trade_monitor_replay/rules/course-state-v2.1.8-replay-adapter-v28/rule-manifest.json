@@ -1,0 +1,19 @@
+{
+  "replay_rule_version": "course-state-v2.1.8-replay-adapter-v28",
+  "source_version": "enlightenment-integrated-v2.1.8-anchor-origin",
+  "analysis_rules_version": "enlightenment-integrated-v2.1.8-anchor-origin-analysis",
+  "analysis_prompt_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+  "analysis_prompt_sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469",
+  "analysis_schema_path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-schema.json",
+  "analysis_schema_sha256": "9adc9e239498baea1c00411e502951e4a429fde5781419b5e8966c6e9bbad75e",
+  "source_contract_version": 8,
+  "source_market_structure_state_version": 6,
+  "replay_schema_path": "trade_monitor_replay/rules/replay-semantic-v6.json",
+  "replay_schema_sha256": "0b2056a163a9a85a8f74de377a4ea193935df2d2f18e6996ae8373227ed26c7c",
+  "contract_version": 6,
+  "memory_version": 3,
+  "instrument": "TMF",
+  "execution_environment": "historical_structured_data_replay",
+  "created_for": "make explicit same-grade Type2 child takeovers update the numbered market",
+  "notes": "正式v2.1.8規則維持唯讀。v28延續v27全部程式交易契約，修正號盤與錨生命週期的內部一致性：當錨引擎已把反向小級child正式標為Type2或Type3、提供被取代錨ID及因果可見時間，且沒有仍有效的反向大級父結構阻擋時，號盤必須在該可見時間翻向；不得因舊child已從目前快照移除而漏掉翻向。若仍有相反大級父結構，反向小級child仍只算Type1，不增加號數。"
+}

@@ -1,0 +1,43 @@
+{
+  "rule_version": "tmf-enlightenment-pure-ai-long-only-v1",
+  "analysis_mode": "PURE_AI",
+  "market_analysis_policy": "DIRECTION_NEUTRAL",
+  "trade_direction_policy": "LONG_ONLY",
+  "contract_path": "trade_monitor_replay/rules/course-pure-ai-v1-long-only/course-contract.md",
+  "contract_sha256": "b69172fa06a2e9d6010a05e40052b0b51aab27df4886743183f6a16ba6275209",
+  "schema_path": "trade_monitor_replay/rules/course-pure-ai-v1-long-only/analysis-schema.json",
+  "schema_sha256": "806c162700ecd4707cf47360b1470e7d282b7daae15771ed01554de7b37ed01d",
+  "course_sources": [
+    {
+      "path": "course_knowledge_base/啟蒙交易班/整理成果/啟蒙交易班_課程整理.md",
+      "sha256": "7e5bc4edf143555eeda3918c8434a3f29d650fb7ccf3f9485951ec6094002fc0"
+    },
+    {
+      "path": "course_knowledge_base/啟蒙交易班/整理成果/四象限戰法強化_完整課程整理.md",
+      "sha256": "57fbfe771e412c9eaea98ce97681f28588423b4a9156803696f5c7fa064908f1"
+    },
+    {
+      "path": "course_knowledge_base/道氏三兄弟/整理成果/道氏三兄弟_完整課程整理.md",
+      "sha256": "5109f2b0b0a10a30d6ca71c2c0013f1068f6c641ed3a0afff77cdeea7387afd2"
+    },
+    {
+      "path": "course_knowledge_base/戰法C班/整理成果/戰法C班_完整課程整理.md",
+      "sha256": "0bfbf5cc8ee3cc7eaaecc71153e4c7d68f389041a049486cdd5083d8d4937105"
+    },
+    {
+      "path": "course_knowledge_base/X戰法班/整理成果/X戰法班_完整課程整理.md",
+      "sha256": "e0c423f5dca09c1e00a0377b3cd2f22ec29afad05876f34d857e38f0baf3978d"
+    }
+  ],
+  "formal_reference": {
+    "path": "trade_monitor/rules/versions/enlightenment-integrated-v2.1.8-anchor-origin/analysis-prompt.md",
+    "sha256": "78a3487e90235e4b83ea835d30572b9207e41eb2f7d13fce5984f20e80209469"
+  },
+  "prohibited_strategy_authorities": [
+    "v195-v197 program gates",
+    "fixed 120 point reversal",
+    "fixed minute or bar count as anchor sufficiency",
+    "n-bar pivot as sole course control-grade decision"
+  ],
+  "notes": "新增隔離純AI基準；正式監控、Telegram、Automation及舊回放版本保持不變。"
+}

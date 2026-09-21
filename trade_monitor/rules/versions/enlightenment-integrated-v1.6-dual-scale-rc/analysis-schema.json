@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trade-monitor-analysis-v4",
+  "$defs": {
+    "textList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "pivot": {
+      "type": "object",
+      "properties": {
+        "pivot_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "kind": {"type": "string", "enum": ["HIGH", "LOW"]},
+        "state": {"type": "string", "enum": ["CANDIDATE", "LOCAL_CONFIRMED", "PAIRED_CONFIRMED", "INVALIDATED", "REPLACED"]},
+        "bar_time": {"type": "string", "format": "date-time"},
+        "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "first_seen_at": {"type": "string", "format": "date-time"},
+        "locally_confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "paired_confirmed_at": {"type": ["string", "null"], "format": "date-time"},
+        "terminal_at": {"type": ["string", "null"], "format": "date-time"},
+        "replaced_by": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "proportionality": {"type": "string", "enum": ["NORMAL", "MICRO", "SUSPECT", "UNKNOWN"]}
+      },
+      "required": ["pivot_id", "kind", "state", "bar_time", "price_estimate", "first_seen_at", "locally_confirmed_at", "paired_confirmed_at", "terminal_at", "replaced_by", "proportionality"],
+      "additionalProperties": false
+    },
+    "defense": {
+      "type": ["object", "null"],
+      "properties": {
+        "direction": {"type": "string", "enum": ["BULL", "BEAR"]},
+        "pivot_id": {"type": "string", "minLength": 1, "maxLength": 120},
+        "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "qualified_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+        "ended_at": {"type": ["string", "null"], "format": "date-time"}
+      },
+      "required": ["direction", "pivot_id", "price_estimate", "qualified_at", "status", "ended_at"],
+      "additionalProperties": false
+    },
+    "priceZone": {
+      "type": "object",
+      "properties": {
+        "low": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "high": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "reliability": {"type": "string", "enum": ["DIRECT", "ESTIMATED", "UNAVAILABLE"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 160}
+      },
+      "required": ["low", "high", "reliability", "reason"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"reliability": {"const": "UNAVAILABLE"}}},
+          "then": {"properties": {"low": {"type": "null"}, "high": {"type": "null"}}},
+          "else": {"properties": {"low": {"type": "number", "exclusiveMinimum": 0}, "high": {"type": "number", "exclusiveMinimum": 0}}}
+        }
+      ]
+    },
+    "setupContext": {
+      "type": "object",
+      "properties": {
+        "setup_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+        "pattern": {"type": "string", "enum": ["NONE", "OPENING_RANGE_BREAKOUT_RETEST", "TREND_PULLBACK_CONTINUATION", "INTRADAY_COMPRESSION_BREAKOUT", "FALSE_BREAK_REVERSAL"]},
+        "direction": {"type": ["string", "null"], "enum": ["LONG", "SHORT", null]},
+        "stage": {"type": "string", "enum": ["NONE", "FORMING", "ARMED", "AGGRESSIVE_CONFIRMED", "CONSERVATIVE_CONFIRMED", "INVALIDATED", "NO_CHASE"]},
+        "first_seen_at": {"type": ["string", "null"], "format": "date-time"},
+        "stage_changed_at": {"type": ["string", "null"], "format": "date-time"},
+        "observation_zone": {"$ref": "#/$defs/priceZone"},
+        "trigger_zone": {"$ref": "#/$defs/priceZone"},
+        "invalidation_zone": {"$ref": "#/$defs/priceZone"},
+        "nearest_obstacle_zone": {"$ref": "#/$defs/priceZone"}
+      },
+      "required": ["setup_id", "pattern", "direction", "stage", "first_seen_at", "stage_changed_at", "observation_zone", "trigger_zone", "invalidation_zone", "nearest_obstacle_zone"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"stage": {"const": "NONE"}}},
+          "then": {
+            "properties": {
+              "setup_id": {"type": "null"}, "pattern": {"const": "NONE"}, "direction": {"type": "null"},
+              "first_seen_at": {"type": "null"}, "stage_changed_at": {"type": "null"}
+            }
+          },
+          "else": {
+            "properties": {
+              "setup_id": {"type": "string", "minLength": 1},
+              "pattern": {"not": {"const": "NONE"}},
+              "direction": {"enum": ["LONG", "SHORT"]},
+              "first_seen_at": {"type": "string", "format": "date-time"},
+              "stage_changed_at": {"type": "string", "format": "date-time"}
+            }
+          }
+        }
+      ]
+    },
+    "scenarioContext": {
+      "type": "object",
+      "properties": {
+        "wave_phase": {"type": "string", "enum": ["INITIAL", "MIDDLE", "LATE", "PULLBACK", "REBOUND", "TRANSITION", "RANGE", "UNDEFINED"]},
+        "locations": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["NEAR_SUPPORT", "NEAR_RESISTANCE", "PRIOR_HIGH", "PRIOR_LOW", "RANGE_EDGE", "RANGE_MIDDLE", "BREAKOUT_RETEST", "DEFENSE_RETEST", "UNDEFINED"]},
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "grade_alignment": {"type": "string", "enum": ["ALIGNED", "PARTIAL", "MISALIGNED", "UNDEFINED"]},
+        "hold_scenario": {"type": "string", "minLength": 1, "maxLength": 240},
+        "break_scenario": {"type": "string", "minLength": 1, "maxLength": 240},
+        "setup": {"$ref": "#/$defs/setupContext"}
+      },
+      "required": ["wave_phase", "locations", "grade_alignment", "hold_scenario", "break_scenario", "setup"],
+      "additionalProperties": false
+    },
+    "constitutionEvent": {
+      "type": "object",
+      "properties": {
+        "event_type": {"type": "string", "enum": ["NONE", "SIM_ENTER", "SIM_STOP", "SIM_EXIT", "COOLDOWN_REQUALIFIED"]},
+        "event_id": {"type": "string", "minLength": 1},
+        "setup_id": {"type": ["string", "null"], "minLength": 1},
+        "position_id": {"type": ["string", "null"], "minLength": 1},
+        "direction": {"type": ["string", "null"], "enum": ["LONG", "SHORT", null]},
+        "entry_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "stop_price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "risk_points": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "latest_closed_bar_time": {"type": "string", "format": "date-time"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "required": ["event_type", "event_id", "setup_id", "position_id", "direction", "entry_price_estimate", "stop_price_estimate", "risk_points", "latest_closed_bar_time", "reason"],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "original_decision": {"type": "string", "enum": ["NOTIFY", "DONT_NOTIFY"]},
+    "notification_reason": {"type": "string", "minLength": 1},
+    "latest_closed_k_price_estimate": {"type": "string", "minLength": 1},
+    "latest_closed_k_details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 4},
+    "large_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {"type": "string", "enum": ["強勢偏多", "偏多但回檔", "盤整", "偏空但反彈", "強勢偏空", "資料不足"]},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "current_trend": {
+      "type": "object",
+      "properties": {
+        "classification": {"type": "string", "enum": ["偏多", "偏空", "盤整", "轉換中"]},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["classification", "details"],
+      "additionalProperties": false
+    },
+    "market_state": {"$ref": "#/$defs/textList"},
+    "pattern_observation": {
+      "type": "object",
+      "properties": {
+        "status": {"type": "string", "enum": ["觀望", "條件式偏多", "條件式偏空", "可評估進場", "不宜追價／禁止"]},
+        "pattern": {"type": "string", "minLength": 1},
+        "details": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["status", "pattern", "details"],
+      "additionalProperties": false
+    },
+    "missing_conditions_or_trigger": {"$ref": "#/$defs/textList"},
+    "entry_and_structural_stop": {"$ref": "#/$defs/textList"},
+    "risk_and_nearest_obstacle": {"$ref": "#/$defs/textList"},
+    "single_contract_management_or_prohibition": {"$ref": "#/$defs/textList"},
+    "constitution_event": {"$ref": "#/$defs/constitutionEvent"},
+    "market_structure_state": {
+      "type": "object",
+      "description": "內部樞紐與道氏防線快照；不得渲染成通知欄位。",
+      "properties": {
+        "version": {"type": "integer", "const": 2},
+        "as_of": {"type": "string", "format": "date-time"},
+        "session_key": {"type": "string", "minLength": 1, "maxLength": 80},
+        "primary_pivots": {"type": "array", "items": {"$ref": "#/$defs/pivot"}, "maxItems": 96},
+        "secondary_pivots": {"type": "array", "items": {"$ref": "#/$defs/pivot"}, "maxItems": 48},
+        "defense_lines": {
+          "type": "object",
+          "properties": {
+            "small_bull": {"$ref": "#/$defs/defense"},
+            "small_bear": {"$ref": "#/$defs/defense"},
+            "large_bull": {"$ref": "#/$defs/defense"},
+            "large_bear": {"$ref": "#/$defs/defense"}
+          },
+          "required": ["small_bull", "small_bear", "large_bull", "large_bear"],
+          "additionalProperties": false
+        },
+        "provisional_invalidation_boundaries": {
+          "type": "object",
+          "properties": {
+            "bull": {
+              "type": ["object", "null"],
+              "properties": {
+                "kind": {"type": "string", "enum": ["OR_OPPOSITE", "STRUCTURE_BOUNDARY", "SESSION_EXTREME"]},
+                "direction": {"type": "string", "const": "BULL"},
+                "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "established_at": {"type": "string", "format": "date-time"},
+                "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+                "ended_at": {"type": ["string", "null"], "format": "date-time"}
+              },
+              "required": ["kind", "direction", "price_estimate", "established_at", "status", "ended_at"],
+              "additionalProperties": false
+            },
+            "bear": {
+              "type": ["object", "null"],
+              "properties": {
+                "kind": {"type": "string", "enum": ["OR_OPPOSITE", "STRUCTURE_BOUNDARY", "SESSION_EXTREME"]},
+                "direction": {"type": "string", "const": "BEAR"},
+                "price_estimate": {"type": ["number", "null"], "exclusiveMinimum": 0},
+                "established_at": {"type": "string", "format": "date-time"},
+                "status": {"type": "string", "enum": ["ACTIVE", "BROKEN", "REPLACED"]},
+                "ended_at": {"type": ["string", "null"], "format": "date-time"}
+              },
+              "required": ["kind", "direction", "price_estimate", "established_at", "status", "ended_at"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["bull", "bear"],
+          "additionalProperties": false
+        },
+        "dow_state_small": {"type": "string", "enum": ["BULL", "BEAR", "TRANSITION", "UNDEFINED"]},
+        "dow_state_large": {"type": "string", "enum": ["BULL", "BEAR", "TRANSITION", "UNDEFINED"]},
+        "reversal_type": {"type": "string", "enum": ["NONE", "TYPE_1", "TYPE_2", "TYPE_3"]},
+        "maturity": {"type": "string", "enum": ["NONE", "LEFT_LEFT", "LEFT_RIGHT", "RIGHT_LEFT", "RIGHT_RIGHT"]},
+        "scenario_context": {"$ref": "#/$defs/scenarioContext"},
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 240}, "minItems": 1, "maxItems": 5}
+      },
+      "required": ["version", "as_of", "session_key", "primary_pivots", "secondary_pivots", "defense_lines", "provisional_invalidation_boundaries", "dow_state_small", "dow_state_large", "reversal_type", "maturity", "scenario_context", "notes"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["original_decision", "notification_reason", "latest_closed_k_price_estimate", "latest_closed_k_details", "large_trend", "current_trend", "market_state", "pattern_observation", "missing_conditions_or_trigger", "entry_and_structural_stop", "risk_and_nearest_obstacle", "single_contract_management_or_prohibition", "constitution_event", "market_structure_state"],
+  "additionalProperties": false
+}

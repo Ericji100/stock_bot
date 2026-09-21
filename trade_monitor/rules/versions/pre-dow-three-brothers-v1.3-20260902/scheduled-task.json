@@ -1,0 +1,35 @@
+{
+  "TaskName": "StockAiBot-TradeMonitorLocalClock",
+  "TaskPath": "\\",
+  "State": "Running",
+  "LastRunTime": "2026-09-02T11:19:19.0000000+08:00",
+  "LastTaskResult": 267009,
+  "NextRunTime": null,
+  "Actions": [
+    {
+      "Execute": "powershell.exe",
+      "Arguments": "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"D:\\code\\stock_ai_bot\\trade_monitor\\start_local_scheduler.ps1\"",
+      "WorkingDirectory": "D:\\code\\stock_ai_bot"
+    }
+  ],
+  "Triggers": [
+    {
+      "CimClass": "MSFT_TaskLogonTrigger",
+      "Enabled": true,
+      "StartBoundary": null,
+      "EndBoundary": null,
+      "Delay": null
+    }
+  ],
+  "Settings": {
+    "AllowDemandStart": true,
+    "DisallowStartIfOnBatteries": true,
+    "ExecutionTimeLimit": "PT0S",
+    "MultipleInstances": "IgnoreNew",
+    "RestartCount": 3,
+    "RestartInterval": "PT1M",
+    "StartWhenAvailable": true,
+    "StopIfGoingOnBatteries": true,
+    "WakeToRun": false
+  }
+}

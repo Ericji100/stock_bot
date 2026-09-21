@@ -1,0 +1,15 @@
+{
+  "version_id": "enlightenment-integrated-v1.1",
+  "automation_id": "1-k",
+  "purpose": "Remove only the daily three simulated-entry hard cap",
+  "parent_version_id": "enlightenment-integrated-v1",
+  "parent_prompt_sha256": "0ce53b597ee255db72034571218c76c0f07aac411157a386eea4fc06742288a4",
+  "prompt_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "prompt_utf8_bytes": 34377,
+  "schema_sha256": "bc371c0d6785921c8b0846e05f9584bc176d27a9a932f306222bf289e35d4803",
+  "schema_version": "trade-monitor-analysis-v2",
+  "contract_version": 2,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "created_at": "2026-09-02T09:31:28+08:00"
+}

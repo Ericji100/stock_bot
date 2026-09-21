@@ -1,0 +1,55 @@
+{
+  "original_decision": "NOTIFY",
+  "notification_reason": "號盤與象限狀態完成重新確認。",
+  "latest_closed_k_price_estimate": "收盤約 46,820～46,825（圖面估計）。",
+  "latest_closed_k_details": [
+    "屬夜盤、美股開盤前時段。"
+  ],
+  "large_trend": {
+    "classification": "偏多但回檔",
+    "details": [
+      "合成 5 分 K 仍維持較高低點，價格在上彎均價105上方（圖面估計）。"
+    ]
+  },
+  "current_trend": {
+    "classification": "轉換中",
+    "details": [
+      "最近 5～20 分鐘回到均價21附近，尚未完成重新轉多。"
+    ]
+  },
+  "market_state": [
+    "夜盤 0 號盤向上；第四象限，趨勢高、波動低。",
+    "期交所交易日模擬進場額度仍由持久狀態判斷。"
+  ],
+  "pattern_observation": {
+    "status": "條件式偏多",
+    "pattern": "趨勢拉回延續",
+    "details": [
+      "S／S／T／V 不適用；等待拉回小區間向上完成。"
+    ]
+  },
+  "missing_conditions_or_trigger": [
+    "等待已收盤 1 分 K 突破最近拉回小區間上緣。"
+  ],
+  "entry_and_structural_stop": [
+    "尚未觸發；不得建立模擬持倉。"
+  ],
+  "risk_and_nearest_obstacle": [
+    "尚無進場價，無法可靠計算 1R 與最近障礙。"
+  ],
+  "single_contract_management_or_prohibition": [
+    "目前觀望；不追價、不加碼、不放寬停損。"
+  ],
+  "constitution_event": {
+    "event_type": "NONE",
+    "event_id": "NONE|2026-09-02T19:11:00+08:00",
+    "setup_id": null,
+    "position_id": null,
+    "direction": null,
+    "entry_price_estimate": null,
+    "stop_price_estimate": null,
+    "risk_points": null,
+    "latest_closed_bar_time": "2026-09-02T19:11:00+08:00",
+    "reason": "本輪沒有模擬持倉或交易憲法狀態異動。"
+  }
+}

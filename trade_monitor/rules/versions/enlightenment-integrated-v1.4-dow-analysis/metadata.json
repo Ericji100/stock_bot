@@ -1,0 +1,22 @@
+{
+  "version_id": "enlightenment-integrated-v1.4-dow-analysis",
+  "automation_id": "1-k",
+  "purpose": "Formal Dow, pivot and left-right maturity integration for local one-minute analysis",
+  "parent_analysis_version": "enlightenment-integrated-v1.1",
+  "parent_analysis_sha256": "207ee754f677920e256eeb737fc7f0c8fc21cd2a4a009931c304bbdd86501ea3",
+  "prompt_sha256": "dec982c6fce9c5e4f64dbd23a5f9053b53b90911f77cabcc5d5e4867f0075aa0",
+  "prompt_utf8_bytes": 51809,
+  "schema_sha256": "12b5c54df45aee539ea640e594f1958fc06509a8a2b2f20b898164c61cae3b43",
+  "schema_version": "trade-monitor-analysis-v3",
+  "contract_version": 3,
+  "market_structure_state_version": 1,
+  "constitution_state_version": 1,
+  "resume_state_version": 2,
+  "source": [
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-dow-three-brothers-integrated-draft.md",
+    "trade_monitor/rules/source/trade-monitor-rules-2026-09-02-dow-three-brothers-integration-review.md",
+    "trade_monitor/rules/versions/enlightenment-integrated-v1.4-dow-rc-shadow/validation-report.md"
+  ],
+  "created_at": "2026-09-02T12:27:36.5199949+08:00",
+  "description": "Formal local analysis rules with causal n=2 primary pivots, n=1 secondary pivots, internal atomic market structure state, Dow defenses, Type 1/2/3 and left-right maturity embedded in the existing four-pattern flow."
+}

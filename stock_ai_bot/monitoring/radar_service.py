@@ -16,7 +16,7 @@ import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service
 import stock_ai_bot.scanning.technical_scanner as ts
 from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
 from stock_ai_bot.monitoring.monitor_service import get_monitor_stocks
-from portfolio_manager import list_portfolio
+from stock_ai_bot.portfolio.portfolio_manager import list_portfolio
 from research_center.config import load_research_config
 from research_center.date_aware_context import (
     augment_discovery_tasks_with_date_context,

@@ -27,7 +27,7 @@ from chip_strategies import (
     warmup_chip_data_cache,
 )
 from stock_ai_bot.data_sources.data_fetcher import StockExportError, StockNotFoundError
-from export_service import build_stock_export_workbook
+from stock_ai_bot.exports.export_service import build_stock_export_workbook
 from stock_ai_bot.market.market_summary import (
     MarketSummaryError,
     build_morning_market_report,
@@ -54,7 +54,7 @@ from research_center.resource_guard_service import DEFAULT_RESOURCE_GUARD
 from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
 from research_center.news_repository import NewsRepository
 from research_center.news_formatters import format_news_digest, format_news_refresh_result
-from portfolio_manager import (
+from stock_ai_bot.portfolio.portfolio_manager import (
     PORTFOLIO_PUSH_MAX_RETRIES,
     PORTFOLIO_PUSH_RETRY_DELAY_SECONDS,
     add_portfolio_stock,
@@ -82,7 +82,7 @@ from stock_ai_bot.monitoring.radar_service import (
     run_radar,
 )
 
-from progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
+from stock_ai_bot.common.progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
 from stock_ai_bot.telegram.telegram_stock_formatting import prepare_telegram_chunks
 from stock_ai_bot.telegram.telegram_push_service import send_telegram_message
 from stock_ai_bot.charts.tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args

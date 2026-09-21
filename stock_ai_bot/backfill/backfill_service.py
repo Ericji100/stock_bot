@@ -41,7 +41,7 @@ SCAN_HEALTH_THRESHOLDS = {
 
 from chip_strategies import get_tw_today, warmup_chip_data_cache, TARGET_DAILY_TRADING_DAYS
 import pandas as pd
-from portfolio_manager import load_portfolio
+from stock_ai_bot.portfolio.portfolio_manager import load_portfolio
 from research_center.data_services import collect_research_data
 
 # Marker root for backfill complete markers

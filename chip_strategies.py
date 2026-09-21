@@ -22,7 +22,7 @@ from stock_ai_bot.selection.candidate_filter_service import (
 from stock_ai_bot.data_sources.data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_ai_bot.scanning.stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
-from progress_logger import now_timestamp
+from stock_ai_bot.common.progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 # Singletons for health and quota tracking

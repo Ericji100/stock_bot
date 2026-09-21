@@ -21,7 +21,7 @@ from stock_ai_bot.scanning.technical_scanner import (
 )
 from stock_ai_bot.scanning.technical_indicator_service import apply_technical_indicators
 
-from progress_logger import now_timestamp
+from stock_ai_bot.common.progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 

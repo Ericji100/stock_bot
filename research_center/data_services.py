@@ -13,7 +13,7 @@ import yfinance as yf
 
 from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher, StockNotFoundError
 from stock_ai_bot.market.market_summary import MarketSummaryError, build_morning_market_report, build_noon_market_report
-from portfolio_manager import list_portfolio, resolve_stock_reference
+from stock_ai_bot.portfolio.portfolio_manager import list_portfolio, resolve_stock_reference
 from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
 from chip_strategies import get_tw_today
 from stock_ai_bot.selection.curated_scan_service import (

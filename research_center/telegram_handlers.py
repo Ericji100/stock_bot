@@ -569,7 +569,7 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     heartbeat = None
     if _should_use_progress_heartbeat(raw_text):
-        from progress_logger import ProgressHeartbeat
+        from stock_ai_bot.common.progress_logger import ProgressHeartbeat
 
         heartbeat = ProgressHeartbeat(
             _heartbeat_label(raw_text),
@@ -1006,7 +1006,7 @@ def _fallback_model_label(result) -> str:
 
 
 def _print_progress(raw_text: str, message: str) -> None:
-    from progress_logger import has_leading_timestamp, now_timestamp
+    from stock_ai_bot.common.progress_logger import has_leading_timestamp, now_timestamp
     timestamp = now_timestamp()
     command = raw_text.splitlines()[0][:120] if raw_text else "AI投研"
     # If message already has a leading timestamp, don't add another one

@@ -11,8 +11,9 @@ import httpx
 import pytz
 
 
-PORTFOLIO_PATH = Path(__file__).with_name("portfolio.json")
-STOCK_LIST_PATH = Path(__file__).with_name("stock_list.json")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+PORTFOLIO_PATH = ROOT_DIR / "portfolio.json"
+STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 TWSE_INSTITUTIONAL_URL = "https://www.twse.com.tw/fund/T86"

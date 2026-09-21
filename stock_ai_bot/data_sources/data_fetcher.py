@@ -23,7 +23,8 @@ TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_NAME_API_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 MOPS_API_BASE_URL = "https://mops.twse.com.tw/mops/api/"
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-STOCK_LIST_PATH = Path(__file__).with_name("stock_list.json")
+ROOT_DIR = Path(__file__).resolve().parents[2]
+STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
 
 
 class StockExportError(Exception):

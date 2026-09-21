@@ -13,7 +13,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_manual_backfill_progress_without_timestamp_adds_full_format(self, mock_print):
         """When message has no timestamp, full format should be added."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         # Simulate the manual backfill progress callback
         def progress(message: str) -> None:
@@ -37,7 +37,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_manual_backfill_progress_with_timestamp_no_double(self, mock_print):
         """When message already has timestamp and category, should produce [時間] [分類] 內容."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "完整回補"), flush=True)
@@ -59,7 +59,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_manual_backfill_progress_with_timestamp_outputs_correct_format(self, mock_print):
         """Manual backfill with timestamp should output [時間] [完整回補] 訊息."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "完整回補"), flush=True)
@@ -81,7 +81,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_scheduled_backfill_progress_without_timestamp_adds_full_format(self, mock_print):
         """When scheduled backfill message has no timestamp, full format should be added."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "定時回補檢查"), flush=True)
@@ -102,7 +102,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_scheduled_backfill_progress_with_timestamp_no_double(self, mock_print):
         """When scheduled backfill message already has timestamp and category, should produce [時間] [分類] 內容."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "定時回補檢查"), flush=True)
@@ -124,7 +124,7 @@ class TestBackfillProgressFormat(unittest.TestCase):
     @patch("builtins.print")
     def test_scheduled_backfill_progress_with_timestamp_outputs_correct_format(self, mock_print):
         """Scheduled backfill with timestamp should output [時間] [定時回補檢查] 訊息."""
-        from progress_logger import format_cmd_message
+        from stock_ai_bot.common.progress_logger import format_cmd_message
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "定時回補檢查"), flush=True)

@@ -833,7 +833,7 @@ class ResearchDataFallbackTests(unittest.TestCase):
     @patch("research_center.data_services._collect_research_data_live", side_effect=RuntimeError("no text parsed from document (line 0)"))
     @patch("research_center.data_services.resolve_stock_reference")
     def test_collect_research_data_falls_back_to_latest_cache_on_live_failure(self, mock_resolve, mock_live, mock_latest_cache):
-        from portfolio_manager import ResolvedStock
+        from stock_ai_bot.portfolio.portfolio_manager import ResolvedStock
 
         mock_resolve.return_value = ResolvedStock(code="1785", name="光洋科", market="TPEX", symbol="1785.TWO")
         mock_latest_cache.return_value = (
@@ -898,7 +898,7 @@ class StructuredCacheIntegrationTests(unittest.TestCase):
     @patch("research_center.data_services.build_rerating_snapshot_for_stock")
     @patch("research_center.data_services.resolve_stock_reference")
     def test_collect_research_data_uses_structured_cache(self, mock_resolve, mock_rerating, mock_load_cache):
-        from portfolio_manager import ResolvedStock
+        from stock_ai_bot.portfolio.portfolio_manager import ResolvedStock
 
         mock_resolve.return_value = ResolvedStock(code="5425", name="台半", market="TPEX", symbol="5425.TWO")
         cached_data = {
@@ -923,7 +923,7 @@ class StructuredCacheIntegrationTests(unittest.TestCase):
     @patch("research_center.data_services.build_rerating_snapshot_for_stock", side_effect=RuntimeError("snapshot down"))
     @patch("research_center.data_services.resolve_stock_reference")
     def test_collect_research_data_keeps_cached_research_when_rerating_snapshot_fails(self, mock_resolve, mock_rerating, mock_load_cache):
-        from portfolio_manager import ResolvedStock
+        from stock_ai_bot.portfolio.portfolio_manager import ResolvedStock
 
         mock_resolve.return_value = ResolvedStock(code="5425", name="台半", market="TPEX", symbol="5425.TWO")
         cached_data = {

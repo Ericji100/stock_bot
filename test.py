@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from export_service import build_stock_export_workbook, inspect_stock_export_workbook
+from stock_ai_bot.exports.export_service import build_stock_export_workbook, inspect_stock_export_workbook
 
 
 def main() -> None:

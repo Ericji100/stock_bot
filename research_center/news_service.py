@@ -744,7 +744,7 @@ def run_news_refresh(
         emit("新聞搜尋開始")
         tasks = build_news_discovery_queries("latest")
         try:
-            from portfolio_manager import load_portfolio
+            from stock_ai_bot.portfolio.portfolio_manager import load_portfolio
             portfolio = load_portfolio()
         except Exception:
             portfolio = {}

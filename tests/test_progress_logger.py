@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from progress_logger import (
+from stock_ai_bot.common.progress_logger import (
     now_timestamp,
     has_leading_timestamp,
     format_progress_message,

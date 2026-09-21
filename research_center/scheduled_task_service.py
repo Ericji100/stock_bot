@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from progress_logger import format_cmd_message
+from stock_ai_bot.common.progress_logger import format_cmd_message
 
 from .command_runtime_service import GLOBAL_COMMAND_RUNTIME, CommandRuntimeService
 from .resource_guard_service import DEFAULT_RESOURCE_GUARD, ResourceGuardService

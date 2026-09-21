@@ -999,7 +999,7 @@ class ResearchCenter:
         from .news_service import run_news_latest, run_news_7d, run_news_refresh
         from .news_repository import NewsRepository
         from .news_formatters import format_news_detail, format_news_digest, format_news_refresh_result
-        from portfolio_manager import load_portfolio
+        from stock_ai_bot.portfolio.portfolio_manager import load_portfolio
 
         _emit_progress(progress, "[新聞] 開始處理")
         cmd = request.command

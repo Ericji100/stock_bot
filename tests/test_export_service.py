@@ -11,7 +11,7 @@ from unittest.mock import patch
 from openpyxl import load_workbook
 import pandas as pd
 
-import export_service
+from stock_ai_bot.exports import export_service
 
 
 EXPECTED_SHEETS = {

@@ -689,6 +689,7 @@ pytest tests/test_backfill_service.py
 
 | 文件 | 內容 |
 |---|---|
+| [docs/directory-map.md](docs/directory-map.md) | 根目錄與套件目錄用途、Git 政策及清理條件 |
 | [docs/commands.md](docs/commands.md) | Telegram 指令完整速查 |
 | [docs/architecture.md](docs/architecture.md) | 模組架構、資料流與重要規則 |
 | [docs/ai-research.md](docs/ai-research.md) | AI 投研、模型、搜尋、Prompt 與成本 |

@@ -1,0 +1,380 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.stock-ai-bot/schemas/enlightenment-ai-judgement-v2.json",
+  "title": "啟蒙層 AI 綜合判讀 v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rule_version",
+    "stock",
+    "as_of",
+    "selection_context",
+    "data_quality",
+    "anchors",
+    "macd_cycle_map",
+    "structure",
+    "scenario_gate_audit",
+    "evidence",
+    "disqualifiers",
+    "decision",
+    "causal_attestation"
+  ],
+  "properties": {
+    "schema_version": {"const": "enlightenment-ai-judgement-v2"},
+    "rule_version": {"const": "enlightenment-ai-rules-v2"},
+    "stock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name", "symbol"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[0-9A-Za-z-]+$"},
+        "name": {"type": "string", "minLength": 1},
+        "symbol": {"type": "string", "minLength": 1}
+      }
+    },
+    "as_of": {"type": "string", "format": "date"},
+    "selection_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_selected_on", "active_sources", "is_active_watchlist_member", "campaign_id", "campaign_number", "trade_episode_id"],
+      "properties": {
+        "first_selected_on": {"type": ["string", "null"], "format": "date"},
+        "active_sources": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "is_active_watchlist_member": {"type": "boolean"},
+        "campaign_id": {"type": ["string", "null"]},
+        "campaign_number": {"type": "integer", "minimum": 0},
+        "trade_episode_id": {"type": ["string", "null"]}
+      }
+    },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_bar_date", "last_bar_date", "valid_bars", "pre_roll_bars", "corporate_action_adjusted", "cash_ledger_includes_distributions", "sufficiency", "notes"],
+      "properties": {
+        "first_bar_date": {"type": "string", "format": "date"},
+        "last_bar_date": {"type": "string", "format": "date"},
+        "valid_bars": {"type": "integer", "minimum": 1},
+        "pre_roll_bars": {"type": "integer", "minimum": 0},
+        "corporate_action_adjusted": {"type": "boolean"},
+        "cash_ledger_includes_distributions": {"type": "boolean"},
+        "sufficiency": {"enum": ["PREFERRED", "MINIMUM_MET", "FRESH_ANCHOR_ONLY", "INSUFFICIENT"]},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "anchors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "contains": {"type": "object", "properties": {"role": {"const": "PRIMARY"}}, "required": ["role"]},
+      "items": {"$ref": "#/$defs/anchor"}
+    },
+    "macd_cycle_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["l0_date", "h1_date", "l1_date", "current_histogram_sign", "current_histogram_expanding", "role", "explanation"],
+      "properties": {
+        "l0_date": {"type": ["string", "null"], "format": "date"},
+        "h1_date": {"type": ["string", "null"], "format": "date"},
+        "l1_date": {"type": ["string", "null"], "format": "date"},
+        "current_histogram_sign": {"enum": ["POSITIVE", "NEGATIVE", "ZERO", "UNRESOLVED"]},
+        "current_histogram_expanding": {"type": ["boolean", "null"]},
+        "role": {"const": "SUPPORT_ONLY（只作波段切分與動能輔助）"},
+        "explanation": {"type": "string", "minLength": 10}
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_scenario", "alternative_scenarios", "confidence", "large_scale", "small_scale", "scale_relationship", "current_controller", "taiji", "left_right_phase", "stage_location", "same_direction_attack_number", "rationale"],
+      "properties": {
+        "primary_scenario": {"$ref": "#/$defs/scenario"},
+        "alternative_scenarios": {"type": "array", "items": {"$ref": "#/$defs/scenario"}, "uniqueItems": true, "maxItems": 2},
+        "confidence": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+        "large_scale": {"$ref": "#/$defs/scale"},
+        "small_scale": {"$ref": "#/$defs/scale"},
+        "scale_relationship": {"enum": ["DIRECTION_RESONANCE", "STRATEGY_RESONANCE", "CONFLICT", "MIXED", "UNRESOLVED"]},
+        "current_controller": {"enum": ["LARGE", "SMALL", "SHARED", "UNRESOLVED"]},
+        "taiji": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["phase", "generation", "parent_anchor_id", "replication_quality", "correction_quality", "copy_to_correction", "reanchor_required", "explanation"],
+          "properties": {
+            "phase": {"enum": ["ANCHOR", "CORRECTION", "REPLICATION", "RESET", "COPY_TO_CORRECTION", "UNRESOLVED"]},
+            "generation": {"enum": ["ANCHOR_LEG_1", "COPY_LEG_3", "COPY_LEG_5", "LATER_GENERATION", "UNRESOLVED"]},
+            "parent_anchor_id": {"type": ["string", "null"]},
+            "replication_quality": {"enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "NOT_APPLICABLE", "UNRESOLVED"]},
+            "correction_quality": {"enum": ["STRONG", "ACCEPTABLE", "WEAK", "FAILED", "NOT_APPLICABLE", "UNRESOLVED"]},
+            "copy_to_correction": {"type": "boolean"},
+            "reanchor_required": {"type": "boolean"},
+            "explanation": {"type": "string", "minLength": 10}
+          }
+        },
+        "left_right_phase": {"enum": ["NONE", "LL", "LR", "RL", "RR", "DIRECT_TO_RIGHT", "UNRESOLVED"]},
+        "stage_location": {"enum": ["EARLY", "MIDDLE", "LATE", "EXHAUSTED", "UNRESOLVED"]},
+        "same_direction_attack_number": {"type": ["integer", "null"], "minimum": 1},
+        "rationale": {"type": "string", "minLength": 20}
+      }
+    },
+    "scenario_gate_audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mature_trend_pullback", "macro_copy_resonance", "bear_reversal_left_right", "fresh_q1_expansion", "fallback_used"],
+      "properties": {
+        "mature_trend_pullback": {
+          "allOf": [
+            {"$ref": "#/$defs/routeAudit"},
+            {"type": "object", "properties": {"scenario": {"const": "MATURE_TREND_PULLBACK"}, "gates": {"type": "array", "minItems": 8}}, "required": ["scenario", "gates"]}
+          ]
+        },
+        "macro_copy_resonance": {
+          "allOf": [
+            {"$ref": "#/$defs/routeAudit"},
+            {"type": "object", "properties": {"scenario": {"const": "MACRO_COPY_RESONANCE"}, "gates": {"type": "array", "minItems": 8}}, "required": ["scenario", "gates"]}
+          ]
+        },
+        "bear_reversal_left_right": {
+          "allOf": [
+            {"$ref": "#/$defs/routeAudit"},
+            {"type": "object", "properties": {"scenario": {"const": "BEAR_REVERSAL_LEFT_RIGHT"}, "gates": {"type": "array", "minItems": 6}}, "required": ["scenario", "gates"]}
+          ]
+        },
+        "fresh_q1_expansion": {
+          "allOf": [
+            {"$ref": "#/$defs/routeAudit"},
+            {"type": "object", "properties": {"scenario": {"const": "FRESH_Q1_EXPANSION"}, "gates": {"type": "array", "minItems": 7}}, "required": ["scenario", "gates"]}
+          ]
+        },
+        "fallback_used": {"const": false}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "kind", "description", "values"],
+        "properties": {
+          "date": {"type": "string", "format": "date"},
+          "kind": {"enum": ["PRICE_STRUCTURE", "PIVOT", "DOW_DEFENSE", "MACD_21_55_55", "QUADRANT", "TAIJI", "MOVING_AVERAGE", "VOLUME", "SELECTION_SOURCE", "CORPORATE_ACTION", "OTHER"]},
+          "description": {"type": "string", "minLength": 5},
+          "values": {"type": "object", "additionalProperties": {"type": ["number", "string", "boolean", "null"]}}
+        }
+      }
+    },
+    "disqualifiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "description"],
+        "properties": {
+          "code": {"enum": ["Q3_LOW_EFFICIENCY", "ANCHOR_UNCLEAR", "SCALE_CONFLICT", "LATE_STAGE", "DEFENSE_TOO_FAR", "REPLICATION_WEAK", "CHASE_RISK", "DATA_GAP", "LIQUIDITY", "WATCHLIST_INACTIVE", "OTHER"]},
+          "severity": {"enum": ["WARNING", "BLOCKING"]},
+          "description": {"type": "string", "minLength": 5}
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "status_label_zh", "intent", "route_gate_complete", "trigger_state", "trigger_description", "invalidation", "execution_rule", "entry_role", "planned_nominal_twd", "same_day_evidence_deduplicated", "campaign_id", "trade_episode_id", "attempt_number", "reentry_eligible", "reentry_reason", "reason"],
+      "properties": {
+        "status": {"enum": ["WATCHING", "STRUCTURE_MAPPED", "ARMED", "TRIGGERED", "REJECTED", "INVALIDATED", "DATA_INSUFFICIENT", "OPEN", "ADD_ARMED", "EXIT_WARNING", "STOPPED", "REENTRY_WATCHING", "CAMPAIGN_INVALIDATED", "REMOVED_FROM_WATCHLIST", "CLOSED"]},
+        "status_label_zh": {"type": "string", "minLength": 2},
+        "intent": {"enum": ["NONE", "ENTER_MOTHER", "ADD_POSITION", "HOLD", "REDUCE", "EXIT"]},
+        "route_gate_complete": {"type": "boolean"},
+        "trigger_state": {"enum": ["NONE", "WAITING", "CONFIRMED"]},
+        "trigger_description": {"type": "string"},
+        "invalidation": {"$ref": "#/$defs/invalidation"},
+        "execution_rule": {"enum": ["NONE", "NEXT_TRADING_DAY_OPEN"]},
+        "entry_role": {"enum": ["NONE", "MOTHER", "ADD_1", "ADD_2", "ADD_3"]},
+        "planned_nominal_twd": {"type": "number", "minimum": 0},
+        "same_day_evidence_deduplicated": {"type": "boolean"},
+        "campaign_id": {"type": ["string", "null"]},
+        "trade_episode_id": {"type": ["string", "null"]},
+        "attempt_number": {"type": "integer", "minimum": 0},
+        "reentry_eligible": {"type": "boolean"},
+        "reentry_reason": {"type": "string"},
+        "reason": {"type": "string", "minLength": 20}
+      }
+    },
+    "causal_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latest_visible_bar", "used_future_data", "outcome_visible_to_ai", "unfinished_leg_endpoint_backfilled"],
+      "properties": {
+        "latest_visible_bar": {"type": "string", "format": "date"},
+        "used_future_data": {"const": false},
+        "outcome_visible_to_ai": {"const": false},
+        "unfinished_leg_endpoint_backfilled": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"properties": {"status": {"const": "TRIGGERED"}}, "required": ["status"]}}},
+      "then": {
+        "properties": {
+          "selection_context": {"properties": {"is_active_watchlist_member": {"const": true}}},
+          "scenario_gate_audit": {"properties": {"fallback_used": {"const": false}}},
+          "disqualifiers": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": {"severity": {"const": "BLOCKING"}},
+                "required": ["severity"]
+              }
+            }
+          },
+          "structure": {
+            "properties": {
+              "primary_scenario": {"enum": ["MATURE_TREND_PULLBACK", "MACRO_COPY_RESONANCE", "BEAR_REVERSAL_LEFT_RIGHT", "FRESH_Q1_EXPANSION"]}
+            }
+          },
+          "decision": {
+            "properties": {
+              "route_gate_complete": {"const": true},
+              "trigger_state": {"const": "CONFIRMED"},
+              "execution_rule": {"const": "NEXT_TRADING_DAY_OPEN"},
+              "same_day_evidence_deduplicated": {"const": true}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "TRIGGERED"}}, "required": ["status"]},
+          "structure": {"properties": {"primary_scenario": {"const": "MATURE_TREND_PULLBACK"}}, "required": ["primary_scenario"]}
+        },
+        "required": ["decision", "structure"]
+      },
+      "then": {"properties": {"scenario_gate_audit": {"properties": {"mature_trend_pullback": {"$ref": "#/$defs/passedRouteAudit"}}}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "TRIGGERED"}}, "required": ["status"]},
+          "structure": {"properties": {"primary_scenario": {"const": "MACRO_COPY_RESONANCE"}}, "required": ["primary_scenario"]}
+        },
+        "required": ["decision", "structure"]
+      },
+      "then": {"properties": {"scenario_gate_audit": {"properties": {"macro_copy_resonance": {"$ref": "#/$defs/passedRouteAudit"}}}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "TRIGGERED"}}, "required": ["status"]},
+          "structure": {"properties": {"primary_scenario": {"const": "BEAR_REVERSAL_LEFT_RIGHT"}}, "required": ["primary_scenario"]}
+        },
+        "required": ["decision", "structure"]
+      },
+      "then": {"properties": {"scenario_gate_audit": {"properties": {"bear_reversal_left_right": {"$ref": "#/$defs/passedRouteAudit"}}}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "TRIGGERED"}}, "required": ["status"]},
+          "structure": {"properties": {"primary_scenario": {"const": "FRESH_Q1_EXPANSION"}}, "required": ["primary_scenario"]}
+        },
+        "required": ["decision", "structure"]
+      },
+      "then": {"properties": {"scenario_gate_audit": {"properties": {"fresh_q1_expansion": {"$ref": "#/$defs/passedRouteAudit"}}}}}
+    }
+  ],
+  "$defs": {
+    "scenario": {
+      "enum": ["MATURE_TREND_PULLBACK", "MACRO_COPY_RESONANCE", "BEAR_REVERSAL_LEFT_RIGHT", "FRESH_Q1_EXPANSION", "NO_TRADE", "UNRESOLVED"]
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "scale", "direction", "start_date", "end_date", "start_price", "end_price", "status", "clean", "meaty", "destructive", "traceable", "quality_explanation", "invalidation"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["PRIMARY", "ALTERNATIVE"]},
+        "scale": {"enum": ["LARGE", "SMALL"]},
+        "direction": {"enum": ["UP", "DOWN", "UNRESOLVED"]},
+        "start_date": {"type": "string", "format": "date"},
+        "end_date": {"type": ["string", "null"], "format": "date"},
+        "start_price": {"type": "number", "exclusiveMinimum": 0},
+        "end_price": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "status": {"enum": ["FORMING", "CONFIRMED", "CORRECTING", "INVALIDATED", "SUPERSEDED", "UNRESOLVED"]},
+        "clean": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "meaty": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "destructive": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "traceable": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "quality_explanation": {"type": "string", "minLength": 10},
+        "invalidation": {"$ref": "#/$defs/invalidation"}
+      }
+    },
+    "scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direction", "quadrant", "quadrant_evidence", "dow_state", "dow_defense_side", "dow_defense_price", "dow_defense_source_date", "dow_defense_established_date", "dow_defense_version", "pivot_parameter", "explanation"],
+      "properties": {
+        "direction": {"enum": ["UP", "DOWN", "MIXED", "UNRESOLVED"]},
+        "quadrant": {"enum": ["Q1", "Q2", "Q3", "Q4", "UNRESOLVED"]},
+        "quadrant_evidence": {"type": "array", "items": {"type": "string"}},
+        "dow_state": {"enum": ["BULL", "BEAR", "TRANSITION", "UNDEFINED"]},
+        "dow_defense_side": {"enum": ["BULLISH", "BEARISH", "NONE"]},
+        "dow_defense_price": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "dow_defense_source_date": {"type": ["string", "null"], "format": "date"},
+        "dow_defense_established_date": {"type": ["string", "null"], "format": "date"},
+        "dow_defense_version": {"type": ["string", "null"]},
+        "pivot_parameter": {"type": ["integer", "null"], "minimum": 1},
+        "explanation": {"type": "string", "minLength": 10}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_id", "result", "evidence"],
+      "properties": {
+        "gate_id": {"type": "string", "minLength": 1},
+        "result": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "routeAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario", "result", "all_required_pass", "gates", "blocking_conditions_present", "explanation"],
+      "properties": {
+        "scenario": {"$ref": "#/$defs/scenario"},
+        "result": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "all_required_pass": {"type": "boolean"},
+        "gates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/gate"}},
+        "blocking_conditions_present": {"type": "array", "items": {"type": "string"}},
+        "explanation": {"type": "string", "minLength": 10}
+      }
+    },
+    "passedRouteAudit": {
+      "type": "object",
+      "properties": {
+        "result": {"const": "PASS"},
+        "all_required_pass": {"const": true},
+        "gates": {
+          "type": "array",
+          "items": {"type": "object", "properties": {"result": {"const": "PASS"}}, "required": ["result"]}
+        },
+        "blocking_conditions_present": {"type": "array", "maxItems": 0}
+      },
+      "required": ["result", "all_required_pass", "gates", "blocking_conditions_present"]
+    },
+    "invalidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "price", "source_date", "scale"],
+      "properties": {
+        "description": {"type": "string", "minLength": 5},
+        "price": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "source_date": {"type": ["string", "null"], "format": "date"},
+        "scale": {"enum": ["LARGE", "SMALL", "POSITION", "UNRESOLVED"]}
+      }
+    }
+  }
+}

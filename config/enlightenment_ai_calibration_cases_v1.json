@@ -1,0 +1,190 @@
+{
+  "version": "enlightenment-ai-calibration-v1",
+  "judgement_schema": "config/enlightenment_ai_judgement_v1.schema.json",
+  "protocol": "docs/enlightenment-ai-judgement-v1.md",
+  "purpose": "校準 AI 是否能按課程與使用者結構觀點辨識定錨、級數、位階及觸發；不是績效樣本外驗證。",
+  "rules": {
+    "ai_receives_only": "ai_visible",
+    "evaluator_only_must_be_hidden": true,
+    "future_bars_must_be_removed": true,
+    "all_cases_are_performance_holdout": false,
+    "required_balance_before_freeze": {
+      "positive_or_constructive": 10,
+      "negative_or_ambiguous": 10,
+      "minimum_total": 20
+    }
+  },
+  "cases": [
+    {
+      "id": "CAL-5425-20260429",
+      "stock": {"code": "5425", "name": "台半", "symbol": "5425.TWO"},
+      "analysis_as_of": "2026-04-29",
+      "category": "USER_REFERENCE_CONSTRUCTIVE",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "辨識長大定錨、大修正、小級重新定錨突破修正段道氏防線，以及拉回後的大小級策略共振。",
+        "required_questions": [
+          "2025-04-09 起的大波段是否仍是有效大錨？",
+          "2026-03-31 至 04-17 是否為具破壞性的小級重新定錨？",
+          "04-29 的轉強是否已是可執行觸發，還是仍需等待？",
+          "防線、位階與替代解讀為何？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "使用者已指出此日為理想大小級共振範例；不得算樣本外。",
+        "expected_primary_lens": "MACRO_COPY_RESONANCE",
+        "do_not_force": "不得只因後續噴出就忽略深修正與實際風險距離。"
+      }
+    },
+    {
+      "id": "CAL-2483-20260521",
+      "stock": {"code": "2483", "name": "百容", "symbol": "2483.TW"},
+      "analysis_as_of": "2026-05-21",
+      "category": "USER_REFERENCE_CONSTRUCTIVE",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "辨識 2025 大錨、2025-12-01 後複製段、後續四象限小結構與當前世代。",
+        "required_questions": [
+          "2025-04-09 至 09-25 是否為有效大錨？",
+          "2025-12-01 至 2026-03-02 是複製成功還是新錨？",
+          "當前是早期可參與位置、獲利加碼位置，還是已偏後段？",
+          "母單應使用哪一級失效點？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "已知後續存在大幅上漲；結果必須對 AI 隱藏。",
+        "expected_primary_lens": "MACRO_COPY_RESONANCE",
+        "do_not_force": "必須說明世代與位階，不能只以均線收復觸發。"
+      }
+    },
+    {
+      "id": "CAL-6282-20250411",
+      "stock": {"code": "6282", "name": "康舒", "symbol": "6282.TW"},
+      "analysis_as_of": "2025-04-11",
+      "category": "USER_REFERENCE_FORMING",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "只用當日以前資料，辨識空頭末端是否開始形成反向定錨；不可把事後最低點直接當觸發。",
+        "required_questions": [
+          "空頭是否已到末段或第三次攻擊？",
+          "當天只能列為 LL、反向定錨形成，還是已足以確認？",
+          "下一個需要等待的價格事件為何？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "使用者已指定 04-11 為後續大段上漲起點。",
+        "expected_primary_lens": "BEAR_REVERSAL_LEFT_RIGHT_OR_UNRESOLVED",
+        "do_not_force": "不允許因事後知道最低點而在 04-11 無條件觸發。"
+      }
+    },
+    {
+      "id": "CAL-6282-20250623",
+      "stock": {"code": "6282", "name": "康舒", "symbol": "6282.TW"},
+      "analysis_as_of": "2025-06-23",
+      "category": "USER_REFERENCE_CORRECTION",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "辨識 04-11 至 05-21 新生定錨後的修正；當日只能規劃後續小結構轉強條件。",
+        "required_questions": [
+          "第一次修正相對原錨是淺、深但有效，或已失效？",
+          "大級與小級目前各由誰控制？",
+          "什麼小道氏事件才可由 STRUCTURE_MAPPED 轉為 ARMED／TRIGGERED？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "事後知道 06-23 為修正低點，必須對 AI 隱藏。",
+        "expected_primary_lens": "FRESH_Q1_EXPANSION_TRANSITIONING_TO_MACRO_COPY",
+        "do_not_force": "06-23 當日本身不是事後最低點買進授權。"
+      }
+    },
+    {
+      "id": "CAL-6282-20250805",
+      "stock": {"code": "6282", "name": "康舒", "symbol": "6282.TW"},
+      "analysis_as_of": "2025-08-05",
+      "category": "USER_REFERENCE_COPY_CONFIRMATION",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "辨識重新突破 05-21 高點後，是複製確認、加碼點、首次母單，還是風險距離過大的追價。",
+        "required_questions": [
+          "股票是否已由新生定錨升級為大錨複製？",
+          "若先前沒有成交，此日仍應視為母單還是不得追？",
+          "若已有母單，此日是否構成獨立加碼證明？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "已知後續走出長波段；不得自動判為合格。",
+        "expected_primary_lens": "MACRO_COPY_RESONANCE",
+        "do_not_force": "確認結構與可執行價格是兩件事。"
+      }
+    },
+    {
+      "id": "CAL-3221-20260608",
+      "stock": {"code": "3221", "name": "台嘉碩", "symbol": "3221.TWO"},
+      "analysis_as_of": "2026-06-08",
+      "category": "NEGATIVE_OR_AMBIGUOUS",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "檢查舊版拉回再發動是否位於大段走勢末端，並評估大結構、世代及防線距離。",
+        "required_questions": [
+          "當前拉回是大錨後的早期修正，還是末段小拉回？",
+          "舊版 PULLBACK_RELAUNCH 是否只看到了小結構？",
+          "有沒有 LATE_STAGE、CHASE_RISK 或 DEFENSE_TOO_FAR？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "舊版 06-09 進場 59.70，MFE 11.06%，最後虧損 10.76%；結果不得提供 AI。",
+        "expected_primary_lens": "NO_TRADE_OR_LOW_CONFIDENCE",
+        "do_not_force": "這是使用者質疑位階的案例，不代表必須機械拒絕。"
+      }
+    },
+    {
+      "id": "CAL-2108-20260505",
+      "stock": {"code": "2108", "name": "南帝", "symbol": "2108.TW"},
+      "analysis_as_of": "2026-05-05",
+      "category": "AMBIGUOUS_CONTROL",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "比較舊版大小級共振／拉回再發動與新版完整位階判讀。",
+        "required_questions": [
+          "大、小級是否真的對同一方向與同一策略共振？",
+          "進場附近是否已消耗主要上漲空間？",
+          "如果交易，應賺動能還是賺趨勢？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "舊版 05-06 進場 27.30，MFE 17.77%，最後小幅獲利；結果不得提供 AI。",
+        "expected_primary_lens": "REQUIRES_FULL_REVIEW",
+        "do_not_force": "不能用最後損益代替進場品質判斷。"
+      }
+    },
+    {
+      "id": "CAL-2436-20260511",
+      "stock": {"code": "2436", "name": "偉詮電", "symbol": "2436.TW"},
+      "analysis_as_of": "2026-05-11",
+      "category": "NEGATIVE_CONTROL",
+      "is_performance_holdout": false,
+      "ai_visible": {
+        "focus": "檢查單純均線收復在缺乏大級結構、位階或複製品質時是否應被排除。",
+        "required_questions": [
+          "是否存在可追溯且具破壞性的定錨？",
+          "均線收復是否得到道氏與太極支持？",
+          "失效點是否合理且可執行？"
+        ]
+      },
+      "evaluator_only": {
+        "known_design_contamination": "舊版後續未形成正 MFE 並明顯虧損；結果不得提供 AI。",
+        "expected_primary_lens": "NO_TRADE_OR_LOW_CONFIDENCE",
+        "do_not_force": "拒絕理由必須來自當日結構，不得引用結果。"
+      }
+    }
+  ],
+  "pending_cases": [
+    {
+      "stock": {"code": "3709", "name": "鑫聯大投控", "symbol": "3709.TWO"},
+      "reason": "使用者指出先前進場位置有疑慮；需先從原逐筆報表解析確切訊號日，再加入因果快照。"
+    },
+    {
+      "reason": "規格凍結前仍需從全部選股名單補足至少 10 個建設性案例及 10 個負面／模糊案例。"
+    }
+  ]
+}

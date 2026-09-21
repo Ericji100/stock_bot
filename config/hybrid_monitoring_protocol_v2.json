@@ -1,0 +1,175 @@
+{
+  "protocol_version": "hybrid-monitoring-protocol-v2-draft",
+  "status": "DRAFT_PENDING_VALIDATION",
+  "source_of_truth": "docs/hybrid-monitoring-protocol-v2.md",
+  "strategy_rules_are_immutable": true,
+  "protected_strategy_files": [
+    "docs/enlightenment-ai-judgement-v1.md",
+    "docs/enlightenment-ai-judgement-v2.md",
+    "docs/enlightenment-ai-judgement-v3.md",
+    "config/enlightenment_ai_rules_v2.json",
+    "config/enlightenment_ai_rules_v3.json"
+  ],
+  "monitoring_window": {
+    "start": "2023-06-01",
+    "end": "2024-02-02",
+    "expected_stocks": 1029,
+    "expected_stock_days": 151804,
+    "v1_reference_policy_boundary_cases": 10476,
+    "expected_v2_review_points": null,
+    "expected_v2_review_points_policy": "SET_FROM_OUTCOME_BLIND_DAILY_BUILDER_BEFORE_FORMAL_AI"
+  },
+  "data": {
+    "preferred_warmup_bars": 750,
+    "route_operational_minimum_bars": {
+      "MATURE_TREND_PULLBACK": 750,
+      "MACRO_COPY_RESONANCE": 750,
+      "BEAR_REVERSAL_LEFT_RIGHT": 750,
+      "FRESH_Q1_EXPANSION": 200
+    },
+    "fresh_200_bar_minimum_status": "OPERATIONAL_MINIMUM_NOT_COURSE_VERBATIM",
+    "technical_price_basis": "ADJUSTED",
+    "cash_ledger_price_basis": "RAW_WITH_CASH_DIVIDENDS_FEES_TAX",
+    "macd_parameters": [21, 55, 55],
+    "macd_cycle_confirmation": "ENDPOINT_LAST_SAME_SIGN_BAR_CONFIRMED_ON_FIRST_OPPOSITE_SIGN_BAR",
+    "pivot_definition": "LEGACY_RADIUS_3_10_NOT_COURSE_L1_L2",
+    "course_l1_l2_status": "DISABLED_EXPERIMENTAL_ONLY",
+    "same_day_new_pivot_control_break": "FORBIDDEN",
+    "working_comparison_windows": {
+      "required_scales": ["LARGE", "SMALL"],
+      "selection_policy": "LATEST_TWO_COMPLETED_SAME_DIRECTION_LEGACY_PIVOT_LEGS",
+      "missing_scale_semantic_policy": "TREND_AND_VOLATILITY_ATOMS_UNKNOWN"
+    }
+  },
+  "ai_contract": {
+    "schema": "config/hybrid_atomic_semantics_v2.schema.json",
+    "prompt": "config/hybrid_semantic_prompt_v2.md",
+    "may_decide_scenario": false,
+    "may_decide_phase": false,
+    "may_decide_route": false,
+    "may_decide_permission": false,
+    "may_decide_trade": false,
+    "may_create_dates_prices_or_refs": false,
+    "verdicts": ["PASS", "FAIL", "UNKNOWN"],
+    "merge_disagreement": "UNKNOWN_NO_MAJORITY_UPGRADE"
+  },
+  "policy": {
+    "strategy_v3_source": "config/enlightenment_ai_rules_v3.json",
+    "strategy_v2_source": "config/enlightenment_ai_rules_v2.json",
+    "precedence": [
+      "V2_CORE",
+      "NEAR_PASS_MACRO_COPY",
+      "NEAR_PASS_FRESH_Q1",
+      "BEAR_REVERSAL_PROBE",
+      "NO_TRADE"
+    ],
+    "material_action_signature_fields": [
+      "direction",
+      "signal_event_ref",
+      "episode_stop_ref",
+      "campaign_stop_ref",
+      "position_role"
+    ]
+  },
+  "consistency": {
+    "sample_size": 120,
+    "runs": 3,
+    "seed": "HYBRID_V2_HOLDOUT_20260908",
+    "exclude_v1_review_ids": true,
+    "prefer_stock_disjoint_from_v1": true,
+    "schema_causality_evidence_rate": 1.0,
+    "permission_rate": 0.95,
+    "scenario_phase_rate": 0.9,
+    "critical_atom_rate": 0.95,
+    "minimum_conservative_trade_cases": 16,
+    "minimum_trade_routes": 2,
+    "minimum_wait_cases": 8,
+    "minimum_remove_cases_when_eligible": 8,
+    "trade_action_signature_rate": 1.0,
+    "strata": {
+      "V2_CORE_OBJECTIVE_PROXY": 20,
+      "MACRO_COPY_OBJECTIVE_PROXY": 15,
+      "FRESH_Q1_OBJECTIVE_PROXY": 15,
+      "BEAR_REVERSAL_OBJECTIVE_PROXY": 15,
+      "MACRO_DEFENSE_REMOVE_PROXY": 20,
+      "WAIT_POLICY_BOUNDARY": 35
+    }
+  },
+  "correctness_gate": {
+    "deterministic_course_invariant": {
+      "required": true,
+      "required_pass_rate": 1.0
+    },
+    "repeatability_alone_is_sufficient": false,
+    "overall_formal_pass_requires": [
+      "THREE_RUN_REPEATABILITY",
+      "DETERMINISTIC_COURSE_INVARIANT",
+      "RESEARCH_CALIBRATION",
+      "BLINDED_COURSE_GOLD_HOLDOUT"
+    ],
+    "research_calibration": {
+      "required": true,
+      "classification": "RESEARCH_CALIBRATION_NOT_PERFORMANCE_HOLDOUT",
+      "minimum_cases": 20,
+      "required_balance": {
+        "positive_or_constructive": 10,
+        "negative_or_ambiguous": 10
+      },
+      "human_rubric_must_be_frozen_before_ai": true,
+      "incomplete_or_unreviewed_case_result": "NOT_APPLICABLE_FAIL_CLOSED",
+      "required_pass_rate": 1.0,
+      "separated_from_future_performance": true
+    },
+    "blinded_course_gold_holdout": {
+      "required": true,
+      "classification": "BLINDED_HISTORICAL_COURSE_GOLD_NOT_PERFORMANCE_HOLDOUT",
+      "minimum_cases": 20,
+      "minimum_distinct_objective_strata": 4,
+      "fixed_sampling_before_human_labels": true,
+      "human_labels_frozen_before_ai": true,
+      "identity_future_old_ai_hidden_during_annotation": true,
+      "required_atomic_assertion_agreement_rate": 0.9,
+      "required_material_permission_agreement_rate": 1.0,
+      "separated_from_future_performance": true
+    },
+    "future_performance": {
+      "read_before_consistency_ledger_locked": false,
+      "read_before_full_semantic_ledger_locked": false,
+      "part_of_repeatability": false
+    }
+  },
+  "execution": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "case_atomic": true,
+    "technical_max_attempts": 3,
+    "valid_semantic_response_may_be_redrawn": false,
+    "consistency_run_isolation": true,
+    "full_shard_count": 3,
+    "merge_order": "SOURCE_ORDINAL",
+    "nominal_twd_per_tranche": 10000,
+    "signal_basis": "DAILY_CLOSE",
+    "fill": "NEXT_TRADING_DAY_OPEN"
+  },
+  "performance_lock": {
+    "future_prices_hidden_until_ledger_sha256": true,
+    "identity_hidden_until_ledger_sha256": true,
+    "old_pure_ai_reference_hidden_until_ledger_sha256": true,
+    "full_v3_requires_consistency_pass": true,
+    "v1_v2_replay_requires_v3_feasibility_pass": true
+  },
+  "feasibility": {
+    "net_profit_gt": 0,
+    "profit_factor_gte": 1.2,
+    "fixed_median_return_not_clearly_negative": true,
+    "required_disclosures": [
+      "MAX_DRAWDOWN",
+      "PEAK_CAPITAL",
+      "PATH_BREAKDOWN",
+      "TOP1_TOP3_CONCENTRATION",
+      "EX_TOP1_RESULT",
+      "MFE_MAE_GIVEBACK",
+      "ADD2_RISK_EFFICIENCY"
+    ]
+  }
+}

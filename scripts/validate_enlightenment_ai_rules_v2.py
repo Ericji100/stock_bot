@@ -26,6 +26,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _resolve_course_source(relative: str) -> Path:
+    path = ROOT / relative
+    if path.is_file():
+        return path
+    return ROOT / "local_data" / relative
+
+
 def validate() -> dict[str, Any]:
     rules = _read(RULES_PATH)
     doc = DOC_PATH.read_text(encoding="utf-8")
@@ -55,7 +62,7 @@ def validate() -> dict[str, Any]:
         protected.append({"path": relative, "expected": expected, "actual": actual, "matched": actual == expected})
     add("v1_files_unchanged", all(row["matched"] for row in protected), protected)
 
-    missing_sources = [relative for relative in rules["course_sources"] if not (ROOT / relative).is_file()]
+    missing_sources = [relative for relative in rules["course_sources"] if not _resolve_course_source(relative).is_file()]
     add("all_course_sources_exist", not missing_sources, missing_sources or len(rules["course_sources"]))
     add(
         "v1_layers_explicitly_preserved",

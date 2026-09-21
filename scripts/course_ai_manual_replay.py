@@ -85,10 +85,11 @@ def init_run():
                        "selection_sources": selection["source_paths"]})
     calendar = sorted({r.date().isoformat() for f in frames.values() for r in f.date
                        if selected <= r.date() <= date(2026, 9, 4)})
-    sources = [ROOT / "course_knowledge_base/啟蒙交易班/整理成果/啟蒙交易班_課程整理.md",
-               ROOT / "course_knowledge_base/啟蒙交易班/整理成果/四象限戰法強化_完整課程整理.md",
-               ROOT / "course_knowledge_base/道氏三兄弟/整理成果/道氏三兄弟_一頁複習速查表.md",
-               ROOT / "course_knowledge_base/戰法C班/整理成果/戰法C班_完整課程整理.md"]
+    course_root = ROOT / "local_data" / "course_knowledge_base"
+    sources = [course_root / "啟蒙交易班/整理成果/啟蒙交易班_課程整理.md",
+               course_root / "啟蒙交易班/整理成果/四象限戰法強化_完整課程整理.md",
+               course_root / "道氏三兄弟/整理成果/道氏三兄弟_一頁複習速查表.md",
+               course_root / "戰法C班/整理成果/戰法C班_完整課程整理.md"]
     manifest = {"version": "ai-manual-replay-v1", "cohort_date": str(selected), "as_of": "2026-09-04",
                 "created_utc": datetime.now(timezone.utc).isoformat(), "cohort": cohort,
                 "calendar": calendar, "monitor_decision_bars": 20, "initial_cash": 500000,

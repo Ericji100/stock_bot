@@ -41,7 +41,7 @@ class ReratingSnapshotServiceTests(unittest.TestCase):
             ("research_center.rerating_snapshot_service.enrich_company_rows", "enrich_company_rows"),
             ("research_center.rerating_snapshot_service.build_value_cross_validation", "build_value_cross_validation"),
             # StockDataFetcher is a delayed import inside the function
-            ("data_fetcher.StockDataFetcher", "StockDataFetcher"),
+            ("stock_ai_bot.data_sources.data_fetcher.StockDataFetcher", "StockDataFetcher"),
         ]
 
         for target_str, mock_name in targets:

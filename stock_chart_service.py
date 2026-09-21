@@ -15,6 +15,8 @@ import pandas as pd
 import yfinance as yf
 
 from fugle_data import fetch_fugle_history
+from historical_price_service import fetch_history as fetch_shared_daily_history
+from technical_indicator_service import apply_technical_indicators
 
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
@@ -269,7 +271,7 @@ def fetch_twse_daily_history(code: str, symbol: str, start_date: date, end_date:
     merged = pd.concat(frames, ignore_index=True)
     merged = merged.dropna(subset=["datetime", "open", "high", "low", "close"])
     merged = merged[(merged["datetime"].dt.date >= start_date) & (merged["datetime"].dt.date <= end_date)]
-    return merged
+    return attach_yfinance_adjusted_close(merged, symbol, start_date, end_date)
 
 
 def fetch_tpex_daily_history(code: str, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
@@ -290,6 +292,16 @@ def fetch_tpex_daily_history(code: str, symbol: str, start_date: date, end_date:
 
 
 def fetch_yfinance_daily_history(symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+    shared_frame, _ = fetch_shared_daily_history(
+        symbol,
+        end_date,
+        require_adjusted=True,
+        lookback_days=max(560, (end_date - start_date).days + 30),
+    )
+    if not shared_frame.empty:
+        shared_frame = shared_frame[shared_frame["date"].dt.date >= start_date].copy()
+        return shared_frame.rename(columns={"date": "datetime"})
+
     yf_frame = download_yfinance_history(symbol, start_date, end_date + timedelta(days=1), interval="1d")
     if yf_frame.empty or "Date" not in yf_frame.columns:
         fugle_frame = fetch_fugle_history(symbol, start_date, end_date, "1d")
@@ -312,11 +324,40 @@ def fetch_yfinance_daily_history(symbol: str, start_date: date, end_date: date) 
             "High": "high",
             "Low": "low",
             "Close": "close",
+            "Adj Close": "adj_close",
             "Volume": "volume",
         }
     )
     frame["datetime"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
-    return frame[["datetime", "open", "high", "low", "close", "volume"]]
+    columns = ["datetime", "open", "high", "low", "close", "volume"]
+    if "adj_close" in frame.columns:
+        columns.append("adj_close")
+    return frame[columns]
+
+
+def attach_yfinance_adjusted_close(
+    frame: pd.DataFrame,
+    symbol: str,
+    start_date: date,
+    end_date: date,
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    adjusted, _ = fetch_shared_daily_history(
+        symbol,
+        end_date,
+        require_adjusted=True,
+        lookback_days=max(560, (end_date - start_date).days + 30),
+    )
+    if adjusted.empty or "date" not in adjusted.columns or "adj_close" not in adjusted.columns:
+        return frame
+    values = adjusted[["date", "adj_close"]].copy()
+    values["datetime"] = pd.to_datetime(values["date"], errors="coerce").dt.normalize()
+    values["adj_close"] = pd.to_numeric(values["adj_close"], errors="coerce")
+    values = values.dropna(subset=["datetime", "adj_close"])[["datetime", "adj_close"]]
+    result = frame.drop(columns=["adj_close"], errors="ignore").copy()
+    result["datetime"] = pd.to_datetime(result["datetime"], errors="coerce").dt.normalize()
+    return result.merge(values, on="datetime", how="left")
 
 
 def fetch_tpex_latest_snapshot(code: str) -> dict | None:
@@ -454,31 +495,31 @@ def resample_intraday_bars(frame: pd.DataFrame, frequency: str) -> pd.DataFrame:
 def standardize_ohlcv_frame(frame: pd.DataFrame, *, is_intraday: bool) -> pd.DataFrame:
     standardized = frame.copy()
     standardized["datetime"] = pd.to_datetime(standardized["datetime"], errors="coerce")
-    for column in ("open", "high", "low", "close", "volume"):
+    for column in ("open", "high", "low", "close", "volume", "adj_close"):
+        if column not in standardized.columns:
+            continue
         standardized[column] = pd.to_numeric(standardized[column], errors="coerce")
     standardized = standardized.dropna(subset=["datetime", "open", "high", "low", "close"])
     standardized["volume"] = standardized["volume"].fillna(0)
     standardized["time"] = standardized["datetime"].map(to_unix_timestamp)
     standardized["is_intraday"] = is_intraday
-    return standardized[["datetime", "time", "open", "high", "low", "close", "volume", "is_intraday"]]
+    columns = ["datetime", "time", "open", "high", "low", "close", "volume", "is_intraday"]
+    if "adj_close" in standardized.columns:
+        columns.append("adj_close")
+    return standardized[columns]
 
 
 def apply_indicators(frame: pd.DataFrame) -> pd.DataFrame:
-    enriched = frame.copy()
-    enriched["MA21"] = enriched["close"].rolling(window=21).mean()
-    enriched["MA105"] = enriched["close"].rolling(window=105).mean()
-    lowest_low = enriched["low"].rolling(window=9, min_periods=1).min()
-    highest_high = enriched["high"].rolling(window=9, min_periods=1).max()
-    range_value = highest_high - lowest_low
-    enriched["RSV"] = ((enriched["close"] - lowest_low) / range_value.replace(0, pd.NA) * 100.0).fillna(50.0)
-    enriched["K"] = enriched["RSV"].ewm(alpha=9 / 55, adjust=False).mean()
-    enriched["D"] = enriched["K"].ewm(alpha=9 / 55, adjust=False).mean()
-    ema21 = enriched["close"].ewm(span=21, adjust=False).mean()
-    ema55_fast = enriched["close"].ewm(span=55, adjust=False).mean()
-    enriched["DIF"] = ema21 - ema55_fast
-    enriched["DEA"] = enriched["DIF"].ewm(span=55, adjust=False).mean()
-    enriched["Histogram"] = enriched["DIF"] - enriched["DEA"]
-    return enriched
+    is_intraday = bool(not frame.empty and frame["is_intraday"].all())
+    return apply_technical_indicators(
+        frame,
+        adjust_prices=not is_intraday,
+        ma_periods=(21, 105),
+        atr_period=None,
+        volume_ma_period=None,
+        rsv_min_periods=1,
+        fill_flat_rsv=True,
+    )
 
 
 def slice_display_bars(frame: pd.DataFrame, request: StockChartRequest) -> pd.DataFrame:

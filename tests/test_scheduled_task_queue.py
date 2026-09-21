@@ -109,6 +109,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prepare.call_args.args[0], target_date)
         self.assertEqual(run_core.await_args.args[0], "7")
         self.assertEqual(run_core.await_args.args[1], target_date)
+        self.assertIs(run_core.await_args.kwargs["historical_replay"], False)
 
     async def test_2030_all_scan_continues_when_prepare_fails(self):
         context = _FakeContext()
@@ -149,14 +150,40 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         async def send_text(text: str) -> None:
             sent_messages.append(text)
 
+        fake_result = SimpleNamespace()
         with patch.object(main, "load_config", return_value={"scan_settings": {}}), \
-            patch.object(main.ts, "build_technical_scan_messages", return_value=["技術分段 1", "技術分段 2"]) as build_messages:
+            patch.object(main.ts, "run_technical_scan", return_value=fake_result) as run_scan, \
+            patch.object(main.ts, "format_technical_report_messages", return_value=["技術分段 1", "技術分段 2"]), \
+            patch.object(main.ts, "collect_technical_selected_codes", return_value=[]):
             await main.run_selected_scan_reports_core("6", target_date, send_text)
 
-        build_messages.assert_called_once_with({}, target_date)
+        run_scan.assert_called_once_with({}, target_date, historical_replay=False)
         self.assertIn("技術分段 1", sent_messages)
         self.assertIn("技術分段 2", sent_messages)
         self.assertNotIn("技術分段 1\n\n技術分段 2", sent_messages)
+
+    async def test_laoxiao_scan_core_sends_messages_and_saves_selected_codes(self):
+        sent_messages: list[str] = []
+        target_date = date(2026, 6, 30)
+        fake_result = SimpleNamespace(
+            report_text="老蕭完整報告",
+            report_messages=["老蕭分段 1", "老蕭分段 2"],
+            selected_codes=["2330", "2317"],
+            diagnostics={"scoring_version": "laoxiao_v1"},
+        )
+
+        async def send_text(text: str) -> None:
+            sent_messages.append(text)
+
+        with patch.object(main, "load_config", return_value={"scan_settings": {}}), \
+            patch.object(main.laoxiao_scan_service, "build_laoxiao_scan_result", return_value=fake_result) as build_scan, \
+            patch.object(main, "save_recent_scan_result") as save_recent:
+            await main.run_selected_scan_reports_core("9", target_date, send_text)
+
+        self.assertEqual(build_scan.call_args.args[:2], ({}, target_date))
+        self.assertIn("老蕭分段 1", sent_messages)
+        self.assertIn("老蕭分段 2", sent_messages)
+        self.assertEqual(save_recent.call_args.args[3], ["2330", "2317"])
 
     async def test_1000_topic_maintain_uses_scheduled_queue(self):
         context = _FakeContext()

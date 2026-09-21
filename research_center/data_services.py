@@ -828,14 +828,21 @@ def _collect_research_data_live(request: CommandRequest, progress: Callable[[str
     cache_date = report_date or datetime.now().date()
 
     result = {
-        "stock": {"code": meta.code, "name": meta.name, "symbol": meta.symbol, "market": meta.market},
+        "stock": {
+            "code": meta.code,
+            "name": meta.name,
+            "symbol": meta.symbol,
+            "market": meta.market,
+            "industry": getattr(resolved, "industry", None),
+        },
         "report_date": cache_date.isoformat(),
         "price_data": _tail_records(price_df, 30),
         "technical_data": _technical_snapshot(price_df),
         "institutional_data": _tail_records(institutional_df, 30),
         "margin_data": _tail_records(margin_df, 30),
-        "revenue_data": _tail_records(revenue_df, 18),
+        "revenue_data": _tail_records(revenue_df, 24),
         "financial_data": _tail_records(financial_df, 12),
+        "financial_data_schema_version": "unified_v3",
         "strategy_summary": _tail_records(summary_df, 50),
         "free_public_sources": free_sources,
         "valuation_data": free_sources.get("valuation", {}),
@@ -1584,22 +1591,43 @@ def _filter_date_frame(frame: pd.DataFrame, column: str, report_date: date) -> p
 def _filter_month_frame(frame: pd.DataFrame, column: str, report_date: date) -> pd.DataFrame:
     if frame.empty or column not in frame.columns:
         return frame
-    months = pd.to_datetime(frame[column]).dt.date
-    return frame[months <= report_date].reset_index(drop=True)
+    for availability_column in ("Published_At", "published_at"):
+        if availability_column in frame.columns:
+            available = pd.to_datetime(frame[availability_column], errors="coerce").dt.date
+            return frame[available <= report_date].reset_index(drop=True)
+
+    def statutory_monthly_deadline(value: object) -> date:
+        month_start = pd.to_datetime(value).date()
+        if month_start.month == 12:
+            return date(month_start.year + 1, 1, 10)
+        return date(month_start.year, month_start.month + 1, 10)
+
+    mask = frame[column].map(lambda value: statutory_monthly_deadline(value) <= report_date)
+    return frame[mask].reset_index(drop=True)
 
 
 def _filter_quarter_frame(frame: pd.DataFrame, column: str, report_date: date) -> pd.DataFrame:
     if frame.empty or column not in frame.columns:
         return frame
 
-    def quarter_end(value: object) -> date:
+    for availability_column in ("Published_At", "published_at"):
+        if availability_column in frame.columns:
+            available = pd.to_datetime(frame[availability_column], errors="coerce").dt.date
+            return frame[available <= report_date].reset_index(drop=True)
+
+    def filing_deadline(value: object) -> date:
         text = str(value)
         year = int(text[:4])
         q = int(text[-1])
-        month = q * 3
-        return date(year, month, 28)
+        if q == 1:
+            return date(year, 5, 15)
+        if q == 2:
+            return date(year, 8, 14)
+        if q == 3:
+            return date(year, 11, 14)
+        return date(year + 1, 3, 31)
 
-    mask = frame[column].map(lambda value: quarter_end(value) <= report_date)
+    mask = frame[column].map(lambda value: filing_deadline(value) <= report_date)
     return frame[mask].reset_index(drop=True)
 
 

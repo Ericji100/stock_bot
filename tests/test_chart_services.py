@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pandas as pd
 
@@ -96,16 +96,22 @@ class TechnicalScannerProgressTests(unittest.TestCase):
 
         with (
             patch("technical_scanner.build_hard_filter_candidates", return_value=(candidates, 2)),
-            patch("technical_scanner.fetch_daily_history", return_value=(_stock_bars(3), "unit")),
+            patch("technical_scanner.fetch_daily_history", return_value=(_stock_bars(3), "unit")) as fetch_history,
             patch("technical_scanner.detect_signals", return_value=([], [])),
             patch("technical_scanner.detect_technical_strategies", return_value=[]),
             patch("technical_scanner._print_progress", side_effect=fake_progress),
         ):
             technical_scanner.run_technical_scan(report_date=date(2026, 6, 18))
 
-        strategy_progress = [progress for progress, message in progress_events if "偵測四大策略" in message]
+        strategy_progress = [progress for progress, message in progress_events if "偵測技術策略" in message]
         self.assertEqual(strategy_progress, [92.5, 95.0])
         self.assertNotIn(80.0, strategy_progress)
+        fetch_history.assert_has_calls(
+            [
+                call("2330.TW", date(2026, 6, 18), require_adjusted=True),
+                call("2317.TW", date(2026, 6, 18), require_adjusted=True),
+            ]
+        )
 
 
 if __name__ == "__main__":

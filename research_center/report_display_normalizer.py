@@ -35,6 +35,9 @@ def normalize_report_text(text: str) -> str:
     normalized = _replace_theme_radar_relation_codes(normalized)
     normalized = _replace_truncation_placeholders(normalized)
     normalized = _replace_common_metric_labels(normalized)
+    report_confidence_label = terms.get("report confidence v1")
+    if report_confidence_label:
+        normalized = _replace_terms(normalized, {"report confidence v1": report_confidence_label})
     normalized = _replace_ai_digest_field_labels(normalized)
     normalized = _replace_terms(normalized, terms)
     normalized = _replace_coverage_pct_labels(normalized)

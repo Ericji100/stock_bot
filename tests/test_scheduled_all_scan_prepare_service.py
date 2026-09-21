@@ -25,11 +25,16 @@ def test_prepare_scheduled_all_scan_data_reuses_existing_warmup_functions(monkey
             "revenue_count": 1,
             "price_metric_count": 1,
             "technical_count": 1,
+            "technical_adjusted_count": 1,
+            "market_risk_count": 2,
+            "market_risk_complete": True,
             "warnings": [],
         }
 
-    def fake_scan_tw_market(force_refresh=False, max_symbols=None, scan_settings=None):
+    def fake_scan_tw_market(force_refresh=False, max_symbols=None, scan_settings=None, **kwargs):
         calls.append("financial_scan")
+        assert kwargs["report_date"] == target_date
+        assert kwargs["historical_replay"] is False
         return SimpleNamespace(candidates=[object(), object()])
 
     def fake_warmup_chip_data_cache(**kwargs):
@@ -55,6 +60,9 @@ def test_prepare_scheduled_all_scan_data_reuses_existing_warmup_functions(monkey
     assert result.ok is True
     assert result.counts["monthly_revenue"] == 1
     assert result.counts["price_metrics"] == 1
+    assert result.counts["technical_adjusted_history"] == 1
+    assert result.counts["market_risk_flags"] == 2
+    assert result.counts["market_risk_complete"] == "是"
     assert result.counts["financial_candidates"] == 2
     assert result.counts["chip_candidates"] == 1
     assert result.counts["chip_coverage_days"] == 60

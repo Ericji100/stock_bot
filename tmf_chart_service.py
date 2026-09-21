@@ -13,6 +13,8 @@ from uuid import uuid4
 import httpx
 import pandas as pd
 
+from technical_indicator_service import apply_technical_indicators
+
 
 TAIFEX_DAILY_CSV_URL = "https://www.taifex.com.tw/file/taifex/Dailydownload/DailydownloadCSV/Daily_{date_str}.zip"
 CACHE_DIR = Path(".cache") / "tmf_daily"
@@ -244,21 +246,15 @@ def build_session_anchor(row: pd.Series) -> pd.Timestamp:
 
 
 def apply_indicators(bars: pd.DataFrame) -> pd.DataFrame:
-    frame = bars.copy()
-    frame["MA21"] = frame["close"].rolling(window=21).mean()
-    frame["MA105"] = frame["close"].rolling(window=105).mean()
-    lowest_low = frame["low"].rolling(window=9, min_periods=1).min()
-    highest_high = frame["high"].rolling(window=9, min_periods=1).max()
-    range_value = highest_high - lowest_low
-    frame["RSV"] = ((frame["close"] - lowest_low) / range_value.replace(0, pd.NA) * 100.0).fillna(50.0)
-    frame["K"] = frame["RSV"].ewm(alpha=9 / 55, adjust=False).mean()
-    frame["D"] = frame["K"].ewm(alpha=9 / 55, adjust=False).mean()
-    ema21 = frame["close"].ewm(span=21, adjust=False).mean()
-    ema55 = frame["close"].ewm(span=55, adjust=False).mean()
-    frame["DIF"] = ema21 - ema55
-    frame["DEA"] = frame["DIF"].ewm(span=55, adjust=False).mean()
-    frame["Histogram"] = frame["DIF"] - frame["DEA"]
-    return frame
+    return apply_technical_indicators(
+        bars,
+        adjust_prices=False,
+        ma_periods=(21, 105),
+        atr_period=None,
+        volume_ma_period=None,
+        rsv_min_periods=1,
+        fill_flat_rsv=True,
+    )
 
 
 def write_html_report(bars: pd.DataFrame, request: TmfChartRequest) -> Path:

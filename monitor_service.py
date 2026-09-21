@@ -19,6 +19,7 @@ from technical_scanner import (
     ma_breakout_signal_label,
     ma_signal_label_from_triggers,
 )
+from technical_indicator_service import apply_technical_indicators
 
 from progress_logger import now_timestamp
 from telegram_stock_formatting import mark_stock_text
@@ -421,7 +422,36 @@ def _prepare_daily_frame(symbol: str, minimum_rows: int) -> pd.DataFrame:
 
     if isinstance(frame.columns, pd.MultiIndex):
         frame.columns = frame.columns.get_level_values(0)
-    return frame.copy()
+    source = frame.copy().reset_index()
+    date_column = "Date" if "Date" in source.columns else source.columns[0]
+    source = source.rename(
+        columns={
+            date_column: "date",
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Adj Close": "adj_close",
+            "Volume": "volume",
+        }
+    )
+    required = {"date", "open", "high", "low", "close", "volume"}
+    if not required.issubset(source.columns):
+        return pd.DataFrame()
+    source["date"] = pd.to_datetime(source["date"], errors="coerce")
+    source = source.dropna(subset=["date"]).sort_values("date")
+    adjusted = apply_technical_indicators(source)
+    adjusted = adjusted.rename(
+        columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "adj_close": "Adj Close",
+            "volume": "Volume",
+        }
+    ).set_index("date")
+    return adjusted
 
 
 def _format_price(value: object) -> str:
@@ -450,7 +480,8 @@ def check_ma_breakout_signal(stock: dict[str, str], period: int) -> dict[str, ob
             return None
 
         ma_column = f"MA{period}"
-        frame[ma_column] = frame["Close"].rolling(window=period).mean()
+        if ma_column not in frame.columns:
+            frame[ma_column] = frame["Close"].rolling(window=period).mean()
         latest_close = frame["Close"].iloc[-1].item()
         current_price, price_source = get_current_market_price(symbol, fallback_price=latest_close)
         if current_price is None:
@@ -572,12 +603,9 @@ def check_advanced_signal(stock: dict[str, str]) -> str | None:
         if frame.empty:
             return None
 
-        frame["MA21"] = frame["Close"].rolling(window=21).mean()
-        ema21 = frame["Close"].ewm(span=21, adjust=False).mean()
-        ema55 = frame["Close"].ewm(span=55, adjust=False).mean()
-        frame["DIF"] = ema21 - ema55
-        frame["DEA"] = frame["DIF"].ewm(span=55, adjust=False).mean()
-        frame["MACD_Hist"] = frame["DIF"] - frame["DEA"]
+        if "MA21" not in frame.columns:
+            frame["MA21"] = frame["Close"].rolling(window=21).mean()
+        frame["MACD_Hist"] = frame["MACD_HIST"]
 
         if frame["MACD_Hist"].iloc[-1] <= 0:
             return None

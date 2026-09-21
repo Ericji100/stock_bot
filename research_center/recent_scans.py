@@ -19,6 +19,7 @@ def save_recent_scan_result(
     report_date: date,
     report_text: str,
     selected_codes: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     records = load_recent_scan_results(limit=20)
     clean_report_text = strip_stock_markers(report_text or "")
@@ -34,6 +35,8 @@ def save_recent_scan_result(
         "candidate_snapshot": _build_recent_scan_candidate_snapshots(scan_type, report_date, codes),
         "summary": clean_report_text[:3000],
     }
+    if metadata:
+        record.update({str(key): value for key, value in metadata.items()})
     records.insert(0, record)
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()

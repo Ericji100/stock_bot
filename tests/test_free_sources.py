@@ -5,7 +5,7 @@ import unittest
 import pandas as pd
 
 from research_center.command_parser import parse_command_text
-from research_center.free_sources import parse_tdcc_frame, parse_twse_valuation_json
+from research_center.free_sources import parse_tdcc_frame, parse_tpex_valuation_json, parse_twse_valuation_json
 from research_center.scoring_engine import build_local_scores
 from research_center.value_validation import build_value_cross_validation
 
@@ -37,6 +37,22 @@ class FreeSourceTests(unittest.TestCase):
         self.assertEqual(result['status'], 'covered')
         self.assertEqual(result['concentration_signal'], 'high_concentration')
         self.assertEqual(result['large_holder_pct'], 58.0)
+
+    def test_parse_tpex_valuation_json_reads_tables_payload(self):
+        payload = {
+            'tables': [
+                {
+                    'fields': ['股票代號', '公司名稱', '本益比', '每股股利', '股利年度', '殖利率(%)', '股價淨值比'],
+                    'data': [['6488', '環球晶', '18.5', '12', '114', '3.2', '2.1']],
+                }
+            ]
+        }
+
+        rows = parse_tpex_valuation_json(payload, '6488')
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['pe_ratio'], 18.5)
+        self.assertEqual(rows[0]['pb_ratio'], 2.1)
 
     def test_research_scores_include_free_source_scores(self):
         request = parse_command_text('/research 2330 --score')

@@ -70,6 +70,9 @@ def prepare_scheduled_all_scan_data(
             result.counts["monthly_revenue"] = int(warmup.get("revenue_count") or 0)
             result.counts["price_metrics"] = int(warmup.get("price_metric_count") or 0)
             result.counts["technical_history"] = int(warmup.get("technical_count") or 0)
+            result.counts["technical_adjusted_history"] = int(warmup.get("technical_adjusted_count") or 0)
+            result.counts["market_risk_flags"] = int(warmup.get("market_risk_count") or 0)
+            result.counts["market_risk_complete"] = "是" if warmup.get("market_risk_complete") else "否"
             result.warnings.extend(str(item) for item in warmup.get("warnings") or [])
             result.steps.append("價量/月營收/技術日線")
         except Exception as exc:
@@ -77,7 +80,13 @@ def prepare_scheduled_all_scan_data(
 
     try:
         emit("前置資料準備：補齊財報營收與毛利率候選快取")
-        financial_report = scan_tw_market(force_refresh, None, settings)
+        financial_report = scan_tw_market(
+            force_refresh,
+            None,
+            settings,
+            report_date=report_date,
+            historical_replay=False,
+        )
         result.counts["financial_candidates"] = len(getattr(financial_report, "candidates", []) or [])
         result.steps.append("財報營收/毛利率")
     except Exception as exc:
@@ -125,6 +134,9 @@ def format_scheduled_all_scan_prepare_message(result: ScheduledAllScanPrepareRes
         ("monthly_revenue", "月營收"),
         ("price_metrics", "價量"),
         ("technical_history", "技術日線"),
+        ("technical_adjusted_history", "還原價日線"),
+        ("market_risk_flags", "注意/處置旗標"),
+        ("market_risk_complete", "風險來源完整"),
         ("financial_candidates", "財報營收候選"),
         ("chip_candidates", "籌碼候選"),
         ("chip_coverage_days", "籌碼天數"),

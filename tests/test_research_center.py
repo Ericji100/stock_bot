@@ -409,6 +409,7 @@ class ThemeAndValueScanTests(unittest.TestCase):
                         date(2026, 5, 14),
                         "⭐ 精選選股交叉命中報告\n📅 日期：2026-05-14\n2330 台積電",
                         ["2330", "5425"],
+                        metadata={"scoring_version": "v3"},
                     )
                     record = curated_scan_service.find_cached_curated_scan(date(2026, 5, 14))
                     self.assertIsNotNone(record)
@@ -444,12 +445,14 @@ class ThemeAndValueScanTests(unittest.TestCase):
                     "report_date": "2026-06-04",
                     "scan_id": "ready",
                     "selected_codes": ["2330", "5425"],
+                    "scoring_version": "v3",
                 },
                 {
                     "scan_type": "curated",
                     "report_date": "2026-06-02",
                     "scan_id": "older-ready",
                     "selected_codes": ["6282"],
+                    "scoring_version": "v3",
                 },
             ])
             cache_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
@@ -489,6 +492,7 @@ class ThemeAndValueScanTests(unittest.TestCase):
                     "report_date": "2026-06-04",
                     "scan_id": "curated-ready",
                     "selected_codes": ["2330", "5425"],
+                    "scoring_version": "v3",
                 }
             ], ensure_ascii=False), encoding="utf-8")
             marker_dir = tmp / ".cache" / "backfill" / "2026-06-04"

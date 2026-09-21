@@ -191,7 +191,7 @@ def test_should_use_segmented_analysis_uses_prompt_size_for_all_models():
     assert should_use_segmented_analysis(parse_command_text("/value_scan 我的持股 --model minimax"), "minimax", prompt_chars=large_prompt) is True
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model deepseek"), "deepseek", prompt_chars=large_prompt - 1) is False
     assert should_use_segmented_analysis(parse_command_text("/research 2330 --model minimax"), "minimax", prompt_chars=large_prompt) is True
-    assert should_use_segmented_analysis(parse_command_text("/research 2330 --brief --model minimax"), "minimax", prompt_chars=large_prompt) is False
+    assert should_use_segmented_analysis(parse_command_text("/research 2330 --score --model minimax"), "minimax", prompt_chars=large_prompt) is False
     assert should_use_segmented_analysis(parse_command_text("/theme_radar --model minimax"), "minimax") is False
 
 

@@ -3,7 +3,7 @@
 import unittest
 from datetime import date
 
-from technical_scanner import TechnicalScanResult, format_technical_report_messages
+from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report_messages
 from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 

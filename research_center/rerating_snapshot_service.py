@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable
 
-from stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
+from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
 
 from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot
 from .free_sources import build_free_research_sources

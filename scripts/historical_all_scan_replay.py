@@ -27,9 +27,9 @@ import chip_strategies
 import curated_scan_service
 from stock_ai_bot.data_sources.historical_price_service import fetch_history, load_cached_history, prefetch_histories
 import laoxiao_scan_service
-import stock_scanner
-from stock_scanner import ScanReport, load_stock_universe, scan_tw_market
-import technical_scanner
+import stock_ai_bot.scanning.stock_scanner as stock_scanner
+from stock_ai_bot.scanning.stock_scanner import ScanReport, load_stock_universe, scan_tw_market
+import stock_ai_bot.scanning.technical_scanner as technical_scanner
 
 
 STRATEGY_LABELS = {

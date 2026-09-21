@@ -12,19 +12,19 @@ import pandas as pd
 import yfinance as yf
 
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
-from stock_scanner import (
+from stock_ai_bot.scanning.stock_scanner import (
     DEFAULT_SCAN_SETTINGS,
     UNCLASSIFIED_INDUSTRY,
     load_price_metrics,
     load_recent_revenue_history,
     load_stock_universe,
 )
-from technical_strategy_engine import detect_technical_strategies
+from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
 
 from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 from progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
-from technical_indicator_service import (
+from stock_ai_bot.scanning.technical_indicator_service import (
     INDICATOR_VERSION,
     KD_D_PERIOD,
     KD_K_PERIOD,

@@ -10,7 +10,7 @@ import yfinance as yf
 
 from chip_strategies import get_tw_today
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
-from technical_scanner import (
+from stock_ai_bot.scanning.technical_scanner import (
     MA_BREAKOUT_PERIODS,
     MA_BREAKOUT_SIGNAL_LABELS,
     MA_RECLAIM_SIGNAL_LABELS,
@@ -19,7 +19,7 @@ from technical_scanner import (
     ma_breakout_signal_label,
     ma_signal_label_from_triggers,
 )
-from technical_indicator_service import apply_technical_indicators
+from stock_ai_bot.scanning.technical_indicator_service import apply_technical_indicators
 
 from progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text

@@ -6,9 +6,9 @@ import pandas as pd
 
 import chip_strategies
 import stock_ai_bot.data_sources.historical_price_service as historical_prices
-import stock_scanner
-from stock_scanner import StockUniverseEntry, load_price_metrics
-import technical_scanner
+import stock_ai_bot.scanning.stock_scanner as stock_scanner
+from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, load_price_metrics
+import stock_ai_bot.scanning.technical_scanner as technical_scanner
 
 
 def _history() -> pd.DataFrame:

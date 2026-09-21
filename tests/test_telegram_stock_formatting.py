@@ -8,7 +8,7 @@ from telegram import MessageEntity
 
 import chip_strategies
 import main
-import stock_scanner
+import stock_ai_bot.scanning.stock_scanner as stock_scanner
 from stock_ai_bot.telegram.telegram_stock_formatting import (
     STOCK_MARK_END,
     STOCK_MARK_START,

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from research_center.market_movers_service import build_market_movers
-from stock_scanner import StockUniverseEntry, _extract_price_metric, load_price_metrics
+from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, _extract_price_metric, load_price_metrics
 
 
 def _stock(code: str, name: str, industry: str) -> SimpleNamespace:
@@ -131,12 +131,12 @@ def test_price_metrics_keeps_existing_cache_when_refresh_download_fails(monkeypa
         },
     }
     written_payload = {}
-    monkeypatch.setattr("stock_scanner.PRICE_CACHE_PATH", _FakeCachePath())
-    monkeypatch.setattr("stock_scanner._read_json", lambda path: cache_payload)
-    monkeypatch.setattr("stock_scanner._write_json", lambda path, payload: written_payload.update(payload))
-    monkeypatch.setattr("stock_scanner._is_fresh", lambda path, ttl: False)
-    monkeypatch.setattr("stock_scanner._download_chunk_price_metrics", lambda symbols: {})
-    monkeypatch.setattr("stock_scanner.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner.PRICE_CACHE_PATH", _FakeCachePath())
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._read_json", lambda path: cache_payload)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._write_json", lambda path, payload: written_payload.update(payload))
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._is_fresh", lambda path, ttl: False)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._download_chunk_price_metrics", lambda symbols: {})
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner.time.sleep", lambda seconds: None)
 
     universe = [StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電")]
 
@@ -170,12 +170,12 @@ def test_expired_price_metrics_refreshes_all_requested_symbols(monkeypatch):
             for symbol in symbols
         }
 
-    monkeypatch.setattr("stock_scanner.PRICE_CACHE_PATH", _FakeCachePath())
-    monkeypatch.setattr("stock_scanner._read_json", lambda path: cache_payload)
-    monkeypatch.setattr("stock_scanner._write_json", lambda path, payload: written_payload.update(payload))
-    monkeypatch.setattr("stock_scanner._is_fresh", lambda path, ttl: False)
-    monkeypatch.setattr("stock_scanner._download_chunk_price_metrics", fake_download)
-    monkeypatch.setattr("stock_scanner.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner.PRICE_CACHE_PATH", _FakeCachePath())
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._read_json", lambda path: cache_payload)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._write_json", lambda path, payload: written_payload.update(payload))
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._is_fresh", lambda path, ttl: False)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner._download_chunk_price_metrics", fake_download)
+    monkeypatch.setattr("stock_ai_bot.scanning.stock_scanner.time.sleep", lambda seconds: None)
 
     universe = [
         StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="TSMC"),

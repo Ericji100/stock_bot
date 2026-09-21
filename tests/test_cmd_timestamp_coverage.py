@@ -13,7 +13,7 @@ class TestTechnicalScannerPrintProgress(unittest.TestCase):
     @patch("builtins.print")
     def test_print_progress_has_timestamp(self, mock_print):
         """Verify technical scanner _print_progress includes timestamp."""
-        from technical_scanner import _print_progress
+        from stock_ai_bot.scanning.technical_scanner import _print_progress
         _print_progress("技術面選股", 100.0, "完成")
         mock_print.assert_called_once()
         arg = mock_print.call_args[0][0]
@@ -27,7 +27,7 @@ class TestTechnicalScannerPrintProgress(unittest.TestCase):
     @patch("builtins.print")
     def test_print_progress_format(self, mock_print):
         """Verify technical scanner _print_progress format is correct."""
-        from technical_scanner import _print_progress
+        from stock_ai_bot.scanning.technical_scanner import _print_progress
         _print_progress("技術面選股", 50.0, "計算技術指標")
         mock_print.assert_called_once()
         arg = mock_print.call_args[0][0]

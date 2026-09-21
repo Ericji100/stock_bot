@@ -64,12 +64,12 @@ from portfolio_manager import (
     remove_portfolio_stock,
 )
 from stock_ai_bot.charts.stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
-from stock_scanner import (
+from stock_ai_bot.scanning.stock_scanner import (
     format_scan_report as format_tw_market_scan_report,
     scan_tw_market,
 )
 # NEW: 引入技術面選股模組
-import technical_scanner as ts
+import stock_ai_bot.scanning.technical_scanner as ts
 from bot_runtime_health import record_scheduled_heartbeat_event, update_schedule_health, write_bot_heartbeat
 from radar_service import (
     RadarRequest,

@@ -54,7 +54,7 @@ class TestAddCandidate(unittest.TestCase):
         self.assertEqual(pool["2330"].name, "台積電")
 
     def test_universe_entry_used_as_fallback(self):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
         entry = StockUniverseEntry(code="5425", symbol="5425.TWO", market="TPEX", name="台半", industry="半導體")
         pool: dict[str, BackfillCandidate] = {}
         universe_by_code = {"5425": entry}
@@ -117,7 +117,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
     @patch("backfill_service.load_recent_scan_results")
     @patch("backfill_service._load_recent_research_codes")
     def test_portfolio_and_monitor_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
-        from stock_scanner import StockUniverseEntry, RevenuePoint
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, RevenuePoint
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -148,7 +148,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
     @patch("backfill_service.load_recent_scan_results")
     @patch("backfill_service._load_recent_research_codes")
     def test_recent_scan_codes_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="6282", symbol="6282.TW", market="TWSE", name="康弘", industry="生技"),
@@ -175,7 +175,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
     @patch("backfill_service.load_recent_scan_results")
     @patch("backfill_service._load_recent_research_codes")
     def test_price_volume_hard_filter(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -207,7 +207,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
     @patch("backfill_service.load_recent_scan_results")
     @patch("backfill_service._load_recent_research_codes")
     def test_revenue_improving_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
-        from stock_scanner import StockUniverseEntry, RevenuePoint
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, RevenuePoint
 
         mock_universe.return_value = [
             StockUniverseEntry(code="5425", symbol="5425.TWO", market="TPEX", name="台半", industry="半導體"),
@@ -237,7 +237,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
     @patch("backfill_service.load_recent_scan_results")
     @patch("backfill_service._load_recent_research_codes")
     def test_price_volume_filter_respects_config_max_price(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -462,7 +462,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
     def test_calls_all_market_wide_functions(
         self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -498,7 +498,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
     def test_single_failure_does_not_abort(
         self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -529,7 +529,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
     def test_gross_margin_cache_loaded_not_per_stock(
         self, mock_universe, mock_revenue, mock_price, mock_tech
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -540,8 +540,8 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
 
         from backfill_service import warmup_market_screening_cache
 
-        with patch("stock_scanner._load_gross_margin_cache", return_value={}) as mock_gm_load, \
-             patch("stock_scanner._save_gross_margin_cache") as mock_gm_save:
+        with patch("stock_ai_bot.scanning.stock_scanner._load_gross_margin_cache", return_value={}) as mock_gm_load, \
+             patch("stock_ai_bot.scanning.stock_scanner._save_gross_margin_cache") as mock_gm_save:
             result = warmup_market_screening_cache(
                 mock_universe.return_value, date(2026, 5, 15), force_refresh=False, progress=None
             )
@@ -562,7 +562,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
     def test_warms_screening_cache_before_candidates(
         self, mock_universe, mock_backfill_data, mock_build_pool, mock_screening
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -607,7 +607,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
     def test_force_refresh_passes_to_load_stock_universe(
         self, mock_universe, mock_backfill_data, mock_build_pool, mock_screening
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
@@ -728,7 +728,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_fetch, mock_price, mock_rev, mock_chip,
         mock_curated, mock_gm,
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
         from backfill_service import BackfillCandidate
 
         mock_universe.return_value = [
@@ -782,7 +782,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_fetch, mock_price, mock_rev, mock_chip,
         mock_curated, mock_gm,
     ):
-        from stock_scanner import StockUniverseEntry
+        from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
         from backfill_service import BackfillCandidate, BackfillResult
 
         mock_universe.return_value = [StockUniverseEntry(code="2330", symbol="2330.TW", name="台積電", market="TWSE")]
@@ -1217,8 +1217,8 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(result, False)
         self.assertEqual(reason, "today_before_1500")
 
-    @patch("stock_scanner.load_stock_universe")
-    @patch("stock_scanner.load_price_metrics")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_no_date_field_unavailable(self, mock_price, mock_universe):
         from backfill_service import is_market_data_available
         from datetime import datetime
@@ -1232,8 +1232,8 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(result, False)
         self.assertEqual(reason, "today_data_date_unconfirmed")
 
-    @patch("stock_scanner.load_stock_universe")
-    @patch("stock_scanner.load_price_metrics")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_date_matches_available(self, mock_price, mock_universe):
         from backfill_service import is_market_data_available
         from datetime import datetime
@@ -1248,8 +1248,8 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(reason, "today_data_available")
 
     @patch("backfill_service.fetch_daily_history")
-    @patch("stock_scanner.load_stock_universe")
-    @patch("stock_scanner.load_price_metrics")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
+    @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_uses_daily_history_when_metrics_date_missing(self, mock_price, mock_universe, mock_history):
         from backfill_service import is_market_data_available
         from datetime import datetime

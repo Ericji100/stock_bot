@@ -10,7 +10,7 @@ from research_center.models import SourceItem
 from research_center.scoring_engine import build_buy_rating, build_local_scores
 from research_center.recent_scans import extract_stock_codes
 from research_center.mops_sources import _fetch_mops_tables
-from stock_scanner import StockUniverseEntry
+from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
 
 class ResearchCenterNewFeatureTests(unittest.TestCase):

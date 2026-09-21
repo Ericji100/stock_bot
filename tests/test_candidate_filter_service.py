@@ -1,7 +1,7 @@
 import unittest
 
 import chip_strategies
-import stock_scanner
+import stock_ai_bot.scanning.stock_scanner as stock_scanner
 
 from candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,

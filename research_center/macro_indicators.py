@@ -11,7 +11,7 @@ from typing import Any, Callable
 import pandas as pd
 import yfinance as yf
 
-from stock_scanner import load_stock_universe
+from stock_ai_bot.scanning.stock_scanner import load_stock_universe
 
 from .config import ROOT_DIR
 from .price_fallbacks import load_price_metrics_with_fallback

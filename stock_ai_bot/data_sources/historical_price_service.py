@@ -17,7 +17,7 @@ import json
 import pandas as pd
 import yfinance as yf
 
-from technical_indicator_service import INDICATOR_VERSION
+from stock_ai_bot.scanning.technical_indicator_service import INDICATOR_VERSION
 
 
 ROOT_DIR = Path(__file__).resolve().parent

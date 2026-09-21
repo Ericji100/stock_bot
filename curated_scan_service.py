@@ -15,8 +15,8 @@ from chip_strategies import (
     build_market_context,
     get_tw_today,
 )
-from stock_scanner import StockUniverseEntry, load_recent_revenue_history, scan_tw_market
-import technical_scanner as ts
+from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, load_recent_revenue_history, scan_tw_market
+import stock_ai_bot.scanning.technical_scanner as ts
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 

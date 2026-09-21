@@ -16,7 +16,7 @@ import yfinance as yf
 
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 from stock_ai_bot.data_sources.historical_price_service import fetch_history as fetch_shared_daily_history
-from technical_indicator_service import apply_technical_indicators
+from stock_ai_bot.scanning.technical_indicator_service import apply_technical_indicators
 
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"

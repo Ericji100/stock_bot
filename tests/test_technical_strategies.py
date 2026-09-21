@@ -5,8 +5,8 @@ import unittest
 from datetime import date, timedelta
 import pandas as pd
 
-from technical_scanner import apply_indicators, MACD_FAST, MACD_SLOW, MACD_SIGNAL
-from technical_scanner import (
+from stock_ai_bot.scanning.technical_scanner import apply_indicators, MACD_FAST, MACD_SLOW, MACD_SIGNAL
+from stock_ai_bot.scanning.technical_scanner import (
     BULLISH_SIGNAL_ORDER,
     MA_BREAKOUT_SIGNAL_LABELS,
     MA_RECLAIM_SIGNAL_LABELS,
@@ -16,9 +16,9 @@ from technical_scanner import (
     format_technical_report,
     format_technical_report_messages,
 )
-from technical_scanner import KD_RSV_PERIOD, KD_K_PERIOD, KD_D_PERIOD
-from technical_scanner import is_macd_pullback_breakout
-from technical_strategy_engine import detect_technical_strategies
+from stock_ai_bot.scanning.technical_scanner import KD_RSV_PERIOD, KD_K_PERIOD, KD_D_PERIOD
+from stock_ai_bot.scanning.technical_scanner import is_macd_pullback_breakout
+from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
 from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
@@ -935,7 +935,7 @@ class TestStrategyCGreenZone(unittest.TestCase):
 
         # Zone data check: after apply_indicators, _find_green_zones_for_divergence
         # should find at least 2 green zones
-        from technical_strategy_engine import _find_green_zones_for_divergence
+        from stock_ai_bot.scanning.technical_strategy_engine import _find_green_zones_for_divergence
         zones = _find_green_zones_for_divergence(out)
         # If we get < 2 zones, it means the test data didn't create proper green zones
         # The important thing is: we verify the function EXISTS and doesn't use red zones
@@ -979,7 +979,7 @@ class TestStrategyCGreenZone(unittest.TestCase):
         out.loc[out.index[-1], "MA21"] = 105.0
         out.loc[out.index[-1], "close"] = 107.0  # crosses above
 
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         signals = detect_technical_strategies(out, "TEST", "測試")
         c_main = [s for s in signals if s.get("strategy_code") == "C" and s.get("sub_signal_type") == "C1_macd_bullish_divergence_break_ma21"]
         # With forced conditions, C1 should fire
@@ -991,7 +991,7 @@ class TestStrategyCGreenZone(unittest.TestCase):
 # -------------------------------------------------------------------
 class TestStrategyAWaveGreenZone(unittest.TestCase):
     def test_wave_low_uses_entire_contiguous_green_zone(self):
-        from technical_strategy_engine import _find_macd_wave_cycle
+        from stock_ai_bot.scanning.technical_strategy_engine import _find_macd_wave_cycle
 
         out = _apply(_make_daily([100.0] * 120))
         out["MACD_HIST"] = [0.0] * 20 + [-0.5] * 30 + [1.0] * 20 + [-0.5] * 50
@@ -1010,7 +1010,7 @@ class TestStrategyAWaveGreenZone(unittest.TestCase):
         self.assertEqual(wave["wave_start_date"], str(out.loc[20, "date"]))
 
     def test_zero_bar_separates_green_zones_and_cannot_be_green_end(self):
-        from technical_strategy_engine import _find_macd_wave_cycle
+        from stock_ai_bot.scanning.technical_strategy_engine import _find_macd_wave_cycle
 
         out = _apply(_make_daily([100.0] * 120))
         out["MACD_HIST"] = [0.0] * 10 + [-0.5] * 10 + [0.0] + [-0.5] * 29 + [1.0] * 20 + [-0.5] * 50
@@ -1140,7 +1140,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 # Strategy C: green-zone (MACD_HIST < 0) divergence tests
 # -------------------------------------------------------------------
         """_find_macd_wave_cycle must NOT return an ongoing red zone as completed."""
-        from technical_strategy_engine import _find_macd_wave_cycle
+        from stock_ai_bot.scanning.technical_strategy_engine import _find_macd_wave_cycle
         # Build: green (0-98, meaningful movement) -> completed red (100-149) -> ongoing red that ends (150-199)
         # The ongoing red (150+) must end for the wave to be completed
         closes = [100.0 + i * 0.2 for i in range(200)]
@@ -1172,7 +1172,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
         Features should still contain the correct pullback_low and wave_low values.
         Wave return must exceed 5% minimum threshold.
         """
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100.0] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1218,7 +1218,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 
     def test_a_features_contain_wave_and_pullback_fields(self):
         """A signal features must contain wave_start_date, pullback_low, retracement_ratio."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1264,7 +1264,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 
     def test_a3_requires_long_ma_broken_in_pullback(self):
         """A3 must only fire when MA105/MA144 was broken during pullback."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100.0] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1301,7 +1301,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 
     def test_a3_fires_when_long_ma_broken_and_reclaimed(self):
         """A3 must fire when MA105/MA144 was broken during pullback and reclaimed today."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100.0] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1339,7 +1339,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 
     def test_ongoing_red_zone_not_used_as_wave_cycle(self):
         """When MACD is still in red zone, that ongoing zone must NOT be used as wave cycle."""
-        from technical_strategy_engine import _find_macd_wave_cycle
+        from stock_ai_bot.scanning.technical_strategy_engine import _find_macd_wave_cycle
         closes = [100] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1358,7 +1358,7 @@ class TestStrategyARejectMultiDayRed(unittest.TestCase):
 
     def test_retracement_ratio_uses_pullback_low_not_yesterday_close(self):
         """retracement_ratio must be computed from pullback_low, not prev['close']."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100] * 200
         df = _make_daily(closes)
         out = _apply(df)
@@ -1433,7 +1433,7 @@ class TestStrategyAGreenColumn(unittest.TestCase):
         out.loc[out.index[-1], "MA21"] = ma21_curr
         out.loc[out.index[-1], "close"] = float(ma21_curr * 1.02)
 
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         signals = detect_technical_strategies(out, "TEST", "測試")
         strat_a = [s for s in signals if s.get("strategy_code") == "A"]
         self.assertGreaterEqual(
@@ -1476,7 +1476,7 @@ class TestStrategyDHighRiskLabel(unittest.TestCase):
         out.loc[out.index[-1], "MA21"] = ma21_val
         out.loc[out.index[-1], "close"] = ma21_val * 1.05
 
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         signals = detect_technical_strategies(out, "TEST", "測試")
         strat_d = [s for s in signals if s.get("strategy_code") == "D"]
 
@@ -1518,7 +1518,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_not_contain_paused_strategy_text(self):
         """format_technical_report must NOT contain '暫停策略' text."""
-        from technical_scanner import TechnicalScanResult, format_technical_report
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report
         from datetime import date
         empty_result = TechnicalScanResult(
             report_date=date(2026, 5, 19),
@@ -1535,7 +1535,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_contains_macd_and_dual_ma_blocks(self):
         """Report keeps A-D labels under the renamed MACD block."""
-        from technical_scanner import TechnicalScanResult, format_technical_report
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report
         from datetime import date
         result = TechnicalScanResult(
             report_date=date(2026, 5, 19),
@@ -1566,7 +1566,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_no_english_sub_signal_codes(self):
         """Report must NOT contain raw English sub_signal_type codes."""
-        from technical_scanner import TechnicalScanResult, format_technical_report, STRATEGY_SUB_SIGNAL_LABELS
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report, STRATEGY_SUB_SIGNAL_LABELS
         from datetime import date
 
         def make_sig(code, sub):
@@ -1610,7 +1610,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_contains_chinese_sub_signal_labels(self):
         """Report must contain Chinese sub-signal labels."""
-        from technical_scanner import TechnicalScanResult, format_technical_report
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report
         from datetime import date
 
         def make_sig(code, sub):
@@ -1644,7 +1644,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_strategy_blocks_have_blank_lines(self):
         """Strategy block titles must have blank lines before/after."""
-        from technical_scanner import TechnicalScanResult, format_technical_report
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report
         from datetime import date
 
         def make_sig(code, sub, industry="未分類"):
@@ -1680,7 +1680,7 @@ class TestReportFormat(unittest.TestCase):
 
     def test_report_strategy_blocks_group_by_industry(self):
         """Strategy stocks must be grouped by industry under each sub-signal."""
-        from technical_scanner import TechnicalScanResult, format_technical_report
+        from stock_ai_bot.scanning.technical_scanner import TechnicalScanResult, format_technical_report
         from datetime import date
 
         def make_sig(code, sub, stock_id, stock_name, industry):
@@ -2154,7 +2154,7 @@ class TestStrategyD(unittest.TestCase):
 
     def test_d3_fires_below_ma60_ma105_with_dif(self):
         """D3 does not require price above MA60/MA105 when DIF is positive."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100 + i for i in range(200)]
         df = _make_daily(closes)
         out = _apply(df)
@@ -2180,7 +2180,7 @@ class TestStrategyD(unittest.TestCase):
 
     def test_d3_fires_below_ma60_ma105_with_prior_red(self):
         """D3 also works below long MAs when a recent MACD red bar exists."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100 + i for i in range(200)]
         df = _make_daily(closes)
         out = _apply(df)
@@ -2216,7 +2216,7 @@ class TestStrategyD(unittest.TestCase):
 
     def test_d_background_passes_with_price_above_ma_and_dif(self):
         """D must fire when price above MA60/MA105 AND DIF>0."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100 + i for i in range(200)]
         df = _make_daily(closes)
         out = _apply(df)
@@ -2240,7 +2240,7 @@ class TestStrategyD(unittest.TestCase):
 
     def test_d_background_passes_with_price_above_ma_and_prior_red_zone(self):
         """D must fire when price above MA60/MA105 AND recent MACD red zone exists."""
-        from technical_strategy_engine import detect_technical_strategies
+        from stock_ai_bot.scanning.technical_strategy_engine import detect_technical_strategies
         closes = [100 + i for i in range(200)]
         df = _make_daily(closes)
         out = _apply(df)
@@ -2274,7 +2274,7 @@ class TestStrategyD(unittest.TestCase):
 class TestOriginalSignalsPreserved(unittest.TestCase):
     def test_detect_signals_still_available(self):
         """detect_signals function must still be importable and callable."""
-        from technical_scanner import detect_signals
+        from stock_ai_bot.scanning.technical_scanner import detect_signals
         closes = [100 + i for i in range(200)]
         df = _make_daily(closes)
         bullish, bearish = detect_signals(df)
@@ -2284,7 +2284,7 @@ class TestOriginalSignalsPreserved(unittest.TestCase):
 
     def test_detect_signals_returns_known_signals(self):
         """detect_signals must still produce known signal types."""
-        from technical_scanner import detect_signals
+        from stock_ai_bot.scanning.technical_scanner import detect_signals
         # 21MA cross up
         closes = [100] * 130 + [98, 105]  # crosses 21MA
         df = _make_daily(closes)
@@ -2293,7 +2293,7 @@ class TestOriginalSignalsPreserved(unittest.TestCase):
 
     def test_macd_cross_functions_preserved(self):
         """_cross_up and _cross_down must still exist."""
-        from technical_scanner import _cross_up, _cross_down
+        from stock_ai_bot.scanning.technical_scanner import _cross_up, _cross_down
         self.assertTrue(_cross_up(1.0, 2.0, 3.0, 1.0))
         self.assertTrue(_cross_down(3.0, 1.0, 1.0, 2.0))
         self.assertFalse(_cross_up(1.0, 2.0, 1.5, 2.5))

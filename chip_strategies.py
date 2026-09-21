@@ -20,7 +20,7 @@ from candidate_filter_service import (
     resolve_hard_filter_settings,
 )
 from stock_ai_bot.data_sources.data_source_manager import SourceHealthManager, FinMindQuotaManager
-from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
+from stock_ai_bot.scanning.stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
 from progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text

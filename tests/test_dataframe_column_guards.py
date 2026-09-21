@@ -4,7 +4,7 @@ import pandas as pd
 
 
 def test_technical_history_duplicate_numeric_columns_do_not_crash():
-    from technical_scanner import _standardize_history
+    from stock_ai_bot.scanning.technical_scanner import _standardize_history
 
     frame = pd.DataFrame(
         [
@@ -22,7 +22,7 @@ def test_technical_history_duplicate_numeric_columns_do_not_crash():
 
 
 def test_stock_price_metric_duplicate_columns_do_not_crash():
-    from stock_scanner import _extract_price_metric
+    from stock_ai_bot.scanning.stock_scanner import _extract_price_metric
 
     rows = []
     for index in range(25):

@@ -7,7 +7,7 @@ from unittest.mock import call, patch
 import pandas as pd
 
 from stock_ai_bot.charts import stock_chart_service
-import technical_scanner
+import stock_ai_bot.scanning.technical_scanner as technical_scanner
 from stock_ai_bot.charts import tmf_chart_service
 
 
@@ -95,11 +95,11 @@ class TechnicalScannerProgressTests(unittest.TestCase):
             progress_events.append((progress, message))
 
         with (
-            patch("technical_scanner.build_hard_filter_candidates", return_value=(candidates, 2)),
-            patch("technical_scanner.fetch_daily_history", return_value=(_stock_bars(3), "unit")) as fetch_history,
-            patch("technical_scanner.detect_signals", return_value=([], [])),
-            patch("technical_scanner.detect_technical_strategies", return_value=[]),
-            patch("technical_scanner._print_progress", side_effect=fake_progress),
+            patch("stock_ai_bot.scanning.technical_scanner.build_hard_filter_candidates", return_value=(candidates, 2)),
+            patch("stock_ai_bot.scanning.technical_scanner.fetch_daily_history", return_value=(_stock_bars(3), "unit")) as fetch_history,
+            patch("stock_ai_bot.scanning.technical_scanner.detect_signals", return_value=([], [])),
+            patch("stock_ai_bot.scanning.technical_scanner.detect_technical_strategies", return_value=[]),
+            patch("stock_ai_bot.scanning.technical_scanner._print_progress", side_effect=fake_progress),
         ):
             technical_scanner.run_technical_scan(report_date=date(2026, 6, 18))
 

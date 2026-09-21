@@ -13,7 +13,7 @@ import pandas as pd
 
 import curated_scan_service
 import laoxiao_scan_service
-import technical_scanner as ts
+import stock_ai_bot.scanning.technical_scanner as ts
 from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
 from monitor_service import get_monitor_stocks
 from portfolio_manager import list_portfolio
@@ -37,9 +37,9 @@ from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
 from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
 from research_center.free_sources import build_valuation_context_map
 from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
-from stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
+from stock_ai_bot.scanning.stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text, strip_stock_markers
-from technical_indicator_service import apply_point_in_time_adjustment
+from stock_ai_bot.scanning.technical_indicator_service import apply_point_in_time_adjustment
 from unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
 
 

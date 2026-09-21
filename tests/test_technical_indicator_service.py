@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pandas as pd
 
-import technical_scanner
+import stock_ai_bot.scanning.technical_scanner as technical_scanner
 
-from technical_indicator_service import (
+from stock_ai_bot.scanning.technical_indicator_service import (
     INDICATOR_VERSION,
     PRICE_BASIS_ADJUSTED,
     apply_point_in_time_adjustment,
@@ -110,7 +110,7 @@ class TechnicalIndicatorServiceTests(unittest.TestCase):
 
     def test_technical_cache_records_indicator_version_and_price_basis(self):
         with TemporaryDirectory() as temp_dir, patch(
-            "technical_scanner.TECH_CACHE_DIR",
+            "stock_ai_bot.scanning.technical_scanner.TECH_CACHE_DIR",
             Path(temp_dir),
         ):
             technical_scanner._save_history(

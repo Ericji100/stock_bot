@@ -13,7 +13,7 @@ from uuid import uuid4
 import httpx
 import pandas as pd
 
-from technical_indicator_service import apply_technical_indicators
+from stock_ai_bot.scanning.technical_indicator_service import apply_technical_indicators
 
 
 TAIFEX_DAILY_CSV_URL = "https://www.taifex.com.tw/file/taifex/Dailydownload/DailydownloadCSV/Daily_{date_str}.zip"

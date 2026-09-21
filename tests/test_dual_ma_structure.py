@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-import technical_scanner as scanner
+import stock_ai_bot.scanning.technical_scanner as scanner
 from stock_ai_bot.telegram.telegram_stock_formatting import strip_stock_markers
 
 

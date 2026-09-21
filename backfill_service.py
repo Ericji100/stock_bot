@@ -59,8 +59,8 @@ from research_center.recent_scans import load_recent_scan_results
 from research_center.structured_cache import load_research_structured_cache
 from research_center.free_sources import warmup_valuation_history_cache
 from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
-from stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
-from technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
+from stock_ai_bot.scanning.stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
+from stock_ai_bot.scanning.technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
 from stock_ai_bot.market.market_risk_service import load_market_risk_map
 from backfill_gap_service import build_backfill_gap_report, write_gap_report
 
@@ -687,7 +687,7 @@ def warmup_gross_margin_cache(
     Returns:
         (count of successfully loaded stocks, list of warning messages)
     """
-    from stock_scanner import _load_gross_margin_cache, _save_gross_margin_cache
+    from stock_ai_bot.scanning.stock_scanner import _load_gross_margin_cache, _save_gross_margin_cache
 
     metrics = _load_gross_margin_cache()
     count = 0
@@ -862,7 +862,7 @@ def warmup_market_screening_cache(
 
     # 4. Ensure gross margin base cache file exists (don't full-scan per-stock)
     try:
-        from stock_scanner import _load_gross_margin_cache
+        from stock_ai_bot.scanning.stock_scanner import _load_gross_margin_cache
         _load_gross_margin_cache()
         # Don't brute-force per-stock gross margin for the entire market in this phase.
         # Candidate stocks will get full gross margin series in warmup_gross_margin_cache().
@@ -1416,11 +1416,11 @@ def is_market_data_available(report_date: date, now: datetime | None = None) -> 
 
         # After 15:00, do a lightweight check using price_metrics
         try:
-            from stock_scanner import load_stock_universe
+            from stock_ai_bot.scanning.stock_scanner import load_stock_universe
             universe = load_stock_universe(force_refresh=False)
             # Pick a few representative stocks to check
             sample = universe[:3] if len(universe) >= 3 else universe
-            from stock_scanner import load_price_metrics
+            from stock_ai_bot.scanning.stock_scanner import load_price_metrics
             metrics = load_price_metrics(sample, force_refresh=False)
             # Only confirm availability if date field explicitly equals report_date
             for entry in sample:

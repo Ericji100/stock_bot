@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from stock_scanner import load_price_metrics, load_stock_universe
+from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_stock_universe
 
 from .config import ROOT_DIR
 from .market_movers_service import build_market_movers, rows_from_market_movers

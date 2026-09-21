@@ -13,8 +13,8 @@ import pandas as pd
 from stock_ai_bot.market.market_risk_service import MarketRiskResult, load_market_risk_map
 from research_center.recent_scans import load_recent_scan_results
 from research_center.topic_context import build_stock_topic_context
-from stock_scanner import StockUniverseEntry, load_recent_revenue_history, load_stock_universe
-from technical_scanner import fetch_daily_history
+from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, load_recent_revenue_history, load_stock_universe
+from stock_ai_bot.scanning.technical_scanner import fetch_daily_history
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
@@ -767,7 +767,7 @@ def _attach_historical_fundamental_scores(
     except Exception:
         history_map = {}
 
-    from stock_scanner import _load_historical_gross_margin_series
+    from stock_ai_bot.scanning.stock_scanner import _load_historical_gross_margin_series
     from unified_financial_scoring import score_unified_financial, score_unified_revenue
 
     for item in candidates:

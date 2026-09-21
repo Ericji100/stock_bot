@@ -4,7 +4,7 @@ from datetime import date
 
 import pandas as pd
 
-import technical_scanner as scanner
+import stock_ai_bot.scanning.technical_scanner as scanner
 
 
 def _frame(rows: int = 20) -> pd.DataFrame:

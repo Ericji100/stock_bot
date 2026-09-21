@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from backfill_gap_service import (
+from stock_ai_bot.backfill.backfill_gap_service import (
     analyze_chip_gaps,
     analyze_research_structured_gaps,
     analyze_revenue_gaps,
@@ -98,7 +98,7 @@ class BackfillGapServiceTests(unittest.TestCase):
         frame.to_csv(tech_dir / "2330_TW.csv", index=False)
         rows = candidates_to_rows({"2330": _Candidate("2330"), "5425": _Candidate("5425", symbol="5425.TWO")})
 
-        with patch("backfill_gap_service.TECH_CACHE_DIR", tech_dir):
+        with patch("stock_ai_bot.backfill.backfill_gap_service.TECH_CACHE_DIR", tech_dir):
             section = analyze_technical_gaps(rows, date(2026, 5, 20), min_rows=120)
 
         self.assertEqual(section.ready_count, 1)
@@ -158,7 +158,7 @@ class BackfillGapServiceTests(unittest.TestCase):
         )
         rows = candidates_to_rows({"2330": _Candidate("2330")})
 
-        with patch("backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
+        with patch("stock_ai_bot.backfill.backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
             section = analyze_research_structured_gaps(rows, date(2026, 5, 20))
 
         self.assertEqual(section.ready_count, 1)
@@ -181,7 +181,7 @@ class BackfillGapServiceTests(unittest.TestCase):
         )
         rows = candidates_to_rows({"2330": _Candidate("2330")})
 
-        with patch("backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
+        with patch("stock_ai_bot.backfill.backfill_gap_service.RESEARCH_STRUCTURED_DIR", tmp):
             section = analyze_research_structured_gaps(rows, date(2026, 5, 20))
 
         self.assertEqual(section.ready_count, 1)

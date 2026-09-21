@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from backfill_service import parse_backfill_args
+from stock_ai_bot.backfill.backfill_service import parse_backfill_args
 
 
 class TestParseBackfillArgs(unittest.TestCase):

@@ -62,7 +62,7 @@ from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, f
 from stock_ai_bot.scanning.stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
 from stock_ai_bot.scanning.technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
 from stock_ai_bot.market.market_risk_service import load_market_risk_map
-from backfill_gap_service import build_backfill_gap_report, write_gap_report
+from stock_ai_bot.backfill.backfill_gap_service import build_backfill_gap_report, write_gap_report
 
 
 @dataclass

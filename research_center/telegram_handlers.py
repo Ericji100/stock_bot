@@ -576,7 +576,7 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
             sink=lambda message: _print_progress(raw_text, message),
         ).start()
         try:
-            from backfill_service import is_backfill_running
+            from stock_ai_bot.backfill.backfill_service import is_backfill_running
 
             if is_backfill_running():
                 notice = "偵測到完整資料回補正在執行，本次任務會優先使用既有快取與逾時降級，避免長時間等待資料源。"

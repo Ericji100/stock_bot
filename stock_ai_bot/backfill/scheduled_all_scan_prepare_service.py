@@ -5,13 +5,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-from backfill_service import warmup_market_screening_cache
+from stock_ai_bot.backfill.backfill_service import warmup_market_screening_cache
 from chip_strategies import TARGET_DAILY_TRADING_DAYS, warmup_chip_data_cache
 from candidate_filter_service import resolve_hard_filter_settings
 from stock_ai_bot.scanning.stock_scanner import load_stock_universe, scan_tw_market
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache"
 
 

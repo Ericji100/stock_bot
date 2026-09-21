@@ -11,7 +11,7 @@ from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandle
 from telegram.request import HTTPXRequest
 import curated_scan_service
 import laoxiao_scan_service
-from scheduled_all_scan_prepare_service import (
+from stock_ai_bot.backfill.scheduled_all_scan_prepare_service import (
     format_scheduled_all_scan_prepare_message,
     prepare_scheduled_all_scan_data,
 )
@@ -40,7 +40,7 @@ from stock_ai_bot.monitoring.monitor_service import (
     build_monitor_scan_report,
     remove_monitor_stock_from_config,
 )
-from backfill_service import run_full_backfill, parse_backfill_args, format_backfill_health_summary
+from stock_ai_bot.backfill.backfill_service import run_full_backfill, parse_backfill_args, format_backfill_health_summary
 from research_center.telegram_handlers import build_research_handlers
 from research_center.command_runtime_service import GLOBAL_COMMAND_RUNTIME
 from research_center.scheduled_task_service import (
@@ -1021,7 +1021,7 @@ async def _manual_backfill_background(
         print(format_cmd_message(message, "完整回補"), flush=True)
 
     try:
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         decision = await asyncio.to_thread(
             run_backfill_if_needed,
@@ -1080,7 +1080,7 @@ async def _scheduled_backfill_background() -> None:
         print(format_cmd_message(message, "定時回補檢查"), flush=True)
 
     try:
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         decision = await asyncio.to_thread(
             run_backfill_if_needed,
@@ -1171,7 +1171,7 @@ async def manual_full_backfill(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     if report_date_arg is None:
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         target_date = resolve_backfill_report_date()
     else:
         target_date = report_date_arg
@@ -1219,7 +1219,7 @@ async def manual_full_backfill(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Determine target date for the reply message (resolve if None)
     if report_date_arg is None:
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         target_date = resolve_backfill_report_date()
     else:
         target_date = report_date_arg
@@ -1243,7 +1243,7 @@ async def manual_full_backfill(update: Update, context: ContextTypes.DEFAULT_TYP
         print(format_cmd_message(message, "完整回補"), flush=True)
 
     try:
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         decision = await asyncio.to_thread(
             run_backfill_if_needed,
@@ -1673,7 +1673,7 @@ async def execute_radar_request(update: Update, context: ContextTypes.DEFAULT_TY
         sink=lambda message: print(f"[{now_timestamp()}] {message}", flush=True),
     ).start()
     try:
-        from backfill_service import is_backfill_running
+        from stock_ai_bot.backfill.backfill_service import is_backfill_running
 
         if is_backfill_running():
             notice = "偵測到完整資料回補正在執行，本次 Radar 會優先使用既有快取與逾時降級，避免長時間等待資料源。"
@@ -2292,7 +2292,7 @@ async def scheduled_full_backfill_check(context: ContextTypes.DEFAULT_TYPE):
     print(format_cmd_message("已啟動背景定時回補", "定時回補檢查"), flush=True)
     return
 
-    from backfill_service import run_backfill_if_needed
+    from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
     def progress(message: str) -> None:
         print(format_cmd_message(message, "定時回補檢查"), flush=True)

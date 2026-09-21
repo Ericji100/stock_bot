@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-import scheduled_all_scan_prepare_service as prepare
+import stock_ai_bot.backfill.scheduled_all_scan_prepare_service as prepare
 
 
 def test_prepare_scheduled_all_scan_data_reuses_existing_warmup_functions(monkeypatch):

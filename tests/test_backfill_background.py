@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-import backfill_service
+import stock_ai_bot.backfill.backfill_service as backfill_service
 import main
 
 

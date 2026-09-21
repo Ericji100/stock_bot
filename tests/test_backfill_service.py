@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from backfill_service import (
+from stock_ai_bot.backfill.backfill_service import (
     BackfillCandidate,
     BackfillResult,
     _add_candidate,
@@ -78,7 +78,7 @@ class TestLoadRecentResearchCodes(unittest.TestCase):
             report_file.write_text(json.dumps(report_data, ensure_ascii=False), encoding="utf-8")
 
             # Patch the reports path
-            with patch("backfill_service.Path") as mock_path_cls:
+            with patch("stock_ai_bot.backfill.backfill_service.Path") as mock_path_cls:
                 def path_side_effect(arg):
                     if arg == "reports":
                         return tmp  # Use Path object of our test cache dir
@@ -110,12 +110,12 @@ class TestLoadRecentResearchCodes(unittest.TestCase):
 class TestBuildBackfillCandidatePool(unittest.TestCase):
     """Test candidate pool creation using mocks."""
 
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
-    @patch("backfill_service.load_portfolio")
-    @patch("backfill_service.load_recent_scan_results")
-    @patch("backfill_service._load_recent_research_codes")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.load_portfolio")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_scan_results")
+    @patch("stock_ai_bot.backfill.backfill_service._load_recent_research_codes")
     def test_portfolio_and_monitor_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, RevenuePoint
 
@@ -141,12 +141,12 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
         self.assertIn("2330", candidates)
         self.assertIn("hard_filter_revenue", candidates["2330"].sources)
 
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
-    @patch("backfill_service.load_portfolio")
-    @patch("backfill_service.load_recent_scan_results")
-    @patch("backfill_service._load_recent_research_codes")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.load_portfolio")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_scan_results")
+    @patch("stock_ai_bot.backfill.backfill_service._load_recent_research_codes")
     def test_recent_scan_codes_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
@@ -168,12 +168,12 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
         self.assertIn("6282", candidates)
         self.assertIn("recent_scan", candidates["6282"].sources)
 
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
-    @patch("backfill_service.load_portfolio")
-    @patch("backfill_service.load_recent_scan_results")
-    @patch("backfill_service._load_recent_research_codes")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.load_portfolio")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_scan_results")
+    @patch("stock_ai_bot.backfill.backfill_service._load_recent_research_codes")
     def test_price_volume_hard_filter(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
@@ -200,12 +200,12 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
         # 0001 should NOT pass (price < 5, volume < 500)
         self.assertNotIn("0001", candidates)
 
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
-    @patch("backfill_service.load_portfolio")
-    @patch("backfill_service.load_recent_scan_results")
-    @patch("backfill_service._load_recent_research_codes")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.load_portfolio")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_scan_results")
+    @patch("stock_ai_bot.backfill.backfill_service._load_recent_research_codes")
     def test_revenue_improving_in_pool(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, RevenuePoint
 
@@ -230,12 +230,12 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
         self.assertIn("5425", candidates)
         self.assertIn("hard_filter_revenue_improving", candidates["5425"].sources)
 
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
-    @patch("backfill_service.load_portfolio")
-    @patch("backfill_service.load_recent_scan_results")
-    @patch("backfill_service._load_recent_research_codes")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.load_portfolio")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_scan_results")
+    @patch("stock_ai_bot.backfill.backfill_service._load_recent_research_codes")
     def test_price_volume_filter_respects_config_max_price(self, mock_research_codes, mock_recent_scans, mock_portfolio, mock_universe, mock_revenue, mock_price_metrics):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
 
@@ -274,7 +274,7 @@ class TestBuildBackfillCandidatePool(unittest.TestCase):
 class TestCallCollectResearchData(unittest.TestCase):
     """Test _call_collect_research_data (called by warmup but tested separately here)."""
 
-    @patch("backfill_service.collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.collect_research_data")
     def test_returns_true_on_success(self, mock_collect):
         mock_collect.return_value = {"stock": {"code": "2330"}, "notes": []}
 
@@ -286,7 +286,7 @@ class TestCallCollectResearchData(unittest.TestCase):
         self.assertIsNone(err)
         self.assertIsNone(warn)
 
-    @patch("backfill_service.collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.collect_research_data")
     def test_returns_error_on_exception(self, mock_collect):
         mock_collect.side_effect = Exception("API failed")
 
@@ -301,8 +301,8 @@ class TestCallCollectResearchData(unittest.TestCase):
 class TestWarmupResearchStructuredData(unittest.TestCase):
     """Test warmup_research_structured_data with core_pool (renamed from candidates)."""
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_calls_collect_for_core_pool(self, mock_call, mock_load_cache):
         mock_call.return_value = (True, None, None)
 
@@ -318,8 +318,8 @@ class TestWarmupResearchStructuredData(unittest.TestCase):
         self.assertEqual(timeout_count, 0)
         mock_call.assert_called_once()
 
-    @patch("backfill_service.load_research_structured_cache")
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache")
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_uses_cache_when_available(self, mock_call, mock_load_cache):
         mock_load_cache.return_value = {"stock": {"code": "2330"}, "notes": []}
 
@@ -336,8 +336,8 @@ class TestWarmupResearchStructuredData(unittest.TestCase):
         self.assertEqual(timeout_count, 0)
         mock_call.assert_not_called()
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_force_refresh_skips_cache(self, mock_call, mock_load_cache):
         mock_call.return_value = (True, None, None)
 
@@ -353,8 +353,8 @@ class TestWarmupResearchStructuredData(unittest.TestCase):
         self.assertEqual(timeout_count, 0)
         mock_call.assert_called_once()
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_progress_messages_on_success(self, mock_call, mock_load_cache):
         mock_call.return_value = (True, None, None)
 
@@ -373,8 +373,8 @@ class TestWarmupResearchStructuredData(unittest.TestCase):
         self.assertTrue(any("完成" in m or "失敗" in m for m in messages))
         self.assertEqual(warnings, [])
 
-    @patch("backfill_service.load_research_structured_cache")
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache")
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_progress_messages_on_cache_hit(self, mock_call, mock_load_cache):
         mock_load_cache.return_value = {"stock": {"code": "2330", "name": "台積電"}, "notes": []}
 
@@ -391,8 +391,8 @@ class TestWarmupResearchStructuredData(unittest.TestCase):
         self.assertTrue(any("快取命中" in m for m in messages))
         mock_call.assert_not_called()
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_progress_messages_on_failure(self, mock_call, mock_load_cache):
         mock_call.return_value = (False, "network error", None)
 
@@ -454,11 +454,11 @@ class TestBackfillResultDataclass(unittest.TestCase):
 class TestWarmupMarketScreeningCache(unittest.TestCase):
     """Test warmup_market_screening_cache: market-wide data warmup."""
 
-    @patch("backfill_service._is_technical_history_ready", return_value=False)
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service._is_technical_history_ready", return_value=False)
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_calls_all_market_wide_functions(
         self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
@@ -471,7 +471,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         mock_price.return_value = {"2330.TW": {"price": 800.0, "avg_volume_20d": 5000}}
         mock_tech.return_value = (MagicMock(), "Yahoo Finance")
 
-        from backfill_service import warmup_market_screening_cache
+        from stock_ai_bot.backfill.backfill_service import warmup_market_screening_cache
 
         result = warmup_market_screening_cache(
             mock_universe.return_value, date(2026, 5, 15), force_refresh=False, progress=None
@@ -490,11 +490,11 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         self.assertEqual(result["technical_count"], 1)
         self.assertEqual(len(result["warnings"]), 0)
 
-    @patch("backfill_service._is_technical_history_ready", return_value=False)
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service._is_technical_history_ready", return_value=False)
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_single_failure_does_not_abort(
         self, mock_universe, mock_revenue, mock_price, mock_tech, mock_ready
     ):
@@ -512,7 +512,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         # First call fails, second succeeds
         mock_tech.side_effect = [Exception("network error"), (MagicMock(), "Yahoo Finance")]
 
-        from backfill_service import warmup_market_screening_cache
+        from stock_ai_bot.backfill.backfill_service import warmup_market_screening_cache
 
         result = warmup_market_screening_cache(
             mock_universe.return_value, date(2026, 5, 15), force_refresh=False, progress=None
@@ -522,10 +522,10 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         self.assertEqual(len(result["warnings"]), 1)
         self.assertIn("技術日線快取失敗 2330", result["warnings"][0])
 
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.load_price_metrics")
-    @patch("backfill_service.load_recent_revenue_history")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_gross_margin_cache_loaded_not_per_stock(
         self, mock_universe, mock_revenue, mock_price, mock_tech
     ):
@@ -538,7 +538,7 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
         mock_price.return_value = {"2330.TW": {"price": 800.0}}
         mock_tech.return_value = (MagicMock(), "本機快取")
 
-        from backfill_service import warmup_market_screening_cache
+        from stock_ai_bot.backfill.backfill_service import warmup_market_screening_cache
 
         with patch("stock_ai_bot.scanning.stock_scanner._load_gross_margin_cache", return_value={}) as mock_gm_load, \
              patch("stock_ai_bot.scanning.stock_scanner._save_gross_margin_cache") as mock_gm_save:
@@ -555,10 +555,10 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
 class TestRunFullBackfillIntegration(unittest.TestCase):
     """Test run_full_backfill calls warmup_market_screening_cache first."""
 
-    @patch("backfill_service.warmup_market_screening_cache")
-    @patch("backfill_service.build_backfill_candidate_pool")
-    @patch("backfill_service.backfill_candidate_data")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_market_screening_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_backfill_candidate_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.backfill_candidate_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_warms_screening_cache_before_candidates(
         self, mock_universe, mock_backfill_data, mock_build_pool, mock_screening
     ):
@@ -567,7 +567,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
         ]
-        from backfill_service import BackfillCandidate, BackfillResult
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, BackfillResult
 
         mock_build_pool.return_value = (
             {"2330": BackfillCandidate(code="2330", symbol="2330.TW", name="台積電", sources={"portfolio"})},
@@ -582,7 +582,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
             "warnings": [],
         }
 
-        from backfill_service import run_full_backfill
+        from stock_ai_bot.backfill.backfill_service import run_full_backfill
 
         result = run_full_backfill(date(2026, 5, 15), force_refresh=False, progress=None)
 
@@ -600,10 +600,10 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
         self.assertEqual(result.screening_technical_count, 1700)
         self.assertEqual(result.screening_warning_count, 0)
 
-    @patch("backfill_service.warmup_market_screening_cache")
-    @patch("backfill_service.build_backfill_candidate_pool")
-    @patch("backfill_service.backfill_candidate_data")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_market_screening_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_backfill_candidate_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.backfill_candidate_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_force_refresh_passes_to_load_stock_universe(
         self, mock_universe, mock_backfill_data, mock_build_pool, mock_screening
     ):
@@ -612,7 +612,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", market="TWSE", name="台積電", industry="半導體"),
         ]
-        from backfill_service import BackfillCandidate, BackfillResult
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, BackfillResult
 
         mock_build_pool.return_value = (
             {"2330": BackfillCandidate(code="2330", symbol="2330.TW", name="台積電", sources={"portfolio"})},
@@ -627,7 +627,7 @@ class TestRunFullBackfillIntegration(unittest.TestCase):
             "warnings": [],
         }
 
-        from backfill_service import run_full_backfill
+        from stock_ai_bot.backfill.backfill_service import run_full_backfill
 
         result = run_full_backfill(date(2026, 5, 15), force_refresh=True, progress=None)
 
@@ -711,17 +711,17 @@ class TestBuildCoreResearchPool(unittest.TestCase):
 class TestThreeTierBackfillFlow(unittest.TestCase):
     """Test that warmup_research_structured_data only receives core pool, not all candidates."""
 
-    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
-    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
-    @patch("backfill_service.warmup_chip_data_cache")
-    @patch("backfill_service.load_recent_revenue_history", return_value=[])
-    @patch("backfill_service.load_price_metrics", return_value=[])
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.warmup_research_structured_data")
-    @patch("backfill_service.build_core_research_pool")
-    @patch("backfill_service.warmup_market_screening_cache")
-    @patch("backfill_service.build_backfill_candidate_pool")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("stock_ai_bot.backfill.backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_chip_data_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history", return_value=[])
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics", return_value=[])
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_research_structured_data")
+    @patch("stock_ai_bot.backfill.backfill_service.build_core_research_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_market_screening_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_backfill_candidate_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_warmup_receives_core_not_all_candidates(
         self, mock_universe, mock_build_pool,
         mock_screening, mock_build_core, mock_warmup,
@@ -729,7 +729,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_curated, mock_gm,
     ):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
-        from backfill_service import BackfillCandidate
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate
 
         mock_universe.return_value = [
             StockUniverseEntry(code="2330", symbol="2330.TW", name="台積電", market="TWSE"),
@@ -747,7 +747,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_screening.return_value = {"revenue_count": 0, "price_metric_count": 0, "technical_count": 0, "warnings": []}
         mock_warmup.return_value = (1, [], [], 0)
 
-        from backfill_service import run_full_backfill
+        from stock_ai_bot.backfill.backfill_service import run_full_backfill
 
         result = run_full_backfill(date(2026, 5, 15), progress=None)
 
@@ -765,17 +765,17 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         # Should not have 3 stocks
         self.assertNotEqual(len(core_arg), 3)
 
-    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
-    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
-    @patch("backfill_service.warmup_chip_data_cache")
-    @patch("backfill_service.load_recent_revenue_history", return_value=[])
-    @patch("backfill_service.load_price_metrics", return_value=[])
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.backfill_candidate_data")
-    @patch("backfill_service.build_core_research_pool")
-    @patch("backfill_service.warmup_market_screening_cache")
-    @patch("backfill_service.build_backfill_candidate_pool")
-    @patch("backfill_service.load_stock_universe")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("stock_ai_bot.backfill.backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_chip_data_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history", return_value=[])
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics", return_value=[])
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.backfill_candidate_data")
+    @patch("stock_ai_bot.backfill.backfill_service.build_core_research_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_market_screening_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_backfill_candidate_pool")
+    @patch("stock_ai_bot.backfill.backfill_service.load_stock_universe")
     def test_empty_core_pool_skips_research_warmup(
         self, mock_universe, mock_build_pool,
         mock_screening, mock_build_core, mock_backfill_data,
@@ -783,7 +783,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_curated, mock_gm,
     ):
         from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry
-        from backfill_service import BackfillCandidate, BackfillResult
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, BackfillResult
 
         mock_universe.return_value = [StockUniverseEntry(code="2330", symbol="2330.TW", name="台積電", market="TWSE")]
         candidates = {"2330": BackfillCandidate(code="2330", sources={"hard_filter_revenue"})}
@@ -792,7 +792,7 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
         mock_screening.return_value = {"revenue_count": 0, "price_metric_count": 0, "technical_count": 0, "warnings": []}
         mock_backfill_data.return_value = BackfillResult(report_date=date(2026, 5, 15))
 
-        from backfill_service import run_full_backfill
+        from stock_ai_bot.backfill.backfill_service import run_full_backfill
 
         result = run_full_backfill(date(2026, 5, 15), progress=None)
 
@@ -803,8 +803,8 @@ class TestThreeTierBackfillFlow(unittest.TestCase):
 class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
     """Test warmup_research_structured_data with core_pool (not all candidates)."""
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_calls_collect_research_data_for_core_pool(self, mock_call, mock_load_cache):
         mock_call.return_value = (True, None, None)
 
@@ -821,8 +821,8 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
         self.assertEqual(timeout_count, 0)
         mock_call.assert_called_once()
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_progress_shows_core_limit_not_candidate_count(self, mock_call, mock_load_cache):
         mock_call.return_value = (True, None, None)
 
@@ -839,8 +839,8 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
         self.assertIn("核心股完整投研回補開始", "\n".join(messages))
         self.assertTrue(any("1/1" in m for m in messages))
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_empty_core_pool_skips(self, mock_call, mock_load_cache):
         core_pool = {}
         messages = []
@@ -856,7 +856,7 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
     def test_returns_four_values_including_timeout_count(self):
         """Test that warmup_research_structured_data returns exactly 4 values."""
         # Test with empty core_pool (all success paths return 4 values)
-        from backfill_service import warmup_research_structured_data
+        from stock_ai_bot.backfill.backfill_service import warmup_research_structured_data
         result = warmup_research_structured_data({}, date(2026, 5, 15), False, None)
         self.assertEqual(len(result), 4)
         count, used_cache, warnings, timeout_count = result
@@ -865,7 +865,7 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
         self.assertEqual(used_cache, [])
         self.assertEqual(warnings, [])
 
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_timeout_increments_timeout_count_and_continues(self, mock_call):
         import time
         # Sleep longer than timeout_sec to force timeout
@@ -888,8 +888,8 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
         self.assertTrue(any("逾時" in w for w in warnings))
         self.assertTrue(any("逾時跳過" in m for m in messages))
 
-    @patch("backfill_service.load_research_structured_cache", return_value=None)
-    @patch("backfill_service._call_collect_research_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_research_structured_cache", return_value=None)
+    @patch("stock_ai_bot.backfill.backfill_service._call_collect_research_data")
     def test_total_budget_stops_structured_warmup(self, mock_call, mock_load_cache):
         import time
 
@@ -923,18 +923,18 @@ class TestWarmupResearchStructuredDataCorePool(unittest.TestCase):
 class TestBackfillCandidateDataTimeoutWrite(unittest.TestCase):
     """Test backfill_candidate_data writes timeout_count to BackfillResult."""
 
-    @patch("backfill_service.warmup_research_structured_data")
-    @patch("backfill_service.load_recent_revenue_history", return_value={})
-    @patch("backfill_service.load_price_metrics", return_value={})
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
-    @patch("backfill_service.warmup_chip_data_cache")
-    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_research_structured_data")
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_chip_data_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
     def test_timeout_count_written_to_result(
         self, mock_curated, mock_chip, mock_gm,
         mock_fetch, mock_price, mock_rev, mock_warmup,
     ):
-        from backfill_service import BackfillCandidate, BackfillResult, backfill_candidate_data
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, BackfillResult, backfill_candidate_data
 
         mock_warmup.return_value = (2, ["2330"], ["warn"], 1)
 
@@ -956,19 +956,19 @@ class TestBackfillCandidateDataTimeoutWrite(unittest.TestCase):
         self.assertEqual(result.used_cache, ["2330"])
         self.assertEqual(result.research_structured_timeout_count, 1)
 
-    @patch("backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
-    @patch("backfill_service.load_recent_revenue_history", return_value={})
-    @patch("backfill_service.load_price_metrics", return_value={})
-    @patch("backfill_service._is_technical_history_ready", return_value=True)
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
-    @patch("backfill_service.warmup_chip_data_cache")
-    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service._is_technical_history_ready", return_value=True)
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_chip_data_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
     def test_candidate_technical_cache_hit_skips_fetch(
         self, mock_curated, mock_chip, mock_gm,
         mock_fetch, mock_ready, mock_price, mock_rev, mock_warmup,
     ):
-        from backfill_service import BackfillCandidate, backfill_candidate_data
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, backfill_candidate_data
 
         candidates = {
             "2330": BackfillCandidate(code="2330", symbol="2330.TW", market="TWSE", name="台積電", sources={"portfolio"}),
@@ -985,19 +985,19 @@ class TestBackfillCandidateDataTimeoutWrite(unittest.TestCase):
         mock_ready.assert_called_once_with("2330.TW", date(2026, 5, 15))
         mock_fetch.assert_not_called()
 
-    @patch("backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
-    @patch("backfill_service.load_recent_revenue_history", return_value={})
-    @patch("backfill_service.load_price_metrics", return_value={})
-    @patch("backfill_service._is_technical_history_ready", return_value=True)
-    @patch("backfill_service.fetch_daily_history")
-    @patch("backfill_service.warmup_gross_margin_cache", return_value=(0, []))
-    @patch("backfill_service.warmup_chip_data_cache")
-    @patch("backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_research_structured_data", return_value=(0, [], [], 0))
+    @patch("stock_ai_bot.backfill.backfill_service.load_recent_revenue_history", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service.load_price_metrics", return_value={})
+    @patch("stock_ai_bot.backfill.backfill_service._is_technical_history_ready", return_value=True)
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_gross_margin_cache", return_value=(0, []))
+    @patch("stock_ai_bot.backfill.backfill_service.warmup_chip_data_cache")
+    @patch("stock_ai_bot.backfill.backfill_service.build_and_save_curated_scan_cache", return_value=([], 0))
     def test_chip_warmup_uses_priority_candidates_only(
         self, mock_curated, mock_chip, mock_gm,
         mock_fetch, mock_ready, mock_price, mock_rev, mock_warmup,
     ):
-        from backfill_service import BackfillCandidate, backfill_candidate_data
+        from stock_ai_bot.backfill.backfill_service import BackfillCandidate, backfill_candidate_data
 
         mock_chip.return_value = MagicMock(candidates=[], daily_data=pd.DataFrame(), latest_trading_date=None)
         candidates = {
@@ -1037,7 +1037,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
     """Test resolve_backfill_report_date: time-based target date selection using Asia/Taipei."""
 
     def test_monday_before_15_returns_last_friday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1047,7 +1047,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
         self.assertEqual(result.isoformat(), "2026-05-15")  # Friday
 
     def test_tuesday_before_15_returns_monday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1057,7 +1057,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
         self.assertEqual(result.isoformat(), "2026-05-18")  # Monday
 
     def test_friday_at_1500_returns_friday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1067,7 +1067,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
         self.assertEqual(result.isoformat(), "2026-05-22")  # Friday
 
     def test_friday_at_1501_returns_friday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1077,7 +1077,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
         self.assertEqual(result.isoformat(), "2026-05-22")  # Friday
 
     def test_saturday_returns_friday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1087,7 +1087,7 @@ class TestResolveBackfillReportDate(unittest.TestCase):
         self.assertEqual(result.isoformat(), "2026-05-22")  # Friday
 
     def test_sunday_returns_friday_taipei(self):
-        from backfill_service import resolve_backfill_report_date
+        from stock_ai_bot.backfill.backfill_service import resolve_backfill_report_date
         from datetime import datetime
         from zoneinfo import ZoneInfo
         taipei = ZoneInfo("Asia/Taipei")
@@ -1101,13 +1101,13 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
     """Test is_backfill_cache_complete: marker file detection."""
 
     def test_no_marker_returns_incomplete(self):
-        from backfill_service import is_backfill_cache_complete
+        from stock_ai_bot.backfill.backfill_service import is_backfill_cache_complete
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/cache_complete1")
         try:
             from pathlib import Path
             from unittest.mock import patch
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_incomplete")
@@ -1115,7 +1115,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
             safe_remove_test_cache("backfill_service/cache_complete1")
 
     def test_marker_exists_valid_and_invalid_cases(self):
-        from backfill_service import is_backfill_cache_complete
+        from stock_ai_bot.backfill.backfill_service import is_backfill_cache_complete
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/cache_complete2")
         try:
@@ -1126,7 +1126,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
             marker_file = marker_dir / "complete.json"
             # Invalid JSON
             marker_file.write_text('{not json', encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_marker_invalid")
@@ -1139,7 +1139,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
                 "curated_scan_count": 0,
                 "backfill_ready_for_scan": False,
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_incomplete")
@@ -1152,7 +1152,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
                 "curated_scan_count": 10,
                 "backfill_ready_for_scan": True,
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_universe_invalid")
@@ -1165,7 +1165,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
                 "curated_scan_count": 0,
                 "backfill_ready_for_scan": False,
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_candidate_invalid")
@@ -1178,7 +1178,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
                 "curated_scan_count": 5,
                 "backfill_ready_for_scan": False,
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", Path(tmp)):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, False)
                 self.assertEqual(reason, "cache_not_ready_for_scan")
@@ -1191,7 +1191,7 @@ class TestIsBackfillCacheComplete(unittest.TestCase):
                 "curated_scan_count": 20,
                 "backfill_ready_for_scan": True,
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 result, reason = is_backfill_cache_complete(date(2026, 5, 15))
                 self.assertEqual(result, True)
                 self.assertEqual(reason, "cache_complete")
@@ -1204,14 +1204,14 @@ class TestIsMarketDataAvailable(unittest.TestCase):
     """Test is_market_data_available: date and time based availability."""
 
     def test_historical_date_available(self):
-        from backfill_service import is_market_data_available
+        from stock_ai_bot.backfill.backfill_service import is_market_data_available
         from datetime import datetime
         result, reason = is_market_data_available(date(2026, 5, 10), datetime(2026, 5, 16, 10, 0, 0))
         self.assertEqual(result, True)
         self.assertEqual(reason, "historical_date")
 
     def test_today_before_1500_unavailable(self):
-        from backfill_service import is_market_data_available
+        from stock_ai_bot.backfill.backfill_service import is_market_data_available
         from datetime import datetime
         result, reason = is_market_data_available(date(2026, 5, 16), datetime(2026, 5, 16, 10, 0, 0))
         self.assertEqual(result, False)
@@ -1220,7 +1220,7 @@ class TestIsMarketDataAvailable(unittest.TestCase):
     @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
     @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_no_date_field_unavailable(self, mock_price, mock_universe):
-        from backfill_service import is_market_data_available
+        from stock_ai_bot.backfill.backfill_service import is_market_data_available
         from datetime import datetime
 
         mock_universe.return_value = [MagicMock(code="2330", market="TWSE")]
@@ -1235,7 +1235,7 @@ class TestIsMarketDataAvailable(unittest.TestCase):
     @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
     @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_date_matches_available(self, mock_price, mock_universe):
-        from backfill_service import is_market_data_available
+        from stock_ai_bot.backfill.backfill_service import is_market_data_available
         from datetime import datetime
 
         mock_universe.return_value = [MagicMock(code="2330", market="TWSE")]
@@ -1247,11 +1247,11 @@ class TestIsMarketDataAvailable(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(reason, "today_data_available")
 
-    @patch("backfill_service.fetch_daily_history")
+    @patch("stock_ai_bot.backfill.backfill_service.fetch_daily_history")
     @patch("stock_ai_bot.scanning.stock_scanner.load_stock_universe")
     @patch("stock_ai_bot.scanning.stock_scanner.load_price_metrics")
     def test_today_after_1500_uses_daily_history_when_metrics_date_missing(self, mock_price, mock_universe, mock_history):
-        from backfill_service import is_market_data_available
+        from stock_ai_bot.backfill.backfill_service import is_market_data_available
         from datetime import datetime
 
         mock_universe.return_value = [MagicMock(code="2330", market="TWSE", symbol="2330.TW")]
@@ -1271,7 +1271,7 @@ class TestIsMarketDataAvailable(unittest.TestCase):
 
 class TestBackfillMarkerGapHealth(unittest.TestCase):
     def test_write_marker_includes_health_and_gap_path(self):
-        from backfill_service import BackfillResult, write_backfill_complete_marker
+        from stock_ai_bot.backfill.backfill_service import BackfillResult, write_backfill_complete_marker
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/marker_gap_health")
         try:
@@ -1306,7 +1306,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                 }
             ]
             result.priority_pool_count = 2
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 write_backfill_complete_marker(date(2026, 5, 15), result)
             payload = json.loads((tmp / "2026-05-15" / "complete.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["gap_report_path"], result.gap_report_path)
@@ -1325,7 +1325,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
             safe_remove_test_cache("backfill_service/marker_gap_health")
 
     def test_marker_with_low_chip_health_is_incomplete(self):
-        from backfill_service import is_backfill_cache_complete
+        from stock_ai_bot.backfill.backfill_service import is_backfill_cache_complete
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/marker_gap_low_chip")
         try:
@@ -1344,7 +1344,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                     "chip": {"coverage_pct": 0.27},
                 },
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 complete, reason = is_backfill_cache_complete(date(2026, 5, 15))
             self.assertFalse(complete)
             self.assertEqual(reason, "cache_chip_gaps")
@@ -1352,7 +1352,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
             safe_remove_test_cache("backfill_service/marker_gap_low_chip")
 
     def test_write_marker_uses_priority_chip_health_for_scan_readiness(self):
-        from backfill_service import BackfillResult, write_backfill_complete_marker
+        from stock_ai_bot.backfill.backfill_service import BackfillResult, write_backfill_complete_marker
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/marker_gap_priority_basis")
         try:
@@ -1374,7 +1374,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                 },
             }
 
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 write_backfill_complete_marker(date(2026, 5, 15), result)
 
             payload = json.loads((tmp / "2026-05-15" / "complete.json").read_text(encoding="utf-8"))
@@ -1386,7 +1386,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
             safe_remove_test_cache("backfill_service/marker_gap_priority_basis")
 
     def test_marker_accepts_priority_chip_health_when_all_candidate_chip_low(self):
-        from backfill_service import is_backfill_cache_complete
+        from stock_ai_bot.backfill.backfill_service import is_backfill_cache_complete
         from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
         tmp = ensure_test_cache_dir("backfill_service/marker_gap_priority_chip")
         try:
@@ -1410,7 +1410,7 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
                     "chip": {"coverage_pct": 0.92, "candidate_count": 50},
                 },
             }), encoding="utf-8")
-            with patch("backfill_service.BACKFILL_MARKER_ROOT", tmp):
+            with patch("stock_ai_bot.backfill.backfill_service.BACKFILL_MARKER_ROOT", tmp):
                 complete, reason = is_backfill_cache_complete(date(2026, 5, 15))
             self.assertTrue(complete)
             self.assertEqual(reason, "cache_complete")
@@ -1421,14 +1421,14 @@ class TestBackfillMarkerGapHealth(unittest.TestCase):
 class TestRunBackfillIfNeeded(unittest.TestCase):
     """Test run_backfill_if_needed: policy decisions."""
 
-    @patch("backfill_service.BACKFILL_RUNNING")
-    @patch("backfill_service.is_backfill_cache_complete")
-    @patch("backfill_service.is_market_data_available")
-    @patch("backfill_service.run_full_backfill")
+    @patch("stock_ai_bot.backfill.backfill_service.BACKFILL_RUNNING")
+    @patch("stock_ai_bot.backfill.backfill_service.is_backfill_cache_complete")
+    @patch("stock_ai_bot.backfill.backfill_service.is_market_data_available")
+    @patch("stock_ai_bot.backfill.backfill_service.run_full_backfill")
     def test_cache_complete_skips(
         self, mock_run, mock_available, mock_cache, mock_lock
     ):
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         mock_lock.acquire.return_value = True
         mock_lock.release.return_value = None
@@ -1445,14 +1445,14 @@ class TestRunBackfillIfNeeded(unittest.TestCase):
         self.assertEqual(decision.reason, "cache_complete")
         mock_run.assert_not_called()
 
-    @patch("backfill_service.BACKFILL_RUNNING")
-    @patch("backfill_service.is_backfill_cache_complete")
-    @patch("backfill_service.is_market_data_available")
-    @patch("backfill_service.run_full_backfill")
+    @patch("stock_ai_bot.backfill.backfill_service.BACKFILL_RUNNING")
+    @patch("stock_ai_bot.backfill.backfill_service.is_backfill_cache_complete")
+    @patch("stock_ai_bot.backfill.backfill_service.is_market_data_available")
+    @patch("stock_ai_bot.backfill.backfill_service.run_full_backfill")
     def test_market_unavailable_skips(
         self, mock_run, mock_available, mock_cache, mock_lock
     ):
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         mock_lock.acquire.return_value = True
         mock_lock.release.return_value = None
@@ -1470,15 +1470,15 @@ class TestRunBackfillIfNeeded(unittest.TestCase):
         self.assertEqual(decision.reason, "today_before_1500")
         mock_run.assert_not_called()
 
-    @patch("backfill_service.BACKFILL_RUNNING")
-    @patch("backfill_service.is_backfill_cache_complete")
-    @patch("backfill_service.is_market_data_available")
-    @patch("backfill_service.run_full_backfill")
+    @patch("stock_ai_bot.backfill.backfill_service.BACKFILL_RUNNING")
+    @patch("stock_ai_bot.backfill.backfill_service.is_backfill_cache_complete")
+    @patch("stock_ai_bot.backfill.backfill_service.is_market_data_available")
+    @patch("stock_ai_bot.backfill.backfill_service.run_full_backfill")
     def test_force_refresh_ignores_cache(
         self, mock_run, mock_available, mock_cache, mock_lock
     ):
-        from backfill_service import run_backfill_if_needed
-        from backfill_service import BackfillResult
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import BackfillResult
 
         mock_lock.acquire.return_value = True
         mock_lock.release.return_value = None
@@ -1496,16 +1496,16 @@ class TestRunBackfillIfNeeded(unittest.TestCase):
         self.assertEqual(decision.status, "completed")
         mock_run.assert_called_once()
 
-    @patch("backfill_service.BACKFILL_RUNNING")
-    @patch("backfill_service.is_backfill_cache_complete")
-    @patch("backfill_service.is_market_data_available")
-    @patch("backfill_service.run_full_backfill")
-    @patch("backfill_service.write_backfill_complete_marker")
+    @patch("stock_ai_bot.backfill.backfill_service.BACKFILL_RUNNING")
+    @patch("stock_ai_bot.backfill.backfill_service.is_backfill_cache_complete")
+    @patch("stock_ai_bot.backfill.backfill_service.is_market_data_available")
+    @patch("stock_ai_bot.backfill.backfill_service.run_full_backfill")
+    @patch("stock_ai_bot.backfill.backfill_service.write_backfill_complete_marker")
     def test_stopped_during_execution_no_marker(
         self, mock_marker, mock_run, mock_available, mock_cache, mock_lock
     ):
         import threading
-        from backfill_service import run_backfill_if_needed, BackfillResult
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed, BackfillResult
 
         mock_lock.acquire.return_value = True
         mock_lock.release.return_value = None
@@ -1536,16 +1536,16 @@ class TestRunBackfillIfNeeded(unittest.TestCase):
         mock_marker.assert_not_called()
         self.assertIn("回補被使用者停止", decision.result.warnings)
 
-    @patch("backfill_service.BACKFILL_RUNNING")
-    @patch("backfill_service.is_backfill_cache_complete")
-    @patch("backfill_service.is_market_data_available")
-    @patch("backfill_service.run_full_backfill")
-    @patch("backfill_service.write_backfill_complete_marker")
+    @patch("stock_ai_bot.backfill.backfill_service.BACKFILL_RUNNING")
+    @patch("stock_ai_bot.backfill.backfill_service.is_backfill_cache_complete")
+    @patch("stock_ai_bot.backfill.backfill_service.is_market_data_available")
+    @patch("stock_ai_bot.backfill.backfill_service.run_full_backfill")
+    @patch("stock_ai_bot.backfill.backfill_service.write_backfill_complete_marker")
     def test_stopped_before_start_skips(
         self, mock_marker, mock_run, mock_available, mock_cache, mock_lock
     ):
         import threading
-        from backfill_service import run_backfill_if_needed
+        from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
         stop_event = threading.Event()
         stop_event.set()  # Already set before we try to acquire lock

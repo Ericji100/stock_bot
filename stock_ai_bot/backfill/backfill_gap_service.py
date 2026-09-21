@@ -15,7 +15,7 @@ from typing import Any, Iterable
 import pandas as pd
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 TECH_CACHE_DIR = ROOT_DIR / ".cache" / "technical_daily"
 GROSS_MARGIN_CACHE_PATH = ROOT_DIR / ".cache" / "gross_margin.json"
 RESEARCH_STRUCTURED_DIR = ROOT_DIR / ".cache" / "research_structured"

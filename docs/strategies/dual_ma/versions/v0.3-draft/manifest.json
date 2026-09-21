@@ -1,0 +1,23 @@
+{
+  "strategy_id": "dual-ma",
+  "version": "v0.3-draft",
+  "status": "DRAFT",
+  "created_at": "2026-09-21",
+  "authority": "雙均線｜00 策略主控與規格決策",
+  "base_commit": "f53b07f972b9e2052d8af7129217edfa73dde8f9",
+  "spec_file": "spec.md",
+  "spec_sha256": "92a8ef37b11b8b19013d4084642ee6799e7a05d42c990d5d932d17a22c9d84da",
+  "baseline": {
+    "medium_ma": [5, 21],
+    "long_ma": [21, 144],
+    "entry": "ENTRY_RECLAIM_ONLY",
+    "stop": "STOP_ENTRY_PULLBACK_LOW",
+    "sizing": "SIZE_FIXED_NOTIONAL_10000",
+    "adding": "ADD_PROFIT_ONLY_MAX3"
+  },
+  "deployment_allowed": false,
+  "notes": [
+    "本版本仍有未決項目，只能用於盤點與實驗設計。",
+    "執行任務不得自行把 DRAFT 視為 FROZEN 或 ACTIVE。"
+  ]
+}

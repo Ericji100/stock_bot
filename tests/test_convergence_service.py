@@ -10,7 +10,7 @@ from research_center.convergence_service import attach_convergence_fields, candi
 from research_center.models import SourceItem
 from research_center.report_builder import build_report_json
 from research_center import recent_scans
-import radar_service
+import stock_ai_bot.monitoring.radar_service as radar_service
 
 
 class ConvergenceServiceTests(unittest.TestCase):

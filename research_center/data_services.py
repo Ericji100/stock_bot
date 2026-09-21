@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import concurrent.futures
@@ -1317,7 +1317,7 @@ def _value_scan_universe(request: CommandRequest, progress: Callable[[str], None
 
     if pool in {"選股雷達", "雷達選股", "radar"}:
         try:
-            from radar_service import load_radar_result
+            from stock_ai_bot.monitoring.radar_service import load_radar_result
             radar_result = load_radar_result(request.report_date)
         except Exception as exc:
             return [], {"source": "選股雷達", "status": "failed", "candidate_count": 0, "error": str(exc), "note": "讀取 Radar 快取失敗，請先執行 /radar。"}

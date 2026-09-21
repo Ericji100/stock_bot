@@ -1,10 +1,10 @@
-﻿from datetime import date
+from datetime import date
 from types import SimpleNamespace
 
 import pandas as pd
 
 import curated_scan_service as curated
-import radar_service as radar
+import stock_ai_bot.monitoring.radar_service as radar
 import stock_ai_bot.scanning.technical_scanner as scanner
 from stock_ai_bot.telegram.telegram_stock_formatting import strip_stock_markers
 

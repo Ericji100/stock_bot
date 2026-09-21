@@ -42,12 +42,12 @@ class TestMonitorServicePrintProgress(unittest.TestCase):
         """Verify monitor strategy check message has timestamp."""
         # We can't easily test check_signal without network, but we can verify
         # the now_timestamp import exists in monitor_service
-        import monitor_service
+        import stock_ai_bot.monitoring.monitor_service as monitor_service
         self.assertTrue(hasattr(monitor_service, 'now_timestamp'))
 
     def test_monitor_service_imports_now_timestamp(self):
         """Verify monitor_service imports now_timestamp."""
-        import monitor_service
+        import stock_ai_bot.monitoring.monitor_service as monitor_service
         self.assertTrue(hasattr(monitor_service, 'now_timestamp'))
 
 

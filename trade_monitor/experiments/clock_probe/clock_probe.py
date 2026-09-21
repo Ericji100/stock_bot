@@ -37,7 +37,7 @@ DEFAULT_AUTOMATION_FILE = (
 )
 DEFAULT_PROTECTED_PATHS = (
     Path(r"D:\code\stock_ai_bot\main.py"),
-    Path(r"D:\code\stock_ai_bot\monitor_service.py"),
+    Path(r"D:\code\stock_ai_bot\stock_ai_bot\monitoring\monitor_service.py"),
     Path(r"D:\code\stock_ai_bot\config.json"),
     Path(r"D:\code\stock_ai_bot\trade_monitor\bridge.py"),
     Path(r"D:\code\stock_ai_bot\trade_monitor\resume_guard.py"),

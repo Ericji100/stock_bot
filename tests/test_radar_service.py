@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import unittest
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import radar_service as radar
+import stock_ai_bot.monitoring.radar_service as radar
 from research_center.models import SourceItem
 from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 

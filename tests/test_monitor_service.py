@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta
 import unittest
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-import monitor_service
+import stock_ai_bot.monitoring.monitor_service as monitor_service
 from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START
 
 
@@ -79,7 +79,7 @@ class MonitorServiceSymbolTests(unittest.TestCase):
         )
         monitor_service.OFFICIAL_NAME_CACHE_EXPIRES_AT = datetime.now() + timedelta(hours=1)
 
-    @patch("monitor_service.httpx.Client", _FakeHttpClient)
+    @patch("stock_ai_bot.monitoring.monitor_service.httpx.Client", _FakeHttpClient)
     def test_fetch_official_stock_name_cache_includes_twse_etf(self):
         cache = monitor_service.fetch_official_stock_name_cache()
 
@@ -152,7 +152,7 @@ class MonitorServiceSymbolTests(unittest.TestCase):
         monitor_service.OFFICIAL_SYMBOL_CACHE.update({"2330": "2330.TW"})
         monitor_service.OFFICIAL_NAME_CACHE_EXPIRES_AT = datetime.now() + timedelta(hours=1)
 
-        with patch("monitor_service._fetch_twse_mis_stock_name", return_value="期元大S&P黃金"):
+        with patch("stock_ai_bot.monitoring.monitor_service._fetch_twse_mis_stock_name", return_value="期元大S&P黃金"):
             self.assertEqual(monitor_service.get_canonical_stock_symbol("00635U"), "00635U.TW")
             self.assertEqual(monitor_service.get_official_stock_name("00635U.TW"), "期元大S&P黃金")
 
@@ -180,8 +180,8 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
         stock = {"symbol": "2330.TW", "name": "台積電"}
         frame = _monitor_frame(yesterday_close=99.0, today_close=103.0, today_low=101.0)
 
-        with patch("monitor_service._prepare_daily_frame", return_value=frame), patch(
-            "monitor_service.get_current_market_price", return_value=(103.0, "unit")
+        with patch("stock_ai_bot.monitoring.monitor_service._prepare_daily_frame", return_value=frame), patch(
+            "stock_ai_bot.monitoring.monitor_service.get_current_market_price", return_value=(103.0, "unit")
         ):
             signal = monitor_service.check_ma_breakout_signal(stock, 5)
 
@@ -193,8 +193,8 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
         stock = {"symbol": "2330.TW", "name": "台積電"}
         frame = _monitor_frame(yesterday_close=105.0, today_close=103.0, today_low=98.0)
 
-        with patch("monitor_service._prepare_daily_frame", return_value=frame), patch(
-            "monitor_service.get_current_market_price", return_value=(103.0, "unit")
+        with patch("stock_ai_bot.monitoring.monitor_service._prepare_daily_frame", return_value=frame), patch(
+            "stock_ai_bot.monitoring.monitor_service.get_current_market_price", return_value=(103.0, "unit")
         ):
             signal = monitor_service.check_ma_breakout_signal(stock, 13)
 
@@ -206,8 +206,8 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
         stock = {"symbol": "2330.TW", "name": "台積電"}
         frame = _monitor_frame(yesterday_close=99.0, today_close=103.0, today_low=98.0)
 
-        with patch("monitor_service._prepare_daily_frame", return_value=frame), patch(
-            "monitor_service.get_current_market_price", return_value=(103.0, "unit")
+        with patch("stock_ai_bot.monitoring.monitor_service._prepare_daily_frame", return_value=frame), patch(
+            "stock_ai_bot.monitoring.monitor_service.get_current_market_price", return_value=(103.0, "unit")
         ):
             signal = monitor_service.check_ma_breakout_signal(stock, 21)
 
@@ -219,9 +219,9 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
     def test_collect_monitor_signals_merges_multiple_ma_signals_by_stock(self):
         frame = _monitor_frame(yesterday_close=99.0, today_close=103.0, today_low=98.0)
 
-        with patch("monitor_service.get_monitor_stocks", return_value=[{"symbol": "2330.TW", "name": "台積電"}]), patch(
-            "monitor_service._prepare_daily_frame", return_value=frame
-        ), patch("monitor_service.get_current_market_price", return_value=(103.0, "unit")):
+        with patch("stock_ai_bot.monitoring.monitor_service.get_monitor_stocks", return_value=[{"symbol": "2330.TW", "name": "台積電"}]), patch(
+            "stock_ai_bot.monitoring.monitor_service._prepare_daily_frame", return_value=frame
+        ), patch("stock_ai_bot.monitoring.monitor_service.get_current_market_price", return_value=(103.0, "unit")):
             blocks = monitor_service.collect_monitor_signals({"monitor_stocks": []})
 
         text = "\n\n".join(blocks)
@@ -252,8 +252,8 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
                 }
             return None
 
-        with patch("monitor_service.get_monitor_stocks", return_value=[{"symbol": "2330.TW", "name": "台積電"}]), patch(
-            "monitor_service.check_ma_breakout_signal", side_effect=fake_check
+        with patch("stock_ai_bot.monitoring.monitor_service.get_monitor_stocks", return_value=[{"symbol": "2330.TW", "name": "台積電"}]), patch(
+            "stock_ai_bot.monitoring.monitor_service.check_ma_breakout_signal", side_effect=fake_check
         ):
             groups = monitor_service.collect_monitor_signal_groups({"monitor_stocks": []})
 
@@ -277,7 +277,7 @@ class MonitorServiceMaSignalTests(unittest.TestCase):
                 ],
             }
         ]
-        with patch("monitor_service.collect_monitor_signal_items", return_value=merged):
+        with patch("stock_ai_bot.monitoring.monitor_service.collect_monitor_signal_items", return_value=merged):
             text = monitor_service.build_monitor_scan_report({"monitor_stocks": []}, title="監控測試")
 
         self.assertIn("監控測試", text)

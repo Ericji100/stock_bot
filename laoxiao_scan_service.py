@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import math
@@ -691,7 +691,7 @@ def _attach_fundamental_and_theme_scores(
     for item in candidates:
         item.revenue_history = _normalise_revenue_history(history_map.get(item.code) or [])
 
-    from radar_service import RadarCandidate, _attach_local_news, prepare_radar_scoring_data, score_radar_candidates
+    from stock_ai_bot.monitoring.radar_service import RadarCandidate, _attach_local_news, prepare_radar_scoring_data, score_radar_candidates
 
     radar_candidates = [
         RadarCandidate(

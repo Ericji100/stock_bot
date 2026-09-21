@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
@@ -15,7 +15,7 @@ import curated_scan_service
 import laoxiao_scan_service
 import stock_ai_bot.scanning.technical_scanner as ts
 from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
-from monitor_service import get_monitor_stocks
+from stock_ai_bot.monitoring.monitor_service import get_monitor_stocks
 from portfolio_manager import list_portfolio
 from research_center.config import load_research_config
 from research_center.date_aware_context import (
@@ -43,7 +43,7 @@ from stock_ai_bot.scanning.technical_indicator_service import apply_point_in_tim
 from unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 RADAR_CACHE_PATH = ROOT_DIR / ".cache" / "radar_results.json"
 RADAR_REPORT_DIR = ROOT_DIR / "reports" / "radar"
 RADAR_CACHE_MAX_BYTES = 50 * 1024 * 1024

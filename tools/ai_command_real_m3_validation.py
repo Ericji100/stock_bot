@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from radar_service import format_radar_report, parse_radar_args, run_radar  # noqa: E402
+from stock_ai_bot.monitoring.radar_service import format_radar_report, parse_radar_args, run_radar  # noqa: E402
 from research_center.command_parser import parse_command_text  # noqa: E402
 from research_center.config import load_research_config  # noqa: E402
 from research_center.models import CommandParseError, ResearchCenterResult, SourceItem  # noqa: E402

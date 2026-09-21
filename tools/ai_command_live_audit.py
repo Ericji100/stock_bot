@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -16,7 +16,7 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from radar_service import (  # noqa: E402
+from stock_ai_bot.monitoring.radar_service import (  # noqa: E402
     _build_ai_comment_prompt_jobs,
     _ensure_radar_source_sufficiency,
     _load_or_build_radar_light_research,

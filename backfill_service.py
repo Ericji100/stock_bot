@@ -753,7 +753,7 @@ def build_and_save_curated_scan_cache(
         if progress:
             progress("精選選股：執行交叉命中掃描")
         result = build_curated_scan_result(report_date=report_date)
-        from radar_service import resolve_radar_scoring_version
+        from stock_ai_bot.monitoring.radar_service import resolve_radar_scoring_version
 
         save_recent_scan_result(
             CURATED_SCAN_TYPE,

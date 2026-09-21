@@ -1,4 +1,4 @@
-﻿import json
+import json
 import asyncio
 import traceback
 import telegram
@@ -34,7 +34,7 @@ from stock_ai_bot.market.market_summary import (
     build_noon_market_report,
     is_morning_push_window,
 )
-from monitor_service import (
+from stock_ai_bot.monitoring.monitor_service import (
     add_monitor_stock_to_config,
     build_monitor_list_message,
     build_monitor_scan_report,
@@ -70,8 +70,8 @@ from stock_ai_bot.scanning.stock_scanner import (
 )
 # NEW: 引入技術面選股模組
 import stock_ai_bot.scanning.technical_scanner as ts
-from bot_runtime_health import record_scheduled_heartbeat_event, update_schedule_health, write_bot_heartbeat
-from radar_service import (
+from stock_ai_bot.monitoring.bot_runtime_health import record_scheduled_heartbeat_event, update_schedule_health, write_bot_heartbeat
+from stock_ai_bot.monitoring.radar_service import (
     RadarRequest,
     format_radar_more,
     format_radar_push_summary,

@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from bot_runtime_health import (
+from stock_ai_bot.monitoring.bot_runtime_health import (
     HEARTBEAT_PATH,
     HEARTBEAT_STALE_SECONDS,
     is_bot_heartbeat_stale,

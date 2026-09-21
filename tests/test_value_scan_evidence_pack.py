@@ -70,7 +70,7 @@ class ValueScanEvidencePackTests(unittest.TestCase):
             ("research_center.data_services.enrich_company_rows", "enrich_company_rows"),
             ("research_center.knowledge_base.load_company_knowledge", "load_company_knowledge"),
             ("research_center.data_services.build_value_cross_validation", "build_value_cross_validation"),
-            ("data_fetcher.StockDataFetcher", "StockDataFetcher"),
+            ("stock_ai_bot.data_sources.data_fetcher.StockDataFetcher", "StockDataFetcher"),
         ]
         for target, name in targets:
             p = patch(target)
@@ -494,7 +494,7 @@ class ValueScanEvidencePackTests(unittest.TestCase):
         request = parse_command_text("/value_scan 選股雷達 --date 2026-05-22")
 
         with patch("research_center.data_services.load_stock_universe", return_value=universe), \
-             patch("radar_service.load_radar_result", return_value=radar_result):
+             patch("stock_ai_bot.monitoring.radar_service.load_radar_result", return_value=radar_result):
             selected, policy = _value_scan_universe(request)
 
         self.assertEqual([item.code for item in selected], ["6282", "2330"])

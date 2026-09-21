@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from bot_runtime_health import write_bot_heartbeat
+from stock_ai_bot.monitoring.bot_runtime_health import write_bot_heartbeat
 import tools.bot_watchdog as bot_watchdog
 from tools.bot_watchdog import (
     acquire_watchdog_instance,

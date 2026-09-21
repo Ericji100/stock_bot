@@ -70,7 +70,7 @@ def write_scheduled_task_audit_event(
         payload.update(event)
 
     try:
-        from bot_runtime_health import record_scheduled_status_heartbeat_event
+        from stock_ai_bot.monitoring.bot_runtime_health import record_scheduled_status_heartbeat_event
 
         record_scheduled_status_heartbeat_event(status, payload)
     except Exception:

@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from bot_runtime_health import (
+from stock_ai_bot.monitoring.bot_runtime_health import (
     is_bot_heartbeat_stale,
     is_schedule_health_unhealthy,
     read_bot_heartbeat,

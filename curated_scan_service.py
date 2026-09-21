@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
@@ -321,7 +321,7 @@ def _score_curated_candidates(
 ) -> dict[str, dict[str, Any]]:
     if not selected_codes:
         return {}
-    from radar_service import (
+    from stock_ai_bot.monitoring.radar_service import (
         RadarCandidate,
         prepare_radar_scoring_data,
         resolve_radar_scoring_version,

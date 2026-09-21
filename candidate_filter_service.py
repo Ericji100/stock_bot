@@ -6,7 +6,7 @@ from typing import Any
 
 DEFAULT_HARD_FILTER_SETTINGS = {
     "min_price": 10.0,
-    "max_price": 80.0,
+    "max_price": 500.0,
     "min_avg_volume_20d": 500.0,
     "min_monthly_revenue": 40_000_000.0,
 }

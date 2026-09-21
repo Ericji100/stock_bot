@@ -27,12 +27,14 @@ class _PerClassCache:
         # Use a unique subdir per test class so they never interfere
         subdir = f"data_source_manager/{test_class_name}"
         cls._test_cache_dir = ensure_test_cache_dir(subdir)
-        # Patch paths BEFORE reload
+        # Reload first, then patch paths.  Reloading after the patch would
+        # restore the production .cache paths and let tests overwrite runtime
+        # health/quota state.
+        importlib.reload(data_source_manager)
         data_source_manager._CACHE_DIR = cls._test_cache_dir
         data_source_manager._SOURCE_HEALTH_PATH = cls._test_cache_dir / "source_health.json"
         data_source_manager._FINMIND_QUOTA_PATH = cls._test_cache_dir / "finmind_quota.json"
         data_source_manager._FUGLE_QUOTA_PATH = cls._test_cache_dir / "fugle_quota.json"
-        importlib.reload(data_source_manager)
         # Clear class-level _data so fresh instances start clean
         data_source_manager.SourceHealthManager._data = {}
         data_source_manager.FinMindQuotaManager._data = {}
@@ -57,9 +59,7 @@ class _PerClassCache:
 
 def _fresh(cls):
     """Return a fresh instance with a clean _data dict."""
-    importlib.reload(data_source_manager)
-    reloaded_cls = getattr(data_source_manager, cls.__name__)
-    instance = reloaded_cls()
+    instance = cls()
     instance._data = {}
     # Remove any stale state files in the current test cache dir
     for p in [data_source_manager._SOURCE_HEALTH_PATH,
@@ -176,6 +176,16 @@ class TestFinMindQuotaManager(unittest.TestCase):
         fm.record_use(cost=400)
         self.assertEqual(fm.hourly_remaining(), 0)
         self.assertFalse(fm.can_use(cost=1))
+
+    def test_separate_instances_do_not_overwrite_each_others_usage(self):
+        fm1 = _fresh(data_source_manager.FinMindQuotaManager)
+        fm2 = data_source_manager.FinMindQuotaManager()
+        fm1.record_use(cost=1, scope="financial")
+        fm2.record_use(cost=1, scope="financial")
+
+        verifier = data_source_manager.FinMindQuotaManager()
+        self.assertEqual(verifier._data.get("hourly_total"), 2)
+        self.assertEqual(verifier._data.get("scope_financial"), 2)
 
     def test_scope_reset_on_new_hour(self):
         """Scope counters must reset when the hour changes."""

@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "strategy_id": "laoxiao_v1",
+  "strategy_name": "老蕭選股",
+  "purpose": "候選排序與觀察清單，不產生自動下單指令",
+  "parameter_policy": {
+    "course_rules": "課程中可量化的方向與風險界線",
+    "backtest_defaults": "分數權重、入選分數與精確門檻是程式初始值，後續應用回測校準",
+    "missing_data": "不給中性分；未知與不足須明確標示"
+  },
+  "hard_filters": {
+    "min_price": 10.0,
+    "max_price": null,
+    "min_avg_volume_20d_lots": 500.0,
+    "min_daily_rows": 120,
+    "full_history_rows": 240,
+    "min_peer_count": 3
+  },
+  "thresholds": {
+    "relative_strength_top_percentile": 75.0,
+    "relative_strength_watch_percentile": 60.0,
+    "near_high_pct": 10.0,
+    "breakout_confirmation_days": 3,
+    "recent_breakout_lookback_days": 20,
+    "drawdown_warning_pct": 20.0,
+    "drawdown_severe_pct": 30.0,
+    "volume_ratio_confirm": 1.2,
+    "volume_ratio_hot": 3.0,
+    "fundamental_fetch_limit": 50,
+    "report_limit": 30,
+    "minimum_score": 50
+  },
+  "weights": {
+    "technical_stage": 30,
+    "sector_leadership": 20,
+    "volume_liquidity": 15,
+    "fundamental_support": 20,
+    "theme_catalyst": 10,
+    "risk_data_quality": 5
+  },
+  "formal_setups": {
+    "strong_breakout": "強勢突破型：同業相對強勢，創高或突破後守住，價量確認",
+    "pullback_reclaim": "拉回轉強型：原強勢股拉回未破壞中期結構，重新站回短中期均線"
+  },
+  "non_formal_rules": [
+    "主觀辨識公司核心能力",
+    "盤中分時與漲停排隊強弱",
+    "台指期價差的主觀盤勢判讀",
+    "任何自動下單、部位或停損指令"
+  ]
+}

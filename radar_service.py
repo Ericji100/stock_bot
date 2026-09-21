@@ -12,6 +12,7 @@ from typing import Any, Callable
 import pandas as pd
 
 import curated_scan_service
+import laoxiao_scan_service
 import technical_scanner as ts
 from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
 from monitor_service import get_monitor_stocks
@@ -34,9 +35,12 @@ from research_center.structured_cache import load_latest_research_structured_cac
 from research_center.topic_context import build_stock_topic_context
 from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
 from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
+from research_center.free_sources import build_valuation_context_map
 from data_fetcher import StockDataFetcher
 from stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
 from telegram_stock_formatting import mark_stock_text, strip_stock_markers
+from technical_indicator_service import apply_point_in_time_adjustment
+from unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -47,8 +51,8 @@ RADAR_PROMPT_DIR = ROOT_DIR / "prompt" / "radar"
 RADAR_SCORING_CONFIG_PATH = ROOT_DIR / "config" / "radar_scoring.json"
 DEFAULT_SOURCE = "combined"
 DEFAULT_AI_TOP = 15
-DEFAULT_SCORING_VERSION = "v2"
-SUPPORTED_SCORING_VERSIONS = {"v1", "v2"}
+DEFAULT_SCORING_VERSION = "v3"
+SUPPORTED_SCORING_VERSIONS = {"v1", "v2", "v3"}
 RADAR_AI_CHUNK_SIZE = 5
 RADAR_AI_PROMPT_MAX_CHARS = 90_000
 RADAR_AI_COMPACT_SOURCE_LIMIT = 10
@@ -71,23 +75,31 @@ RADAR_PRE_SCORE_FETCH_TIMEOUT_SECONDS = 90.0
 RADAR_PRE_SCORE_WORKERS = 4
 RADAR_TECHNICAL_CACHE_READY_HOUR = 15
 RADAR_TECHNICAL_CACHE_READY_MINUTE = 0
-MAIN_SOURCES = {"combined", "technical", "curated", "financial", "chip", "monitor", "portfolio"}
+RADAR_SECTOR_CONTEXT_TTL_SECONDS = 10 * 60
+RADAR_SECTOR_MIN_GROUP_SIZE = 4
+RADAR_SECTOR_MIN_COVERAGE = 0.70
+MAIN_SOURCES = {"combined", "technical", "curated", "laoxiao", "financial", "chip", "monitor", "portfolio"}
 CHIP_KEYS = ["chip_1", "chip_2", "chip_3", "chip_4"]
 TECHNICAL_STRATEGY_LABELS = {
     "A": "多頭延續回檔突破",
     "B": "強勢紅柱回測突破",
     "C": "低檔背離反轉突破",
-    "D": "強勢股急跌收復",
+    "D": "動能背景短線轉強",
 }
 TECHNICAL_SUB_SIGNAL_LABELS = {
     "A1_direct_ma21_breakout": "A1 直接突破 21MA",
     "A2_pivot_low_reclaim_ma21": "A2 低點墊高後收復 21MA",
     "A3_reclaim_ma21_and_long_ma": "A3 同日收復 21MA 與長均線",
-    "B1_intraday_retest_reclaim_ma": "B1 盤中回測後收復 MA13/MA21",
-    "B2_short_reclaim_after_break_ma": "B2 跌破後收復短均線",
+    "B1_intraday_retest_reclaim_ma": "B1 盤中回測後收復 MA5/MA13/MA21",
+    "B2_short_reclaim_after_break_ma": "B2 紅柱期間收盤突破 MA5/MA13/MA21",
     "B3_breakout_after_retest": "B3 回測 MA13/MA21 後突破前高",
     "C1_macd_bullish_divergence_break_ma21": "C1 MACD 低檔背離突破 21MA",
     "C2_below_zero_red_histogram_breakout": "C2 零軸下紅柱鈍化突破",
+    "D1_above_zero_short_ma_reclaim": "D1 零軸上短均線收復",
+    "D2_below_zero_short_ma_reclaim": "D2 零軸下短均線收復",
+    "D3_kd_death_cross_first_reversal": "D3 KD 死叉後首次轉強",
+    "D1_first_short_ma_reclaim": "D1 短均線首次收復",
+    "D2_kd_death_cross_first_reversal": "D2 KD 死叉後首次轉強",
     "D1_reclaim_ma_after_break": "D1 跌破後收復均線",
     "D2_macd_high_column_flip_green": "D2 MACD 高檔紅柱翻綠後快速轉強",
     "D3_kd_death_cross_quick_reversal": "D3 KD 死叉後快速轉強",
@@ -100,6 +112,7 @@ CHIP_STRATEGY_LABELS = {
     "chip_4": "每週大戶持股",
 }
 _RADAR_CHIP_GRADE_CACHE: dict[str, dict[str, dict[str, str]]] = {}
+_RADAR_SECTOR_CONTEXT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 @dataclass(frozen=True)
@@ -122,6 +135,8 @@ class RadarCandidate:
     source_labels: list[str] = field(default_factory=list)
     strategy_codes: set[str] = field(default_factory=set)
     technical_signals: list[dict[str, Any]] = field(default_factory=list)
+    dual_ma_signals: list[dict[str, Any]] = field(default_factory=list)
+    kd_ma_signals: list[dict[str, Any]] = field(default_factory=list)
     chip_grades: dict[str, str] = field(default_factory=dict)
     revenue_history: list[dict[str, Any]] = field(default_factory=list)
     news_items: list[dict[str, Any]] = field(default_factory=list)
@@ -182,7 +197,7 @@ def parse_radar_args(args: list[str] | tuple[str, ...] | None) -> RadarRequest:
         elif item == "--scoring":
             index += 1
             if index >= len(values):
-                raise ValueError("--scoring 需要版本，例如 v1 或 v2")
+                raise ValueError("--scoring 需要版本，例如 v1、v2 或 v3")
             scoring_version = _normalise_scoring_version(values[index])
         elif item == "--no-ai-comment":
             ai_comment_enabled = False
@@ -223,7 +238,7 @@ def _normalise_radar_request(request: RadarRequest | list[str] | tuple[str, ...]
 def _normalise_scoring_version(value: Any) -> str:
     version = str(value or "").strip().lower()
     if version not in SUPPORTED_SCORING_VERSIONS:
-        raise ValueError(f"不支援的 Radar 評分版本：{value}，請使用 v1 或 v2")
+        raise ValueError(f"不支援的 Radar 評分版本：{value}，請使用 v1、v2 或 v3")
     return version
 
 
@@ -259,7 +274,7 @@ def score_radar_candidates(
     reason_limit: int = 5,
     risk_limit: int = 4,
 ) -> list[RadarCandidate]:
-    """Apply the shared Radar v1/v2 scoring core to candidate objects."""
+    """Apply the shared Radar scoring core to candidate objects."""
 
     version = _resolve_scoring_version(scoring_version)
     industry_counts: dict[str, int] = {}
@@ -291,8 +306,8 @@ def score_radar_candidate_from_snapshot(
     version = _resolve_scoring_version(scoring_version)
     details = {
         "technical": _score_technical_detail(item, snapshot),
-        "revenue": _score_revenue_detail(item, snapshot),
-        "financial": _score_financial_detail(item, snapshot),
+        "revenue": score_unified_revenue(item, snapshot) if version == "v3" else _score_revenue_detail(item, snapshot),
+        "financial": score_unified_financial(item, snapshot) if version == "v3" else _score_financial_detail(item, snapshot),
         "chip": _score_chip_detail(item, snapshot),
         "theme": _score_theme_news_detail(item, snapshot),
         "sector": _score_sector_detail(item, snapshot),
@@ -330,16 +345,21 @@ def run_radar(
         save_radar_result(result)
         return result
 
-    _attach_revenue_scores(candidates)
+    _attach_revenue_scores(candidates, target_date)
     _attach_chip_scores(candidates, target_date, progress)
     _attach_local_news(candidates, target_date)
-    prepare_radar_scoring_data(candidates, target_date, progress)
+    prepare_radar_scoring_data(candidates, target_date, progress, scoring_version=radar_request.scoring_version)
     _score_candidates(candidates, target_date, scoring_version=radar_request.scoring_version)
     candidates.sort(key=lambda item: (item.total_score, len(item.strategy_codes), item.code), reverse=True)
     top_structured_count = min(len(candidates), max(30, radar_request.ai_top, DEFAULT_AI_TOP))
     if top_structured_count:
         _emit(progress, f"Radar：初評 Top{top_structured_count} 結構化資料二次補齊後重新評分")
-        prepare_radar_scoring_data(candidates[:top_structured_count], target_date, progress)
+        prepare_radar_scoring_data(
+            candidates[:top_structured_count],
+            target_date,
+            progress,
+            scoring_version=radar_request.scoring_version,
+        )
         _score_candidates(candidates, target_date, scoring_version=radar_request.scoring_version)
     _attach_base_evidence_packs(candidates, target_date)
 
@@ -762,8 +782,10 @@ def _load_candidates(
         return _technical_candidates_for_radar(target_date, scan_settings, progress)
     if source == "curated":
         return _curated_candidates(target_date, scan_settings, progress)
+    if source == "laoxiao":
+        return _laoxiao_candidates(target_date, scan_settings, progress)
     if source == "financial":
-        return _financial_candidates(scan_settings)
+        return _financial_candidates(scan_settings, target_date)
     if source == "chip":
         return _chip_candidates(target_date)
     if source == "monitor":
@@ -782,7 +804,7 @@ def _combined_candidates(
     loaders: list[tuple[str, Callable[[], tuple[list[RadarCandidate], dict[str, Any]]]]] = [
         ("technical", lambda: _technical_candidates_for_radar(target_date, scan_settings, progress)),
         ("chip", lambda: _chip_candidates(target_date)),
-        ("financial", lambda: _financial_candidates(scan_settings)),
+        ("financial", lambda: _financial_candidates(scan_settings, target_date)),
         ("curated", lambda: _curated_candidates(target_date, scan_settings, progress)),
     ]
     merged: dict[str, RadarCandidate] = {}
@@ -828,6 +850,8 @@ def _merge_radar_candidate(merged: dict[str, RadarCandidate], incoming: RadarCan
         item.price = incoming.price
     item.strategy_codes.update(incoming.strategy_codes)
     item.technical_signals.extend(incoming.technical_signals)
+    item.dual_ma_signals.extend(incoming.dual_ma_signals)
+    item.kd_ma_signals.extend(incoming.kd_ma_signals)
     item.chip_grades.update(incoming.chip_grades)
     if incoming.revenue_history and not item.revenue_history:
         item.revenue_history = list(incoming.revenue_history)
@@ -881,34 +905,78 @@ def _technical_candidates_for_radar(
         _emit(progress, _technical_scan_cache_stale_message(cached, target_date))
         cached = None
     if cached:
-        codes = [str(code) for code in cached.get("selected_codes") or cached.get("codes") or []]
+        raw_codes = cached.get("radar_candidate_codes")
+        if not isinstance(raw_codes, list):
+            raw_codes = cached.get("selected_codes") or cached.get("codes") or []
+        codes = [str(code) for code in raw_codes]
         by_code = _stock_meta_by_code()
         candidates = [_with_label(_candidate_from_meta(code, by_code), "技術面選股快取") for code in codes]
         signals = _normalise_strategy_signals(cached.get("strategy_signals"))
-        if not _has_strategy_signals(signals):
-            _emit(progress, "Radar：技術面快取缺少策略明細，重跑既有技術掃描補策略訊號")
+        dual_ma_signals = _normalise_dual_ma_signals(cached.get("dual_ma_signals"))
+        kd_ma_signals = _normalise_kd_ma_signals(cached.get("kd_ma_signals"))
+        refreshed_result = None
+        if (not isinstance(cached.get("strategy_signals"), dict)
+                or not isinstance(cached.get("dual_ma_signals"), list)
+                or not isinstance(cached.get("kd_ma_signals"), list)):
+            _emit(progress, "Radar：技術面快取缺少策略明細，重跑技術掃描補齊訊號")
             scan_result = ts.run_technical_scan(scan_settings, target_date)
             signals = _normalise_strategy_signals(scan_result.strategy_signals)
+            dual_ma_signals = _normalise_dual_ma_signals(getattr(scan_result, "dual_ma_signals", []))
+            kd_ma_signals = _normalise_kd_ma_signals(getattr(scan_result, "kd_ma_signals", []))
+            refreshed_result = scan_result if isinstance(scan_result, ts.TechnicalScanResult) else None
         _apply_strategy_signals(candidates, signals)
+        _apply_dual_ma_signals(candidates, dual_ma_signals, by_code)
+        _apply_kd_ma_signals(candidates, kd_ma_signals, by_code)
+        if refreshed_result is not None:
+            save_recent_scan_result(
+                "技術面選股",
+                target_date,
+                ts.format_technical_report(refreshed_result),
+                metadata={
+                    "strategy_signals": _json_safe(refreshed_result.strategy_signals),
+                    "dual_ma_signals": _json_safe(refreshed_result.dual_ma_signals),
+                    "kd_ma_signals": _json_safe(refreshed_result.kd_ma_signals),
+                    "radar_candidate_codes": [item.code for item in candidates],
+                },
+            )
         _emit(progress, f"Radar：使用技術面選股快取 {len(candidates)} 檔")
         return candidates, {
             "source": "技術面選股結果",
             "status": "cached",
             "candidate_count": len(candidates),
             "strategy_signal_count": _strategy_signal_count(signals),
+            "dual_ma_signal_count": len(dual_ma_signals),
+            "kd_ma_signal_count": len(kd_ma_signals),
         }
 
     result = ts.run_technical_scan(scan_settings, target_date)
     report_text = ts.format_technical_report(result)
-    save_recent_scan_result("技術面選股", target_date, report_text)
     by_code = _stock_meta_by_code()
     candidates = _candidates_from_strategy_signals(result.strategy_signals, by_code)
-    _emit(progress, f"Radar：技術面選股產生 {len(candidates)} 檔")
-    return list(candidates.values()), {
+    dual_ma_signals = _normalise_dual_ma_signals(getattr(result, "dual_ma_signals", []))
+    kd_ma_signals = _normalise_kd_ma_signals(getattr(result, "kd_ma_signals", []))
+    candidate_list = list(candidates.values())
+    _apply_dual_ma_signals(candidate_list, dual_ma_signals, by_code)
+    _apply_kd_ma_signals(candidate_list, kd_ma_signals, by_code)
+    save_recent_scan_result(
+        "技術面選股",
+        target_date,
+        report_text,
+        metadata={
+            "strategy_signals": _json_safe(result.strategy_signals),
+            "dual_ma_signals": _json_safe(dual_ma_signals),
+            "kd_ma_signals": _json_safe(kd_ma_signals),
+            "radar_candidate_codes": [item.code for item in candidate_list],
+        },
+    )
+    _emit(progress, f"Radar：技術面選股產生 {len(candidate_list)} 檔")
+    return candidate_list, {
         "source": "技術面選股結果",
         "status": "generated",
-        "candidate_count": len(candidates),
+        "candidate_count": len(candidate_list),
         "strategy_signal_count": _strategy_signal_count(_normalise_strategy_signals(result.strategy_signals)),
+        "dual_ma_signal_count": len(dual_ma_signals),
+        "kd_ma_signal_count": len(kd_ma_signals),
     }
 
 
@@ -964,6 +1032,14 @@ def _normalise_strategy_signals(value: Any) -> dict[str, list[dict[str, Any]]]:
     return signals
 
 
+def _normalise_dual_ma_signals(value: Any) -> list[dict[str, Any]]:
+    return [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _normalise_kd_ma_signals(value: Any) -> list[dict[str, Any]]:
+    return [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
 def _has_strategy_signals(signals: dict[str, list[dict[str, Any]]]) -> bool:
     return any(signals.get(strategy) for strategy in ("A", "B", "C", "D"))
 
@@ -983,6 +1059,47 @@ def _apply_strategy_signals(candidates: list[RadarCandidate], signals: dict[str,
             item.strategy_codes.add(strategy)
             item.technical_signals.append(signal)
             _add_label(item, _strategy_label(strategy, signal.get("sub_signal_type")))
+
+
+def _apply_dual_ma_signals(
+    candidates: list[RadarCandidate],
+    signals: list[dict[str, Any]],
+    by_code: dict[str, Any],
+) -> None:
+    candidates_by_code = {item.code: item for item in candidates}
+    for signal in signals:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if not code:
+            continue
+        item = candidates_by_code.get(code)
+        if item is None:
+            item = _candidate_from_meta(code, by_code)
+            candidates_by_code[code] = item
+            candidates.append(item)
+        if not any(existing.get("signal_date") == signal.get("signal_date") for existing in item.dual_ma_signals):
+            item.dual_ma_signals.append(signal)
+        _add_label(item, ts.dual_ma_signal_label(signal))
+
+
+def _apply_kd_ma_signals(
+    candidates: list[RadarCandidate],
+    signals: list[dict[str, Any]],
+    by_code: dict[str, Any],
+) -> None:
+    candidates_by_code = {item.code: item for item in candidates}
+    for signal in signals:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if not code:
+            continue
+        item = candidates_by_code.get(code)
+        if item is None:
+            item = _candidate_from_meta(code, by_code)
+            candidates_by_code[code] = item
+            candidates.append(item)
+        key = (signal.get("signal_date"), signal.get("primary_group"))
+        if not any((existing.get("signal_date"), existing.get("primary_group")) == key for existing in item.kd_ma_signals):
+            item.kd_ma_signals.append(signal)
+        _add_label(item, ts.kd_ma_signal_label(signal))
 
 
 def _candidates_from_strategy_signals(
@@ -1016,7 +1133,13 @@ def _curated_candidates(
         _emit(progress, "Radar：沒有精選選股快取，呼叫既有精選選股流程")
         curated = curated_scan_service.build_curated_scan_result(scan_settings, target_date)
         codes = curated.selected_codes
-        save_recent_scan_result("精選選股", target_date, curated.report_text, curated.selected_codes)
+        save_recent_scan_result(
+            "精選選股",
+            target_date,
+            curated.report_text,
+            curated.selected_codes,
+            metadata={"scoring_version": resolve_radar_scoring_version()},
+        )
         status = "generated"
     by_code = _stock_meta_by_code()
     return [_with_label(_candidate_from_meta(code, by_code), "精選選股") for code in codes], {
@@ -1026,8 +1149,11 @@ def _curated_candidates(
     }
 
 
-def _financial_candidates(scan_settings: dict[str, float] | None) -> tuple[list[RadarCandidate], dict[str, Any]]:
-    report = scan_tw_market(False, None, scan_settings)
+def _financial_candidates(
+    scan_settings: dict[str, float] | None,
+    target_date: date | None = None,
+) -> tuple[list[RadarCandidate], dict[str, Any]]:
+    report = scan_tw_market(False, None, scan_settings, report_date=target_date)
     candidates = []
     for row in report.candidates:
         candidates.append(
@@ -1041,6 +1167,55 @@ def _financial_candidates(scan_settings: dict[str, float] | None) -> tuple[list[
             )
         )
     return candidates, {"source": "財報營收選股結果", "status": "generated", "candidate_count": len(candidates)}
+
+
+def _laoxiao_candidates(
+    target_date: date,
+    scan_settings: dict[str, float] | None,
+    progress: Callable[[str], None] | None,
+) -> tuple[list[RadarCandidate], dict[str, Any]]:
+    cached = laoxiao_scan_service.find_cached_laoxiao_scan(target_date)
+    by_code = _stock_meta_by_code()
+    if cached:
+        codes = [str(code) for code in cached.get("selected_codes") or cached.get("codes") or []]
+        candidates = [_with_label(_candidate_from_meta(code, by_code), "老蕭選股快取") for code in codes]
+        _emit(progress, f"Radar：使用老蕭選股快取 {len(candidates)} 檔")
+        return candidates, {
+            "source": "老蕭選股結果",
+            "status": "cached",
+            "candidate_count": len(candidates),
+            "strategy_scoring_version": laoxiao_scan_service.SCORING_VERSION,
+        }
+
+    _emit(progress, "Radar：沒有老蕭選股快取，執行老蕭選股流程")
+    result = laoxiao_scan_service.build_laoxiao_scan_result(scan_settings, target_date, progress=progress)
+    save_recent_scan_result(
+        laoxiao_scan_service.SCAN_TYPE,
+        target_date,
+        result.report_text,
+        result.selected_codes,
+        metadata={
+            "scoring_version": laoxiao_scan_service.SCORING_VERSION,
+            "diagnostics": result.diagnostics,
+        },
+    )
+    selected_by_code = {item.code: item for item in result.candidates}
+    candidates = []
+    for code in result.selected_codes:
+        candidate = _candidate_from_meta(code, by_code)
+        selected = selected_by_code.get(code)
+        setup_label = "強勢突破型" if selected and selected.setup_type == "strong_breakout" else "拉回轉強型"
+        _add_label(candidate, f"老蕭選股/{setup_label}")
+        if selected:
+            candidate.revenue_history = list(selected.revenue_history)
+        candidates.append(candidate)
+    return candidates, {
+        "source": "老蕭選股結果",
+        "status": "generated",
+        "candidate_count": len(candidates),
+        "strategy_scoring_version": laoxiao_scan_service.SCORING_VERSION,
+        "diagnostics": result.diagnostics,
+    }
 
 
 def _chip_candidates(target_date: date) -> tuple[list[RadarCandidate], dict[str, Any]]:
@@ -1117,17 +1292,23 @@ def _attach_chip_scores(
     _emit(progress, f"Radar：籌碼評級補強完成，命中 {matched} 筆")
 
 
-def _attach_revenue_scores(candidates: list[RadarCandidate]) -> None:
+def _attach_revenue_scores(candidates: list[RadarCandidate], analysis_date: date | None = None) -> None:
     universe = load_stock_universe(False)
     code_map = {entry.code: entry for entry in universe}
     selected = [code_map[item.code] for item in candidates if item.code in code_map]
-    revenue = load_recent_revenue_history(selected)
+    revenue = load_recent_revenue_history(selected, as_of_date=analysis_date)
     for item in candidates:
         points = revenue.get(item.code) or []
         latest = points[0] if points else None
         yoy = getattr(latest, "yoy", None) if latest else None
         item.revenue_history = [
-            {"month": point.month, "revenue": point.revenue, "yoy": point.yoy}
+            {
+                "month": point.month,
+                "revenue": point.revenue,
+                "yoy": point.yoy,
+                "published_at": point.published_at,
+                "published_at_source": point.published_at_source,
+            }
             for point in points
         ]
         item.score_components["revenue"] = _score_revenue(yoy)
@@ -1170,6 +1351,9 @@ def prepare_radar_scoring_data(
     candidates: list[RadarCandidate],
     analysis_date: date,
     progress: Callable[[str], None] | None = None,
+    *,
+    financial_fetch_limit: int | None = None,
+    scoring_version: str | None = None,
 ) -> None:
     """Attach structured data used by Radar scoring before the first score pass."""
 
@@ -1185,16 +1369,30 @@ def prepare_radar_scoring_data(
         structured_data.setdefault("stock", {"code": item.code, "name": item.name, "symbol": item.symbol, "industry": item.industry})
         structured_data.setdefault("report_date", analysis_date.isoformat())
         structured_data.setdefault("radar_research_mode", "pre_score_prepared")
-        structured_data.setdefault("revenue_data", item.revenue_history[:12])
+        structured_data.setdefault("revenue_data", item.revenue_history[:24])
         structured_by_code[item.code] = structured_data
 
     _merge_radar_chip_cache_data(candidates, structured_by_code, analysis_date)
     _merge_radar_topic_context(candidates, structured_by_code)
-    financial_stats = _merge_radar_financial_data(candidates, structured_by_code, analysis_date, progress)
+    resolved_scoring_version = _resolve_scoring_version(scoring_version)
+    if resolved_scoring_version == "v3":
+        _merge_radar_revenue_peer_context(candidates, structured_by_code, analysis_date, progress)
+        _merge_radar_valuation_context(candidates, structured_by_code, analysis_date, progress)
+    financial_stats = _merge_radar_financial_data(
+        candidates,
+        structured_by_code,
+        analysis_date,
+        progress,
+        fetch_limit=financial_fetch_limit,
+        require_unified_fields=resolved_scoring_version == "v3",
+    )
     margin_stats = _merge_radar_margin_data(candidates, structured_by_code, analysis_date, progress)
 
     for item in candidates:
         structured_data = structured_by_code.get(item.code) or {}
+        structured_data["unified_financial_field_coverage"] = _unified_financial_field_coverage(
+            _structured_rows(structured_data, "financial_data")
+        )
         item.evidence_pack["research_structured_data"] = structured_data
         item.data_coverage = _build_radar_data_coverage(item, structured_data)
 
@@ -1239,14 +1437,125 @@ def _merge_radar_topic_context(candidates: list[RadarCandidate], structured_by_c
             structured["topic_context"] = topic_context
 
 
+def _merge_radar_revenue_peer_context(
+    candidates: list[RadarCandidate],
+    structured_by_code: dict[str, dict[str, Any]],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> None:
+    """Attach same-industry revenue breadth using the official industry map."""
+
+    missing = [item for item in candidates if not structured_by_code[item.code].get("peer_revenue_context")]
+    if not missing:
+        return
+    try:
+        universe = load_stock_universe(False)
+        history_map = load_recent_revenue_history(universe, months_to_fetch=24, as_of_date=analysis_date)
+    except Exception as exc:
+        for item in missing:
+            structured_by_code[item.code]["peer_revenue_context"] = {
+                "status": "unavailable",
+                "reason": str(exc)[:200],
+            }
+        return
+
+    entry_by_code = {entry.code: entry for entry in universe}
+    effective_by_code: dict[str, list[dict[str, Any]]] = {}
+    for code, points in history_map.items():
+        rows = [
+            {
+                "month": point.month,
+                "revenue": point.revenue,
+                "yoy": point.yoy,
+                "published_at": point.published_at,
+                "published_at_source": point.published_at_source,
+            }
+            for point in points
+        ]
+        effective_by_code[code] = effective_revenue_rows(rows)
+
+    for item in missing:
+        own_rows = effective_by_code.get(item.code) or effective_revenue_rows(item.revenue_history)
+        latest = own_rows[-1] if own_rows else {}
+        latest_month = str(latest.get("month") or latest.get("Month") or "")[:7]
+        positives = 0
+        valid = 0
+        for code, rows in effective_by_code.items():
+            if code == item.code:
+                continue
+            entry = entry_by_code.get(code)
+            if entry is None or entry.industry != item.industry or not rows:
+                continue
+            peer_latest = rows[-1]
+            peer_month = str(peer_latest.get("month") or peer_latest.get("Month") or "")[:7]
+            if not latest_month or peer_month != latest_month:
+                continue
+            yoy = _to_float(peer_latest.get("yoy"))
+            if yoy is None:
+                continue
+            valid += 1
+            positives += int(yoy > 0)
+        structured_by_code[item.code]["peer_revenue_context"] = {
+            "status": "official_industry" if valid else "insufficient",
+            "industry": item.industry,
+            "period": latest_month or None,
+            "valid_peer_count": valid,
+            "positive_peer_count": positives,
+            "positive_ratio": positives / valid if valid else None,
+        }
+    _emit(progress, f"Radar：同產業營收廣度補齊 {len(missing)} 檔")
+
+
+def _merge_radar_valuation_context(
+    candidates: list[RadarCandidate],
+    structured_by_code: dict[str, dict[str, Any]],
+    analysis_date: date,
+    progress: Callable[[str], None] | None,
+) -> None:
+    """Attach official PE/PB history and same-industry peers for v3 scoring."""
+
+    missing = []
+    for item in candidates:
+        valuation = structured_by_code[item.code].get("valuation_data") or {}
+        history_count = len(valuation.get("history") or []) if isinstance(valuation, dict) else 0
+        peer_count = len(valuation.get("peers") or []) if isinstance(valuation, dict) else 0
+        if history_count < 36 or peer_count < 3:
+            missing.append(item)
+    if not missing:
+        return
+    try:
+        universe = load_stock_universe(False)
+        contexts = build_valuation_context_map([item.code for item in missing], universe, analysis_date, months=60)
+    except Exception as exc:
+        contexts = {
+            item.code: {"status": "unavailable", "reason": str(exc)[:200]}
+            for item in missing
+        }
+    for item in missing:
+        structured_by_code[item.code]["valuation_data"] = contexts.get(item.code) or {"status": "unavailable"}
+    _emit(progress, f"Radar：官方 PE/PB 歷史與同業估值補齊 {len(missing)} 檔")
+
+
 def _merge_radar_financial_data(
     candidates: list[RadarCandidate],
     structured_by_code: dict[str, dict[str, Any]],
     analysis_date: date,
     progress: Callable[[str], None] | None,
+    *,
+    fetch_limit: int | None = None,
+    require_unified_fields: bool = False,
 ) -> dict[str, int]:
-    missing = [item for item in _radar_pre_score_priority(candidates) if not _structured_rows(structured_by_code[item.code], "financial_data")]
-    selected = missing[:RADAR_PRE_SCORE_FINANCIAL_FETCH_LIMIT]
+    missing = [
+        item
+        for item in _radar_pre_score_priority(candidates)
+        if not _structured_rows(structured_by_code[item.code], "financial_data")
+        or (
+            require_unified_fields
+            and structured_by_code[item.code].get("financial_data_schema_version") != "unified_v3"
+        )
+    ]
+    limit = RADAR_PRE_SCORE_FINANCIAL_FETCH_LIMIT if fetch_limit is None else max(0, int(fetch_limit))
+    selected = missing[:limit]
     stats = {"attempted": len(selected), "covered": 0}
     if not selected:
         return stats
@@ -1269,6 +1578,7 @@ def _merge_radar_financial_data(
             continue
         if rows:
             structured["financial_data"] = rows
+            structured["financial_data_schema_version"] = "unified_v3"
             stats["covered"] += 1
             _save_radar_pre_score_structured_cache(code, analysis_date, structured)
         elif error:
@@ -2030,6 +2340,8 @@ def _build_radar_evidence_pack(
         "technical": {
             "strategies": sorted(item.strategy_codes),
             "signals": item.technical_signals,
+            "dual_ma_signals": item.dual_ma_signals,
+            "kd_ma_signals": item.kd_ma_signals,
             "summary": _technical_signal_line(item),
         },
         "revenue": {
@@ -2165,7 +2477,7 @@ def _radar_final_context(item: RadarCandidate, analysis_date: date, raw_sources:
         "source_count": len(raw_sources),
         "source_preview": raw_sources[: min(12, len(raw_sources))],
         "local_news_count": len(item.news_items),
-        "technical_signal_count": len(item.technical_signals),
+        "technical_signal_count": len(item.technical_signals) + len(item.dual_ma_signals) + len(item.kd_ma_signals),
         "revenue_points": len(item.revenue_history),
     }
 
@@ -2179,7 +2491,7 @@ def _build_radar_data_coverage(
     structured = research_structured_data or {}
     external_source_count = _candidate_external_source_count(item)
     checks = {
-        "technical": "ok" if item.technical_signals else "missing",
+        "technical": "ok" if item.technical_signals or item.dual_ma_signals or item.kd_ma_signals else "missing",
         "revenue": "ok" if item.revenue_history else "missing",
         "chip": "ok" if item.chip_grades else "missing",
         "local_news": "ok" if item.news_items else "missing",
@@ -2187,6 +2499,8 @@ def _build_radar_data_coverage(
         "source_sufficiency": "ok" if external_source_count >= RADAR_MIN_EXTERNAL_SOURCES else "insufficient",
         "research_structured_data": "ok" if research_structured_data else ("error" if error else "not_requested"),
         "financial": _coverage_status(structured.get("financial_data")),
+        "revenue_peer_context": _coverage_status(structured.get("peer_revenue_context")),
+        "valuation": _coverage_status(structured.get("valuation_data")),
         "margin": _coverage_status(structured.get("margin_data")),
         "institutional": _coverage_status(structured.get("institutional_data")),
         "tdcc": _coverage_status(structured.get("tdcc_data")),
@@ -2194,17 +2508,26 @@ def _build_radar_data_coverage(
         "feature_pack": _coverage_status(structured.get("feature_pack")),
         "unified_evidence_pack": _coverage_status(structured.get("unified_evidence_pack")),
     }
+    financial_field_coverage = structured.get("unified_financial_field_coverage") or {}
+    checks["financial_required_fields"] = (
+        "partial"
+        if any(status == "unknown" for status in financial_field_coverage.values())
+        else "ok"
+        if financial_field_coverage
+        else "missing"
+    )
     if structured.get("radar_research_mode") == "light_generated":
         for key in ("financial", "margin", "institutional", "tdcc", "unified_evidence_pack"):
             if checks.get(key) in {"missing", "empty"}:
                 checks[key] = "limited_by_light_research"
-    missing = [key for key, value in checks.items() if value in {"missing", "empty", "error", "insufficient"}]
+    missing = [key for key, value in checks.items() if value in {"missing", "empty", "error", "insufficient", "partial"}]
     return {
         "schema_version": "radar_data_coverage_v1",
         "checks": checks,
         "external_source_count": external_source_count,
         "min_external_sources": RADAR_MIN_EXTERNAL_SOURCES,
         "missing_or_weak_fields": missing,
+        "unified_financial_field_coverage": financial_field_coverage,
         "error": error,
     }
 
@@ -2720,11 +3043,22 @@ def _build_radar_feature_snapshot(
     }
     theme_context = structured.get("topic_context") if isinstance(structured, dict) else {}
     sector_peers = [candidate.code for candidate in candidates if candidate.industry and candidate.industry == item.industry]
+    sector_snapshot = _build_sector_snapshot(item, analysis_date)
+    sector_snapshot.update(
+        {
+            "industry_candidate_count": industry_counts.get(item.industry, 0),
+            "same_industry_codes": sector_peers[:20],
+        }
+    )
     return {
         "analysis_date": analysis_date.isoformat() if analysis_date else None,
         "structured_cache_date": structured_date.isoformat() if structured_date else None,
         "technical": technical,
-        "revenue": {"history": revenue_rows},
+        "revenue": {
+            "history": revenue_rows,
+            "peer_context": structured.get("peer_revenue_context") if isinstance(structured, dict) else {},
+            "preannouncement_price": structured.get("preannouncement_price") if isinstance(structured, dict) else {},
+        },
         "financial": {
             "financial_data": financial_rows,
             "gross_margin_cache": structured.get("gross_margin_cache") if isinstance(structured, dict) else {},
@@ -2737,11 +3071,7 @@ def _build_radar_feature_snapshot(
             "ai_sources": item.ai_sources,
             "topic_context": theme_context,
         },
-        "sector": {
-            "industry": item.industry,
-            "industry_candidate_count": industry_counts.get(item.industry, 0),
-            "same_industry_codes": sector_peers[:20],
-        },
+        "sector": sector_snapshot,
     }
 
 
@@ -2766,10 +3096,50 @@ def _structured_rows(structured: dict[str, Any], key: str) -> list[dict[str, Any
     return [dict(row) for row in value if isinstance(row, dict)] if isinstance(value, list) else []
 
 
+def _unified_financial_field_coverage(rows: list[dict[str, Any]]) -> dict[str, str]:
+    field_keys = {
+        "revenue": ("Revenue", "revenue"),
+        "gross_profit": ("Gross_Profit", "gross_profit"),
+        "operating_expenses": ("Operating_Expenses", "operating_expenses"),
+        "operating_income": ("Operating_Income", "operating_income"),
+        "non_operating_income": ("Non_Operating_Income", "non_operating_income"),
+        "pre_tax_income": ("Pre_Tax_Income", "pre_tax_income"),
+        "net_income": ("Net_Income", "net_income"),
+        "eps": ("EPS", "eps"),
+        "operating_cash_flow": ("Operating_Cash_Flow", "operating_cash_flow"),
+        "free_cash_flow": ("Free_Cash_Flow", "free_cash_flow"),
+        "inventory": ("Inventory", "inventory"),
+        "contract_liabilities": ("Contract_Liabilities", "contract_liabilities"),
+        "paid_in_capital": ("Paid_In_Capital", "paid_in_capital"),
+        "total_assets": ("Total_Assets", "total_assets"),
+        "total_liabilities": ("Total_Liabilities", "total_liabilities"),
+        "current_assets": ("Current_Assets", "current_assets"),
+        "current_liabilities": ("Current_Liabilities", "current_liabilities"),
+        "quick_assets": ("Quick_Assets", "quick_assets"),
+        "accounts_payable": ("Accounts_Payable", "accounts_payable"),
+        "interest_bearing_debt": ("Interest_Bearing_Debt", "interest_bearing_debt"),
+    }
+    if not rows:
+        return {field: "unknown" for field in field_keys}
+    coverage: dict[str, str] = {}
+    for field, keys in field_keys.items():
+        if field == "contract_liabilities" and any(
+            str(row.get("Contract_Liabilities_Status") or "") == "not_reported" for row in rows
+        ) and not any(str(row.get("Contract_Liabilities_Status") or "") == "reported" for row in rows):
+            coverage[field] = "not_reported"
+            continue
+        coverage[field] = "reported" if any(
+            any(row.get(key) is not None for key in keys) for row in rows
+        ) else "unknown"
+    return coverage
+
+
 def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) -> dict[str, Any]:
     snapshot: dict[str, Any] = {
         "strategies": sorted(item.strategy_codes),
         "signals": item.technical_signals[:12],
+        "dual_ma_signals": item.dual_ma_signals,
+        "kd_ma_signals": item.kd_ma_signals,
         "price_metrics": _load_price_metric_for_item(item),
     }
     frame = _load_technical_daily_frame(item, analysis_date)
@@ -2780,6 +3150,9 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
     previous = frame.iloc[-2] if len(frame) >= 2 else current
     close = _to_float(current.get("close"))
     prev_close = _to_float(previous.get("close"))
+    open_price = _to_float(current.get("open"))
+    high_price = _to_float(current.get("high"))
+    low_price = _to_float(current.get("low"))
     volume = _to_float(current.get("volume"))
     ma: dict[str, float | None] = {}
     prev_ma: dict[str, float | None] = {}
@@ -2791,8 +3164,9 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
         prev_ma[ma_key] = _to_float(series.iloc[-2]) if len(series) >= 2 else None
         if len(series) > window + 3 and pd.notna(series.iloc[-1]) and pd.notna(series.iloc[-4]):
             slopes[ma_key] = "up" if float(series.iloc[-1]) > float(series.iloc[-4]) else "flat_or_down"
-    vol20 = _to_float(frame["volume"].rolling(20).mean().iloc[-1]) if "volume" in frame else None
-    vol60 = _to_float(frame["volume"].rolling(60).mean().iloc[-1]) if "volume" in frame else None
+    prior_volume = frame["volume"].iloc[:-1] if "volume" in frame else pd.Series(dtype=float)
+    vol20 = _to_float(prior_volume.tail(20).mean()) if len(prior_volume) >= 20 else None
+    vol60 = _to_float(prior_volume.tail(60).mean()) if len(prior_volume) >= 60 else None
     high20 = _to_float(frame["high"].rolling(20).max().iloc[-2]) if len(frame) >= 2 and "high" in frame else None
     high60 = _to_float(frame["high"].rolling(60).max().iloc[-2]) if len(frame) >= 2 and "high" in frame else None
     low60 = _to_float(frame["low"].rolling(60).min().iloc[-1]) if "low" in frame else None
@@ -2801,6 +3175,26 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
     change20 = ((close / close20 - 1) * 100) if close and close20 else None
     below_ma21_streak = _below_ma_streak(frame, 21)
     volume_ratio = volume / vol20 if volume is not None and vol20 and vol20 > 0 else None
+    pretrigger_volume_ratio = None
+    if len(prior_volume) >= 25:
+        prior5_avg = _to_float(prior_volume.iloc[-5:].mean())
+        preceding20_avg = _to_float(prior_volume.iloc[-25:-5].mean())
+        if prior5_avg is not None and preceding20_avg and preceding20_avg > 0:
+            pretrigger_volume_ratio = prior5_avg / preceding20_avg
+    close_location_value = None
+    if None not in (close, high_price, low_price) and high_price > low_price:
+        close_location_value = (close - low_price) / (high_price - low_price)
+    large_volume_reference = _recent_large_volume_reference(frame)
+    closes_above_large_volume_high = bool(
+        close is not None
+        and large_volume_reference.get("high") is not None
+        and close > large_volume_reference["high"]
+    )
+    closes_below_large_volume_low = bool(
+        close is not None
+        and large_volume_reference.get("low") is not None
+        and close < large_volume_reference["low"]
+    )
     recent_lows = frame["low"].iloc[-12:-1] if len(frame) > 12 and "low" in frame else pd.Series(dtype=float)
     recent_prior_low = _to_float(recent_lows.min()) if not recent_lows.empty else None
     recent_break_low = False
@@ -2814,6 +3208,10 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
         {
             "status": "ok",
             "last_date": str(current.get("date")),
+            "row_count": len(frame),
+            "open": open_price,
+            "high": high_price,
+            "low": low_price,
             "close": close,
             "previous_close": prev_close,
             "volume": volume,
@@ -2823,6 +3221,12 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
             "volume_avg20": vol20,
             "volume_avg60": vol60,
             "volume_ratio": volume_ratio,
+            "volume_context_status": "ok" if len(frame) >= 30 and volume_ratio is not None else "insufficient",
+            "pretrigger_volume_ratio": pretrigger_volume_ratio,
+            "close_location_value": close_location_value,
+            "large_volume_reference": large_volume_reference,
+            "closes_above_large_volume_high": closes_above_large_volume_high,
+            "closes_below_large_volume_low": closes_below_large_volume_low,
             "above_ma": {key: close is not None and value is not None and close >= value for key, value in ma.items()},
             "reclaim_ma": {
                 key: close is not None and value is not None and prev_close is not None and prev_ma.get(key) is not None and close >= value and prev_close < prev_ma[key]
@@ -2832,6 +3236,12 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
             "distance_from_120d_low_pct": _pct_from_low(close, low120),
             "breakout_20d": close is not None and high20 is not None and close > high20,
             "breakout_60d": close is not None and high60 is not None and close > high60,
+            "intraday_breakout_failed": bool(
+                high_price is not None
+                and high20 is not None
+                and high_price > high20
+                and (close is None or close <= high20)
+            ),
             "price_up_volume_up": close is not None and prev_close is not None and volume is not None and close > prev_close and (volume_ratio or 0) > 1,
             "recent_break_low_recover": recent_break_low,
             "long_lower_shadow": bool(lower_shadow is not None and lower_shadow >= 0.35),
@@ -2841,6 +3251,27 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
         }
     )
     return snapshot
+
+
+def _recent_large_volume_reference(frame: pd.DataFrame) -> dict[str, Any]:
+    """Find the latest prior 10-day candle whose volume is >= 1.8x its prior-20 average."""
+
+    if len(frame) < 30 or not {"date", "high", "low", "volume"}.issubset(frame.columns):
+        return {}
+    latest: dict[str, Any] = {}
+    start = max(20, len(frame) - 11)
+    for index in range(start, len(frame) - 1):
+        current_volume = _to_float(frame["volume"].iloc[index])
+        prior_avg = _to_float(frame["volume"].iloc[index - 20:index].mean())
+        if current_volume is None or not prior_avg or prior_avg <= 0 or current_volume / prior_avg < 1.8:
+            continue
+        latest = {
+            "date": str(frame["date"].iloc[index]),
+            "high": _to_float(frame["high"].iloc[index]),
+            "low": _to_float(frame["low"].iloc[index]),
+            "volume_ratio": current_volume / prior_avg,
+        }
+    return latest
 
 
 def _load_technical_daily_frame(item: RadarCandidate, analysis_date: date | None) -> pd.DataFrame | None:
@@ -2862,11 +3293,182 @@ def _load_technical_daily_frame(item: RadarCandidate, analysis_date: date | None
         frame = frame.dropna(subset=["date"]).sort_values("date")
         if analysis_date:
             frame = frame[frame["date"].dt.date <= analysis_date]
-        for column in ("open", "high", "low", "close", "volume"):
+        for column in ("open", "high", "low", "close", "volume", "adj_close"):
             if column in frame.columns:
                 frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame = apply_point_in_time_adjustment(frame)
         return frame.tail(160)
     return None
+
+
+def _build_sector_snapshot(item: RadarCandidate, analysis_date: date | None) -> dict[str, Any]:
+    """Build point-in-time sector breadth from the full cached market universe."""
+
+    target_date = analysis_date or get_tw_today()
+    market = _load_market_sector_context(target_date)
+    by_code = market.get("by_code") or {}
+    theme_by_code = market.get("theme_by_code") or {}
+    industry = str(item.industry or (by_code.get(item.code) or {}).get("industry") or "").strip()
+    primary_theme = str(theme_by_code.get(item.code) or "").strip()
+    combined_key = f"{industry}::{primary_theme}" if industry and primary_theme else ""
+    combined_members = (market.get("combined_members") or {}).get(combined_key) or []
+    if combined_key and len(combined_members) >= RADAR_SECTOR_MIN_GROUP_SIZE:
+        peer_group = combined_key
+        peer_group_label = f"{industry}／{primary_theme}"
+        group_source = "official_industry_and_formal_primary_theme"
+        members = combined_members
+    else:
+        peer_group = industry
+        peer_group_label = industry
+        group_source = "official_industry"
+        members = (market.get("industry_members") or {}).get(industry) or []
+
+    metrics = [by_code[code] for code in members if code in by_code]
+    total_count = len(members)
+    valid_count = len(metrics)
+    coverage = valid_count / total_count if total_count else 0.0
+    result: dict[str, Any] = {
+        "industry": industry,
+        "primary_theme": primary_theme or None,
+        "peer_group": peer_group,
+        "peer_group_label": peer_group_label,
+        "group_source": group_source,
+        "group_total_count": total_count,
+        "group_valid_count": valid_count,
+        "coverage_ratio": coverage,
+        "as_of_date": target_date.isoformat(),
+    }
+    if total_count < RADAR_SECTOR_MIN_GROUP_SIZE:
+        result["status"] = "insufficient_group_size"
+        return result
+    if coverage < RADAR_SECTOR_MIN_COVERAGE:
+        result["status"] = "insufficient_coverage"
+        return result
+
+    candidate_metric = by_code.get(item.code)
+    candidate_return = _to_float((candidate_metric or {}).get("return_20d"))
+    peer_returns = sorted(
+        value
+        for value in (_to_float(metric.get("return_20d")) for metric in metrics)
+        if value is not None
+    )
+    percentile = None
+    if candidate_return is not None and peer_returns:
+        percentile = 100.0 * sum(value <= candidate_return for value in peer_returns) / len(peer_returns)
+    result.update(
+        {
+            "status": "covered" if percentile is not None else "candidate_metric_missing",
+            "positive_20d_ratio": sum((_to_float(metric.get("return_20d")) or 0) > 0 for metric in metrics) / valid_count,
+            "above_ma20_ratio": sum(bool(metric.get("above_ma20")) for metric in metrics) / valid_count,
+            "new_high_breakout_ratio": sum(bool(metric.get("new_high_or_breakout")) for metric in metrics) / valid_count,
+            "median_return_5d": float(pd.Series([metric["return_5d"] for metric in metrics]).median()),
+            "volume_surge_ratio": sum((_to_float(metric.get("volume_ratio")) or 0) >= 1.5 for metric in metrics) / valid_count,
+            "median_return_1d": float(pd.Series([metric["return_1d"] for metric in metrics]).median()),
+            "candidate_return_20d": candidate_return,
+            "candidate_relative_strength_percentile": percentile,
+        }
+    )
+    return result
+
+
+def _load_market_sector_context(target_date: date) -> dict[str, Any]:
+    cache_key = target_date.isoformat()
+    cached = _RADAR_SECTOR_CONTEXT_CACHE.get(cache_key)
+    now = time.monotonic()
+    if cached and now - cached[0] <= RADAR_SECTOR_CONTEXT_TTL_SECONDS:
+        return cached[1]
+
+    stock_path = ROOT_DIR / "stock_list.json"
+    theme_path = ROOT_DIR / "config" / "company_theme_map.json"
+    try:
+        stock_payload = json.loads(stock_path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        stock_payload = {}
+    try:
+        theme_payload = json.loads(theme_path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        theme_payload = {}
+    stocks = stock_payload.get("stocks") if isinstance(stock_payload, dict) else []
+    stocks = stocks if isinstance(stocks, list) else []
+    theme_by_code = _formal_primary_theme_map(theme_payload)
+    by_code: dict[str, dict[str, Any]] = {}
+    industry_members: dict[str, list[str]] = {}
+    combined_members: dict[str, list[str]] = {}
+    for row in stocks:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("code") or "").strip()
+        symbol = str(row.get("symbol") or "").strip()
+        industry = str(row.get("industry") or "").strip()
+        if not code or not industry:
+            continue
+        industry_members.setdefault(industry, []).append(code)
+        primary_theme = theme_by_code.get(code)
+        if primary_theme:
+            combined_members.setdefault(f"{industry}::{primary_theme}", []).append(code)
+        metrics = _sector_price_metrics(code, symbol, industry, target_date)
+        if metrics:
+            by_code[code] = metrics
+    context = {
+        "by_code": by_code,
+        "industry_members": industry_members,
+        "combined_members": combined_members,
+        "theme_by_code": theme_by_code,
+    }
+    _RADAR_SECTOR_CONTEXT_CACHE[cache_key] = (now, context)
+    if len(_RADAR_SECTOR_CONTEXT_CACHE) > 8:
+        oldest_key = min(_RADAR_SECTOR_CONTEXT_CACHE, key=lambda key: _RADAR_SECTOR_CONTEXT_CACHE[key][0])
+        _RADAR_SECTOR_CONTEXT_CACHE.pop(oldest_key, None)
+    return context
+
+
+def _formal_primary_theme_map(payload: Any) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if not isinstance(payload, dict):
+        return result
+    for raw_code, raw_entry in payload.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        theme = str(raw_entry.get("primary_theme") or "").strip()
+        if not theme:
+            continue
+        statuses = raw_entry.get("theme_statuses") if isinstance(raw_entry.get("theme_statuses"), dict) else {}
+        status = str(statuses.get(theme) or "formal").strip().lower()
+        if status in {"candidate", "hypothesis", "hypothesis_only", "weak", "rejected"}:
+            continue
+        result[str(raw_code).strip()] = theme
+    return result
+
+
+def _sector_price_metrics(code: str, symbol: str, industry: str, target_date: date) -> dict[str, Any] | None:
+    item = RadarCandidate(code=code, symbol=symbol, industry=industry)
+    frame = _load_technical_daily_frame(item, target_date)
+    if frame is None or len(frame) < 21 or not {"date", "high", "close", "volume"}.issubset(frame.columns):
+        return None
+    last_timestamp = pd.to_datetime(frame["date"].iloc[-1], errors="coerce")
+    if pd.isna(last_timestamp) or last_timestamp.date() != target_date:
+        return None
+    close = _to_float(frame["close"].iloc[-1])
+    previous_close = _to_float(frame["close"].iloc[-2])
+    close5 = _to_float(frame["close"].iloc[-6]) if len(frame) >= 6 else None
+    close20 = _to_float(frame["close"].iloc[-21])
+    ma20 = _to_float(frame["close"].tail(20).mean())
+    prior_high20 = _to_float(frame["high"].iloc[-21:-1].max())
+    volume = _to_float(frame["volume"].iloc[-1])
+    prior_volume20 = _to_float(frame["volume"].iloc[-21:-1].mean())
+    required = (close, previous_close, close5, close20, ma20, prior_high20, volume, prior_volume20)
+    if any(value is None for value in required) or not close20 or not close5 or not previous_close or not prior_volume20:
+        return None
+    return {
+        "code": code,
+        "industry": industry,
+        "return_1d": (close / previous_close - 1) * 100,
+        "return_5d": (close / close5 - 1) * 100,
+        "return_20d": (close / close20 - 1) * 100,
+        "above_ma20": close >= ma20,
+        "new_high_or_breakout": close > prior_high20,
+        "volume_ratio": volume / prior_volume20,
+    }
 
 
 def _load_price_metric_for_item(item: RadarCandidate) -> dict[str, Any]:
@@ -3051,24 +3653,64 @@ def _score_technical_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> d
         reversal += 1; reasons.append("DIF 接近零軸或轉強")
     reversal = min(5, reversal)
 
+    # Volume is evidence for a price trigger, not a standalone bullish signal.
     volume = 0.0
-    volume_ratio = _to_float(tech.get("volume_ratio")) or _to_float((tech.get("price_metrics") or {}).get("volume_ratio"))
-    if volume_ratio is not None:
-        if volume_ratio > 3:
-            volume += 3; reasons.append("量比大於 3")
-        elif volume_ratio > 2:
-            volume += 2; reasons.append("量比大於 2")
-        elif volume_ratio > 1.5:
-            volume += 1; reasons.append("量比大於 1.5")
-        if 1.2 <= volume_ratio <= 3:
-            volume += 1; reasons.append("量增但未爆量過熱")
-    if tech.get("volume") and tech.get("volume_avg20") and _to_float(tech.get("volume")) > _to_float(tech.get("volume_avg20")):
-        volume += 1; reasons.append("成交量突破 20 日均量")
-    if tech.get("volume") and tech.get("volume_avg60") and _to_float(tech.get("volume")) > _to_float(tech.get("volume_avg60")):
-        volume += 1; reasons.append("成交量突破 60 日均量")
-    if tech.get("price_up_volume_up"):
-        volume += 1; reasons.append("價漲量增")
+    volume_penalty = 0.0
+    volume_ratio = _to_float(tech.get("volume_ratio"))
+    pretrigger_ratio = _to_float(tech.get("pretrigger_volume_ratio"))
+    close_location = _to_float(tech.get("close_location_value"))
+    close = _to_float(tech.get("close"))
+    previous_close = _to_float(tech.get("previous_close"))
+    open_price = _to_float(tech.get("open"))
+    price_trigger = bool(
+        tech.get("breakout_20d")
+        or tech.get("breakout_60d")
+        or any(bool(value) for value in reclaim.values())
+        or item.technical_signals
+        or item.strategy_codes
+        or tech.get("closes_above_large_volume_high")
+    )
+    volume_context_ok = tech.get("volume_context_status") == "ok"
+    if tech.get("status") == "ok" and not volume_context_ok:
+        risks.append("量能歷史不足 30 日，量能分項不加分")
+    if volume_context_ok and price_trigger:
+        if pretrigger_ratio is not None and pretrigger_ratio <= 0.8:
+            volume += 1
+            reasons.append("觸發前五日量縮至前期均量八成以下")
+        if volume_ratio is not None and close is not None and previous_close is not None and close > previous_close:
+            if 1.2 <= volume_ratio <= 3:
+                volume += 2
+                reasons.append("價位觸發且量比 1.2 至 3 倍")
+            elif 1 <= volume_ratio < 1.2:
+                volume += 1
+                reasons.append("價位觸發且量能溫和增加")
+            elif volume_ratio > 3 and close_location is not None and close_location >= 0.67:
+                volume += 1
+                reasons.append("爆量觸發但收盤仍守在當日高檔")
+        if close_location is not None and close_location >= 0.67:
+            volume += 1
+            reasons.append("觸發日收盤位於當日振幅上三分之一")
+        if tech.get("closes_above_large_volume_high"):
+            volume += 1
+            reasons.append("收盤站上近期大量 K 棒高點")
     volume = min(5, volume)
+
+    if volume_context_ok and volume_ratio is not None:
+        weak_close = bool(
+            (close_location is not None and close_location < 0.5)
+            or (close is not None and open_price is not None and close <= open_price)
+            or tech.get("intraday_breakout_failed")
+        )
+        if volume_ratio >= 5 and not tech.get("price_up_volume_up"):
+            volume_penalty = max(volume_penalty, 3)
+            risks.append("量比至少 5 倍但價格未正向反應")
+        elif volume_ratio >= 3 and weak_close:
+            volume_penalty = max(volume_penalty, 2)
+            risks.append("爆量但收盤轉弱或突破失敗")
+        if tech.get("closes_below_large_volume_low"):
+            volume_penalty = max(volume_penalty, 2)
+            risks.append("跌破近期大量 K 棒低點")
+    volume_penalty = min(3, volume_penalty)
 
     shakeout = 0.0
     if tech.get("recent_break_low_recover"):
@@ -3102,15 +3744,25 @@ def _score_technical_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> d
         cross += 1; reasons.append("趨勢策略與反轉/收復策略交叉")
     cross = min(3, cross)
 
-    score = trend + reversal + volume + shakeout + breakout + cross
+    score = trend + reversal + volume + shakeout + breakout + cross - volume_penalty
     deviation = _to_float(tech.get("ma20_deviation_pct"))
     if deviation is not None and deviation > 25:
         score -= 2; risks.append("乖離 MA20 超過 25%")
-    if volume_ratio is not None and volume_ratio > 5 and tech.get("price_up_volume_up") is False:
-        score -= 2; risks.append("爆量但價格未同步轉強")
     if any("高風險" in str(signal.get("notes") or "") for signal in item.technical_signals):
         score -= 2; risks.append("既有技術訊號標記高風險")
-    details.update({"trend": trend, "reversal": reversal, "volume": volume, "shakeout": shakeout, "breakout": breakout, "strategy_cross": cross})
+    details.update(
+        {
+            "trend": trend,
+            "reversal": reversal,
+            "volume": volume,
+            "volume_penalty": volume_penalty,
+            "volume_triggered": price_trigger,
+            "volume_context_status": tech.get("volume_context_status") or "unknown",
+            "shakeout": shakeout,
+            "breakout": breakout,
+            "strategy_cross": cross,
+        }
+    )
     return _score_detail(score, 30, reasons, risks, details)
 
 
@@ -3312,69 +3964,297 @@ def _score_theme_news_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> 
     topic_context = theme.get("topic_context") if isinstance(theme.get("topic_context"), dict) else {}
     reasons: list[str] = []
     risks: list[str] = []
-    score = 0.0
-    all_titles = " ".join(str(row.get("title") or row.get("snippet") or "") for row in [*local_news, *web_sources, *ai_sources])
-    hot_terms = ("AI", "BBU", "CPO", "CoWoS", "高速傳輸", "散熱", "電動車", "機器人", "伺服器", "重電", "儲能", "半導體")
-    if any(term in all_titles for term in hot_terms):
-        score += 3; reasons.append("新聞/來源出現熱門題材關鍵字")
-    if local_news:
-        score += min(3, len(local_news) * 1.2); reasons.append("本地新聞資料有題材線索")
-    external_count = len(web_sources) + len(ai_sources)
-    if external_count:
-        score += min(3, external_count * 0.8); reasons.append("外部來源可交叉驗證")
-    matched_topics = topic_context.get("matched_topics") if isinstance(topic_context, dict) else []
-    if matched_topics:
-        score += 2; reasons.append("題材庫有對應主題")
-    company_rel = topic_context.get("company_topic_relations") if isinstance(topic_context, dict) else {}
-    if isinstance(company_rel, dict) and (_to_float(company_rel.get("direct_matches")) or 0) > 0:
-        score += 2; reasons.append("題材與公司關聯有直接匹配")
-    revenue_score = (snapshot.get("revenue") or {}).get("score")
-    if revenue_score is None:
-        revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history"))
-        revenue_score = 1 if revenue_rows and (_to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) or 0) > 0 else 0
-    if revenue_score:
-        score += 2; reasons.append("題材可與營收改善交叉觀察")
-    revenue_rows = _normalise_revenue_rows((snapshot.get("revenue") or {}).get("history"))
-    latest_yoy = _to_float(revenue_rows[-1].get("yoy") or revenue_rows[-1].get("YoY") or revenue_rows[-1].get("YoY%")) if revenue_rows else None
-    if latest_yoy is not None and latest_yoy >= 15 and not matched_topics:
-        score += 1.5; reasons.append("營收改善但題材庫尚未明確映射，列為重估觀察")
-        risks.append("題材重估仍需補官方或產業鏈證據")
-    technical = snapshot.get("technical") or {}
-    chip_grades = (snapshot.get("chip") or {}).get("grades") or {}
-    if (
-        latest_yoy is not None
-        and latest_yoy >= 15
-        and (technical.get("status") == "ok")
-        and ((technical.get("volume_ratio") or 0) >= 1.2 or technical.get("price_up_volume_up"))
-        and any(str(grade).upper() in {"S", "A", "B"} for grade in chip_grades.values())
-    ):
-        score += 3
-        reasons.append("營收、價量與籌碼同步出現早期重估線索")
+    analysis_date = _theme_analysis_date(snapshot)
+    formal_topics = _formal_theme_topics(topic_context)
+    formal_theme_ids = {str(row.get("theme_id") or "") for row in formal_topics}
+    nodes = [
+        row for row in topic_context.get("supply_chain_nodes") or []
+        if isinstance(row, dict) and (not formal_theme_ids or str(row.get("theme_id") or "") in formal_theme_ids)
+    ]
+
+    relation_score = 0
+    if formal_topics:
+        relation_score = 3
+        reasons.append("正式題材關聯已建立")
+        if any(_is_specific_verified_theme_node(row) for row in nodes):
+            relation_score = 5
+            reasons.append("公司角色、產品或客戶鏈結具正式證據")
+    else:
+        weak_topics = topic_context.get("matched_topics") or []
+        if weak_topics:
+            risks.append("僅有候選、推測或弱關鍵字題材，不列入正式評分")
+
+    evidence = _normalise_theme_evidence(
+        item,
+        analysis_date,
+        local_news,
+        web_sources,
+        ai_sources,
+        formal_topics,
+        nodes,
+    )
+    current_evidence = [row for row in evidence if row["age_days"] is not None and row["age_days"] <= 90]
+    stale_evidence = [row for row in evidence if row["age_days"] is not None and 90 < row["age_days"] <= 180]
+    current_l1 = [row for row in current_evidence if row["level"] == 1 and row["has_body"]]
+    current_l2 = [row for row in current_evidence if row["level"] == 2 and row["has_body"]]
+    source_score = 0
+    if current_l1:
+        source_score = 4
+        reasons.append("近期具日期的官方一級來源直接佐證")
+    elif len({row["publisher"] for row in current_l2 if row["publisher"]}) >= 2:
+        source_score = 3
+        reasons.append("近期至少兩個獨立二級來源交叉佐證")
+    elif current_l2:
+        source_score = 2
+        reasons.append("近期具日期的二級來源直接佐證")
+    elif any(row["level"] in {1, 2} and row["has_body"] for row in stale_evidence):
+        source_score = 2
+        reasons.append("來源已逾 90 日，僅保留部分證據分")
+
+    usable_current = [row for row in current_evidence if row["level"] in {1, 2} and row["has_body"]]
+    evidence_text = " ".join(row["text"] for row in usable_current)
+    specific_action = bool(re.search(r"量產|出貨|接單|訂單|得標|投產|擴產|認證|導入|上修|啟用|合作", evidence_text))
+    company_link = bool(
+        (item.code and item.code in evidence_text)
+        or (item.name and item.name in evidence_text)
+        or any(_is_specific_verified_theme_node(row) for row in nodes)
+    )
+    quantified = bool(re.search(r"\d+(?:\.\d+)?\s*(?:%|％|億|萬|千|百萬|兆|台|套|顆|GW|MW)", evidence_text, re.IGNORECASE))
+    timed = bool(re.search(r"20\d{2}|第?[一二三四1-4]季|Q[1-4]|上半年|下半年|\d+月|量產|出貨|啟用", evidence_text, re.IGNORECASE))
+    catalyst_score = 0
+    if specific_action and company_link and quantified and timed:
+        catalyst_score = 4
+        reasons.append("催化事件含數字、時程與公司影響")
+    elif specific_action and company_link:
+        catalyst_score = 2
+        reasons.append("已有公司層級具體行動，但數字或時程仍不完整")
+
+    materiality_score = _theme_materiality_score(nodes, evidence_text)
+    if materiality_score == 2:
+        reasons.append("題材營收曝險具量化或高占比依據")
+    elif materiality_score == 1:
+        reasons.append("題材已確認為公司主要產品或營運區段")
+    else:
+        risks.append("題材對公司營收或獲利的重要性尚不明")
+
+    score = relation_score + source_score + catalyst_score + materiality_score
+    cap: int | None = None
+    if not formal_topics:
+        score = 0
+        cap = 0
+    elif any(_official_theme_contradiction(row) for row in current_l1):
+        score = 0
+        cap = 0
+        risks.append("近期官方來源否認、取消或終止該題材關聯")
+    else:
+        if not current_l1 and not current_l2:
+            cap = 5
+            risks.append("正式題材缺少近 90 日一級或二級來源，題材分上限 5")
+        elif evidence and not any(row["level"] in {1, 2} and row["has_body"] for row in current_evidence):
+            cap = 5
+            risks.append("題材來源僅有三級、標題、無日期或過期資料，題材分上限 5")
+        if materiality_score == 0:
+            cap = min(cap, 10) if cap is not None else 10
+        if cap is not None:
+            score = min(score, cap)
     if any("注意" in str(row.get("title") or "") or "處置" in str(row.get("title") or "") for row in local_news):
         risks.append("新聞含注意股/處置訊息")
-    if score > 0 and not local_news and external_count == 0 and not matched_topics:
-        risks.append("題材缺少可驗證來源")
-    return _score_detail(score, 15, reasons, risks, {"local_news_count": len(local_news), "external_source_count": external_count})
+    return _score_detail(
+        score,
+        15,
+        reasons,
+        risks,
+        {
+            "relation": relation_score,
+            "source_quality": source_score,
+            "catalyst_specificity": catalyst_score,
+            "materiality": materiality_score,
+            "score_cap": cap,
+            "formal_topic_count": len(formal_topics),
+            "eligible_evidence_count": len(evidence),
+            "current_l1_count": len(current_l1),
+            "current_l2_count": len(current_l2),
+            "ignored_top_only_source_count": sum(
+                not bool(row.get("formal_scoring_eligible") or row.get("uniform_coverage"))
+                for row in [*web_sources, *ai_sources]
+            ),
+        },
+    )
+
+
+def _theme_analysis_date(snapshot: dict[str, Any]) -> date:
+    parsed = parse_date_like(snapshot.get("analysis_date"))
+    return parsed or get_tw_today()
+
+
+def _formal_theme_topics(topic_context: dict[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for row in topic_context.get("matched_topics") or []:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("verification_status") or "").strip().lower()
+        confidence = str(row.get("confidence") or "").strip().lower()
+        policy = str(row.get("usage_policy") or "").strip().lower()
+        if row.get("not_representative") or status == "candidate" or policy == "hypothesis_only":
+            continue
+        if confidence == "high" or status in {"formal", "verified", "confirmed"} or policy == "formal_topic_reference":
+            result.append(row)
+    return result
+
+
+def _is_specific_verified_theme_node(row: dict[str, Any]) -> bool:
+    status = str(row.get("verification_status") or "").strip().lower()
+    confidence = str(row.get("confidence") or "").strip().lower()
+    level = _theme_source_level(row.get("source_level"))
+    verified = status in {"formal", "verified", "confirmed"} or (confidence == "high" and level == 1)
+    role = bool(str(row.get("role") or "").strip())
+    products = row.get("product_keywords") or row.get("products") or []
+    customers = row.get("customers") or []
+    return bool(verified and role and (products or customers))
+
+
+def _normalise_theme_evidence(
+    item: RadarCandidate,
+    analysis_date: date,
+    local_news: list[dict[str, Any]],
+    web_sources: list[dict[str, Any]],
+    ai_sources: list[dict[str, Any]],
+    formal_topics: list[dict[str, Any]],
+    nodes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    raw: list[dict[str, Any]] = list(local_news)
+    raw.extend(
+        row for row in [*web_sources, *ai_sources]
+        if row.get("formal_scoring_eligible") or row.get("uniform_coverage")
+    )
+    for owner in [*formal_topics, *nodes]:
+        raw.extend(row for row in owner.get("evidence") or [] if isinstance(row, dict))
+
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for source in raw:
+        published = parse_date_like(
+            source.get("publish_date")
+            or source.get("published_at")
+            or source.get("published_date")
+            or source.get("date")
+        )
+        if published and published > analysis_date:
+            continue
+        title = str(source.get("title") or "").strip()
+        body = str(source.get("content") or source.get("summary") or source.get("snippet") or "").strip()
+        url = str(source.get("canonical_url") or source.get("url") or "").strip()
+        publisher = str(source.get("source") or source.get("provider") or "").strip().lower()
+        if not publisher and url:
+            domain = re.search(r"https?://(?:www\.)?([^/]+)", url, re.IGNORECASE)
+            publisher = domain.group(1).lower() if domain else ""
+        event_id = str(source.get("event_id") or source.get("canonical_event_id") or "").strip().lower()
+        normalized_title = re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", title.lower())
+        dedupe_key = event_id or url.lower() or f"{normalized_title}:{published.isoformat() if published else ''}"
+        if not dedupe_key or dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        age_days = (analysis_date - published).days if published else None
+        result.append(
+            {
+                "title": title,
+                "body": body,
+                "text": " ".join(value for value in (title, body) if value),
+                "url": url,
+                "publisher": publisher,
+                "published_at": published.isoformat() if published else None,
+                "age_days": age_days,
+                "level": _theme_source_level(source.get("source_level"), source=source),
+                "has_body": bool(body),
+                "stock_code": item.code,
+            }
+        )
+    return result
+
+
+def _theme_source_level(value: Any, *, source: dict[str, Any] | None = None) -> int:
+    text = str(value or "").strip().lower().replace("_", " ")
+    if "l1" in text or "level 1" in text or "official" in text:
+        return 1
+    if "l2" in text or "level 2" in text or "media" in text:
+        return 2
+    if "l3" in text or "level 3" in text:
+        return 3
+    source = source or {}
+    identity = " ".join(
+        str(source.get(key) or "").lower()
+        for key in ("source", "provider", "url")
+    )
+    if any(term in identity for term in ("mops", "twse", "tpex", "gov.tw", "公司官網", "法說", "press release", "newsroom")):
+        return 1
+    return 3
+
+
+def _theme_materiality_score(nodes: list[dict[str, Any]], evidence_text: str) -> int:
+    for row in nodes:
+        exposure = row.get("revenue_exposure")
+        if isinstance(exposure, dict):
+            level = str(exposure.get("level") or "").strip().lower()
+            description = str(exposure.get("description") or "")
+        else:
+            level = str(exposure or "").strip().lower()
+            description = str(exposure or "")
+        if level in {"high", "material", "significant", "major", "core"}:
+            return 2
+        if re.search(r"\d+(?:\.\d+)?\s*(?:%|％)", description):
+            return 2
+    if re.search(r"(?:營收|業務|產品).{0,12}\d+(?:\.\d+)?\s*(?:%|％)", evidence_text):
+        return 2
+    if any(_is_specific_verified_theme_node(row) for row in nodes):
+        return 1
+    return 0
+
+
+def _official_theme_contradiction(row: dict[str, Any]) -> bool:
+    if row.get("level") != 1:
+        return False
+    text = str(row.get("text") or "")
+    return bool(re.search(r"否認|澄清.{0,12}(?:不實|未參與|無此)|取消|終止|未參與|無合作", text))
 
 
 def _score_sector_detail(item: RadarCandidate, snapshot: dict[str, Any]) -> dict[str, Any]:
     sector = snapshot.get("sector") or {}
-    count = int(sector.get("industry_candidate_count") or 0)
     reasons: list[str] = []
+    risks: list[str] = []
     score = 0.0
-    if count >= 2:
-        score += 1; reasons.append("同產業多檔同步進入候選")
-    if count >= 4:
-        score += 1; reasons.append("族群候選擴散")
-    if item.industry:
-        score += 0.5; reasons.append("具明確產業分類")
-    if (snapshot.get("theme_news") or {}).get("local_news") or (snapshot.get("theme_news") or {}).get("web_sources"):
-        score += 1; reasons.append("族群/題材新聞密度增加")
-    if (snapshot.get("chip") or {}).get("grades"):
-        score += 0.5; reasons.append("族群候選具籌碼評級輔助")
-    if (snapshot.get("revenue") or {}).get("history"):
-        score += 0.5; reasons.append("族群候選具營收資料支撐")
-    return _score_detail(score, 5, reasons, [], {"industry_candidate_count": count})
+    status = str(sector.get("status") or "unknown")
+    if status != "covered":
+        if status == "insufficient_group_size":
+            risks.append("正式族群樣本少於 4 檔，族群分不加分")
+        elif status == "insufficient_coverage":
+            risks.append("族群同日價量資料覆蓋率低於 70%，族群分不加分")
+        elif status == "candidate_metric_missing":
+            risks.append("候選股缺少同日 20 日報酬，無法計算族群相對強弱")
+        else:
+            risks.append("缺少全市場同日族群資料，族群分不加分")
+        return _score_detail(0, 5, reasons, risks, dict(sector))
+    if (_to_float(sector.get("positive_20d_ratio")) or 0) >= 0.60:
+        score += 1
+        reasons.append("族群至少六成個股近 20 日上漲")
+    if (_to_float(sector.get("above_ma20_ratio")) or 0) >= 0.60:
+        score += 1
+        reasons.append("族群至少六成個股站上 MA20")
+    if (
+        (_to_float(sector.get("new_high_breakout_ratio")) or 0) >= 0.15
+        and (_to_float(sector.get("median_return_5d")) or 0) > 0
+    ):
+        score += 1
+        reasons.append("族群創高擴散且近 5 日中位數報酬為正")
+    if (
+        (_to_float(sector.get("volume_surge_ratio")) or 0) >= 0.20
+        and (_to_float(sector.get("median_return_1d")) or 0) > 0
+    ):
+        score += 1
+        reasons.append("族群量增擴散且當日中位數報酬為正")
+    if (_to_float(sector.get("candidate_relative_strength_percentile")) or 0) >= 75:
+        score += 1
+        reasons.append("個股近 20 日相對強度位於族群前 25%")
+    return _score_detail(score, 5, reasons, risks, dict(sector))
 
 
 def _apply_radar_score_caps(
@@ -3686,6 +4566,8 @@ def _technical_signal_line(item: RadarCandidate) -> str:
             parts.append(f"{strategy} {strategy_label}：{sub_label}")
         else:
             parts.append(f"{strategy} {strategy_label}：其他技術訊號")
+    parts.extend(ts.dual_ma_signal_label(signal) for signal in item.dual_ma_signals)
+    parts.extend(ts.kd_ma_signal_label(signal) for signal in item.kd_ma_signals)
     return "；".join(parts)
 
 
@@ -3793,6 +4675,8 @@ def _build_radar_ai_compact_pack(
         "technical": {
             "summary": _technical_signal_line(item),
             "signals": item.technical_signals,
+            "dual_ma_signals": item.dual_ma_signals,
+            "kd_ma_signals": item.kd_ma_signals,
         },
         "revenue": {
             "history": item.revenue_history[:6],
@@ -4089,6 +4973,8 @@ def _candidate_to_dict(item: RadarCandidate) -> dict[str, Any]:
         "source_labels": item.source_labels,
         "strategy_codes": sorted(item.strategy_codes),
         "technical_signals": item.technical_signals,
+        "dual_ma_signals": item.dual_ma_signals,
+        "kd_ma_signals": item.kd_ma_signals,
         "chip_grades": item.chip_grades,
         "revenue_history": item.revenue_history,
         "news_items": item.news_items,
@@ -4173,6 +5059,8 @@ def _record_to_result(record: dict[str, Any]) -> RadarResult:
             source_labels=list(raw.get("source_labels") or []),
             strategy_codes=set(raw.get("strategy_codes") or []),
             technical_signals=list(raw.get("technical_signals") or []),
+            dual_ma_signals=list(raw.get("dual_ma_signals") or []),
+            kd_ma_signals=list(raw.get("kd_ma_signals") or []),
             chip_grades=dict(raw.get("chip_grades") or {}),
             revenue_history=list(raw.get("revenue_history") or []),
             news_items=list(raw.get("news_items") or []),
@@ -4298,6 +5186,9 @@ def _normalise_source(value: str) -> str:
         "精選選股結果": "curated",
         "精選": "curated",
         "curated": "curated",
+        "老蕭選股結果": "laoxiao",
+        "老蕭": "laoxiao",
+        "laoxiao": "laoxiao",
         "財報營收選股結果": "financial",
         "營收": "financial",
         "financial": "financial",
@@ -4339,6 +5230,7 @@ def _source_label(source: str) -> str:
         "combined": "跨來源候選池",
         "technical": "技術面選股結果",
         "curated": "精選選股結果",
+        "laoxiao": "老蕭選股結果",
         "financial": "財報營收選股結果",
         "chip": "法人籌碼 / 大戶選股結果",
         "monitor": "監控清單",

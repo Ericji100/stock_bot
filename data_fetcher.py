@@ -14,6 +14,7 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
+from data_source_manager import FinMindQuotaManager, SourceHealthManager
 from finmind_client import FinMindClient
 from fugle_data import fetch_fugle_history
 
@@ -150,6 +151,46 @@ def _first_match(report_map: dict[str, float | None], *candidates: str) -> float
         if value is not None:
             return value
     return None
+
+
+def _sum_matches(report_map: dict[str, float | None], *candidates: str) -> float | None:
+    """Sum explicitly named, non-duplicated statement rows.
+
+    MOPS omits many zero-value optional rows.  A fetched statement with no
+    matching rows therefore remains distinguishable from a failed statement,
+    while callers may still record the account as ``not_reported``.
+    """
+
+    values: list[float] = []
+    seen: set[str] = set()
+    for key in candidates:
+        if key in seen:
+            continue
+        seen.add(key)
+        value = report_map.get(key)
+        if value is not None:
+            values.append(value)
+    return sum(values) if values else None
+
+
+def _monthly_revenue_available_date(month_start: date) -> date:
+    """Return the conservative statutory availability date for monthly revenue."""
+
+    if month_start.month == 12:
+        return date(month_start.year + 1, 1, 10)
+    return date(month_start.year, month_start.month + 1, 10)
+
+
+def _quarterly_financial_available_date(year: int, quarter: int) -> date:
+    """Return the conservative filing deadline used when exact filing time is absent."""
+
+    if quarter == 1:
+        return date(year, 5, 15)
+    if quarter == 2:
+        return date(year, 8, 14)
+    if quarter == 3:
+        return date(year, 11, 14)
+    return date(year + 1, 3, 31)
 
 
 def _quarter_number(quarter_value: Any) -> int | None:
@@ -773,6 +814,9 @@ class StockDataFetcher:
                     "Prior_Month_Revenue": _to_number(revenue_row.get("營業收入-上月營收")),
                     "Prior_Year_Revenue": _to_number(revenue_row.get("營業收入-去年當月營收")),
                     "Cumulative_Revenue": _to_number(revenue_row.get("累計營業收入-當月累計營收")),
+                    "Published_At": _monthly_revenue_available_date(month_start),
+                    "published_at": _monthly_revenue_available_date(month_start),
+                    "published_at_source": "statutory_deadline_fallback",
                 }
             )
 
@@ -832,6 +876,22 @@ class StockDataFetcher:
         return None
 
     def fetch_quarterly_financials(self, meta: StockMeta) -> pd.DataFrame:
+        """Fetch quarterly statements without changing the scoring schema.
+
+        FinMind's structured statement datasets are used first because the MOPS
+        Plus POST endpoints intermittently close the connection on the bot host.
+        The existing MOPS path remains as a fallback.  Both sources are mapped
+        into the same unified columns and use conservative statutory availability
+        dates, so downstream point-in-time scoring remains unchanged.
+        """
+        finmind_frame = self._fetch_finmind_quarterly_financials(meta)
+        if not finmind_frame.empty:
+            self._append_note_once(
+                "季財報由 FinMind 結構化資料補齊，並套用法定申報截止日避免前視偏誤；MOPS Plus 保留為備援。"
+            )
+            return finmind_frame
+
+        self._append_note_once("FinMind 季財報未取得，改嘗試既有 MOPS Plus 官方 API。")
         quarterly_rows: list[dict[str, Any]] = []
         balance_sheet_notes = False
         cash_flow_notes = False
@@ -848,7 +908,24 @@ class StockDataFetcher:
                 **income_row,
             }
             # Merge balance sheet fields
-            for key in ("Inventory", "Total_Assets", "Current_Assets", "Current_Liabilities", "Equity"):
+            for key in (
+                "Inventory",
+                "Total_Assets",
+                "Total_Liabilities",
+                "Current_Assets",
+                "Current_Liabilities",
+                "Equity",
+                "Current_Contract_Liabilities",
+                "Noncurrent_Contract_Liabilities",
+                "Contract_Liabilities",
+                "Contract_Liabilities_Status",
+                "Paid_In_Capital",
+                "Cash_And_Cash_Equivalents",
+                "Quick_Assets",
+                "Quick_Assets_Method",
+                "Accounts_Payable",
+                "Interest_Bearing_Debt",
+            ):
                 quarter_row[key] = bs_row.get(key) if bs_row else None
             if bs_row is None:
                 balance_sheet_notes = True
@@ -879,6 +956,207 @@ class StockDataFetcher:
         self.notes.append("季財報改用 MOPS Plus 官方 API 逐季回溯，已涵蓋自 2023 年起的 12 季資料。")
         return financial_df
 
+    def _fetch_finmind_quarterly_financials(self, meta: StockMeta) -> pd.DataFrame:
+        """Map FinMind income, balance-sheet and cash-flow rows to unified v3."""
+
+        try:
+            client = FinMindClient(
+                health_manager=SourceHealthManager(),
+                quota_manager=FinMindQuotaManager(),
+                timeout=20.0,
+                allow_anonymous=True,
+            )
+            params = {
+                "stock_id": meta.code,
+                "start_date": "2023-01-01",
+                "end_date": datetime.now().date().isoformat(),
+            }
+            income_result = client.request_dataset(
+                "TaiwanStockFinancialStatements", params, scope="financial"
+            )
+            balance_result = client.request_dataset(
+                "TaiwanStockBalanceSheet", params, scope="financial"
+            )
+            cash_flow_result = client.request_dataset(
+                "TaiwanStockCashFlowsStatement", params, scope="financial"
+            )
+        except Exception as exc:
+            self._append_note_once(f"FinMind 季財報備援失敗：{str(exc)[:120]}")
+            return pd.DataFrame()
+
+        income_by_date = self._finmind_statement_by_date(income_result)
+        if not income_by_date:
+            return pd.DataFrame()
+        balance_by_date = self._finmind_statement_by_date(balance_result)
+        cash_flow_by_date = self._finmind_statement_by_date(cash_flow_result)
+
+        rows: list[dict[str, Any]] = []
+        for statement_date in sorted(income_by_date):
+            quarter = {3: 1, 6: 2, 9: 3, 12: 4}.get(statement_date.month)
+            if quarter is None:
+                continue
+            income = income_by_date[statement_date]
+            balance = balance_by_date.get(statement_date, {})
+            cash_flow = cash_flow_by_date.get(statement_date, {})
+
+            current_contract = self._finmind_first(
+                balance,
+                "CurrentContractLiabilities",
+                "ContractLiabilitiesCurrent",
+            )
+            noncurrent_contract = self._finmind_first(
+                balance,
+                "NoncurrentContractLiabilities",
+                "ContractLiabilitiesNonCurrent",
+            )
+            contract_parts = [
+                value for value in (current_contract, noncurrent_contract) if value is not None
+            ]
+            cash = self._finmind_first(balance, "CashAndCashEquivalents")
+            quick_financial_assets = self._finmind_sum(
+                balance,
+                "FinancialAssetsAtFairValueThroughProfitOrLossCurrent",
+                "FinancialAssetsAtFairValueThroughOtherComprehensiveIncomeCurrent",
+                "FinancialAssetsAtAmortizedCost",
+                "HedgingFinancialAssetsCurrent",
+                "OtherCurrentFinancialAssets",
+            )
+            quick_receivables = self._finmind_sum(
+                balance,
+                "NotesReceivableNet",
+                "NotesReceivableDueFromRelatedPartiesNet",
+                "AccountsReceivableNet",
+                "AccountsReceivableDuefromRelatedPartiesNet",
+                "OtherReceivable",
+                "OtherReceivablesDueFromRelatedParties",
+            )
+            quick_parts = [value for value in (cash, quick_financial_assets, quick_receivables) if value is not None]
+            operating_cash_flow = self._finmind_first(
+                cash_flow,
+                "CashFlowsFromOperatingActivities",
+                "NetCashInflowFromOperatingActivities",
+            )
+            capital_expenditure = self._finmind_first(
+                cash_flow,
+                "PropertyAndPlantAndEquipment",
+                "AcquisitionOfPropertyPlantAndEquipment",
+            )
+            free_cash_flow = None
+            if operating_cash_flow is not None and capital_expenditure is not None:
+                free_cash_flow = (
+                    operating_cash_flow + capital_expenditure
+                    if capital_expenditure < 0
+                    else operating_cash_flow - capital_expenditure
+                )
+            published_at = _quarterly_financial_available_date(statement_date.year, quarter)
+            total_assets = self._finmind_first(balance, "TotalAssets")
+            total_liabilities = self._finmind_first(balance, "Liabilities", "TotalLiabilities")
+            equity = self._finmind_first(balance, "Equity")
+            if total_liabilities is None and total_assets is not None and equity is not None:
+                total_liabilities = total_assets - equity
+
+            rows.append(
+                {
+                    "Quarter": f"{statement_date.year}Q{quarter}",
+                    "Company_Name": meta.name,
+                    "Revenue": self._finmind_first(income, "Revenue"),
+                    "Gross_Profit": self._finmind_first(income, "GrossProfit"),
+                    "Operating_Expenses": self._finmind_first(income, "OperatingExpenses"),
+                    "Operating_Income": self._finmind_first(income, "OperatingIncome"),
+                    "Non_Operating_Income": self._finmind_first(
+                        income, "TotalNonoperatingIncomeAndExpense", "NonoperatingIncomeAndExpenses"
+                    ),
+                    "Pre_Tax_Income": self._finmind_first(income, "PreTaxIncome"),
+                    "Net_Income": self._finmind_first(
+                        income,
+                        "IncomeAfterTaxes",
+                        "IncomeFromContinuingOperations",
+                        "TotalConsolidatedProfitForThePeriod",
+                    ),
+                    "EPS": self._finmind_first(income, "EPS"),
+                    "Inventory": self._finmind_first(balance, "Inventories", "Inventory"),
+                    "Total_Assets": total_assets,
+                    "Total_Liabilities": total_liabilities,
+                    "Current_Assets": self._finmind_first(balance, "CurrentAssets"),
+                    "Current_Liabilities": self._finmind_first(balance, "CurrentLiabilities"),
+                    "Equity": equity,
+                    "Current_Contract_Liabilities": current_contract,
+                    "Noncurrent_Contract_Liabilities": noncurrent_contract,
+                    "Contract_Liabilities": sum(contract_parts) if contract_parts else 0.0,
+                    "Contract_Liabilities_Status": "reported" if contract_parts else "not_reported",
+                    "Paid_In_Capital": self._finmind_first(balance, "CapitalStock"),
+                    "Cash_And_Cash_Equivalents": cash,
+                    "Quick_Assets": sum(quick_parts) if quick_parts else None,
+                    "Quick_Assets_Method": "reported_component_sum" if quick_parts else None,
+                    "Accounts_Payable": self._finmind_sum(
+                        balance,
+                        "NotesPayable",
+                        "NotesPayableToRelatedParties",
+                        "AccountsPayable",
+                        "AccountsPayableToRelatedParties",
+                    ),
+                    "Interest_Bearing_Debt": self._finmind_sum(
+                        balance,
+                        "ShorttermBorrowings",
+                        "ShortTermNotesAndBillsPayable",
+                        "CurrentPortionOfLongTermLiabilities",
+                        "CurrentCorporateBondsPayable",
+                        "CurrentPortionOfLongtermBorrowings",
+                        "LeaseLiabilitiesCurrent",
+                        "BondsPayable",
+                        "LongtermBorrowings",
+                        "LeaseLiabilitiesNoncurrent",
+                    ),
+                    "Operating_Cash_Flow": operating_cash_flow,
+                    "Capital_Expenditure": capital_expenditure,
+                    "Free_Cash_Flow": free_cash_flow,
+                    "Published_At": published_at,
+                    "published_at": published_at,
+                    "published_at_source": "statutory_deadline_fallback",
+                    "Financial_Data_Source": "FinMind",
+                }
+            )
+
+        if not rows:
+            return pd.DataFrame()
+        financial_df = pd.DataFrame(rows).drop_duplicates(subset=["Quarter"]).sort_values("Quarter")
+        if len(financial_df) > 12:
+            financial_df = financial_df.tail(12)
+        return self._enrich_quarterly_financials(financial_df.reset_index(drop=True))
+
+    @staticmethod
+    def _finmind_statement_by_date(result: Any) -> dict[date, dict[str, float]]:
+        grouped: dict[date, dict[str, float]] = {}
+        if not isinstance(result, dict) or result.get("status") not in (None, 200):
+            return grouped
+        for item in result.get("data") or []:
+            if not isinstance(item, dict):
+                continue
+            account = str(item.get("type") or "").strip()
+            if not account or account.endswith("_per"):
+                continue
+            try:
+                statement_date = date.fromisoformat(str(item.get("date") or "")[:10])
+            except ValueError:
+                continue
+            value = _to_number(item.get("value"))
+            if value is not None:
+                grouped.setdefault(statement_date, {})[account] = value
+        return grouped
+
+    @staticmethod
+    def _finmind_first(statement: dict[str, float], *accounts: str) -> float | None:
+        for account in accounts:
+            value = statement.get(account)
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _finmind_sum(statement: dict[str, float], *accounts: str) -> float | None:
+        values = [statement[account] for account in dict.fromkeys(accounts) if account in statement]
+        return sum(values) if values else None
+
     def _fetch_mops_quarter_income_statement(self, meta: StockMeta, roc_year: int, quarter: int) -> dict[str, Any] | None:
         payload = {
             "companyId": meta.code,
@@ -887,15 +1165,21 @@ class StockDataFetcher:
             "year": str(roc_year),
             "subsidiaryCompanyId": "",
         }
-        try:
-            response = self.client.post(
-                f"{MOPS_API_BASE_URL}t164sb04",
-                json=payload,
-                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
-            )
-            response.raise_for_status()
-            data = response.json()
-        except Exception:
+        data: dict[str, Any] = {}
+        for attempt in range(3):
+            try:
+                response = self.client.post(
+                    f"{MOPS_API_BASE_URL}t164sb04",
+                    json=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                break
+            except Exception:
+                if attempt < 2:
+                    time.sleep(0.25 * (attempt + 1))
+        if not data:
             return None
 
         report_list = (data.get("result") or {}).get("reportList") or []
@@ -914,9 +1198,19 @@ class StockDataFetcher:
             "Company_Name": meta.name,
             "Revenue": report_map.get("營業收入合計"),
             "Gross_Profit": report_map.get("營業毛利（毛損）淨額") or report_map.get("營業毛利（毛損）"),
+            "Operating_Expenses": _first_match(report_map, "營業費用合計", "營業費用"),
             "Operating_Income": report_map.get("營業利益（損失）"),
+            "Non_Operating_Income": _first_match(
+                report_map,
+                "營業外收入及支出合計",
+                "營業外收入及支出淨額",
+            ),
+            "Pre_Tax_Income": _first_match(report_map, "稅前淨利（淨損）", "稅前淨利（損）"),
             "Net_Income": report_map.get("本期淨利（淨損）") or report_map.get("母公司業主（淨利／損）"),
             "EPS": report_map.get("　基本每股盈餘") or report_map.get("基本每股盈餘"),
+            "Published_At": _quarterly_financial_available_date(roc_year + 1911, quarter),
+            "published_at": _quarterly_financial_available_date(roc_year + 1911, quarter),
+            "published_at_source": "statutory_deadline_fallback",
         }
 
     def _fetch_mops_quarter_report(self, meta: StockMeta, endpoint: str, roc_year: int, quarter: int) -> dict[str, float | None]:
@@ -928,15 +1222,21 @@ class StockDataFetcher:
             "year": str(roc_year),
             "subsidiaryCompanyId": "",
         }
-        try:
-            response = self.client.post(
-                f"{MOPS_API_BASE_URL}{endpoint}",
-                json=payload,
-                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
-            )
-            response.raise_for_status()
-            data = response.json()
-        except Exception:
+        data: dict[str, Any] = {}
+        for attempt in range(3):
+            try:
+                response = self.client.post(
+                    f"{MOPS_API_BASE_URL}{endpoint}",
+                    json=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                break
+            except Exception:
+                if attempt < 2:
+                    time.sleep(0.25 * (attempt + 1))
+        if not data:
             return {}
 
         report_list = (data.get("result") or {}).get("reportList") or []
@@ -959,16 +1259,98 @@ class StockDataFetcher:
 
         inventory = _first_match(report_map, "存貨", "存貨合計")
         total_assets = _first_match(report_map, "資產總計", "資產總額")
+        total_liabilities = _first_match(report_map, "負債總計", "負債總額")
         current_assets = _first_match(report_map, "流動資產合計", "流動資產總額")
         current_liabilities = _first_match(report_map, "流動負債合計", "流動負債總額")
         equity = _first_match(report_map, "權益總計", "權益總額")
 
+        if total_liabilities is None and total_assets is not None and equity is not None:
+            total_liabilities = total_assets - equity
+
+        current_contract_liabilities = _first_match(
+            report_map,
+            "合約負債－流動",
+            "合約負債-流動",
+            "流動合約負債",
+        )
+        noncurrent_contract_liabilities = _first_match(
+            report_map,
+            "合約負債－非流動",
+            "合約負債-非流動",
+            "非流動合約負債",
+        )
+        reported_contract_values = [
+            value
+            for value in (current_contract_liabilities, noncurrent_contract_liabilities)
+            if value is not None
+        ]
+        contract_liabilities = sum(reported_contract_values) if reported_contract_values else 0.0
+        contract_liabilities_status = "reported" if reported_contract_values else "not_reported"
+
+        paid_in_capital = _first_match(
+            report_map,
+            "股本合計",
+            "股本",
+            "普通股股本",
+        )
+        cash = _first_match(report_map, "現金及約當現金", "現金及銀行存款")
+        quick_financial_assets = _sum_matches(
+            report_map,
+            "透過損益按公允價值衡量之金融資產－流動",
+            "透過其他綜合損益按公允價值衡量之金融資產－流動",
+            "按攤銷後成本衡量之金融資產－流動",
+            "避險之金融資產－流動",
+            "其他金融資產－流動",
+        )
+        quick_receivables = _sum_matches(
+            report_map,
+            "應收票據淨額",
+            "應收票據－關係人淨額",
+            "應收帳款淨額",
+            "應收帳款－關係人淨額",
+            "其他應收款",
+            "其他應收款－關係人",
+        )
+        quick_parts = [value for value in (cash, quick_financial_assets, quick_receivables) if value is not None]
+        quick_assets = sum(quick_parts) if quick_parts else None
+
+        accounts_payable = _sum_matches(
+            report_map,
+            "應付票據",
+            "應付票據－關係人",
+            "應付帳款",
+            "應付帳款－關係人",
+        )
+        interest_bearing_debt = _sum_matches(
+            report_map,
+            "短期借款",
+            "應付短期票券",
+            "一年或一營業週期內到期長期負債",
+            "應付公司債－流動",
+            "長期借款－流動",
+            "租賃負債－流動",
+            "應付公司債",
+            "長期借款",
+            "租賃負債－非流動",
+        )
+
         return {
             "Inventory": inventory,
             "Total_Assets": total_assets,
+            "Total_Liabilities": total_liabilities,
             "Current_Assets": current_assets,
             "Current_Liabilities": current_liabilities,
             "Equity": equity,
+            "Current_Contract_Liabilities": current_contract_liabilities,
+            "Noncurrent_Contract_Liabilities": noncurrent_contract_liabilities,
+            "Contract_Liabilities": contract_liabilities,
+            "Contract_Liabilities_Status": contract_liabilities_status,
+            "Paid_In_Capital": paid_in_capital,
+            "Cash_And_Cash_Equivalents": cash,
+            "Quick_Assets": quick_assets,
+            "Quick_Assets_Method": "reported_component_sum" if quick_assets is not None else None,
+            "Accounts_Payable": accounts_payable,
+            "Interest_Bearing_Debt": interest_bearing_debt,
         }
 
     def _fetch_mops_quarter_cash_flow(self, meta: StockMeta, roc_year: int, quarter: int) -> dict[str, Any] | None:
@@ -1038,6 +1420,48 @@ class StockDataFetcher:
         )
         financial_df["net_margin"] = financial_df["Net_Margin"]
 
+        # Stable aliases for the unified financial scoring engine.
+        alias_pairs = {
+            "Operating_Expenses": "operating_expenses",
+            "Non_Operating_Income": "non_operating_income",
+            "Pre_Tax_Income": "pre_tax_income",
+            "Inventory": "inventory",
+            "Total_Assets": "total_assets",
+            "Total_Liabilities": "total_liabilities",
+            "Current_Assets": "current_assets",
+            "Current_Liabilities": "current_liabilities",
+            "Equity": "equity",
+            "Contract_Liabilities": "contract_liabilities",
+            "Paid_In_Capital": "paid_in_capital",
+            "Quick_Assets": "quick_assets",
+            "Accounts_Payable": "accounts_payable",
+            "Interest_Bearing_Debt": "interest_bearing_debt",
+        }
+        for source, alias in alias_pairs.items():
+            if source in financial_df.columns:
+                financial_df[alias] = financial_df[source]
+
+        financial_df["Debt_Ratio"] = financial_df.apply(
+            lambda row: _safe_ratio(row.get("Total_Liabilities"), row.get("Total_Assets")),
+            axis=1,
+        )
+        financial_df["debt_ratio"] = financial_df["Debt_Ratio"]
+        financial_df["Current_Ratio"] = financial_df.apply(
+            lambda row: _safe_ratio(row.get("Current_Assets"), row.get("Current_Liabilities")),
+            axis=1,
+        )
+        financial_df["current_ratio"] = financial_df["Current_Ratio"]
+        financial_df["Quick_Ratio"] = financial_df.apply(
+            lambda row: _safe_ratio(row.get("Quick_Assets"), row.get("Current_Liabilities")),
+            axis=1,
+        )
+        financial_df["quick_ratio"] = financial_df["Quick_Ratio"]
+        financial_df["Contract_Liability_Capital_Ratio"] = financial_df.apply(
+            lambda row: _safe_ratio(row.get("Contract_Liabilities"), row.get("Paid_In_Capital")),
+            axis=1,
+        )
+        financial_df["contract_liability_capital_ratio"] = financial_df["Contract_Liability_Capital_Ratio"]
+
         # Net Income YoY (same-quarter comparison)
         net_income_yoy_values: list[float | None] = []
         for i in range(n):
@@ -1095,6 +1519,37 @@ class StockDataFetcher:
                 inventory_turnover_values.append(None)
         financial_df["Inventory_Turnover"] = inventory_turnover_values
         financial_df["inventory_turnover"] = financial_df["Inventory_Turnover"]
+
+        inventory_revenue_values: list[float | None] = []
+        contract_revenue_values: list[float | None] = []
+        for i in range(n):
+            if i < 3:
+                inventory_revenue_values.append(None)
+                contract_revenue_values.append(None)
+                continue
+            revenue_values = [
+                _to_number(financial_df.iloc[j].get("Revenue"))
+                for j in range(i - 3, i + 1)
+            ]
+            if any(value is None for value in revenue_values):
+                inventory_revenue_values.append(None)
+                contract_revenue_values.append(None)
+                continue
+            trailing_revenue = sum(value for value in revenue_values if value is not None)
+            if trailing_revenue == 0:
+                inventory_revenue_values.append(None)
+                contract_revenue_values.append(None)
+                continue
+            inventory_revenue_values.append(
+                _safe_ratio(financial_df.iloc[i].get("Inventory"), trailing_revenue)
+            )
+            contract_revenue_values.append(
+                _safe_ratio(financial_df.iloc[i].get("Contract_Liabilities"), trailing_revenue)
+            )
+        financial_df["Inventory_To_TTM_Revenue"] = inventory_revenue_values
+        financial_df["inventory_to_ttm_revenue"] = financial_df["Inventory_To_TTM_Revenue"]
+        financial_df["Contract_Liability_Revenue_Ratio"] = contract_revenue_values
+        financial_df["contract_liability_revenue_ratio"] = financial_df["Contract_Liability_Revenue_Ratio"]
 
         return financial_df
 

@@ -609,11 +609,14 @@ def _build_hard_filter_candidates(
     report_date: date,
     force_refresh: bool = False,
     scan_settings: dict[str, Any] | None = None,
+    *,
+    historical_replay: bool = False,
 ) -> pd.DataFrame:
     settings = resolve_hard_filter_settings(scan_settings, defaults=HARD_FILTERS)
     universe = load_stock_universe(force_refresh=force_refresh)
-    revenue_history = load_recent_revenue_history(universe)
-    price_metrics = load_price_metrics(universe, force_refresh=force_refresh)
+    point_in_time_date = report_date if historical_replay else None
+    revenue_history = load_recent_revenue_history(universe, as_of_date=point_in_time_date)
+    price_metrics = load_price_metrics(universe, force_refresh=force_refresh, as_of_date=point_in_time_date)
     issued_shares = _load_issued_shares_map(universe)
 
     rows: list[dict[str, Any]] = []
@@ -1037,6 +1040,9 @@ def _fetch_recent_daily_chip_data(
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
     include_foreign_ratio: bool = True,
     scope: str = "default",
+    trading_calendar: list[date] | None = None,
+    earliest_trading_dates: dict[str, date] | None = None,
+    cached_only: bool = False,
 ) -> tuple[pd.DataFrame, date | None]:
     if candidates.empty:
         return pd.DataFrame(), None
@@ -1051,7 +1057,13 @@ def _fetch_recent_daily_chip_data(
     collected_dates: list[date] = []
     collected_frames: list[pd.DataFrame] = []
 
-    calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
+    if trading_calendar:
+        calendar = sorted(
+            {value for value in trading_calendar if value <= report_date},
+            reverse=True,
+        )[:TRADING_DAY_LOOKBACK]
+    else:
+        calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
         for checked_index, target_date in enumerate(calendar, start=1):
             # Extra safety: skip weekends and Taiwan market holidays if calendar ever contains them.
@@ -1070,10 +1082,19 @@ def _fetch_recent_daily_chip_data(
                 callback_progress = min(progress_end - 0.01, progress + (progress_end - progress) * 0.015 * finmind_fraction)
                 _print_chip_progress(progress_label, callback_progress, message)
 
-            cached_net = _load_daily_chip_cache(target_date, candidate_codes)
+            eligible_codes = {
+                code
+                for code in candidate_codes
+                if earliest_trading_dates is None
+                or earliest_trading_dates.get(code) is None
+                or earliest_trading_dates[code] <= target_date
+            }
+            eligible_twse_codes = twse_codes & eligible_codes
+            eligible_tpex_codes = tpex_codes & eligible_codes
+            cached_net = _load_daily_chip_cache(target_date, eligible_codes)
             cached_codes = set(cached_net["code"].tolist()) if not cached_net.empty else set()
-            missing_twse_codes = twse_codes - cached_codes
-            missing_tpex_codes = tpex_codes - cached_codes
+            missing_twse_codes = set() if cached_only else eligible_twse_codes - cached_codes
+            missing_tpex_codes = set() if cached_only else eligible_tpex_codes - cached_codes
             if cached_codes:
                 _print_chip_progress(
                     progress_label,
@@ -1499,11 +1520,20 @@ def _load_cached_tdcc_frames() -> pd.DataFrame:
     return merged.sort_values(["snapshot_date", "code", "level"]).reset_index(drop=True)
 
 
-def _build_weekly_distribution(candidates: pd.DataFrame) -> pd.DataFrame:
-    update_tdcc_snapshot_cache()
+def _build_weekly_distribution(candidates: pd.DataFrame, report_date: date | None = None) -> pd.DataFrame:
+    # The public TDCC bulk feed only exposes the latest snapshot.  Never fetch
+    # it while replaying an older date, and never let a newer cached snapshot
+    # enter a historical result.
+    if report_date is None or report_date >= get_tw_today():
+        update_tdcc_snapshot_cache()
     tdcc_df = _load_cached_tdcc_frames()
     if tdcc_df.empty or candidates.empty:
         return pd.DataFrame()
+
+    if report_date is not None:
+        tdcc_df = tdcc_df[tdcc_df["snapshot_date"] <= report_date].copy()
+        if tdcc_df.empty:
+            return pd.DataFrame()
 
     candidate_codes = set(candidates["code"].tolist())
     tdcc_df = tdcc_df[tdcc_df["code"].isin(candidate_codes)].copy()
@@ -1535,9 +1565,18 @@ def build_market_context(
     scope: str = "default",
     extra_candidates: list[dict[str, Any]] | None = None,
     scan_settings: dict[str, Any] | None = None,
+    trading_calendar: list[date] | None = None,
+    earliest_trading_dates: dict[str, date] | None = None,
+    cached_only: bool = False,
+    historical_replay: bool = False,
 ) -> ChipMarketContext:
     report_date = report_date or get_tw_today()
-    candidates = _build_hard_filter_candidates(report_date, force_refresh=force_refresh, scan_settings=scan_settings)
+    candidates = _build_hard_filter_candidates(
+        report_date,
+        force_refresh=force_refresh,
+        scan_settings=scan_settings,
+        historical_replay=historical_replay,
+    )
     if extra_candidates:
         extra_frame = pd.DataFrame(extra_candidates)
         if not extra_frame.empty and "code" in extra_frame.columns:
@@ -1566,10 +1605,13 @@ def build_market_context(
             target_trading_days=target_trading_days,
             include_foreign_ratio=include_foreign_ratio,
             scope=scope,
+            trading_calendar=trading_calendar,
+            earliest_trading_dates=earliest_trading_dates,
+            cached_only=cached_only,
         )
     else:
         daily_data, latest_trading_date = pd.DataFrame(), None
-    weekly_data = _build_weekly_distribution(candidates)
+    weekly_data = _build_weekly_distribution(candidates, report_date)
     return ChipMarketContext(
         report_date=report_date,
         latest_trading_date=latest_trading_date,
@@ -1947,6 +1989,8 @@ def build_chip_reports(
     progress_start: float = 0.0,
     progress_end: float = 100.0,
     target_trading_days: int = TARGET_DAILY_TRADING_DAYS,
+    *,
+    historical_replay: bool = False,
 ) -> tuple[dict[str, str], ChipMarketContext]:
     include_daily_data = any(key != "chip_4" for key in strategy_keys)
     include_foreign_ratio = "chip_3" in strategy_keys
@@ -1959,6 +2003,7 @@ def build_chip_reports(
         progress_start=progress_start,
         progress_end=progress_end,
         target_trading_days=target_trading_days,
+        historical_replay=historical_replay,
     )
     reports = {key: REPORT_BUILDERS[key](context) for key in strategy_keys}
     return reports, context

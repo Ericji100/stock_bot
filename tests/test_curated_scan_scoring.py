@@ -100,6 +100,7 @@ def test_curated_scan_scores_and_sorts_without_changing_candidates(monkeypatch):
         lambda *args, **kwargs: {"chip_1": {"1111": "B", "2222": "B"}, "chip_2": {"2222": "A"}},
     )
     monkeypatch.setattr(curated.ts, "run_technical_scan", lambda *args, **kwargs: technical_result)
+    monkeypatch.setattr(radar_service, "prepare_radar_scoring_data", lambda *args, **kwargs: None)
     monkeypatch.setattr(radar_service, "score_radar_candidates", fake_score)
 
     result = curated.build_curated_scan_result({}, date(2026, 5, 22))
@@ -162,7 +163,7 @@ def test_curated_scan_backfills_revenue_history_for_chip_only_selected_candidate
     monkeypatch.setattr(curated, "build_market_context", lambda *args, **kwargs: chip_context)
     monkeypatch.setattr(curated, "build_chip_grade_maps", lambda *args, **kwargs: {"chip_1": {"3333": "B"}, "chip_2": {"3333": "B"}})
     monkeypatch.setattr(curated.ts, "run_technical_scan", lambda *args, **kwargs: technical_result)
-    def fake_load_recent_revenue_history(entries):
+    def fake_load_recent_revenue_history(entries, **kwargs):
         captured_revenue_entries.extend(entries)
         return {
             "3333": [
@@ -172,6 +173,7 @@ def test_curated_scan_backfills_revenue_history_for_chip_only_selected_candidate
         }
 
     monkeypatch.setattr(curated, "load_recent_revenue_history", fake_load_recent_revenue_history)
+    monkeypatch.setattr(radar_service, "prepare_radar_scoring_data", lambda *args, **kwargs: None)
     monkeypatch.setattr(radar_service, "score_radar_candidates", fake_score)
 
     result = curated.build_curated_scan_result({}, date(2026, 5, 22))
@@ -242,6 +244,7 @@ def test_curated_scan_uses_actual_ma_signal_codes(monkeypatch):
     monkeypatch.setattr(curated, "build_market_context", lambda *args, **kwargs: chip_context)
     monkeypatch.setattr(curated, "build_chip_grade_maps", lambda *args, **kwargs: {"chip_1": {"4444": "B"}})
     monkeypatch.setattr(curated.ts, "run_technical_scan", lambda *args, **kwargs: technical_result)
+    monkeypatch.setattr(radar_service, "prepare_radar_scoring_data", lambda *args, **kwargs: None)
     monkeypatch.setattr(radar_service, "score_radar_candidates", fake_score)
 
     result = curated.build_curated_scan_result({}, date(2026, 6, 30))

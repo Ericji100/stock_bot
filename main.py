@@ -10,6 +10,7 @@ from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Upd
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 import curated_scan_service
+import laoxiao_scan_service
 from scheduled_all_scan_prepare_service import (
     format_scheduled_all_scan_prepare_message,
     prepare_scheduled_all_scan_data,
@@ -19,6 +20,7 @@ from research_center.recent_scans import save_recent_scan_result
 from chip_strategies import (
     CHIP_STRATEGY_NAMES,
     STRATEGY_DEFINITIONS,
+    build_chip_grade_maps,
     build_chip_reports,
     get_tw_today,
     is_possible_trading_day,
@@ -63,7 +65,8 @@ from portfolio_manager import (
 )
 from stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
 from stock_scanner import (
-    run_scan as run_tw_market_scan,
+    format_scan_report as format_tw_market_scan_report,
+    scan_tw_market,
 )
 # NEW: 引入技術面選股模組
 import technical_scanner as ts
@@ -198,6 +201,7 @@ SCAN_MENU_TEXT = (
     "6. 技術面選股\n"
     "7. 全部執行"
     "\n8. 精選選股"
+    "\n9. 老蕭選股"
 )
 SCAN_SELECTIONS = {
     "1": ["financial"],
@@ -206,8 +210,9 @@ SCAN_SELECTIONS = {
     "4": ["chip_3"],
     "5": ["chip_4"],
     "6": ["technical"],
-    "7": ["financial", "chip_1", "chip_2", "chip_3", "chip_4", "technical", "curated"],
+    "7": ["financial", "chip_1", "chip_2", "chip_3", "chip_4", "technical", "curated", "laoxiao"],
     "8": ["curated"],
+    "9": ["laoxiao"],
 }
 SCAN_MENU_LABELS = {
     "1": STRATEGY_DEFINITIONS["financial"]["menu"],
@@ -218,6 +223,7 @@ SCAN_MENU_LABELS = {
     "6": "技術面選股",
     "7": STRATEGY_DEFINITIONS["all"]["menu"],
     "8": "精選選股",
+    "9": "老蕭選股",
 }
 
 # --- 1. 檔案管理 ---
@@ -688,7 +694,7 @@ def build_scan_strategy_keyboard(report_date: date | None = None) -> InlineKeybo
     # 若有 report_date，callback 會包含日期，點選後直接執行、不進日期選單。
     # 若無 report_date，callback 不含日期，點選後進入日期選單。
     rows = []
-    for i in range(1, 9):
+    for i in range(1, 10):
         label = SCAN_MENU_LABELS[str(i)]
         if report_date:
             callback = f"{SCAN_CALLBACK_PREFIX}{i}:{report_date.isoformat()}"
@@ -711,17 +717,30 @@ def build_scan_date_menu(scan_mode: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-async def run_selected_scan_reports(update: Update, selection: str, report_date: date | None = None):
+async def run_selected_scan_reports(
+    update: Update,
+    selection: str,
+    report_date: date | None = None,
+    *,
+    historical_replay: bool = False,
+):
     async def send_text(text: str) -> None:
         await safe_send_reply(update, text)
 
-    await run_selected_scan_reports_core(selection, report_date, send_text)
+    await run_selected_scan_reports_core(
+        selection,
+        report_date,
+        send_text,
+        historical_replay=historical_replay,
+    )
 
 
 async def run_selected_scan_reports_core(
     selection: str,
     report_date: date | None,
     send_text: Callable[[str], Awaitable[None]],
+    *,
+    historical_replay: bool = False,
 ) -> None:
     selected_keys = SCAN_SELECTIONS.get(selection)
     if not selected_keys:
@@ -734,12 +753,23 @@ async def run_selected_scan_reports_core(
     else:
         target_date, date_note = report_date, ""
     report_parts: list[str] = []
+    aggregate_codes: list[str] = []
+    aggregate_seen: set[str] = set()
+
+    def add_aggregate_codes(values) -> None:
+        for value in values or []:
+            code = str(value or "").strip()
+            if not code or code in aggregate_seen:
+                continue
+            aggregate_seen.add(code)
+            aggregate_codes.append(code)
     if date_note:
         print(f"[{now_timestamp()}] [scan progress][{menu_label}] date adjusted: {date_note}", flush=True)
     print(f"[{now_timestamp()}] [選股進度][{menu_label}] 0.00% 收到 /scan 選股任務，目標日期 {target_date.isoformat()}", flush=True)
 
     is_curated_only = selected_keys == ["curated"]
     has_curated = "curated" in selected_keys
+    has_laoxiao = "laoxiao" in selected_keys
 
     if is_curated_only:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 10.00% 開始精選交叉比對", flush=True)
@@ -750,9 +780,16 @@ async def run_selected_scan_reports_core(
                 curated_scan_service.build_curated_scan_result,
                 config.get("scan_settings", {}),
                 target_date,
+                historical_replay=historical_replay,
             )
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 90.00% 精選報告產生完成，準備傳送 Telegram", flush=True)
-            save_recent_scan_result(menu_label, target_date, curated_result.report_text, curated_result.selected_codes)
+            save_recent_scan_result(
+                menu_label,
+                target_date,
+                curated_result.report_text,
+                curated_result.selected_codes,
+                metadata={"scoring_version": resolve_radar_scoring_version()},
+            )
             await send_text(curated_result.report_text)
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
         except Exception as exc:
@@ -765,12 +802,16 @@ async def run_selected_scan_reports_core(
         try:
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 10.00% 開始財報營收選股", flush=True)
             config = load_config()
-            financial_report = await asyncio.to_thread(
-                run_tw_market_scan,
+            financial_result = await asyncio.to_thread(
+                scan_tw_market,
                 False,
                 None,
                 config.get("scan_settings", {}),
+                target_date,
+                historical_replay=historical_replay,
             )
+            financial_report = format_tw_market_scan_report(financial_result)
+            add_aggregate_codes(candidate.code for candidate in financial_result.candidates)
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 35.00% 財報營收報告完成，準備傳送 Telegram", flush=True)
             report_parts.append(financial_report)
             await send_text(financial_report)
@@ -780,7 +821,7 @@ async def run_selected_scan_reports_core(
 
     chip_keys = [key for key in selected_keys if key.startswith("chip_")]
     has_technical = "technical" in selected_keys
-    if not chip_keys and not has_technical and not has_curated:
+    if not chip_keys and not has_technical and not has_curated and not has_laoxiao:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
         return
 
@@ -789,7 +830,7 @@ async def run_selected_scan_reports_core(
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 40.00% 開始籌碼策略資料整理", flush=True)
         await send_text("籌碼選股資料整理中。")
         try:
-            chip_reports, _ = await asyncio.to_thread(
+            chip_reports, chip_context = await asyncio.to_thread(
                 build_chip_reports,
                 chip_keys,
                 False,
@@ -797,7 +838,11 @@ async def run_selected_scan_reports_core(
                 menu_label,
                 40.0,
                 chip_progress_end,
+                historical_replay=historical_replay,
             )
+            chip_grade_maps = build_chip_grade_maps(chip_context, chip_keys)
+            for grades in chip_grade_maps.values():
+                add_aggregate_codes(grades.keys())
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 籌碼選股失敗: {exc}")
             await send_text("⚠️ 籌碼選股產生失敗，請稍後再試或先單獨執行其他策略。")
@@ -816,11 +861,14 @@ async def run_selected_scan_reports_core(
         await send_text("技術面選股資料整理中。")
         try:
             config = load_config()
-            technical_messages = await asyncio.to_thread(
-                ts.build_technical_scan_messages,
+            technical_result = await asyncio.to_thread(
+                ts.run_technical_scan,
                 config.get("scan_settings", {}),
                 target_date,
+                historical_replay=historical_replay,
             )
+            technical_messages = ts.format_technical_report_messages(technical_result)
+            add_aggregate_codes(ts.collect_technical_selected_codes(technical_result))
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 98.00% 技術面報告完成，準備傳送 Telegram", flush=True)
             report_parts.extend(technical_messages)
             for technical_message in technical_messages:
@@ -828,6 +876,39 @@ async def run_selected_scan_reports_core(
         except Exception as exc:
             print(f"[{now_timestamp()}] ❌ /scan 技術面選股失敗: {exc}")
             await send_text("⚠️ 技術面選股產生失敗，請稍後再試。")
+
+    if has_laoxiao:
+        print(f"[{now_timestamp()}] [選股進度][{menu_label}] 98.50% 開始老蕭選股", flush=True)
+        await send_text("老蕭選股正在計算同業相對強弱、創高順序，並補齊候選股營收財報資料...")
+        try:
+            config = load_config()
+            laoxiao_result = await asyncio.to_thread(
+                laoxiao_scan_service.build_laoxiao_scan_result,
+                config.get("scan_settings", {}),
+                target_date,
+                progress=lambda message: print(
+                    f"[{now_timestamp()}] [選股進度][{menu_label}] {message}",
+                    flush=True,
+                ),
+                historical_replay=historical_replay,
+            )
+            add_aggregate_codes(laoxiao_result.selected_codes)
+            save_recent_scan_result(
+                laoxiao_scan_service.SCAN_TYPE,
+                target_date,
+                laoxiao_result.report_text,
+                laoxiao_result.selected_codes,
+                metadata={
+                    "scoring_version": laoxiao_scan_service.SCORING_VERSION,
+                    "diagnostics": laoxiao_result.diagnostics,
+                },
+            )
+            report_parts.append(laoxiao_result.report_text)
+            for message in laoxiao_result.report_messages:
+                await send_text(message)
+        except Exception as exc:
+            print(f"[{now_timestamp()}] ❌ /scan 老蕭選股失敗: {exc}", flush=True)
+            await send_text("⚠️ 老蕭選股產生失敗，會繼續完成其他已選策略。")
 
     if has_curated:
         print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.00% 開始精選交叉比對", flush=True)
@@ -838,7 +919,9 @@ async def run_selected_scan_reports_core(
                 curated_scan_service.build_curated_scan_result,
                 config.get("scan_settings", {}),
                 target_date,
+                historical_replay=historical_replay,
             )
+            add_aggregate_codes(curated_result.selected_codes)
             print(f"[{now_timestamp()}] [選股進度][{menu_label}] 99.50% 精選報告產生完成，準備傳送 Telegram", flush=True)
             report_parts.append(curated_result.report_text)
             await send_text(curated_result.report_text)
@@ -847,7 +930,12 @@ async def run_selected_scan_reports_core(
             await send_text("⚠️ 精選選股產生失敗，會繼續完成其他已選策略。")
 
     if selection == "7" and report_parts:
-        save_recent_scan_result(menu_label, target_date, "\n\n".join(report_parts))
+        save_recent_scan_result(
+            menu_label,
+            target_date,
+            "\n\n".join(report_parts),
+            aggregate_codes,
+        )
 
     print(f"[{now_timestamp()}] [選股進度][{menu_label}] 100.00% 完成", flush=True)
 
@@ -1273,7 +1361,7 @@ async def handle_scan_strategy_callback(update: Update, context: ContextTypes.DE
         await run_stoppable_command(
             update,
             f"選股：{menu_label}",
-            lambda: run_selected_scan_reports(update, selection, report_date),
+            lambda: run_selected_scan_reports(update, selection, report_date, historical_replay=True),
         )
     else:
         # /scan 不帶日期：進入日期選單
@@ -1315,7 +1403,7 @@ async def handle_scan_date_callback(update: Update, context: ContextTypes.DEFAUL
         await run_stoppable_command(
             update,
             f"選股：{menu_label}",
-            lambda: run_selected_scan_reports(update, scan_mode, report_date),
+            lambda: run_selected_scan_reports(update, scan_mode, report_date, historical_replay=False),
         )
     elif date_action == "custom":
         # Store pending state and ask user for date
@@ -1375,7 +1463,7 @@ async def handle_scan_date_text_input(update: Update, context: ContextTypes.DEFA
     await run_stoppable_command(
         update,
         f"選股：{menu_label}",
-        lambda: run_selected_scan_reports(update, scan_mode, report_date),
+        lambda: run_selected_scan_reports(update, scan_mode, report_date, historical_replay=True),
     )
 
 
@@ -1890,7 +1978,7 @@ async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
         )
         print(format_cmd_message(warning, "20:30 全部選股前置資料"), flush=True)
         await send_text(warning)
-    await run_selected_scan_reports_core("7", target_date, send_text)
+    await run_selected_scan_reports_core("7", target_date, send_text, historical_replay=False)
     await send_text(f"20:30 交易日全部選股完成\n資料日期：{target_date.isoformat()}")
     print(format_cmd_message(f"20:30 全部選股完成，資料日期 {target_date.isoformat()}", "定時任務"), flush=True)
 

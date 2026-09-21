@@ -71,12 +71,13 @@ def _find_macd_wave_cycle(frame: pd.DataFrame) -> dict | None:
     # Take the most recent completed red zone
     last_red_start, last_red_end = completed_red[-1]
 
-    # Green zone just before this red zone: from red_starts[-1]'s previous index to last_red_start
-    green_start = last_red_start - 1
-    while green_start >= 0 and frame[macd_col].iloc[green_start] > 0:
+    # Use the entire contiguous negative-histogram zone immediately before red.
+    green_end = last_red_start - 1
+    if green_end < 0 or not frame[macd_col].iloc[green_end] < 0:
+        return None
+    green_start = green_end
+    while green_start > 0 and frame[macd_col].iloc[green_start - 1] < 0:
         green_start -= 1
-    if green_start < 0:
-        green_start = 0
 
     wave_zone = frame.iloc[green_start:last_red_start]
     red_zone = frame.iloc[last_red_start:last_red_end]
@@ -364,9 +365,9 @@ def _detect_strategy_a(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
 def _detect_strategy_b(frame: pd.DataFrame, stock_id: str, stock_name: str) -> list[dict]:
     """Strategy B: strong MACD red-zone retest breakout.
 
-    Requires MACD_HIST > 0 throughout.
-    B1: Today low touches/broks MA13 or MA21, close reclaims.
-    B2: 1-3 days ago broke MA13/MA21, today reclaims.
+    Requires MACD_HIST > 0 on the signal day.
+    B1: Today low touches MA5, MA13, or MA21; close reclaims.
+    B2: Signal-day close crosses above MA5, MA13, or MA21 during a red zone.
     B3: Retest MA13/MA21 then break MACD red-zone high (or retest high) during red zone.
     """
     if len(frame) < 5:
@@ -376,12 +377,14 @@ def _detect_strategy_b(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
     prev = frame.iloc[-2]
     prev2 = frame.iloc[-3] if len(frame) >= 3 else None
 
-    if latest["MACD_HIST"] <= 0:
+    if pd.isna(latest["MACD_HIST"]) or latest["MACD_HIST"] <= 0:
         return []
 
+    ma5 = float(latest["MA5"]) if pd.notna(latest["MA5"]) else None
     ma13 = float(latest["MA13"]) if pd.notna(latest["MA13"]) else None
     ma21 = float(latest["MA21"]) if pd.notna(latest["MA21"]) else None
     ma60 = float(latest["MA60"]) if pd.notna(latest["MA60"]) else None
+    prev_ma5 = float(prev["MA5"]) if pd.notna(prev["MA5"]) else None
     prev_ma13 = float(prev["MA13"]) if pd.notna(prev["MA13"]) else None
     prev_ma21 = float(prev["MA21"]) if pd.notna(prev["MA21"]) else None
 
@@ -395,11 +398,12 @@ def _detect_strategy_b(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
         s["notes"] = notes
         return s
 
-    # B1: Intraday touch — today's low touched MA13 or MA21, close reclaims same MA
+    # B1: Intraday touch — today's low touched a short MA, close reclaims it
     # Does NOT require yesterday close was below MA; today's low touching is sufficient
     # Additional strength requirement: close > prev_close AND close > MA21
     today_low_touch_ma13 = ma13 is not None and float(latest["low"]) <= ma13
     today_low_touch_ma21 = ma21 is not None and float(latest["low"]) <= ma21
+    today_low_touch_ma5 = ma5 is not None and float(latest["low"]) <= ma5
     if today_low_touch_ma13 and prev_ma13 is not None and close > ma13:
         if close > prev_close and ma21 is not None and close > ma21:
             sig = _sig("B1_intraday_retest_reclaim_ma", "B1｜當日低點碰觸 MA13 後收復")
@@ -410,36 +414,25 @@ def _detect_strategy_b(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
             sig = _sig("B1_intraday_retest_reclaim_ma", "B1｜當日低點碰觸 MA21 後收復")
             sig["features"] = {"retest_ma": "MA21"}
             signals.append(sig)
+    elif today_low_touch_ma5 and prev_ma5 is not None and close > ma5:
+        if close > prev_close and ma21 is not None and close > ma21:
+            sig = _sig("B1_intraday_retest_reclaim_ma", "B1｜當日低點碰觸 MA5 後收復")
+            sig["features"] = {"retest_ma": "MA5"}
+            signals.append(sig)
 
-    # B2: Short-term reclaim — within 1-3 days, broken MA13/MA21, today reclaimed
-    # Check rows -2, -3, -4 for break; only one of them needs to be a break
-    # Additional requirements: MACD_HIST>0, close>prev_close, close>MA21, not broken MA60
-    for lookback in range(2, 5):  # 2=prev day, 3=2 days ago, 4=3 days ago
-        if lookback >= len(frame):
-            continue
-        row_lb = frame.iloc[-lookback]
-        ma13_lb = float(row_lb["MA13"]) if pd.notna(row_lb["MA13"]) else None
-        ma21_lb = float(row_lb["MA21"]) if pd.notna(row_lb["MA21"]) else None
-        ma60_lb = float(row_lb["MA60"]) if pd.notna(row_lb["MA60"]) else None
-        close_lb = float(row_lb["close"])
-        broken_ma13 = ma13_lb is not None and close_lb <= ma13_lb
-        broken_ma21 = ma21_lb is not None and close_lb <= ma21_lb
-        broken_ma60 = ma60_lb is not None and close_lb <= ma60_lb
-        # Reject if MA60 was broken in the same lookback window
-        if broken_ma60:
-            continue
-        if broken_ma13 and close > ma13 and latest["MACD_HIST"] > 0:
-            if close > prev_close and ma21 is not None and close > ma21:
-                sig = _sig("B2_short_reclaim_after_break_ma", f"B2｜{lookback - 1}日前跌破 MA13 後今日收復")
-                sig["features"] = {"broken_ma": "MA13", "days_since_break": lookback - 1}
-                signals.append(sig)
-                break
-        elif broken_ma21 and close > ma21 and latest["MACD_HIST"] > 0:
-            if close > prev_close and close > ma21:
-                sig = _sig("B2_short_reclaim_after_break_ma", f"B2｜{lookback - 1}日前跌破 MA21 後今日收復")
-                sig["features"] = {"broken_ma": "MA21", "days_since_break": lookback - 1}
-                signals.append(sig)
-                break
+    # B2: Only the close crossing on the signal day matters; B1 remains independent.
+    crossed_mas = [
+        ma_name
+        for ma_name in ("MA5", "MA13", "MA21")
+        if pd.notna(prev[ma_name])
+        and pd.notna(latest[ma_name])
+        and prev_close <= float(prev[ma_name])
+        and close > float(latest[ma_name])
+    ]
+    if crossed_mas:
+        sig = _sig("B2_short_reclaim_after_break_ma", f"B2｜紅柱期間收盤突破 {'、'.join(crossed_mas)}")
+        sig["features"] = {"crossed_mas": crossed_mas}
+        signals.append(sig)
 
     # B3: Retest then break MACD red-zone high (or retest high) — supports MA13 or MA21
     # Find current red zone start: transition from non-positive (green/zero) to positive (red)
@@ -642,99 +635,102 @@ def _detect_strategy_c(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
 
 
 # -------------------------------------------------------------------
-# Strategy D: strong_stock_shakeout_reclaim
+# Strategy D: momentum background, short-term reversal
 # -------------------------------------------------------------------
 def _detect_strategy_d(frame: pd.DataFrame, stock_id: str, stock_name: str) -> list[dict]:
-    """Strategy D: strong stock shakeout reversal.
-
-    Background check: close above 60MA/105MA OR DIF>0 OR prior MACD red zone.
-    D1: Broke MA5/MA13/MA21 within 1-3 days, today reclaims.
-    D2: MACD high column flip to green (shakeout from strength), quick reversal.
-    D3: KD death cross, 1-3 days, quick reversal.
-    D4: Hammer candle reclaim.
-    All D sub-signals include 高風險短線策略 in notes.
-    """
+    """Route first short-MA reclaims by DIF sign and detect first KD recovery."""
     if len(frame) < 5:
         return []
 
     latest = frame.iloc[-1]
     prev = frame.iloc[-2]
 
-    # --- Strong background check ---
     close = float(latest["close"])
-    ma60 = float(latest["MA60"]) if pd.notna(latest["MA60"]) else None
-    ma105 = float(latest["MA105"]) if pd.notna(latest["MA105"]) else None
     dif = float(latest["DIF"]) if pd.notna(latest["DIF"]) else None
-    above_ma = (ma60 is not None and close > ma60) or (ma105 is not None and close > ma105)
     dif_pos = dif is not None and dif > 0
-    # Prior MACD red zone: was red in last 5 days
     prior_red_zone = any(frame["MACD_HIST"].iloc[j] > 0 for j in range(max(0, len(frame) - 6), len(frame) - 1))
-    # Background must be: price above MA60/MA105 AND (DIF>0 OR prior red zone in last 5 days)
-    if not (above_ma and (dif_pos or prior_red_zone)):
+    zero_origin = None
+    if dif == 0:
+        for i in range(len(frame) - 2, -1, -1):
+            prior_dif = frame["DIF"].iloc[i]
+            if pd.notna(prior_dif) and prior_dif != 0:
+                zero_origin = "above" if prior_dif > 0 else "below"
+                break
+    dif_group = ("D1" if dif_pos or zero_origin == "above" else
+                 "D2" if dif is not None and (dif < 0 or zero_origin == "below") else None)
+    if dif_group != "D1" and not prior_red_zone:
         return []
 
-    close = float(latest["close"])
-    prev_close = float(prev["close"])
-    ma5 = float(latest["MA5"]) if pd.notna(latest["MA5"]) else None
-    ma13 = float(latest["MA13"]) if pd.notna(latest["MA13"]) else None
-    ma21 = float(latest["MA21"]) if pd.notna(latest["MA21"]) else None
-    prev_ma5 = float(prev["MA5"]) if pd.notna(prev["MA5"]) else None
-    prev_ma13 = float(prev["MA13"]) if pd.notna(prev["MA13"]) else None
-    prev_ma21 = float(prev["MA21"]) if pd.notna(prev["MA21"]) else None
-
-    RISK = "高風險短線策略"
+    risk = "高風險短線策略"
     signals: list[dict] = []
 
     def _sig(sub: str, notes: str) -> dict:
-        s = _build_signal_base(stock_id, stock_name, frame, "D", "strong_stock_shakeout_reclaim", sub)
+        s = _build_signal_base(stock_id, stock_name, frame, "D", "momentum_background_short_term_reversal", sub)
         s["notes"] = notes
         return s
 
-    # D1: Broke MA13/MA21 within 1-3 days, today reclaims same MA
-    # MA5 is auxiliary (not primary break target for D1)
-    # Requires bullish candle today (close > open) and close > prev_close
-    is_bullish_today = close > float(latest["open"])
-    for lookback in range(2, 5):  # 2=yesterday, 3=2 days ago, 4=3 days ago
-        if lookback >= len(frame):
+    open_p = float(latest["open"])
+    low_p = float(latest["low"])
+    body = abs(close - open_p)
+    lower_shadow = min(open_p, close) - low_p
+    is_hammer = close > open_p and lower_shadow > body * 2
+    reclaimed_mas: list[str] = []
+    shadow_mas: list[str] = []
+
+    for ma_name in ("MA5", "MA13", "MA21"):
+        if pd.isna(latest[ma_name]) or close <= float(latest[ma_name]):
             continue
-        row_lb = frame.iloc[-lookback]
-        ma13_lb = float(row_lb["MA13"]) if pd.notna(row_lb["MA13"]) else None
-        ma21_lb = float(row_lb["MA21"]) if pd.notna(row_lb["MA21"]) else None
-        close_lb = float(row_lb["close"])
-        if ma13_lb is not None and close_lb <= ma13_lb and close > ma13:
-            if close > prev_close and is_bullish_today:
-                sig = _sig("D1_reclaim_ma_after_break", f"{RISK}｜{lookback - 1}日前跌破 MA13 後今日收復")
-                sig["features"] = {"reclaimed_ma": "MA13", "days_since_break": lookback - 1}
-                signals.append(sig)
-            break
-        elif ma21_lb is not None and close_lb <= ma21_lb and close > ma21:
-            if close > prev_close and is_bullish_today:
-                sig = _sig("D1_reclaim_ma_after_break", f"{RISK}｜{lookback - 1}日前跌破 MA21 後今日收復")
-                sig["features"] = {"reclaimed_ma": "MA21", "days_since_break": lookback - 1}
-                signals.append(sig)
-            break
+        today_ma = float(latest[ma_name])
+        prev_ma = float(prev[ma_name]) if pd.notna(prev[ma_name]) else None
+        close_cross = prev_ma is not None and float(prev["close"]) <= prev_ma
+        shadow_reclaim = is_hammer and low_p <= today_ma
 
-    # D2: MACD high column flip to green (just turned from high red to green, quick reversal)
-    # Flip: prev MACD_HIST > 0, today <= 0. Quick reversal requires DIF still > 0 (above zero axis)
-    # and today shows strength: red K reclaimed MA5/MA13, or just bullish candle.
-    if len(frame) >= 3:
-        prev_hist = float(frame["MACD_HIST"].iloc[-2])
-        curr_hist = float(latest["MACD_HIST"])
-        dif = float(latest["DIF"]) if pd.notna(latest["DIF"]) else None
-        # DIF must still be above zero axis for "high column flip" context
-        if prev_hist > 0 and curr_hist <= 0 and dif is not None and dif > 0:
-            # Quick reversal: today closes above MA5/MA13 OR bullish candle
-            close_above_ma5 = ma5 is not None and close > ma5
-            close_above_ma13_ma = ma13 is not None and close > ma13
-            is_bullish = close > float(latest["open"])
-            if close_above_ma5 or close_above_ma13_ma or is_bullish:
-                sig = _sig("D2_macd_high_column_flip_green", f"{RISK}｜MACD 高檔紅柱翻綠後快速反轉")
-                sig["features"] = {"prev_hist": prev_hist, "curr_hist": curr_hist, "dif": dif, "reclaim_ma": "MA5" if close_above_ma5 else ("MA13" if close_above_ma13_ma else "bullish_candle")}
-                signals.append(sig)
+        if not close_cross and shadow_reclaim:
+            # A same-day retest is only new if this above-MA run has not already
+            # had a close crossover or a qualifying lower-shadow retest.
+            for i in range(len(frame) - 2, -1, -1):
+                row = frame.iloc[i]
+                if pd.isna(row[ma_name]) or float(row["close"]) <= float(row[ma_name]):
+                    break
+                earlier = frame.iloc[i - 1] if i > 0 else None
+                prior_cross = (earlier is not None and pd.notna(earlier[ma_name])
+                               and float(earlier["close"]) <= float(earlier[ma_name]))
+                prior_body = abs(float(row["close"]) - float(row["open"]))
+                prior_shadow = min(float(row["open"]), float(row["close"])) - float(row["low"])
+                prior_retest = (float(row["close"]) > float(row["open"])
+                                and prior_shadow > prior_body * 2
+                                and float(row["low"]) <= float(row[ma_name]))
+                if prior_cross or prior_retest:
+                    shadow_reclaim = False
+                    break
 
-    # D3: KD death cross quick reversal — KD death cross within 1-3 days, quick reversal today
-    # Death cross = K >= D then K < D (K crosses DOWN through D)
-    # Use explicit days_ago (1=yesterday, 2=2days ago, 3=3days ago)
+        if close_cross or shadow_reclaim:
+            reclaimed_mas.append(ma_name)
+            if shadow_reclaim:
+                shadow_mas.append(ma_name)
+
+    if reclaimed_mas and (dif_group == "D1" or (dif_group == "D2" and prior_red_zone)):
+        ma_list = "、".join(reclaimed_mas)
+        notes = f"{risk}｜收復 {ma_list}"
+        if shadow_mas:
+            notes += f"｜長下影回踩 {'、'.join(shadow_mas)}"
+        if dif_group == "D2":
+            notes += "｜近 5 日曾有 MACD 紅柱"
+        if zero_origin:
+            notes += f"｜DIF 由{'上' if zero_origin == 'above' else '下'}方到達零軸"
+        sub = "D1_above_zero_short_ma_reclaim" if dif_group == "D1" else "D2_below_zero_short_ma_reclaim"
+        sig = _sig(sub, notes)
+        sig["features"] = {
+            "reclaimed_mas": reclaimed_mas,
+            "long_lower_shadow_mas": shadow_mas,
+            "dif_positive": dif_pos,
+            "prior_red_zone": prior_red_zone,
+            "dif_zero_origin": zero_origin,
+        }
+        signals.append(sig)
+
+    # The most recent death cross is the episode anchor. Earlier qualifying
+    # reversals after that cross suppress a repeated notification today.
     kd_death_days = None
     for days_ago in range(1, 4):
         death_idx = len(frame) - 1 - days_ago
@@ -747,57 +743,23 @@ def _detect_strategy_d(frame: pd.DataFrame, stock_id: str, stock_name: str) -> l
             if prev_bar["K"] >= prev_bar["D"] and death_bar["K"] < death_bar["D"]:
                 kd_death_days = days_ago
                 break
-    if kd_death_days is not None:
-        # Quick reversal today: K>D (golden cross), OR red K, OR reclaim MA5/MA13
-        kd_quick = pd.notna(latest["K"]) and pd.notna(latest["D"]) and latest["K"] > latest["D"]
-        close_above_ma5 = ma5 is not None and close > ma5
-        close_above_ma13_ma = ma13 is not None and close > ma13
-        is_bullish = close > float(latest["open"])
-        if kd_quick or close_above_ma5 or close_above_ma13_ma or is_bullish:
-            sig = _sig("D3_kd_death_cross_quick_reversal", f"{RISK}｜KD 死叉後 {kd_death_days} 日快速轉強")
-            sig["features"] = {"days_since_kd_death_cross": kd_death_days, "quick_reversal_type": "KD_golden_cross" if kd_quick else ("MA_reclaim" if (close_above_ma5 or close_above_ma13_ma) else "bullish_candle")}
-            signals.append(sig)
+    if kd_death_days is not None and (dif_pos or prior_red_zone):
+        def reversal_kind(row: pd.Series) -> str | None:
+            if pd.notna(row["K"]) and pd.notna(row["D"]) and row["K"] > row["D"]:
+                return "KD_golden_cross"
+            if any(pd.notna(row[ma]) and float(row["close"]) > float(row[ma]) for ma in ("MA5", "MA13")):
+                return "MA_reclaim"
+            if float(row["close"]) > float(row["open"]):
+                return "bullish_candle"
+            return None
 
-    # D4: Shakeout / long shadow reclaim MA13 (not just MA5)
-    # Requires strong background AND at least one shakeout condition:
-    #   (a) recent 1-3 day break of MA13/MA21, OR (b) long lower shadow today
-    # Must also reclaim MA13 (not just MA5) AND bullish candle (close > open)
-    open_p = float(latest["open"])
-    low_p = float(latest["low"])
-    body = abs(close - open_p)
-    lower_shadow = min(open_p, close) - low_p
-    is_hammer = lower_shadow > body * 2 and close > open_p
-    # Check for recent MA13/MA21 break (shakeout signal)
-    recent_ma_break = False
-    recent_ma_type = None
-    for lookback in range(2, 5):
-        if lookback >= len(frame):
-            continue
-        row_lb = frame.iloc[-lookback]
-        ma13_lb = float(row_lb["MA13"]) if pd.notna(row_lb["MA13"]) else None
-        ma21_lb = float(row_lb["MA21"]) if pd.notna(row_lb["MA21"]) else None
-        close_lb = float(row_lb["close"])
-        if ma13_lb is not None and close_lb <= ma13_lb:
-            recent_ma_break = True
-            recent_ma_type = "MA13"
-            break
-        elif ma21_lb is not None and close_lb <= ma21_lb:
-            recent_ma_break = True
-            recent_ma_type = "MA21"
-            break
-    # MA13 reclaim required (not just MA5); also require bullish candle today
-    ma13_reclaim = ma13 is not None and close > ma13
-    is_bullish_today = close > open_p
-    shakeout_ok = recent_ma_break or is_hammer
-    if shakeout_ok and ma13_reclaim and is_bullish_today:
-        sig = _sig("D4_hammer_candle_reclaim", f"{RISK}｜急跌或長下影後收復 MA5/MA13")
-        sig["features"] = {
-            "lower_shadow": lower_shadow,
-            "body": body,
-            "shakeout_ma": recent_ma_type,
-            "reclaim_ma": "MA13",
-        }
-        signals.append(sig)
+        death_idx = len(frame) - 1 - kd_death_days
+        already_reversed = any(reversal_kind(frame.iloc[i]) for i in range(death_idx + 1, len(frame) - 1))
+        today_reversal = reversal_kind(latest)
+        if today_reversal and not already_reversed:
+            sig = _sig("D3_kd_death_cross_first_reversal", f"{risk}｜KD 死叉後 {kd_death_days} 日首次轉強")
+            sig["features"] = {"days_since_kd_death_cross": kd_death_days, "quick_reversal_type": today_reversal}
+            signals.append(sig)
 
     return signals
 
@@ -834,6 +796,8 @@ def detect_technical_strategies(
 
     required_cols = ["date", "open", "high", "low", "close", "volume", "MACD_HIST", "K", "D"]
     if not all(c in frame.columns for c in required_cols):
+        return []
+    if frame[["close", "MACD_HIST", "K", "D"]].iloc[-2:].isna().any().any():
         return []
 
     try:

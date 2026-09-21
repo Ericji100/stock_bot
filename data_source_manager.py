@@ -17,7 +17,7 @@ import json
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -26,7 +26,7 @@ from threading import Lock
 _CACHE_DIR = Path(".cache")
 _CACHE_DIR.mkdir(exist_ok=True)
 
-_LOCK = Lock()
+_LOCK = RLock()
 
 
 def _load_json(path: Path) -> dict:
@@ -165,6 +165,7 @@ _FINMIND_SAFE_LIMIT = 500          # safe limit (official 600/hour)
 _FINMIND_SCOPE_LIMITS = {
     "backfill": 300,   # per backfill run
     "scan": 80,        # per scan
+    "financial": 180,  # LaoXiao/Radar top-50 financial statements: at most 3 requests each
     "research": 20,    # per research call
     "default": _FINMIND_SAFE_LIMIT,
 }
@@ -192,38 +193,49 @@ class FinMindQuotaManager:
 
     def can_use(self, cost: int = 1, scope: str = "default") -> bool:
         """Return True if we have remaining quota for the given cost and scope."""
-        self._clean_expired_hour()
-        key = f"scope_{scope}"
-        used = self._data.get(key, 0)
-        limit = _FINMIND_SCOPE_LIMITS.get(scope, _FINMIND_SAFE_LIMIT)
-        # Also enforce global hourly limit across all scopes
-        hourly_used = self._data.get("hourly_total", 0)
-        if hourly_used + cost > _FINMIND_SAFE_LIMIT:
-            return False
-        return used + cost <= limit
+        with _LOCK:
+            self._data = _load_json(_FINMIND_QUOTA_PATH)
+            self._clean_expired_hour()
+            key = f"scope_{scope}"
+            used = self._data.get(key, 0)
+            limit = _FINMIND_SCOPE_LIMITS.get(scope, _FINMIND_SAFE_LIMIT)
+            # Also enforce global hourly limit across all scopes
+            hourly_used = self._data.get("hourly_total", 0)
+            if hourly_used + cost > _FINMIND_SAFE_LIMIT:
+                return False
+            return used + cost <= limit
 
     def record_use(self, cost: int = 1, scope: str = "default") -> None:
         """Record consumption and persist."""
-        self._clean_expired_hour()
-        key = f"scope_{scope}"
-        self._data[key] = self._data.get(key, 0) + cost
-        self._data["total"] = self._data.get("total", 0) + cost
-        self._data["hourly_total"] = self._data.get("hourly_total", 0) + cost
-        self._persist()
+        with _LOCK:
+            # Multiple Radar workers own separate manager instances.  Reload
+            # inside the shared lock so a stale instance cannot overwrite the
+            # counters persisted by another worker.
+            self._data = _load_json(_FINMIND_QUOTA_PATH)
+            self._clean_expired_hour()
+            key = f"scope_{scope}"
+            self._data[key] = self._data.get(key, 0) + cost
+            self._data["total"] = self._data.get("total", 0) + cost
+            self._data["hourly_total"] = self._data.get("hourly_total", 0) + cost
+            self._persist()
 
     def remaining_safe_quota(self, scope: str = "default") -> int:
         """Return remaining safe quota for the given scope."""
-        self._clean_expired_hour()
-        key = f"scope_{scope}"
-        used = self._data.get(key, 0)
-        limit = _FINMIND_SCOPE_LIMITS.get(scope, _FINMIND_SAFE_LIMIT)
-        return max(0, limit - used)
+        with _LOCK:
+            self._data = _load_json(_FINMIND_QUOTA_PATH)
+            self._clean_expired_hour()
+            key = f"scope_{scope}"
+            used = self._data.get(key, 0)
+            limit = _FINMIND_SCOPE_LIMITS.get(scope, _FINMIND_SAFE_LIMIT)
+            return max(0, limit - used)
 
     def hourly_remaining(self) -> int:
         """Return remaining out of the 500/hour safe limit."""
-        self._clean_expired_hour()
-        used = self._data.get("hourly_total", 0)
-        return max(0, _FINMIND_SAFE_LIMIT - used)
+        with _LOCK:
+            self._data = _load_json(_FINMIND_QUOTA_PATH)
+            self._clean_expired_hour()
+            used = self._data.get("hourly_total", 0)
+            return max(0, _FINMIND_SAFE_LIMIT - used)
 
     # ------------------------------------------------------------------
     # Internal

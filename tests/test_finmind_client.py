@@ -29,6 +29,26 @@ class TestFinMindClient(unittest.TestCase):
             mock_client_cls.assert_not_called()
 
     @patch("httpx.Client")
+    def test_anonymous_access_sends_request_without_authorization_header(self, mock_client_cls):
+        """Explicit public mode may call FinMind without leaking an empty bearer token."""
+        from finmind_client import FinMindClient
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": 200, "data": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+        mock_client.__enter__.return_value = mock_client
+        mock_client_cls.return_value = mock_client
+
+        with patch("finmind_client._load_api_key", return_value=None):
+            client = FinMindClient(api_key=None, allow_anonymous=True)
+            result = client.request_dataset("TaiwanStockFinancialStatements", {"stock_id": "2330"})
+
+        self.assertEqual(result, {"status": 200, "data": []})
+        self.assertEqual(mock_client.get.call_args.kwargs["headers"], {})
+
+    @patch("httpx.Client")
     def test_quota_exceeded_returns_empty(self, mock_client_cls):
         """When FinMindQuotaManager.can_use returns False, no HTTP request is sent."""
         from finmind_client import FinMindClient

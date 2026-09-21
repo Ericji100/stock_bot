@@ -447,7 +447,7 @@ def test_parse_radar_args_defaults_to_combined_top15():
     assert request.report_date is None
     assert request.ai_top == 15
     assert request.model == "minimax"
-    assert request.scoring_version == "v2"
+    assert request.scoring_version == "v3"
 
 
 def test_parse_radar_args_accepts_source_date_ai_top():
@@ -457,11 +457,18 @@ def test_parse_radar_args_accepts_source_date_ai_top():
     assert request.ai_top == 3
 
 
+def test_parse_radar_args_accepts_laoxiao_source():
+    request = radar.parse_radar_args(["--source", "laoxiao", "--ai-top", "0"])
+
+    assert request.source == "laoxiao"
+    assert radar._source_label(request.source) == "老蕭選股結果"
+
+
 def test_parse_radar_args_accepts_model_and_no_ai_comment():
     request = radar.parse_radar_args(["--model", "deepseek", "--no-ai-comment"])
     assert request.model == "deepseek"
     assert request.ai_comment_enabled is False
-    assert request.scoring_version == "v2"
+    assert request.scoring_version == "v3"
 
 
 def test_parse_radar_args_accepts_scoring_version():
@@ -471,7 +478,7 @@ def test_parse_radar_args_accepts_scoring_version():
 
 def test_parse_radar_args_rejects_unknown_scoring_version():
     with pytest.raises(ValueError):
-        radar.parse_radar_args(["--scoring", "v3"])
+        radar.parse_radar_args(["--scoring", "v4"])
 
 
 def test_run_radar_accepts_raw_arg_list(monkeypatch):
@@ -488,7 +495,7 @@ def test_run_radar_accepts_raw_arg_list(monkeypatch):
 
     assert result.request.source == "technical"
     assert result.request.report_date == date(2026, 5, 20)
-    assert result.request.scoring_version == "v2"
+    assert result.request.scoring_version == "v3"
     assert result.report_date == date(2026, 5, 20)
     assert captured == {"source": "technical", "target_date": date(2026, 5, 20)}
 
@@ -836,6 +843,8 @@ def test_prepare_radar_scoring_data_backfills_structured_fields_before_scoring(m
         lambda code, name: {"matched_topics": [{"theme_id": "ai_connector"}], "company_topic_relations": {"direct_matches": 1}},
     )
     monkeypatch.setattr(radar, "save_research_structured_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_merge_radar_revenue_peer_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_merge_radar_valuation_context", lambda *args, **kwargs: None)
 
     radar.prepare_radar_scoring_data([candidate], date(2026, 6, 26))
     snapshot = radar._build_radar_feature_snapshot(candidate, [candidate], {candidate.industry: 1}, date(2026, 6, 26))
@@ -876,6 +885,8 @@ def test_prepare_radar_scoring_data_marks_true_missing_when_sources_unavailable(
     monkeypatch.setattr(radar, "_load_radar_tdcc_cache", lambda *args, **kwargs: {})
     monkeypatch.setattr(radar, "build_stock_topic_context", lambda code, name: {})
     monkeypatch.setattr(radar, "save_research_structured_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_merge_radar_revenue_peer_context", lambda *args, **kwargs: None)
+    monkeypatch.setattr(radar, "_merge_radar_valuation_context", lambda *args, **kwargs: None)
 
     radar.prepare_radar_scoring_data([candidate], date(2026, 6, 26))
     radar._score_candidates([candidate], date(2026, 6, 26), scoring_version="v2")
@@ -923,7 +934,7 @@ def test_score_candidates_keeps_v1_and_v2_scoring_separate(monkeypatch):
     assert any("v2" in reason for reason in v2.score_details["technical"]["reasons"])
 
 
-def test_score_candidates_preserves_early_turnaround_when_financial_missing(monkeypatch):
+def test_score_candidates_v3_does_not_provisionally_score_missing_financials(monkeypatch):
     candidate = radar.RadarCandidate(
         code="2241",
         name="艾姆勒",
@@ -961,16 +972,8 @@ def test_score_candidates_preserves_early_turnaround_when_financial_missing(monk
 
     radar._score_candidates([candidate], date(2026, 5, 22))
 
-    assert candidate.score_components["financial"] > 0
-    assert candidate.score_components["revenue"] >= 8
-    assert candidate.total_score >= 45
-    all_reasons = [
-        reason
-        for detail in candidate.score_details.values()
-        for reason in detail.get("reasons", [])
-    ]
-    assert any("早期" in reason or "尚未反映" in reason for reason in all_reasons)
-    assert any("重估" in reason for reason in all_reasons)
+    assert candidate.score_components["financial"] == 0
+    assert candidate.score_details["financial"]["details"]["row_count"] == 0
     assert any("財報資料缺漏" in risk for risk in candidate.risk_flags)
 
 
@@ -1059,13 +1062,275 @@ def test_early_turnaround_candidate_survives_top15_among_technical_only_pool(mon
 
     assert "2241" in top15_codes
     assert early.total_score > max(item.total_score for item in ordinary)
-    all_reasons = [
-        reason
-        for detail in early.score_details.values()
-        for reason in detail.get("reasons", [])
-    ]
-    assert any("早期" in reason or "尚未反映" in reason for reason in all_reasons)
+    assert early.score_components["revenue"] > 0
     assert any("財報資料缺漏" in risk for risk in early.risk_flags)
+
+
+def test_contextual_volume_scores_trigger_quality_instead_of_raw_volume():
+    candidate = radar.RadarCandidate(
+        code="2330",
+        strategy_codes={"A"},
+        technical_signals=[{"strategy_code": "A"}],
+    )
+    snapshot = {
+        "technical": {
+            "status": "ok",
+            "volume_context_status": "ok",
+            "above_ma": {},
+            "reclaim_ma": {},
+            "ma_slopes": {},
+            "breakout_20d": True,
+            "volume_ratio": 1.5,
+            "pretrigger_volume_ratio": 0.75,
+            "close_location_value": 0.8,
+            "open": 101,
+            "close": 108,
+            "previous_close": 103,
+            "price_up_volume_up": True,
+            "closes_above_large_volume_high": True,
+            "ma20_deviation_pct": 5,
+        }
+    }
+
+    detail = radar._score_technical_detail(candidate, snapshot)
+
+    assert detail["details"]["volume"] == 5
+    assert detail["details"]["volume_penalty"] == 0
+    assert any("觸發前五日量縮" in reason for reason in detail["reasons"])
+    assert any("大量 K 棒高點" in reason for reason in detail["reasons"])
+
+
+def test_contextual_volume_penalizes_high_volume_failure():
+    candidate = radar.RadarCandidate(code="2330", strategy_codes={"A"})
+    snapshot = {
+        "technical": {
+            "status": "ok",
+            "volume_context_status": "ok",
+            "above_ma": {},
+            "reclaim_ma": {},
+            "ma_slopes": {},
+            "volume_ratio": 5.5,
+            "close_location_value": 0.2,
+            "open": 105,
+            "close": 99,
+            "previous_close": 100,
+            "price_up_volume_up": False,
+            "intraday_breakout_failed": True,
+        }
+    }
+
+    detail = radar._score_technical_detail(candidate, snapshot)
+
+    assert detail["details"]["volume"] == 0
+    assert detail["details"]["volume_penalty"] == 3
+    assert any("量比至少 5 倍" in risk for risk in detail["risks"])
+
+
+def test_contextual_volume_does_not_score_without_price_trigger():
+    candidate = radar.RadarCandidate(code="2330")
+    snapshot = {
+        "technical": {
+            "status": "ok",
+            "volume_context_status": "ok",
+            "above_ma": {},
+            "reclaim_ma": {},
+            "ma_slopes": {},
+            "volume_ratio": 2.0,
+            "pretrigger_volume_ratio": 0.7,
+            "close_location_value": 0.9,
+            "open": 100,
+            "close": 105,
+            "previous_close": 101,
+            "price_up_volume_up": True,
+        }
+    }
+
+    detail = radar._score_technical_detail(candidate, snapshot)
+
+    assert detail["details"]["volume_triggered"] is False
+    assert detail["details"]["volume"] == 0
+
+
+def test_sector_score_uses_full_market_breadth_and_relative_strength():
+    detail = radar._score_sector_detail(
+        radar.RadarCandidate(code="2330", industry="半導體業"),
+        {
+            "sector": {
+                "status": "covered",
+                "peer_group_label": "半導體業／advanced_packaging",
+                "group_total_count": 10,
+                "group_valid_count": 8,
+                "coverage_ratio": 0.8,
+                "positive_20d_ratio": 0.75,
+                "above_ma20_ratio": 0.625,
+                "new_high_breakout_ratio": 0.25,
+                "median_return_5d": 2.0,
+                "volume_surge_ratio": 0.25,
+                "median_return_1d": 0.5,
+                "candidate_relative_strength_percentile": 87.5,
+            }
+        },
+    )
+
+    assert detail["score"] == 5
+    assert len(detail["reasons"]) == 5
+
+
+def test_sector_score_is_zero_when_same_date_coverage_is_insufficient():
+    detail = radar._score_sector_detail(
+        radar.RadarCandidate(code="2330", industry="半導體業"),
+        {
+            "sector": {
+                "status": "insufficient_coverage",
+                "group_total_count": 10,
+                "group_valid_count": 6,
+                "coverage_ratio": 0.6,
+            }
+        },
+    )
+
+    assert detail["score"] == 0
+    assert any("覆蓋率低於 70%" in risk for risk in detail["risks"])
+
+
+def test_theme_score_uses_relation_source_catalyst_and_materiality():
+    candidate = radar.RadarCandidate(code="3017", name="奇鋐")
+    snapshot = {
+        "analysis_date": "2026-06-20",
+        "theme_news": {
+            "local_news": [
+                {
+                    "title": "奇鋐液冷新產線量產",
+                    "content": "奇鋐預計 2026 年第三季量產，年產能增加 30%。",
+                    "source": "公開資訊觀測站",
+                    "source_level": "L1_official",
+                    "published_at": "2026-06-18",
+                    "url": "https://mops.twse.com.tw/example",
+                }
+            ],
+            "web_sources": [],
+            "ai_sources": [],
+            "topic_context": {
+                "matched_topics": [
+                    {
+                        "theme_id": "ai_power_cooling",
+                        "confidence": "high",
+                        "verification_status": "formal",
+                        "usage_policy": "formal_topic_reference",
+                    }
+                ],
+                "supply_chain_nodes": [
+                    {
+                        "theme_id": "ai_power_cooling",
+                        "verification_status": "verified",
+                        "role": "液冷模組供應商",
+                        "product_keywords": ["液冷冷板"],
+                        "revenue_exposure": {"level": "high"},
+                    }
+                ],
+            },
+        },
+    }
+
+    detail = radar._score_theme_news_detail(candidate, snapshot)
+
+    assert detail["score"] == 15
+    assert detail["details"]["relation"] == 5
+    assert detail["details"]["source_quality"] == 4
+    assert detail["details"]["catalyst_specificity"] == 4
+    assert detail["details"]["materiality"] == 2
+
+
+def test_theme_score_ignores_top_only_enrichment_and_rejects_candidate_theme():
+    candidate = radar.RadarCandidate(code="3017", name="奇鋐")
+    base_context = {
+        "matched_topics": [
+            {
+                "theme_id": "rumor_theme",
+                "confidence": "candidate",
+                "verification_status": "candidate",
+                "usage_policy": "hypothesis_only",
+                "not_representative": True,
+            }
+        ],
+        "supply_chain_nodes": [],
+    }
+    source = {
+        "title": "奇鋐取得新訂單",
+        "content": "奇鋐 2026 年取得 30 億元訂單並將於第三季出貨。",
+        "source_level": "L1_official",
+        "published_at": "2026-06-18",
+    }
+    snapshot = {
+        "analysis_date": "2026-06-20",
+        "theme_news": {
+            "local_news": [],
+            "web_sources": [source],
+            "ai_sources": [],
+            "topic_context": base_context,
+        },
+    }
+
+    detail = radar._score_theme_news_detail(candidate, snapshot)
+
+    assert detail["score"] == 0
+    assert detail["details"]["eligible_evidence_count"] == 0
+    assert detail["details"]["ignored_top_only_source_count"] == 1
+    assert any("不列入正式評分" in risk for risk in detail["risks"])
+
+
+def test_theme_top_only_enrichment_cannot_change_formal_score():
+    candidate = radar.RadarCandidate(code="3017", name="奇鋐")
+    topic_context = {
+        "matched_topics": [
+            {
+                "theme_id": "ai_power_cooling",
+                "confidence": "high",
+                "verification_status": "formal",
+                "usage_policy": "formal_topic_reference",
+            }
+        ],
+        "supply_chain_nodes": [
+            {
+                "theme_id": "ai_power_cooling",
+                "verification_status": "verified",
+                "role": "液冷模組供應商",
+                "product_keywords": ["液冷冷板"],
+                "revenue_exposure": {"level": "unknown"},
+            }
+        ],
+    }
+    theme_news = {
+        "local_news": [],
+        "web_sources": [],
+        "ai_sources": [],
+        "topic_context": topic_context,
+    }
+    base = radar._score_theme_news_detail(
+        candidate,
+        {"analysis_date": "2026-06-20", "theme_news": theme_news},
+    )
+    enriched = radar._score_theme_news_detail(
+        candidate,
+        {
+            "analysis_date": "2026-06-20",
+            "theme_news": {
+                **theme_news,
+                "web_sources": [
+                    {
+                        "title": "奇鋐取得大單",
+                        "content": "奇鋐 2026 年取得 30 億元訂單，第三季出貨。",
+                        "source_level": "L1_official",
+                        "published_at": "2026-06-18",
+                    }
+                ],
+            },
+        },
+    )
+
+    assert base["score"] == 5
+    assert enriched["score"] == base["score"]
+    assert enriched["details"]["ignored_top_only_source_count"] == 1
 
 
 def test_normalise_ai_sources_preserves_all_sources_and_fetch_details():
@@ -1283,14 +1548,27 @@ def test_format_radar_report_uses_chinese_signal_and_chip_labels():
 
     text = radar.format_radar_report(result)
 
-    assert "評分版本：v2" in text
+    assert "評分版本：v3" in text
     assert "B2_short_reclaim_after_break_ma" not in text
     assert "D1_reclaim_ma_after_break" not in text
     assert "chip_1" not in text
-    assert "B 強勢紅柱回測突破：B2 跌破後收復短均線" in text
-    assert "D 強勢股急跌收復：D1 跌破後收復均線" in text
+    assert "B 強勢紅柱回測突破：B2 紅柱期間收盤突破 MA5/MA13/MA21" in text
+    assert "D 動能背景短線轉強：D1 跌破後收復均線" in text
     assert "籌碼：60日法人動態 B級、投信認養 A級、法人持股比例增加 B級" in text
     assert "外部來源 1 則" in text
+
+
+def test_radar_labels_new_strategy_d_subsignals():
+    assert radar.TECHNICAL_STRATEGY_LABELS["D"] == "動能背景短線轉強"
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["D1_above_zero_short_ma_reclaim"] == "D1 零軸上短均線收復"
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["D2_below_zero_short_ma_reclaim"] == "D2 零軸下短均線收復"
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["D3_kd_death_cross_first_reversal"] == "D3 KD 死叉後首次轉強"
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["D1_first_short_ma_reclaim"] == "D1 短均線首次收復"
+
+
+def test_radar_b1_label_includes_ma5():
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["B1_intraday_retest_reclaim_ma"] == "B1 盤中回測後收復 MA5/MA13/MA21"
+    assert radar.TECHNICAL_SUB_SIGNAL_LABELS["B2_short_reclaim_after_break_ma"] == "B2 紅柱期間收盤突破 MA5/MA13/MA21"
 
 
 def test_format_radar_report_shows_ai_comment():
@@ -1538,6 +1816,8 @@ class RadarTechnicalCacheFreshnessTests(unittest.TestCase):
                     "C": [],
                     "D": [],
                 },
+                "dual_ma_signals": [],
+                "kd_ma_signals": [],
             }
         ]
 
@@ -1562,6 +1842,8 @@ class RadarTechnicalCacheFreshnessTests(unittest.TestCase):
                     "C": [],
                     "D": [],
                 },
+                "dual_ma_signals": [],
+                "kd_ma_signals": [],
             }
         ]
 

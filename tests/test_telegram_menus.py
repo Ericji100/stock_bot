@@ -589,13 +589,13 @@ class ScanMenuTests(unittest.TestCase):
         from datetime import date
 
         sent_messages: list[str] = []
-        saved_records: list[tuple[str, date, str]] = []
+        saved_records: list[tuple[str, date, str, list[str] | None]] = []
 
         async def fake_safe_send_reply(update, text, **kwargs):
             sent_messages.append(text)
 
-        def fake_run_tw_market_scan(*args, **kwargs):
-            return "財報報告 1111"
+        def fake_scan_tw_market(*args, **kwargs):
+            return SimpleNamespace(candidates=[SimpleNamespace(code="1111")])
 
         def fake_build_chip_reports(*args, **kwargs):
             return (
@@ -605,42 +605,69 @@ class ScanMenuTests(unittest.TestCase):
                     "chip_3": "籌碼三 4444",
                     "chip_4": "籌碼四 5555",
                 },
-                {},
+                SimpleNamespace(),
             )
 
-        def fake_build_technical_scan_messages(*args, **kwargs):
-            return ["技術報告 6666"]
+        technical_result = SimpleNamespace()
 
         def fake_build_curated_scan_result(*args, **kwargs):
             return SimpleNamespace(report_text="精選報告 7777", selected_codes=["7777"])
 
-        def fake_save_recent_scan_result(scan_type, report_date, report_text, selected_codes=None):
-            saved_records.append((scan_type, report_date, report_text))
+        def fake_build_laoxiao_scan_result(*args, **kwargs):
+            return SimpleNamespace(
+                report_text="老蕭報告 8888",
+                report_messages=["老蕭報告 8888"],
+                selected_codes=["8888"],
+                diagnostics={"selected_count": 1},
+            )
+
+        def fake_save_recent_scan_result(scan_type, report_date, report_text, selected_codes=None, **kwargs):
+            saved_records.append((scan_type, report_date, report_text, selected_codes))
 
         original_safe_send_reply = main.safe_send_reply
         original_load_config = main.load_config
-        original_run_tw_market_scan = main.run_tw_market_scan
+        original_scan_tw_market = main.scan_tw_market
+        original_format_tw_market_scan_report = main.format_tw_market_scan_report
         original_build_chip_reports = main.build_chip_reports
-        original_build_technical_scan_messages = main.ts.build_technical_scan_messages
+        original_build_chip_grade_maps = main.build_chip_grade_maps
+        original_run_technical_scan = main.ts.run_technical_scan
+        original_format_technical_report_messages = main.ts.format_technical_report_messages
+        original_collect_technical_selected_codes = main.ts.collect_technical_selected_codes
         original_build_curated_scan_result = main.curated_scan_service.build_curated_scan_result
+        original_build_laoxiao_scan_result = main.laoxiao_scan_service.build_laoxiao_scan_result
         original_save_recent_scan_result = main.save_recent_scan_result
         try:
             main.safe_send_reply = fake_safe_send_reply
             main.load_config = lambda: {"scan_settings": {}}
-            main.run_tw_market_scan = fake_run_tw_market_scan
+            main.scan_tw_market = fake_scan_tw_market
+            main.format_tw_market_scan_report = lambda _result: "財報報告 1111"
             main.build_chip_reports = fake_build_chip_reports
-            main.ts.build_technical_scan_messages = fake_build_technical_scan_messages
+            main.build_chip_grade_maps = lambda _context, _keys: {
+                "chip_1": {"2222": "S"},
+                "chip_2": {"3333": "A"},
+                "chip_3": {"4444": "B"},
+                "chip_4": {"5555": "S"},
+            }
+            main.ts.run_technical_scan = lambda *args, **kwargs: technical_result
+            main.ts.format_technical_report_messages = lambda _result: ["技術報告 6666"]
+            main.ts.collect_technical_selected_codes = lambda _result: ["6666"]
             main.curated_scan_service.build_curated_scan_result = fake_build_curated_scan_result
+            main.laoxiao_scan_service.build_laoxiao_scan_result = fake_build_laoxiao_scan_result
             main.save_recent_scan_result = fake_save_recent_scan_result
 
             asyncio.run(main.run_selected_scan_reports(SimpleNamespace(), "7", date(2026, 5, 22)))
         finally:
             main.safe_send_reply = original_safe_send_reply
             main.load_config = original_load_config
-            main.run_tw_market_scan = original_run_tw_market_scan
+            main.scan_tw_market = original_scan_tw_market
+            main.format_tw_market_scan_report = original_format_tw_market_scan_report
             main.build_chip_reports = original_build_chip_reports
-            main.ts.build_technical_scan_messages = original_build_technical_scan_messages
+            main.build_chip_grade_maps = original_build_chip_grade_maps
+            main.ts.run_technical_scan = original_run_technical_scan
+            main.ts.format_technical_report_messages = original_format_technical_report_messages
+            main.ts.collect_technical_selected_codes = original_collect_technical_selected_codes
             main.curated_scan_service.build_curated_scan_result = original_build_curated_scan_result
+            main.laoxiao_scan_service.build_laoxiao_scan_result = original_build_laoxiao_scan_result
             main.save_recent_scan_result = original_save_recent_scan_result
 
         expected_reports = {
@@ -651,24 +678,34 @@ class ScanMenuTests(unittest.TestCase):
             "籌碼四 5555",
             "技術報告 6666",
             "精選報告 7777",
+            "老蕭報告 8888",
         }
         report_messages = [msg for msg in sent_messages if msg in expected_reports]
         self.assertEqual(
             report_messages,
-            ["財報報告 1111", "籌碼一 2222", "籌碼二 3333", "籌碼三 4444", "籌碼四 5555", "技術報告 6666", "精選報告 7777"],
+            ["財報報告 1111", "籌碼一 2222", "籌碼二 3333", "籌碼三 4444", "籌碼四 5555", "技術報告 6666", "老蕭報告 8888", "精選報告 7777"],
         )
-        self.assertEqual(len(saved_records), 1)
-        scan_type, report_date, report_text = saved_records[0]
+        self.assertEqual(len(saved_records), 2)
+        laoxiao_type, laoxiao_date, laoxiao_text, laoxiao_codes = saved_records[0]
+        self.assertEqual(laoxiao_type, "老蕭選股")
+        self.assertEqual(laoxiao_date.isoformat(), "2026-05-22")
+        self.assertIn("老蕭報告 8888", laoxiao_text)
+        self.assertEqual(laoxiao_codes, ["8888"])
+        scan_type, report_date, report_text, selected_codes = saved_records[1]
         self.assertEqual(scan_type, "全部執行")
         self.assertEqual(report_date.isoformat(), "2026-05-22")
-        for marker in ["財報報告 1111", "籌碼一 2222", "技術報告 6666", "精選報告 7777"]:
+        for marker in ["財報報告 1111", "籌碼一 2222", "技術報告 6666", "老蕭報告 8888", "精選報告 7777"]:
             self.assertIn(marker, report_text)
+        self.assertEqual(
+            selected_codes,
+            ["1111", "2222", "3333", "4444", "5555", "6666", "8888", "7777"],
+        )
 
-    def test_scan_strategy_menu_has_8_options(self):
+    def test_scan_strategy_menu_has_9_options(self):
         from main import build_scan_strategy_keyboard
         keyboard = build_scan_strategy_keyboard()
         buttons = [btn for row in keyboard.inline_keyboard for btn in row]
-        self.assertEqual(len(buttons), 8, "scan menu should have exactly 8 options")
+        self.assertEqual(len(buttons), 9, "scan menu should have exactly 9 options")
 
     def test_scan_strategy_menu_callbacks_have_no_date(self):
         from main import build_scan_strategy_keyboard, SCAN_CALLBACK_PREFIX

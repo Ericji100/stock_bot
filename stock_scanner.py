@@ -24,6 +24,7 @@ from candidate_filter_service import (
 )
 from progress_logger import now_timestamp
 from telegram_stock_formatting import mark_stock_text
+from unified_financial_scoring import effective_revenue_rows
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -31,6 +32,7 @@ CACHE_DIR = ROOT_DIR / ".cache"
 MONTHLY_CACHE_DIR = CACHE_DIR / "monthly_revenue"
 PRICE_CACHE_PATH = CACHE_DIR / "price_metrics.json"
 GROSS_MARGIN_CACHE_PATH = CACHE_DIR / "gross_margin.json"
+HISTORICAL_FINANCIAL_CACHE_DIR = CACHE_DIR / "historical_scan" / "financial_statements"
 STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
 REVENUE_VALUE_MULTIPLIER = 1000.0
 YF_PRICE_CHUNK_SIZE = 40
@@ -129,6 +131,8 @@ class RevenuePoint:
     month: str
     revenue: float
     yoy: float
+    published_at: str | None = None
+    published_at_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,8 +193,8 @@ def _is_fresh(path: Path, ttl_seconds: int) -> bool:
     return age_seconds < ttl_seconds
 
 
-def _month_offsets(months: int) -> list[date]:
-    today = datetime.now().date().replace(day=1)
+def _month_offsets(months: int, end_date: date | None = None) -> list[date]:
+    today = (end_date or datetime.now().date()).replace(day=1)
     results: list[date] = []
     year = today.year
     month = today.month
@@ -201,6 +205,14 @@ def _month_offsets(months: int) -> list[date]:
             month = 12
             year -= 1
     return results
+
+
+def _monthly_revenue_deadline(month_start: date) -> str:
+    if month_start.month == 12:
+        deadline = date(month_start.year + 1, 1, 10)
+    else:
+        deadline = date(month_start.year, month_start.month + 1, 10)
+    return deadline.isoformat()
 
 
 def _normalize_column(text: str) -> str:
@@ -635,6 +647,8 @@ def _load_monthly_revenue_rows(client: httpx.Client, market: str, month_start: d
                     "month": month_start.isoformat(),
                     "monthly_revenue": current_revenue,
                     "yoy": yoy,
+                    "published_at": _monthly_revenue_deadline(month_start),
+                    "published_at_source": "statutory_deadline_fallback",
                 }
             )
 
@@ -644,19 +658,24 @@ def _load_monthly_revenue_rows(client: httpx.Client, market: str, month_start: d
 
 def load_recent_revenue_history(
     universe: list[StockUniverseEntry],
-    months_to_fetch: int = 6,
+    months_to_fetch: int = 24,
+    as_of_date: date | None = None,
 ) -> dict[str, list[RevenuePoint]]:
     universe_map = {entry.code: entry for entry in universe}
     history_map: dict[str, list[RevenuePoint]] = {}
 
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
-        for month_start in _month_offsets(months_to_fetch):
+        fetch_months = months_to_fetch + 2 if as_of_date is not None else months_to_fetch
+        for month_start in _month_offsets(fetch_months, as_of_date):
             for market in ("TWSE", "TPEX"):
                 try:
                     rows = _load_monthly_revenue_rows(client, market, month_start)
                 except Exception:
                     continue
                 for row in rows:
+                    published_at = str(row.get("published_at") or _monthly_revenue_deadline(month_start))
+                    if as_of_date is not None and published_at[:10] > as_of_date.isoformat():
+                        continue
                     entry = universe_map.get(row["code"])
                     if not entry or entry.market != market:
                         continue
@@ -665,6 +684,8 @@ def load_recent_revenue_history(
                             month=row["month"],
                             revenue=float(row["monthly_revenue"]) * REVENUE_VALUE_MULTIPLIER,
                             yoy=float(row["yoy"]),
+                            published_at=published_at,
+                            published_at_source=str(row.get("published_at_source") or "statutory_deadline_fallback"),
                         )
                     )
 
@@ -678,9 +699,9 @@ def load_recent_revenue_history(
                 continue
             seen_months.add(point.month)
             unique_points.append(point)
-            if len(unique_points) == 4:
+            if len(unique_points) == months_to_fetch:
                 break
-        if len(unique_points) == 4:
+        if len(unique_points) >= 4:
             trimmed_history[code] = unique_points
     return trimmed_history
 
@@ -690,7 +711,38 @@ def load_price_metrics(
     force_refresh: bool = False,
     ttl_seconds: int = 30 * 60,
     chunk_size: int = YF_PRICE_CHUNK_SIZE,
+    as_of_date: date | None = None,
 ) -> dict[str, dict[str, float]]:
+    if as_of_date is not None:
+        from historical_price_service import fetch_history, load_cached_history
+
+        historical_metrics: dict[str, dict[str, float]] = {}
+        for entry in universe:
+            history = load_cached_history(entry.symbol, as_of_date)
+            cache_ends_before_target = (
+                not history.empty
+                and history["date"].dt.date.max() < as_of_date
+            )
+            if history.empty or len(history) < 20 or cache_ends_before_target:
+                # A history cache whose first available bar is later than the
+                # requested date proves that the symbol was not yet tradable.
+                # Historical replays visit many dates, so avoid retrying Yahoo
+                # once per date for current-universe stocks listed afterwards.
+                complete_history = load_cached_history(entry.symbol)
+                if (
+                    not complete_history.empty
+                    and complete_history["date"].dt.date.min() > as_of_date
+                ):
+                    continue
+                history, _ = fetch_history(entry.symbol, as_of_date, min_rows=20)
+            if history.empty:
+                continue
+            candidate = history.rename(columns={"close": "Close", "volume": "Volume"}).set_index("date")
+            metric = _extract_price_metric(candidate)
+            if metric and metric.get("price_date") == as_of_date.isoformat():
+                historical_metrics[entry.symbol] = metric
+        return historical_metrics
+
     requested_symbols = [entry.symbol for entry in universe]
     cached_metrics: dict[str, dict[str, float]] = {}
     if PRICE_CACHE_PATH.exists():
@@ -766,7 +818,116 @@ def _save_gross_margin_cache(metrics: dict[str, dict[str, Any]]) -> None:
     )
 
 
-def load_gross_margin_series(symbol: str, cache: dict[str, dict[str, Any]], ttl_seconds: int = 12 * 60 * 60) -> list[GrossMarginPoint]:
+def _quarterly_available_date(year: int, quarter: int) -> date:
+    if quarter == 1:
+        return date(year, 5, 15)
+    if quarter == 2:
+        return date(year, 8, 14)
+    if quarter == 3:
+        return date(year, 11, 14)
+    return date(year + 1, 3, 31)
+
+
+def _historical_gross_margin_cache_path(symbol: str) -> Path:
+    return HISTORICAL_FINANCIAL_CACHE_DIR / f"{symbol.replace('.', '_')}.json"
+
+
+def _load_historical_gross_margin_series(symbol: str, as_of_date: date) -> list[GrossMarginPoint]:
+    path = _historical_gross_margin_cache_path(symbol)
+    payload: dict[str, Any] = {}
+    if path.exists():
+        try:
+            payload = _read_json(path)
+        except Exception:
+            payload = {}
+
+    rows = payload.get("series") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        rows = []
+        code = symbol.split(".", 1)[0]
+        try:
+            from data_source_manager import FinMindQuotaManager, SourceHealthManager
+            from finmind_client import FinMindClient
+
+            result = FinMindClient(
+                health_manager=SourceHealthManager(),
+                quota_manager=FinMindQuotaManager(),
+                timeout=25.0,
+                allow_anonymous=True,
+            ).request_dataset(
+                "TaiwanStockFinancialStatements",
+                {
+                    "stock_id": code,
+                    "start_date": f"{max(2000, as_of_date.year - 4)}-01-01",
+                    "end_date": f"{as_of_date.year}-12-31",
+                },
+                scope="historical_scan",
+            )
+            values: dict[str, dict[str, float]] = {}
+            for item in result.get("data") or []:
+                statement_date = str(item.get("date") or "")[:10]
+                item_type = str(item.get("type") or "")
+                if item_type not in {"Revenue", "GrossProfit"} or not statement_date:
+                    continue
+                value = _to_float(item.get("value"))
+                if value is not None:
+                    values.setdefault(statement_date, {})[item_type] = value
+            for statement_date, items in sorted(values.items()):
+                try:
+                    parsed = date.fromisoformat(statement_date)
+                except ValueError:
+                    continue
+                quarter = {3: 1, 6: 2, 9: 3, 12: 4}.get(parsed.month)
+                revenue = items.get("Revenue")
+                gross_profit = items.get("GrossProfit")
+                if quarter is None or revenue in (None, 0) or gross_profit is None:
+                    continue
+                rows.append(
+                    {
+                        "quarter": f"{parsed.year}Q{quarter}",
+                        "quarter_end": parsed.isoformat(),
+                        "published_at": _quarterly_available_date(parsed.year, quarter).isoformat(),
+                        "published_at_source": "statutory_deadline_fallback",
+                        "gross_margin": round(float(gross_profit) / float(revenue) * 100.0, 4),
+                    }
+                )
+        except Exception:
+            rows = []
+        try:
+            _write_json(
+                path,
+                {
+                    "schema_version": 1,
+                    "symbol": symbol,
+                    "generated_at": datetime.now().isoformat(timespec="seconds"),
+                    "series": rows,
+                },
+            )
+        except OSError:
+            pass
+
+    available = [
+        item
+        for item in rows
+        if isinstance(item, dict) and str(item.get("published_at") or "9999-12-31")[:10] <= as_of_date.isoformat()
+    ]
+    available.sort(key=lambda item: str(item.get("quarter_end") or item.get("quarter") or ""), reverse=True)
+    return [
+        GrossMarginPoint(quarter=str(item["quarter"]), gross_margin=float(item["gross_margin"]))
+        for item in available[:3]
+        if item.get("quarter") and item.get("gross_margin") is not None
+    ]
+
+
+def load_gross_margin_series(
+    symbol: str,
+    cache: dict[str, dict[str, Any]],
+    ttl_seconds: int = 12 * 60 * 60,
+    as_of_date: date | None = None,
+) -> list[GrossMarginPoint]:
+    if as_of_date is not None:
+        return _load_historical_gross_margin_series(symbol, as_of_date)
+
     cached = cache.get(symbol)
     if cached and isinstance(cached.get("fetched_at"), str):
         fetched_at = datetime.fromisoformat(cached["fetched_at"])
@@ -815,9 +976,23 @@ def load_gross_margin_series(symbol: str, cache: dict[str, dict[str, Any]], ttl_
 
 
 def classify_revenue_group(history: list[RevenuePoint]) -> str | None:
-    if len(history) < 4:
+    effective = effective_revenue_rows(
+        [
+            {
+                "month": point.month,
+                "revenue": point.revenue,
+                "yoy": point.yoy,
+                "published_at": point.published_at,
+                "published_at_source": point.published_at_source,
+            }
+            for point in history
+        ]
+    )
+    if len(effective) < 4:
         return None
-    yoy_values = [point.yoy for point in history[:4]]
+    yoy_values = [float(row["yoy"]) for row in effective[-4:] if row.get("yoy") is not None]
+    if len(yoy_values) < 4:
+        return None
     if all(value >= 1.0 for value in yoy_values):
         return "group_1"
     positive_months = sum(value >= 1.0 for value in yoy_values)
@@ -852,6 +1027,9 @@ def scan_tw_market(
     force_refresh: bool = False,
     max_symbols: int | None = None,
     scan_settings: dict[str, float] | None = None,
+    report_date: date | None = None,
+    *,
+    historical_replay: bool = False,
 ) -> ScanReport:
     print(f"[{now_timestamp()}] [選股進度][財報營收] 0% 初始化掃描設定", flush=True)
     _ensure_cache_dirs()
@@ -863,9 +1041,10 @@ def scan_tw_market(
         universe = universe[:max_symbols]
 
     print(f"[{now_timestamp()}] [選股進度][財報營收] 25% 讀取近月營收資料，共 {len(universe)} 檔", flush=True)
-    revenue_history_map = load_recent_revenue_history(universe)
+    point_in_time_date = report_date if historical_replay else None
+    revenue_history_map = load_recent_revenue_history(universe, as_of_date=point_in_time_date)
     print(f"[{now_timestamp()}] [選股進度][財報營收] 45% 讀取股價與 20 日均量", flush=True)
-    price_metrics = load_price_metrics(universe, force_refresh=force_refresh)
+    price_metrics = load_price_metrics(universe, force_refresh=force_refresh, as_of_date=point_in_time_date)
     print(f"[{now_timestamp()}] [選股進度][財報營收] 60% 套用股價、均量、營收硬篩", flush=True)
     gross_margin_cache = _load_gross_margin_cache()
 
@@ -897,7 +1076,7 @@ def scan_tw_market(
     total_hard_filter = max(1, len(hard_filter_candidates))
     for entry, revenue_history, price_metric, revenue_group in hard_filter_candidates:
         try:
-            gross_margins = load_gross_margin_series(entry.symbol, gross_margin_cache)
+            gross_margins = load_gross_margin_series(entry.symbol, gross_margin_cache, as_of_date=point_in_time_date)
             rating = classify_gross_margin(gross_margins)
             candidates.append(
                 ScanCandidate(
@@ -929,7 +1108,11 @@ def scan_tw_market(
     candidates.sort(key=lambda item: (item.revenue_group, item.gross_margin_rating, item.industry, item.code))
     print(f"[{now_timestamp()}] [選股進度][財報營收] 100% 完成，符合 {len(candidates)} 檔", flush=True)
     return ScanReport(
-        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        generated_at=(
+            f"{report_date.isoformat()} 00:00"
+            if report_date is not None
+            else datetime.now().strftime("%Y-%m-%d %H:%M")
+        ),
         total_symbols=len(universe),
         hard_filter_passed=len(hard_filter_candidates),
         candidates=candidates,
@@ -1001,11 +1184,16 @@ def run_scan(
     force_refresh: bool = False,
     max_symbols: int | None = None,
     scan_settings: dict[str, float] | None = None,
+    report_date: date | None = None,
+    *,
+    historical_replay: bool = False,
 ) -> str:
     report = scan_tw_market(
         force_refresh=force_refresh,
         max_symbols=max_symbols,
         scan_settings=scan_settings,
+        report_date=report_date,
+        historical_replay=historical_replay,
     )
     return format_scan_report(report)
 

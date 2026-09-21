@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-01T16:30:59",
+  "generated_at": "2026-09-20T21:00:00",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -451,6 +451,13 @@
       "symbol": "2937.TWO",
       "market": "TPEX",
       "name": "集雅社",
+      "industry": "居家生活"
+    },
+    {
+      "code": "2938",
+      "symbol": "2938.TWO",
+      "market": "TPEX",
+      "name": "床的世界",
       "industry": "居家生活"
     },
     {
@@ -1656,6 +1663,13 @@
       "market": "TPEX",
       "name": "新晶投控",
       "industry": "綠能環保"
+    },
+    {
+      "code": "3718",
+      "symbol": "3718.TWO",
+      "market": "TPEX",
+      "name": "中光電投控",
+      "industry": "光電業"
     },
     {
       "code": "4102",
@@ -2923,13 +2937,6 @@
       "market": "TPEX",
       "name": "力麗店",
       "industry": "觀光餐旅"
-    },
-    {
-      "code": "5371",
-      "symbol": "5371.TWO",
-      "market": "TPEX",
-      "name": "中光電",
-      "industry": "光電業"
     },
     {
       "code": "5381",
@@ -5403,6 +5410,13 @@
       "industry": "綠能環保"
     },
     {
+      "code": "7825",
+      "symbol": "7825.TWO",
+      "market": "TPEX",
+      "name": "和亞智慧",
+      "industry": "其他電子業"
+    },
+    {
       "code": "7828",
       "symbol": "7828.TWO",
       "market": "TPEX",
@@ -7408,7 +7422,7 @@
       "code": "1721",
       "symbol": "1721.TW",
       "market": "TWSE",
-      "name": "三晃",
+      "name": "國慶科技",
       "industry": "化學工業"
     },
     {
@@ -9603,13 +9617,6 @@
       "industry": "金融保險"
     },
     {
-      "code": "2867",
-      "symbol": "2867.TW",
-      "market": "TWSE",
-      "name": "三商壽",
-      "industry": "金融保險"
-    },
-    {
       "code": "2880",
       "symbol": "2880.TW",
       "market": "TWSE",
@@ -10132,7 +10139,7 @@
       "symbol": "3054.TW",
       "market": "TWSE",
       "name": "立萬利",
-      "industry": "食品工業"
+      "industry": "電子通路業"
     },
     {
       "code": "3055",
@@ -12875,7 +12882,7 @@
       "code": "6949",
       "symbol": "6949.TW",
       "market": "TWSE",
-      "name": "沛爾生醫-創",
+      "name": "沛爾生醫*-創",
       "industry": "生技醫療業"
     },
     {

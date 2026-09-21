@@ -10,7 +10,8 @@ Behavior:
     and FinMindQuotaManager.can_use()
   - On success: record_use() + record_success()
   - On failure: record_failure() and re-raise
-  - No key available → returns empty dict without raising
+  - No key available → returns empty dict without raising, unless the caller
+    explicitly enables FinMind's anonymous public access
   - Quota exceeded → returns empty dict without raising
 """
 
@@ -51,11 +52,13 @@ class FinMindClient:
         health_manager=None,
         quota_manager=None,
         timeout: float = 10.0,
+        allow_anonymous: bool = False,
     ) -> None:
         self._api_key = api_key or _load_api_key()
         self._health = health_manager
         self._quota = quota_manager
         self._timeout = timeout
+        self._allow_anonymous = bool(allow_anonymous)
 
     def request_dataset(
         self,
@@ -68,7 +71,7 @@ class FinMindClient:
         Returns {} if no key, quota exceeded, or source in cooldown.
         Raises on HTTP error (caller should catch and record_failure).
         """
-        if not self._api_key:
+        if not self._api_key and not self._allow_anonymous:
             return {}
 
         # Check quota
@@ -81,10 +84,11 @@ class FinMindClient:
 
         try:
             with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
+                headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
                 response = client.get(
                     "https://api.finmindtrade.com/api/v4/data",
                     params={"dataset": dataset, "data_id": params.get("stock_id", ""), **params},
-                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    headers=headers,
                 )
                 response.raise_for_status()
                 result = response.json()

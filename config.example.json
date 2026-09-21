@@ -9,7 +9,7 @@
   "minimax_low_model": "MiniMax-M3",
   "scan_settings": {
     "min_price": 10,
-    "max_price": 80,
+    "max_price": 500,
     "min_avg_volume_20d": 500,
     "min_monthly_revenue": 40000000
   },

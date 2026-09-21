@@ -12,6 +12,11 @@ from candidate_filter_service import (
 
 
 class CandidateFilterServiceTests(unittest.TestCase):
+    def test_default_max_price_is_500(self):
+        self.assertEqual(DEFAULT_HARD_FILTER_SETTINGS["max_price"], 500.0)
+        self.assertEqual(stock_scanner.DEFAULT_SCAN_SETTINGS["max_price"], 500.0)
+        self.assertEqual(chip_strategies.HARD_FILTERS["max_price"], 500.0)
+
     def test_default_monthly_revenue_is_40_million(self):
         self.assertEqual(DEFAULT_HARD_FILTER_SETTINGS["min_monthly_revenue"], 40_000_000.0)
         self.assertEqual(stock_scanner.DEFAULT_SCAN_SETTINGS["min_monthly_revenue"], 40_000_000.0)
@@ -24,14 +29,28 @@ class CandidateFilterServiceTests(unittest.TestCase):
         self.assertEqual(settings["max_price"], 90.0)
 
     def test_basic_hard_filter_boundary_is_inclusive(self):
-        result = apply_basic_hard_filter(
-            price=10,
-            avg_volume_20d=500,
-            latest_monthly_revenue=40_000_000,
-        )
+        for price in (10, 500):
+            with self.subTest(price=price):
+                result = apply_basic_hard_filter(
+                    price=price,
+                    avg_volume_20d=500,
+                    latest_monthly_revenue=40_000_000,
+                )
 
-        self.assertTrue(result.passed)
-        self.assertEqual(result.reasons, ())
+                self.assertTrue(result.passed)
+                self.assertEqual(result.reasons, ())
+
+    def test_basic_hard_filter_rejects_price_outside_boundary(self):
+        for price in (9.99, 500.01):
+            with self.subTest(price=price):
+                result = apply_basic_hard_filter(
+                    price=price,
+                    avg_volume_20d=500,
+                    latest_monthly_revenue=40_000_000,
+                )
+
+                self.assertFalse(result.passed)
+                self.assertEqual(result.reasons, ("price_out_of_range",))
 
     def test_basic_hard_filter_returns_failure_reasons(self):
         result = apply_basic_hard_filter(
@@ -71,7 +90,7 @@ class CandidateFilterServiceTests(unittest.TestCase):
     def test_display_text_contains_current_thresholds(self):
         text = hard_filter_display_text()
 
-        self.assertIn("股價 10~80", text)
+        self.assertIn("股價 10~500", text)
         self.assertIn("均量 >= 500", text)
         self.assertIn("月營收 >= 4000萬", text)
 

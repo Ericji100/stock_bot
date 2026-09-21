@@ -26,6 +26,15 @@ CURATED_SCAN_TYPE = "精選選股"
 CURATED_SCAN_ALIASES = {CURATED_SCAN_TYPE, "精選選股交叉命中", "curated"}
 
 
+def _active_curated_scoring_version() -> str:
+    path = ROOT_DIR / "config" / "radar_scoring.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        payload = {}
+    return str(payload.get("default_version") or "v3").strip().lower()
+
+
 def _is_backfill_ready_for_scan(report_date: date) -> bool:
     marker = ROOT_DIR / ".cache" / "backfill" / report_date.isoformat() / "complete.json"
     if not marker.exists():
@@ -72,14 +81,37 @@ class CuratedScanResult:
 def build_curated_scan_result(
     scan_settings: dict[str, float] | None = None,
     report_date: date | None = None,
+    *,
+    financial_report: Any | None = None,
+    chip_context: Any | None = None,
+    technical_result: ts.TechnicalScanResult | None = None,
+    include_scoring: bool = True,
+    historical_replay: bool = False,
 ) -> CuratedScanResult:
     settings = resolve_hard_filter_settings(scan_settings or {})
     target_date = report_date or get_tw_today()
-    financial_report = scan_tw_market(False, None, settings)
-    chip_context = build_market_context(False, target_date, include_daily_data=True, scan_settings=settings)
+    financial_report = financial_report or scan_tw_market(
+        False,
+        None,
+        settings,
+        report_date=target_date,
+        historical_replay=historical_replay,
+    )
+    chip_context = chip_context or build_market_context(
+        False,
+        target_date,
+        include_daily_data=True,
+        scan_settings=settings,
+        historical_replay=historical_replay,
+    )
     chip_grade_maps = build_chip_grade_maps(chip_context, ["chip_1", "chip_2", "chip_3", "chip_4"])
-    technical_result = ts.run_technical_scan(settings, target_date)
+    technical_result = technical_result or ts.run_technical_scan(
+        settings,
+        target_date,
+        historical_replay=historical_replay,
+    )
     technical_signal_codes = _collect_technical_signal_codes(technical_result)
+    technical_signal_codes.update(_collect_strategy_signal_codes(technical_result))
 
     stock_info: dict[str, dict[str, object]] = {}
     hits: dict[str, list[str]] = {}
@@ -128,7 +160,7 @@ def build_curated_scan_result(
     selected_by_signal: dict[str, list[str]] = {}
     selected_codes: list[str] = []
     seen: set[str] = set()
-    for signal in ts.BULLISH_SIGNAL_ORDER:
+    for signal in technical_signal_codes:
         signal_codes = technical_signal_codes.get(signal, set())
         codes = [code for code in signal_codes if len(hits.get(code, [])) >= 2]
         codes.sort(
@@ -151,15 +183,20 @@ def build_curated_scan_result(
         hits=hits,
         technical_signal_codes=technical_signal_codes,
     )
-    _backfill_selected_revenue_history(selected_codes, stock_info)
+    _backfill_selected_revenue_history(selected_codes, stock_info, target_date)
 
-    scores = _score_curated_candidates(
-        target_date=target_date,
-        selected_codes=selected_codes,
-        selected_by_signal=selected_by_signal,
-        stock_info=stock_info,
-        hits=hits,
-        chip_grade_maps=chip_grade_maps,
+    scores = (
+        _score_curated_candidates(
+            target_date=target_date,
+            selected_codes=selected_codes,
+            selected_by_signal=selected_by_signal,
+            stock_info=stock_info,
+            hits=hits,
+            chip_grade_maps=chip_grade_maps,
+            technical_result=technical_result,
+        )
+        if include_scoring
+        else {}
     )
     selected_by_signal = _sort_selected_by_signal(selected_by_signal, hits, scores)
     selected_codes = _ordered_unique(code for codes in selected_by_signal.values() for code in codes)
@@ -212,6 +249,8 @@ def find_cached_curated_scan(report_date: date) -> dict[str, Any] | None:
             continue
         if str(record.get("report_date") or "") != target:
             continue
+        if str(record.get("scoring_version") or "").lower() != _active_curated_scoring_version():
+            continue
         if record.get("selected_codes"):
             codes = _normalise_codes(record.get("selected_codes") or [])
         else:
@@ -231,6 +270,8 @@ def find_latest_cached_curated_scan(max_date: date | None = None, limit: int = 5
     best_date: date | None = None
     for record in _load_recent_scan_results(limit=limit):
         if str(record.get("scan_type") or "") not in CURATED_SCAN_ALIASES:
+            continue
+        if str(record.get("scoring_version") or "").lower() != _active_curated_scoring_version():
             continue
         report_date_text = str(record.get("report_date") or "")
         try:
@@ -276,15 +317,38 @@ def _score_curated_candidates(
     stock_info: dict[str, dict[str, object]],
     hits: dict[str, list[str]],
     chip_grade_maps: dict[str, dict[str, str]],
+    technical_result: ts.TechnicalScanResult,
 ) -> dict[str, dict[str, Any]]:
     if not selected_codes:
         return {}
-    from radar_service import RadarCandidate, resolve_radar_scoring_version, score_radar_candidates
+    from radar_service import (
+        RadarCandidate,
+        prepare_radar_scoring_data,
+        resolve_radar_scoring_version,
+        score_radar_candidates,
+    )
 
     signal_by_code: dict[str, list[str]] = {}
     for signal, codes in selected_by_signal.items():
         for code in codes:
             signal_by_code.setdefault(code, []).append(signal)
+
+    strategy_by_code: dict[str, list[dict[str, Any]]] = {}
+    for signals in (getattr(technical_result, "strategy_signals", {}) or {}).values():
+        for signal in signals:
+            code = str(signal.get("stock_id") or signal.get("code") or "")
+            if code:
+                strategy_by_code.setdefault(code, []).append(signal)
+    dual_ma_by_code: dict[str, list[dict[str, Any]]] = {}
+    for signal in getattr(technical_result, "dual_ma_signals", []) or []:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if code:
+            dual_ma_by_code.setdefault(code, []).append(signal)
+    kd_ma_by_code: dict[str, list[dict[str, Any]]] = {}
+    for signal in getattr(technical_result, "kd_ma_signals", []) or []:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if code:
+            kd_ma_by_code.setdefault(code, []).append(signal)
 
     candidates: list[RadarCandidate] = []
     for code in selected_codes:
@@ -311,17 +375,33 @@ def _score_curated_candidates(
                 "notes": signal,
             }
             for signal in signal_by_code.get(code, [])
+            if signal in ts.BULLISH_SIGNAL_ORDER
         ]
+        candidate.technical_signals.extend(strategy_by_code.get(code, []))
+        candidate.strategy_codes.update(
+            str(signal.get("strategy_code"))
+            for signal in strategy_by_code.get(code, [])
+            if signal.get("strategy_code") in {"A", "B", "C", "D"}
+        )
+        candidate.dual_ma_signals = list(dual_ma_by_code.get(code, []))
+        candidate.kd_ma_signals = list(kd_ma_by_code.get(code, []))
         if info.get("financial_group"):
             candidate.source_labels.append(str(info.get("financial_group")))
         candidate.revenue_history = list(info.get("revenue_history") or [])
         candidate.news_items = [{"title": hit} for hit in hits.get(code, [])]
         candidates.append(candidate)
 
+    scoring_version = resolve_radar_scoring_version()
+    prepare_radar_scoring_data(
+        candidates,
+        target_date,
+        financial_fetch_limit=len(candidates),
+        scoring_version=scoring_version,
+    )
     score_radar_candidates(
         candidates,
         target_date,
-        scoring_version=resolve_radar_scoring_version(),
+        scoring_version=scoring_version,
         reason_limit=4,
         risk_limit=3,
     )
@@ -352,6 +432,7 @@ def _technical_strategy_code_from_signal(signal: str) -> str:
 def _backfill_selected_revenue_history(
     selected_codes: list[str],
     stock_info: dict[str, dict[str, object]],
+    report_date: date | None = None,
 ) -> None:
     missing_entries: list[StockUniverseEntry] = []
     for code in selected_codes:
@@ -373,7 +454,7 @@ def _backfill_selected_revenue_history(
     if not missing_entries:
         return
     try:
-        history_by_code = load_recent_revenue_history(missing_entries)
+        history_by_code = load_recent_revenue_history(missing_entries, as_of_date=report_date)
     except Exception:
         return
     for code in selected_codes:
@@ -396,11 +477,15 @@ def _normalise_revenue_history(points: Any) -> list[dict[str, Any]]:
             revenue = point.get("revenue") or point.get("Monthly_Revenue") or point.get("monthly_revenue")
             yoy = point.get("yoy") if "yoy" in point else point.get("YoY") or point.get("YoY%") or point.get("revenue_yoy")
             mom = point.get("mom") if "mom" in point else point.get("MoM") or point.get("MoM%") or point.get("revenue_mom")
+            published_at = point.get("published_at") or point.get("Published_At")
+            published_at_source = point.get("published_at_source")
         else:
             month = getattr(point, "month", None)
             revenue = getattr(point, "revenue", None)
             yoy = getattr(point, "yoy", None)
             mom = getattr(point, "mom", None)
+            published_at = getattr(point, "published_at", None)
+            published_at_source = getattr(point, "published_at_source", None)
         if not month:
             continue
         row = {
@@ -411,6 +496,10 @@ def _normalise_revenue_history(points: Any) -> list[dict[str, Any]]:
         mom_value = _safe_float(mom)
         if mom_value is not None:
             row["mom"] = mom_value
+        if published_at:
+            row["published_at"] = str(published_at)
+        if published_at_source:
+            row["published_at_source"] = str(published_at_source)
         rows.append(row)
     return sorted(rows, key=lambda item: str(item.get("month") or ""))
 
@@ -474,7 +563,7 @@ def _format_curated_scan_report(
         "⭐ 精選選股交叉命中報告",
         f"📅 日期：{target_date.isoformat()}",
         "",
-        "篩選邏輯：以技術面正面訊號為觸發，列出同時命中營收財報或法人大戶 2 個以上策略的股票。",
+        "篩選邏輯：以技術面正面訊號、MACD 動能策略或雙均線結構為觸發，列出同時命中營收財報或法人大戶 2 個以上策略的股票。",
         "",
     ]
 
@@ -706,6 +795,26 @@ def _collect_technical_signal_codes(result: ts.TechnicalScanResult) -> dict[str,
                     codes.add(code)
         if codes:
             signal_codes[signal] = codes
+    return signal_codes
+
+
+def _collect_strategy_signal_codes(result: ts.TechnicalScanResult) -> dict[str, set[str]]:
+    signal_codes: dict[str, set[str]] = {}
+    for strategy in ("A", "B", "C", "D"):
+        for signal in (getattr(result, "strategy_signals", {}) or {}).get(strategy, []):
+            code = str(signal.get("stock_id") or signal.get("code") or "")
+            if code:
+                sub = str(signal.get("sub_signal_type") or "")
+                label = ts.STRATEGY_SUB_SIGNAL_LABELS.get(sub)
+                signal_codes.setdefault(f"策略 {strategy}｜{label or strategy}", set()).add(code)
+    for signal in getattr(result, "dual_ma_signals", []) or []:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if code:
+            signal_codes.setdefault(ts.dual_ma_signal_label(signal), set()).add(code)
+    for signal in getattr(result, "kd_ma_signals", []) or []:
+        code = str(signal.get("stock_id") or signal.get("code") or "")
+        if code:
+            signal_codes.setdefault(ts.kd_ma_signal_label(signal), set()).add(code)
     return signal_codes
 
 

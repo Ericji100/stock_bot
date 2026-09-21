@@ -57,9 +57,11 @@ from research_center.backfill_dag_service import (
 from research_center.backfill_scheduler_service import build_backfill_priority_plan
 from research_center.recent_scans import load_recent_scan_results
 from research_center.structured_cache import load_research_structured_cache
+from research_center.free_sources import warmup_valuation_history_cache
 from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 from stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
-from technical_scanner import fetch_daily_history
+from technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
+from market_risk_service import load_market_risk_map
 from backfill_gap_service import build_backfill_gap_report, write_gap_report
 
 
@@ -101,13 +103,21 @@ def _health_coverage(health: dict[str, Any], key: str) -> float:
         return 0.0
 
 
-def _is_technical_history_ready(symbol: str, report_date: date, min_rows: int = 120) -> bool:
+def _is_technical_history_ready(
+    symbol: str,
+    report_date: date,
+    min_rows: int = 120,
+    *,
+    require_adjusted: bool = False,
+) -> bool:
     """Return True when local technical cache already covers report_date."""
     try:
-        from technical_scanner import _load_cached_history
         cached = _load_cached_history(symbol, require_fresh=False)
         if cached.empty or len(cached) < min_rows:
             return False
+        if require_adjusted:
+            if not _has_adjusted_history(cached):
+                return False
         return bool(cached["date"].dt.date.max() >= report_date)
     except Exception:
         return False
@@ -169,6 +179,7 @@ class BackfillResult:
     screening_revenue_count: int = 0
     screening_price_metric_count: int = 0
     screening_technical_count: int = 0
+    screening_valuation_snapshot_count: int = 0
     screening_warning_count: int = 0
     # Metadata
     latest_trading_date: date | None = None
@@ -742,7 +753,15 @@ def build_and_save_curated_scan_cache(
         if progress:
             progress("精選選股：執行交叉命中掃描")
         result = build_curated_scan_result(report_date=report_date)
-        save_recent_scan_result(CURATED_SCAN_TYPE, report_date, result.report_text, result.selected_codes)
+        from radar_service import resolve_radar_scoring_version
+
+        save_recent_scan_result(
+            CURATED_SCAN_TYPE,
+            report_date,
+            result.report_text,
+            result.selected_codes,
+            metadata={"scoring_version": resolve_radar_scoring_version()},
+        )
         if progress:
             progress(f"精選選股完成：{len(result.selected_codes)} 檔")
         return result.selected_codes, len(result.selected_codes)
@@ -791,6 +810,7 @@ def warmup_market_screening_cache(
     # 3. Technical daily history for entire market
     emit("全市場技術日線快取檢查")
     technical_count = 0
+    technical_adjusted_count = 0
     technical_cache_hits = 0
     total_symbols = sum(1 for entry in universe if entry.symbol)
     batch_size = 50
@@ -798,16 +818,47 @@ def warmup_market_screening_cache(
         if not entry.symbol:
             continue
         try:
-            if not force_refresh and _is_technical_history_ready(entry.symbol, report_date):
+            if not force_refresh and _is_technical_history_ready(
+                entry.symbol,
+                report_date,
+                min_rows=253,
+                require_adjusted=True,
+            ):
                 technical_cache_hits += 1
+                history = _load_cached_history(entry.symbol, require_fresh=False)
             else:
-                fetch_daily_history(entry.symbol, report_date)
+                history, _ = fetch_daily_history(
+                    entry.symbol,
+                    report_date,
+                    min_rows=253,
+                    require_adjusted=True,
+                )
+            if _has_adjusted_history(history):
+                technical_adjusted_count += 1
             technical_count += 1
         except Exception as exc:
             warnings.append(f"技術日線快取失敗 {entry.code}: {exc}")
         if index % batch_size == 0:
             emit(f"全市場技術日線快取進度 {index}/{total_symbols}，快取命中 {technical_cache_hits} 檔")
     emit(f"全市場技術日線快取完成：可用 {technical_count} 檔，快取命中 {technical_cache_hits} 檔")
+    if len(universe) >= 100 and technical_count and technical_adjusted_count < int(technical_count * 0.9):
+        warnings.append(
+            f"還原價日線覆蓋僅 {technical_adjusted_count}/{technical_count}，"
+            "老蕭相對報酬會對缺漏股票改用原始收盤價並降分"
+        )
+
+    market_risk_count = 0
+    market_risk_complete = False
+    if len(universe) >= 100:
+        emit("官方注意與處置股票風險快取回補")
+        try:
+            market_risk = load_market_risk_map(report_date, force_refresh=force_refresh)
+            market_risk_count = len(market_risk.by_code)
+            market_risk_complete = market_risk.complete
+            if not market_risk.complete:
+                warnings.append("官方注意/處置資料源部分失敗，老蕭選股將標示風險資料不完整")
+        except Exception as exc:
+            warnings.append(f"官方注意/處置快取失敗: {exc}")
 
     # 4. Ensure gross margin base cache file exists (don't full-scan per-stock)
     try:
@@ -818,10 +869,25 @@ def warmup_market_screening_cache(
     except Exception as exc:
         warnings.append(f"毛利率基礎快取載入失敗: {exc}")
 
+    # The official exchange snapshot is shared by every stock, so full-market
+    # runs can warm five years of PE/PB history without per-stock requests.
+    valuation_snapshot_count = 0
+    if len(universe) >= 100:
+        emit("全市場官方 PE/PB 歷史快取回補")
+        try:
+            valuation_stats = warmup_valuation_history_cache(report_date, months=60)
+            valuation_snapshot_count = int(valuation_stats.get("covered_snapshots") or 0)
+        except Exception as exc:
+            warnings.append(f"官方 PE/PB 歷史快取失敗: {exc}")
+
     return {
         "revenue_count": revenue_count,
         "price_metric_count": price_metric_count,
         "technical_count": technical_count,
+        "technical_adjusted_count": technical_adjusted_count,
+        "market_risk_count": market_risk_count,
+        "market_risk_complete": market_risk_complete,
+        "valuation_snapshot_count": valuation_snapshot_count,
         "warnings": warnings,
     }
 
@@ -1250,6 +1316,7 @@ def run_full_backfill(
     result.screening_revenue_count = screening_result.get("revenue_count", 0)
     result.screening_price_metric_count = screening_result.get("price_metric_count", 0)
     result.screening_technical_count = screening_result.get("technical_count", 0)
+    result.screening_valuation_snapshot_count = screening_result.get("valuation_snapshot_count", 0)
     result.screening_warning_count = len(screening_result.get("warnings", []))
     result.warnings.extend(screening_result.get("warnings", []))
     if result.chip_candidate_count > 0 or result.chip_coverage_ok:
@@ -1485,6 +1552,7 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
         "core_research_count": int(result.core_research_count),
         "research_structured_count": int(result.research_structured_count),
         "research_structured_timeout_count": int(result.research_structured_timeout_count),
+        "screening_valuation_snapshot_count": int(getattr(result, "screening_valuation_snapshot_count", 0)),
         "warnings_count": len(result.warnings),
         # Screening/caching health
         "screening_cache_ok": bool(result.universe_count > 1000 and result.screening_price_metric_count > 0 and result.screening_technical_count > 0),
@@ -1612,6 +1680,7 @@ def format_backfill_health_summary(result: "BackfillResult") -> str:
             f"價量 {int(getattr(result, 'price_metric_count', 0))}、"
             f"技術 {int(getattr(result, 'technical_count', 0))}、"
             f"毛利率 {int(getattr(result, 'gross_margin_count', 0))}、"
+            f"估值月份快照 {int(getattr(result, 'screening_valuation_snapshot_count', 0))}、"
             f"研究底稿 {int(getattr(result, 'research_structured_count', 0))}"
         )
 

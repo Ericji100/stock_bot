@@ -479,7 +479,12 @@ class TestWarmupMarketScreeningCache(unittest.TestCase):
 
         mock_revenue.assert_called_once_with(mock_universe.return_value)
         mock_price.assert_called_once_with(mock_universe.return_value, force_refresh=False)
-        mock_tech.assert_called_once_with("2330.TW", date(2026, 5, 15))
+        mock_tech.assert_called_once_with(
+            "2330.TW",
+            date(2026, 5, 15),
+            min_rows=253,
+            require_adjusted=True,
+        )
         self.assertEqual(result["revenue_count"], 1)
         self.assertEqual(result["price_metric_count"], 1)
         self.assertEqual(result["technical_count"], 1)

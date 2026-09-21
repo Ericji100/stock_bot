@@ -1078,8 +1078,9 @@ def write_trades(path: Path, trades_by_scenario: dict[str, list[Trade]]) -> None
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("html", type=Path)
-    parser.add_argument("--output", type=Path, default=Path("tmf_aug2026_backtest_results.json"))
-    parser.add_argument("--trades", type=Path, default=Path("tmf_aug2026_backtest_trades.csv"))
+    output_dir = Path(__file__).resolve().parent
+    parser.add_argument("--output", type=Path, default=output_dir / "tmf_aug2026_backtest_results.json")
+    parser.add_argument("--trades", type=Path, default=output_dir / "tmf_aug2026_backtest_trades.csv")
     args = parser.parse_args()
 
     payload = load_payload(args.html)

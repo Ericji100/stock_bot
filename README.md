@@ -1117,7 +1117,7 @@ python tools/ai_report_coverage_check.py --root reports/_smoke_value_scan --limi
 
 2026-06-19 補強：新增 `SystemHealthService`，聚合執行中任務、資料來源冷卻/額度與 Artifact Registry 統計；`/backfill_status` 會一併顯示系統健康摘要，方便排查回補與資料層狀態。
 
-2026-06-19 補強：`ArtifactRegistry` 新增只讀 inventory，可盤點 `.cache/`、`reports/`、`database/`、`data/topic/backup/`、`backups/`、`backup/` 與 `manual_*` 產物，提供 schema、可用性、大小與類型摘要；此功能只做觀測，不會自動刪除或搬移檔案。
+2026-06-19 補強：`ArtifactRegistry` 新增只讀 inventory，可盤點 `.cache/`、`reports/`、`database/`、`data/topic/backup/`、`local_data/legacy_backups/` 與 `manual_*` 產物，提供 schema、可用性、大小與類型摘要；此功能只做觀測，不會自動刪除或搬移檔案。
 
 2026-06-19 補強：`EntityResolver` 已擴充為股票、題材、產業別名與供應鏈節點的共用解析入口。新增或調整產業別名、題材別名、供應鏈節點時，優先更新 `config/sector_alias_map.json`、`config/theme_profiles.json`、`config/supply_chain_nodes.json`，再由投研資料層共用取用。
 

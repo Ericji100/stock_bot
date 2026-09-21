@@ -17,8 +17,7 @@ DEFAULT_INVENTORY_TARGETS = (
     "reports",
     "database",
     "data/topic/backup",
-    "backups",
-    "backup",
+    "local_data/legacy_backups",
 )
 
 
@@ -258,7 +257,7 @@ def _artifact_type_for_path(rel_path: str, path: Path) -> str:
         return "database_artifact"
     if normalized.startswith("data/topic/backup"):
         return "topic_backup"
-    if normalized.startswith("backups/") or normalized.startswith("backup/"):
+    if normalized == "local_data/legacy_backups" or normalized.startswith("local_data/legacy_backups/"):
         return "backup_artifact"
     if Path(normalized).name.startswith("manual_") or normalized.startswith("manual_"):
         return "manual_artifact"

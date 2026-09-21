@@ -31,6 +31,7 @@ from research_center.entity_resolver import (
 from research_center.error_classification_service import classify_error
 from research_center.event_context_service import build_event_context, summarize_event_context
 from research_center.models import CommandRequest
+from research_center.topic_reset_service import ROOT as TOPIC_RESET_ROOT, _RESET_BACKUP_DIR
 from research_center.prompt_manifest_service import (
     PROMPT_BUNDLE_SCHEMA_VERSION,
     build_prompt_manifest,
@@ -81,18 +82,31 @@ class SharedArchitectureServicesTests(unittest.TestCase):
         (root / ".cache" / "price_metrics.json").write_text("{}", encoding="utf-8")
         (root / "reports" / "stock").mkdir(parents=True)
         (root / "reports" / "stock" / "sample.json").write_text("{}", encoding="utf-8")
+        (root / "local_data" / "legacy_backups").mkdir(parents=True)
+        (root / "local_data" / "legacy_backups" / "snapshot.json").write_text("{}", encoding="utf-8")
         (root / "manual_20260619_check").mkdir()
         (root / "manual_20260619_check" / "note.txt").write_text("ok", encoding="utf-8")
 
-        inventory = build_artifact_inventory(root_dir=root, targets=(".cache", "reports"), include_manual_dirs=True)
+        inventory = build_artifact_inventory(
+            root_dir=root,
+            targets=(".cache", "reports", "local_data/legacy_backups"),
+            include_manual_dirs=True,
+        )
         summary = summarize_artifact_inventory(inventory)
 
         self.assertEqual(inventory["schema_version"], "artifact_inventory_v1")
-        self.assertEqual(summary["target_count"], 3)
-        self.assertEqual(summary["usable_count"], 3)
+        self.assertEqual(summary["target_count"], 4)
+        self.assertEqual(summary["usable_count"], 4)
+        self.assertEqual(summary["by_type"]["backup_artifact"], 1)
         self.assertEqual(summary["by_type"]["cache_directory"], 1)
         self.assertEqual(summary["by_type"]["report_directory"], 1)
         self.assertEqual(summary["by_type"]["manual_artifact"], 1)
+
+    def test_topic_reset_backups_stay_out_of_project_root(self):
+        self.assertEqual(
+            _RESET_BACKUP_DIR,
+            TOPIC_RESET_ROOT / "local_data" / "legacy_backups" / "topic_reset",
+        )
 
     def test_entity_resolver_resolves_stock_code_and_topic_alias(self):
         root = ensure_test_cache_dir("shared_architecture_services/entity")

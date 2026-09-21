@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _TOPIC_PROFILES_PATH = ROOT / "config" / "theme_profiles.json"
 _COMPANY_TOPIC_MAP_PATH = ROOT / "config" / "company_theme_map.json"
 _SUPPLY_CHAIN_PATH = ROOT / "config" / "supply_chain_nodes.json"
-_RESET_BACKUP_DIR = ROOT / "backups" / "topic_reset"
+_RESET_BACKUP_DIR = ROOT / "local_data" / "legacy_backups" / "topic_reset"
 
 
 @dataclass(frozen=True)

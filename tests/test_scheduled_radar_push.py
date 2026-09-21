@@ -29,7 +29,7 @@ class ScheduledRadarPushTests(unittest.TestCase):
         with (
             patch.object(main, "load_config", return_value={"chat_id": "chat-1", "scan_settings": {}}),
             patch.object(main, "get_tw_today", return_value=date(2026, 6, 10)),
-            patch("chip_strategies.is_possible_trading_day", return_value=True),
+            patch("stock_ai_bot.strategies.chip_strategies.is_possible_trading_day", return_value=True),
             patch.object(main, "run_radar", return_value=SimpleNamespace()) as run_radar,
             patch.object(main, "format_radar_push_summary", return_value=push_summary) as format_push,
             patch.object(main, "format_radar_report") as format_full,
@@ -59,7 +59,7 @@ class ScheduledRadarPushTests(unittest.TestCase):
         with (
             patch.object(main, "load_config", return_value={"chat_id": "chat-1", "scan_settings": {}}),
             patch.object(main, "get_tw_today", return_value=date(2026, 6, 10)),
-            patch("chip_strategies.is_possible_trading_day", return_value=True),
+            patch("stock_ai_bot.strategies.chip_strategies.is_possible_trading_day", return_value=True),
             patch.object(main, "run_radar", return_value=SimpleNamespace()),
             patch.object(main, "format_radar_push_summary", return_value=long_report),
         ):

@@ -31,7 +31,7 @@ _FINMIND_QUOTA = FinMindQuotaManager()
 _HOLIDAY_DATES_CACHE: dict[int, set[date]] = {}
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache"
 TDCC_CACHE_DIR = CACHE_DIR / "tdcc"
 DAILY_CHIP_CACHE_DIR = CACHE_DIR / "chip_daily"

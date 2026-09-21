@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import chip_strategies
+from stock_ai_bot.strategies import chip_strategies
 import stock_ai_bot.selection.curated_scan_service as curated_scan_service
 from stock_ai_bot.data_sources.historical_price_service import fetch_history, load_cached_history, prefetch_histories
 import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service

@@ -4,7 +4,7 @@ from datetime import date
 
 import pandas as pd
 
-import chip_strategies
+from stock_ai_bot.strategies import chip_strategies
 import stock_ai_bot.data_sources.historical_price_service as historical_prices
 import stock_ai_bot.scanning.stock_scanner as stock_scanner
 from stock_ai_bot.scanning.stock_scanner import StockUniverseEntry, load_price_metrics

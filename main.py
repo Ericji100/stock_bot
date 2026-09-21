@@ -17,7 +17,7 @@ from stock_ai_bot.backfill.scheduled_all_scan_prepare_service import (
 )
 from research_center.recent_scans import save_recent_scan_result
 
-from chip_strategies import (
+from stock_ai_bot.strategies.chip_strategies import (
     CHIP_STRATEGY_NAMES,
     STRATEGY_DEFINITIONS,
     build_chip_grade_maps,
@@ -1945,7 +1945,7 @@ async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     target_date = get_tw_today()
     try:
-        from chip_strategies import is_possible_trading_day
+        from stock_ai_bot.strategies.chip_strategies import is_possible_trading_day
 
         if not is_possible_trading_day(target_date):
             print(format_cmd_message(f"20:30 全部選股略過非交易日 {target_date.isoformat()}", "定時任務"), flush=True)
@@ -1987,7 +1987,7 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     target_date = get_tw_today()
     try:
-        from chip_strategies import is_possible_trading_day
+        from stock_ai_bot.strategies.chip_strategies import is_possible_trading_day
 
         if not is_possible_trading_day(target_date):
             print(f"[{now_timestamp()}] Radar 21:30 略過非交易日 {target_date.isoformat()}", flush=True)

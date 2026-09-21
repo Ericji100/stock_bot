@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 from stock_ai_bot.selection.candidate_filter_service import hard_filter_display_text, resolve_hard_filter_settings
-from chip_strategies import (
+from stock_ai_bot.strategies.chip_strategies import (
     CHIP_STRATEGY_NAMES,
     build_chip_grade_maps,
     build_market_context,

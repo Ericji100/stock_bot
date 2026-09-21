@@ -24,7 +24,7 @@ from stock_ai_bot.selection.candidate_filter_service import (
 )
 from stock_ai_bot.common.progress_logger import now_timestamp
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
-from unified_financial_scoring import effective_revenue_rows
+from stock_ai_bot.scoring.unified_financial_scoring import effective_revenue_rows
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]

@@ -1,6 +1,6 @@
 import unittest
 
-import chip_strategies
+from stock_ai_bot.strategies import chip_strategies
 import stock_ai_bot.scanning.stock_scanner as stock_scanner
 
 from stock_ai_bot.selection.candidate_filter_service import (

@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 from telegram import MessageEntity
 
-import chip_strategies
+from stock_ai_bot.strategies import chip_strategies
 import main
 import stock_ai_bot.scanning.stock_scanner as stock_scanner
 from stock_ai_bot.telegram.telegram_stock_formatting import (

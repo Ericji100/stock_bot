@@ -14,7 +14,7 @@ import pandas as pd
 import stock_ai_bot.selection.curated_scan_service as curated_scan_service
 import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service
 import stock_ai_bot.scanning.technical_scanner as ts
-from chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
+from stock_ai_bot.strategies.chip_strategies import build_chip_grade_maps, build_market_context, get_tw_today, is_possible_trading_day
 from stock_ai_bot.monitoring.monitor_service import get_monitor_stocks
 from stock_ai_bot.portfolio.portfolio_manager import list_portfolio
 from research_center.config import load_research_config
@@ -40,7 +40,7 @@ from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 from stock_ai_bot.scanning.stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text, strip_stock_markers
 from stock_ai_bot.scanning.technical_indicator_service import apply_point_in_time_adjustment
-from unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
+from stock_ai_bot.scoring.unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]

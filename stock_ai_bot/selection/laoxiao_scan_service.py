@@ -768,7 +768,7 @@ def _attach_historical_fundamental_scores(
         history_map = {}
 
     from stock_ai_bot.scanning.stock_scanner import _load_historical_gross_margin_series
-    from unified_financial_scoring import score_unified_financial, score_unified_revenue
+    from stock_ai_bot.scoring.unified_financial_scoring import score_unified_financial, score_unified_revenue
 
     for item in candidates:
         item.revenue_history = _normalise_revenue_history(history_map.get(item.code) or [])

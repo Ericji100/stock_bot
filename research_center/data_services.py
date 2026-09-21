@@ -15,7 +15,7 @@ from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher, StockNotFou
 from stock_ai_bot.market.market_summary import MarketSummaryError, build_morning_market_report, build_noon_market_report
 from stock_ai_bot.portfolio.portfolio_manager import list_portfolio, resolve_stock_reference
 from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
-from chip_strategies import get_tw_today
+from stock_ai_bot.strategies.chip_strategies import get_tw_today
 from stock_ai_bot.selection.curated_scan_service import (
     CURATED_SCAN_TYPE,
     build_curated_scan_result,

@@ -39,7 +39,7 @@ SCAN_HEALTH_THRESHOLDS = {
     "chip": 0.8,
 }
 
-from chip_strategies import get_tw_today, warmup_chip_data_cache, TARGET_DAILY_TRADING_DAYS
+from stock_ai_bot.strategies.chip_strategies import get_tw_today, warmup_chip_data_cache, TARGET_DAILY_TRADING_DAYS
 import pandas as pd
 from stock_ai_bot.portfolio.portfolio_manager import load_portfolio
 from research_center.data_services import collect_research_data

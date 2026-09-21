@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from stock_ai_bot.scanning.stock_scanner import RevenuePoint, classify_revenue_group
-from unified_financial_scoring import (
+from stock_ai_bot.scoring.unified_financial_scoring import (
     effective_revenue_rows,
     score_unified_financial,
     score_unified_revenue,

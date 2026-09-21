@@ -16,7 +16,8 @@ from typing import Any
 
 
 FINANCIAL_INDUSTRIES = {"金融保險", "金融業", "保險業", "證券期貨業", "金控業"}
-RULE_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "financial_course_rules.json"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+RULE_CONFIG_PATH = ROOT_DIR / "config" / "financial_course_rules.json"
 
 
 def _load_parameters() -> dict[str, Any]:

@@ -8,7 +8,7 @@ import pandas as pd
 import pytz
 import yfinance as yf
 
-from chip_strategies import get_tw_today
+from stock_ai_bot.strategies.chip_strategies import get_tw_today
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 from stock_ai_bot.scanning.technical_scanner import (
     MA_BREAKOUT_PERIODS,

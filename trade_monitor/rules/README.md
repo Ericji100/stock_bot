@@ -2,6 +2,8 @@
 
 每個 `versions/<version_id>/prompt.md` 都是可直接套用的完整提示詞，不依賴疊加增補檔。`current-pre-enlightenment-20260902` 是部署前不可變還原點；`enlightenment-integrated-v1` 是正式整合版。
 
+目前正式版、回測版、歷史封存版與已知契約待修項目，先查閱 [`VERSION_INDEX.md`](VERSION_INDEX.md)。實際正式版本仍只以 `active-version.json` 為準。
+
 ## 列出與驗證
 
 ```powershell

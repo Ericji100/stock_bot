@@ -19,10 +19,10 @@
 - `local_outbox.py`：將 finalize 的同一份 canonical message 交給 Automation heartbeat relay。
 - `start_local_scheduler.ps1`：Windows 登入後隱藏啟動本機常駐程序。
 - `schemas/`：歷史相容 schema、正式 v4 與定錨 RC v5 schema；使用者可見排版仍固定九欄。
-- `rules/`：不可變版本、目前正式指標與啟用歷史。
+- `rules/`：不可變版本、目前正式指標與啟用歷史；分類導覽見 `rules/VERSION_INDEX.md`。
 - `docs/`：架構與傳輸文件；`chrome-dual-scale-rc.md` 說明Chrome雙視角RC。
 - `experiments/`：不屬於正式執行流程的時鐘測試。
 
 執行期狀態只放在 `.runtime/trade_monitor/`，不提交 Git，也不得保存帳務或 Telegram 憑證。
 
-目前正式版本是 `enlightenment-integrated-v2.1.3-type-terms`（schema v8／market structure state v6）；使用者可見 Dow 結構統一寫成「次高點／次低點」，三類反轉保留 `Type1／Type2／Type3` 並在首次出現附簡短說明。Automation `1-k` 維持 PAUSED，正式本機讀秒程序已重新載入同版本 scheduler config。
+目前正式版本以 `rules/active-version.json` 為唯一權威；現值是 `enlightenment-integrated-v2.1.8-anchor-origin`（schema v8／market structure state v6），Automation `1-k` 狀態為 `ACTIVE`，本機 scheduler config 亦鎖定同版本。正式版、回測版與歷史封存版的分層說明見 `rules/VERSION_INDEX.md`。

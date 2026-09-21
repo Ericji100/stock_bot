@@ -1,0 +1,51 @@
+{
+  "files.exclude": {
+    "**/.cache": true,
+    "**/.codex_tmp": true,
+    "**/.pytest_cache": true,
+    "**/.runtime": true,
+    "**/.tmp": true,
+    "**/.v7bridge": true,
+    "**/.v7s1": true,
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/*.py[cod]": true,
+    "**/logs": true,
+    "**/outputs": true,
+    "**/reports": true
+  },
+  "search.exclude": {
+    "**/.cache/**": true,
+    "**/.codex_tmp/**": true,
+    "**/.pytest_cache/**": true,
+    "**/.runtime/**": true,
+    "**/.tmp/**": true,
+    "**/.v7bridge/**": true,
+    "**/.v7s1/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "**/data/**": true,
+    "**/database/**": true,
+    "**/local_data/**": true,
+    "**/logs/**": true,
+    "**/outputs/**": true,
+    "**/reports/**": true
+  },
+  "files.watcherExclude": {
+    "**/.cache/**": true,
+    "**/.codex_tmp/**": true,
+    "**/.pytest_cache/**": true,
+    "**/.runtime/**": true,
+    "**/.tmp/**": true,
+    "**/.v7bridge/**": true,
+    "**/.v7s1/**": true,
+    "**/.venv/**": true,
+    "**/__pycache__/**": true,
+    "**/data/**": true,
+    "**/database/**": true,
+    "**/local_data/**": true,
+    "**/logs/**": true,
+    "**/outputs/**": true,
+    "**/reports/**": true
+  }
+}

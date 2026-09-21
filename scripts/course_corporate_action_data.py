@@ -1,4 +1,4 @@
-"""Freeze replay inputs and fetch public corporate-action evidence, without editing bot caches."""
+﻿"""Freeze replay inputs and fetch public corporate-action evidence, without editing bot caches."""
 from __future__ import annotations
 
 import argparse
@@ -84,7 +84,7 @@ def freeze_and_fetch():
 
 
 def fetch_finmind(codes, datasets):
-    from finmind_client import FinMindClient
+    from stock_ai_bot.data_sources.finmind_client import FinMindClient
     client = FinMindClient(allow_anonymous=True, timeout=25)
     for n, code in enumerate(codes, 1):
         for dataset in datasets:

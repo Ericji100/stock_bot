@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from datetime import date
 
 from technical_scanner import TechnicalScanResult, format_technical_report_messages
-from telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
 class TechnicalDedupSummaryTests(unittest.TestCase):

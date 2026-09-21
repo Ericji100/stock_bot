@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
 import pandas as pd
 
 import chip_strategies
-import historical_price_service as historical_prices
+import stock_ai_bot.data_sources.historical_price_service as historical_prices
 import stock_scanner
 from stock_scanner import StockUniverseEntry, load_price_metrics
 import technical_scanner

@@ -1,4 +1,4 @@
-"""Replay the production `/scan 7` strategies over a historical date range.
+﻿"""Replay the production `/scan 7` strategies over a historical date range.
 
 The runner is intentionally side-effect isolated: it does not import Telegram,
 write recent-scan state, or register a scheduled job.  Selection formulas and
@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
 
 import chip_strategies
 import curated_scan_service
-from historical_price_service import fetch_history, load_cached_history, prefetch_histories
+from stock_ai_bot.data_sources.historical_price_service import fetch_history, load_cached_history, prefetch_histories
 import laoxiao_scan_service
 import stock_scanner
 from stock_scanner import ScanReport, load_stock_universe, scan_tw_market

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import time
@@ -23,7 +23,7 @@ from data_source_manager import SourceHealthManager, FinMindQuotaManager
 from stock_scanner import UNCLASSIFIED_INDUSTRY, load_price_metrics, load_recent_revenue_history, load_stock_universe
 
 from progress_logger import now_timestamp
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 # Singletons for health and quota tracking
 _CHIP_HEALTH = SourceHealthManager()

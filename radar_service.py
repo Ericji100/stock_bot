@@ -38,7 +38,7 @@ from research_center.tavily_search_service import TavilyQuotaError, TavilySearch
 from research_center.free_sources import build_valuation_context_map
 from data_fetcher import StockDataFetcher
 from stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
-from telegram_stock_formatting import mark_stock_text, strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text, strip_stock_markers
 from technical_indicator_service import apply_point_in_time_adjustment
 from unified_financial_scoring import effective_revenue_rows, score_unified_financial, score_unified_revenue
 

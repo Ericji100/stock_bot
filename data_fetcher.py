@@ -15,8 +15,8 @@ import pandas as pd
 import yfinance as yf
 
 from data_source_manager import FinMindQuotaManager, SourceHealthManager
-from finmind_client import FinMindClient
-from fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.finmind_client import FinMindClient
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"

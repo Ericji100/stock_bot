@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import time
 import re
@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 import yfinance as yf
 
-from fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 from stock_scanner import (
     DEFAULT_SCAN_SETTINGS,
     UNCLASSIFIED_INDUSTRY,
@@ -23,7 +23,7 @@ from technical_strategy_engine import detect_technical_strategies
 
 from candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
 from progress_logger import now_timestamp
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 from technical_indicator_service import (
     INDICATOR_VERSION,
     KD_D_PERIOD,
@@ -214,7 +214,7 @@ def fetch_daily_history(
     require_adjusted: bool = False,
 ) -> tuple[pd.DataFrame, str]:
     if end_date < datetime.now().date():
-        from historical_price_service import fetch_history as fetch_historical_history
+        from stock_ai_bot.data_sources.historical_price_service import fetch_history as fetch_historical_history
 
         return fetch_historical_history(
             symbol,

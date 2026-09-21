@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -9,7 +9,7 @@ import pytz
 import yfinance as yf
 
 from chip_strategies import get_tw_today
-from fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 from technical_scanner import (
     MA_BREAKOUT_PERIODS,
     MA_BREAKOUT_SIGNAL_LABELS,
@@ -22,7 +22,7 @@ from technical_scanner import (
 from technical_indicator_service import apply_technical_indicators
 
 from progress_logger import now_timestamp
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
 OFFICIAL_NAME_CACHE: dict[str, str] = {}

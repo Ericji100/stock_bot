@@ -1,4 +1,4 @@
-"""Tests for technical strategy detection (strategies A/B/C/D) and parameter integrity."""
+﻿"""Tests for technical strategy detection (strategies A/B/C/D) and parameter integrity."""
 from __future__ import annotations
 
 import unittest
@@ -19,7 +19,7 @@ from technical_scanner import (
 from technical_scanner import KD_RSV_PERIOD, KD_K_PERIOD, KD_D_PERIOD
 from technical_scanner import is_macd_pullback_breakout
 from technical_strategy_engine import detect_technical_strategies
-from telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
 # -------------------------------------------------------------------

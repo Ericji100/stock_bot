@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 import unittest
@@ -6,9 +6,9 @@ from unittest.mock import call, patch
 
 import pandas as pd
 
-import stock_chart_service
+from stock_ai_bot.charts import stock_chart_service
 import technical_scanner
-import tmf_chart_service
+from stock_ai_bot.charts import tmf_chart_service
 
 
 def _stock_bars(rows: int = 140) -> pd.DataFrame:
@@ -53,8 +53,8 @@ class ChartServiceSmokeTests(unittest.TestCase):
             name="台積電",
         )
         with (
-            patch("stock_chart_service.resolve_stock_meta", return_value=meta),
-            patch("stock_chart_service.load_chart_bars", return_value=_stock_bars()),
+            patch("stock_ai_bot.charts.stock_chart_service.resolve_stock_meta", return_value=meta),
+            patch("stock_ai_bot.charts.stock_chart_service.load_chart_bars", return_value=_stock_bars()),
         ):
             buffer, filename, returned_meta = stock_chart_service.build_stock_chart_document(
                 "2330",
@@ -70,7 +70,7 @@ class ChartServiceSmokeTests(unittest.TestCase):
         self.assertGreater(len(html), 5000)
 
     def test_tmf_chart_report_returns_non_empty_html_file(self):
-        with patch("tmf_chart_service.load_tmf_ticks", return_value=_tmf_ticks()):
+        with patch("stock_ai_bot.charts.tmf_chart_service.load_tmf_ticks", return_value=_tmf_ticks()):
             output_path = tmf_chart_service.build_tmf_chart_report(
                 "2026-06-17",
                 "2026-06-18",

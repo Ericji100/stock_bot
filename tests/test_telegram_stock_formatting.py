@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from datetime import date
@@ -9,7 +9,7 @@ from telegram import MessageEntity
 import chip_strategies
 import main
 import stock_scanner
-from telegram_stock_formatting import (
+from stock_ai_bot.telegram.telegram_stock_formatting import (
     STOCK_MARK_END,
     STOCK_MARK_START,
     mark_stock_text,

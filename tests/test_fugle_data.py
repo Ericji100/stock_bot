@@ -58,7 +58,7 @@ class TestFugleSingleCount(unittest.TestCase):
     @patch("httpx.Client")
     def test_fetch_fugle_history_records_once(self, mock_client_cls):
         """One successful fetch_fugle_history call must increase historical count by exactly 1."""
-        import fugle_data
+        import stock_ai_bot.data_sources.fugle_data as fugle_data
         importlib.reload(fugle_data)
         # Reset the module-level limiter/health AND block file persistence
         fugle_data._FUGLE_LIMITER._data = {}
@@ -94,7 +94,7 @@ class TestFugleSingleCount(unittest.TestCase):
     @patch("httpx.Client")
     def test_caller_must_not_double_record(self, mock_client_cls):
         """Verify the old pattern (caller ALSO records) would double-count."""
-        import fugle_data
+        import stock_ai_bot.data_sources.fugle_data as fugle_data
         importlib.reload(fugle_data)
         fugle_data._FUGLE_LIMITER._data = {}
         fugle_data._FUGLE_HEALTH._data = {}

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from typing import Any, Callable, TextIO
 from telegram import Bot
 from telegram.request import HTTPXRequest
 
-from telegram_push_service import (
+from stock_ai_bot.telegram.telegram_push_service import (
     TELEGRAM_SAFE_CHUNK_LIMIT,
     TelegramPushResult,
     prepare_telegram_push_chunks,

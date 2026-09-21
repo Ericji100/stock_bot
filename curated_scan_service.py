@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
@@ -17,7 +17,7 @@ from chip_strategies import (
 )
 from stock_scanner import StockUniverseEntry, load_recent_revenue_history, scan_tw_market
 import technical_scanner as ts
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
 ROOT_DIR = Path(__file__).resolve().parent

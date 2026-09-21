@@ -1,12 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
 
 from telegram import MessageEntity
 
-from telegram_push_service import prepare_telegram_push_chunks, sanitize_telegram_error, send_telegram_message
-from telegram_stock_formatting import prepare_telegram_chunks, prepare_telegram_text
+from stock_ai_bot.telegram.telegram_push_service import prepare_telegram_push_chunks, sanitize_telegram_error, send_telegram_message
+from stock_ai_bot.telegram.telegram_stock_formatting import prepare_telegram_chunks, prepare_telegram_text
 
 
 class FakeBot:

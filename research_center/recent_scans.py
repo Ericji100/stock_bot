@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .convergence_service import candidate_snapshot_from_row
-from telegram_stock_formatting import strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import strip_stock_markers
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 RECENT_SCAN_PATH = ROOT_DIR / ".cache" / "recent_scan_results.json"

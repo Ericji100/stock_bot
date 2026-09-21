@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from types import SimpleNamespace
 
 import pandas as pd
@@ -6,7 +6,7 @@ import pandas as pd
 import curated_scan_service as curated
 import radar_service as radar
 import technical_scanner as scanner
-from telegram_stock_formatting import strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import strip_stock_markers
 
 
 REPORT_DATE = date(2026, 5, 20)

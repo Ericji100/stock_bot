@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import asyncio
@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from telegram_push_service import TelegramPushResult
+from stock_ai_bot.telegram.telegram_push_service import TelegramPushResult
 from trade_monitor_replay.config import ReplayConfig, ReplayConfigError, load_replay_config
 from trade_monitor_replay.codex_analyzer import (
     CodexReplayAnalyzer,

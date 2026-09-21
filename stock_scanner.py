@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import math
@@ -14,7 +14,7 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
-from fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 
 from candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
@@ -23,7 +23,7 @@ from candidate_filter_service import (
     resolve_hard_filter_settings,
 )
 from progress_logger import now_timestamp
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 from unified_financial_scoring import effective_revenue_rows
 
 
@@ -714,7 +714,7 @@ def load_price_metrics(
     as_of_date: date | None = None,
 ) -> dict[str, dict[str, float]]:
     if as_of_date is not None:
-        from historical_price_service import fetch_history, load_cached_history
+        from stock_ai_bot.data_sources.historical_price_service import fetch_history, load_cached_history
 
         historical_metrics: dict[str, dict[str, float]] = {}
         for entry in universe:
@@ -847,7 +847,7 @@ def _load_historical_gross_margin_series(symbol: str, as_of_date: date) -> list[
         code = symbol.split(".", 1)[0]
         try:
             from data_source_manager import FinMindQuotaManager, SourceHealthManager
-            from finmind_client import FinMindClient
+            from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
             result = FinMindClient(
                 health_manager=SourceHealthManager(),

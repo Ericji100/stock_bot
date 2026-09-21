@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import io
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import trade_monitor.bridge as bridge
-from telegram_push_service import TelegramPushResult
+from stock_ai_bot.telegram.telegram_push_service import TelegramPushResult
 
 
 TEST_TOKEN = "123456:abcdefghijklmnopqrstuvwxyzABCDE"

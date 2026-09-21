@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import math
@@ -15,7 +15,7 @@ from research_center.recent_scans import load_recent_scan_results
 from research_center.topic_context import build_stock_topic_context
 from stock_scanner import StockUniverseEntry, load_recent_revenue_history, load_stock_universe
 from technical_scanner import fetch_daily_history
-from telegram_stock_formatting import mark_stock_text
+from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text
 
 
 ROOT_DIR = Path(__file__).resolve().parent

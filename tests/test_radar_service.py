@@ -13,7 +13,7 @@ import pytest
 
 import radar_service as radar
 from research_center.models import SourceItem
-from telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, strip_stock_markers
 
 
 class RadarDataMaximizationTests(unittest.TestCase):

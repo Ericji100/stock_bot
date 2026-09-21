@@ -1,4 +1,4 @@
-"""Tests for finmind_client.py: FinMindClient with health and quota integration.
+﻿"""Tests for finmind_client.py: FinMindClient with health and quota integration.
 
 No real network calls. Uses unittest.mock to mock HTTP.
 """
@@ -20,9 +20,9 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_no_key_returns_empty_dict(self, mock_client_cls):
         """When no API key is available, request_dataset returns {} without sending HTTP."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
         # Pass api_key=None and patch _load_api_key to return None
-        with patch("finmind_client._load_api_key", return_value=None):
+        with patch("stock_ai_bot.data_sources.finmind_client._load_api_key", return_value=None):
             client = FinMindClient(api_key=None)
             result = client.request_dataset("TaiwanStockInstitutionalInvestorsBuySell", {"stock_id": "2330"})
             self.assertEqual(result, {})
@@ -31,7 +31,7 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_anonymous_access_sends_request_without_authorization_header(self, mock_client_cls):
         """Explicit public mode may call FinMind without leaking an empty bearer token."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": 200, "data": []}
@@ -41,7 +41,7 @@ class TestFinMindClient(unittest.TestCase):
         mock_client.__enter__.return_value = mock_client
         mock_client_cls.return_value = mock_client
 
-        with patch("finmind_client._load_api_key", return_value=None):
+        with patch("stock_ai_bot.data_sources.finmind_client._load_api_key", return_value=None):
             client = FinMindClient(api_key=None, allow_anonymous=True)
             result = client.request_dataset("TaiwanStockFinancialStatements", {"stock_id": "2330"})
 
@@ -51,7 +51,7 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_quota_exceeded_returns_empty(self, mock_client_cls):
         """When FinMindQuotaManager.can_use returns False, no HTTP request is sent."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         fake_quota = MagicMock()
         fake_quota.can_use.return_value = False
@@ -64,7 +64,7 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_success_records_quota_and_health(self, mock_client_cls):
         """HTTP success → record_use and record_success are called."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": 200, "data": [{"date": "2026-05-15", "name": "Foreign_Investor", "buy": 1000, "sell": 500}]}
@@ -89,7 +89,7 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_http_failure_records_health(self, mock_client_cls):
         """HTTP exception → record_failure is called and exception re-raised."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         mock_client = MagicMock()
         mock_client.get.side_effect = Exception("network error")
@@ -116,7 +116,7 @@ class TestFinMindClient(unittest.TestCase):
     @patch("httpx.Client")
     def test_runtime_error_message_recorded(self, mock_client_cls):
         """RuntimeError → record_failure receives 'boom' not 'RuntimeError' or str(Exception)."""
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         mock_client = MagicMock()
         mock_client.get.side_effect = RuntimeError("boom")
@@ -138,7 +138,7 @@ class TestFinMindClient(unittest.TestCase):
     def test_key_not_in_logs(self, mock_client_cls):
         """Ensure the API key does NOT appear in any logged output."""
         import io
-        from finmind_client import FinMindClient
+        from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
         real_key = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.test_signature"
         log_capture = io.StringIO()

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timedelta
 import unittest
@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pandas as pd
 
 import monitor_service
-from telegram_stock_formatting import STOCK_MARK_START
+from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START
 
 
 class _FakeResponse:

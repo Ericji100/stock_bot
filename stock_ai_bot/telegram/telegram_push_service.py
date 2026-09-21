@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import re
@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from telegram import MessageEntity
 
-from telegram_stock_formatting import TelegramTextChunk, prepare_telegram_chunks
+from stock_ai_bot.telegram.telegram_stock_formatting import TelegramTextChunk, prepare_telegram_chunks
 
 
 TELEGRAM_SAFE_CHUNK_LIMIT = 4000

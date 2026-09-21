@@ -1,9 +1,9 @@
-from datetime import date
+﻿from datetime import date
 
 import pandas as pd
 
 import technical_scanner as scanner
-from telegram_stock_formatting import strip_stock_markers
+from stock_ai_bot.telegram.telegram_stock_formatting import strip_stock_markers
 
 
 def _frame(*, yesterday=9.5, today=11.0, today_low=10.8, ma5=10.0, ma21=9.0, ma105=20.0, ma144=22.0):

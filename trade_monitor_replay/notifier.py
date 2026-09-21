@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import json
@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable
 from telegram import Bot
 from telegram.request import HTTPXRequest
 
-from telegram_push_service import TelegramPushResult, sanitize_telegram_error, send_telegram_message
+from stock_ai_bot.telegram.telegram_push_service import TelegramPushResult, sanitize_telegram_error, send_telegram_message
 from trade_monitor.bridge import DeliveryFileLock
 
 from .state import read_json, write_json_atomic

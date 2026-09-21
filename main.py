@@ -1,4 +1,4 @@
-import json
+﻿import json
 import asyncio
 import traceback
 import telegram
@@ -63,7 +63,7 @@ from portfolio_manager import (
     list_portfolio,
     remove_portfolio_stock,
 )
-from stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
+from stock_ai_bot.charts.stock_chart_service import StockChartError, build_stock_chart_document, parse_stock_chart_args
 from stock_scanner import (
     format_scan_report as format_tw_market_scan_report,
     scan_tw_market,
@@ -83,9 +83,9 @@ from radar_service import (
 )
 
 from progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
-from telegram_stock_formatting import prepare_telegram_chunks
-from telegram_push_service import send_telegram_message
-from tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
+from stock_ai_bot.telegram.telegram_stock_formatting import prepare_telegram_chunks
+from stock_ai_bot.telegram.telegram_push_service import send_telegram_message
+from stock_ai_bot.charts.tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
 
 SCAN_CALLBACK_PREFIX = "scan_strategy:"
 SCAN_DATE_CALLBACK_PREFIX = "scan_date:"

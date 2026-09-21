@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import calendar
 import json
@@ -14,8 +14,8 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
-from fugle_data import fetch_fugle_history
-from historical_price_service import fetch_history as fetch_shared_daily_history
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.historical_price_service import fetch_history as fetch_shared_daily_history
 from technical_indicator_service import apply_technical_indicators
 
 

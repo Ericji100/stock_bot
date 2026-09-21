@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytz
 
-import market_summary
-from market_summary import QuoteSnapshot
+import stock_ai_bot.market.market_summary as market_summary
+from stock_ai_bot.market.market_summary import QuoteSnapshot
 
 
 YAHOO_FUTURES_HTML = """
@@ -38,8 +38,8 @@ class MarketSummaryTest(unittest.TestCase):
         yahoo_quote = QuoteSnapshot("台指期近二", 47792, 794, 1.69, date(2026, 6, 19), 0)
 
         with (
-            patch("market_summary.fetch_latest_tx_quote_from_yahoo", return_value=yahoo_quote),
-            patch("market_summary.fetch_latest_tx_night_session_quote_from_taifex") as taifex,
+            patch("stock_ai_bot.market.market_summary.fetch_latest_tx_quote_from_yahoo", return_value=yahoo_quote),
+            patch("stock_ai_bot.market.market_summary.fetch_latest_tx_night_session_quote_from_taifex") as taifex,
         ):
             quote = market_summary.fetch_latest_tx_night_session_quote(date(2026, 6, 19))
 
@@ -53,8 +53,8 @@ class MarketSummaryTest(unittest.TestCase):
         ]
 
         with (
-            patch("market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
-            patch("market_summary.load_tx_session_closes", return_value=sessions),
+            patch("stock_ai_bot.market.market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
+            patch("stock_ai_bot.market.market_summary.load_tx_session_closes", return_value=sessions),
         ):
             quote = market_summary.fetch_latest_tx_night_session_quote(date(2026, 6, 19))
 
@@ -70,8 +70,8 @@ class MarketSummaryTest(unittest.TestCase):
         ]
 
         with (
-            patch("market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
-            patch("market_summary.load_tx_session_closes", return_value=sessions),
+            patch("stock_ai_bot.market.market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
+            patch("stock_ai_bot.market.market_summary.load_tx_session_closes", return_value=sessions),
         ):
             with self.assertRaises(market_summary.MarketSummaryError):
                 market_summary.fetch_latest_tx_night_session_quote(date(2026, 6, 19))
@@ -85,9 +85,9 @@ class MarketSummaryTest(unittest.TestCase):
         reference_time = pytz.timezone("Asia/Taipei").localize(datetime(2026, 6, 19, 7, 0))
 
         with (
-            patch("market_summary.fetch_latest_yfinance_quote", return_value=us_quote),
-            patch("market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
-            patch("market_summary.load_tx_session_closes", return_value=sessions),
+            patch("stock_ai_bot.market.market_summary.fetch_latest_yfinance_quote", return_value=us_quote),
+            patch("stock_ai_bot.market.market_summary.fetch_latest_tx_quote_from_yahoo", return_value=None),
+            patch("stock_ai_bot.market.market_summary.load_tx_session_closes", return_value=sessions),
         ):
             report = market_summary.build_morning_market_report(reference_time)
 

@@ -36,7 +36,7 @@ from research_center.topic_context import build_stock_topic_context
 from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
 from research_center.tavily_search_service import TavilyQuotaError, TavilySearchService
 from research_center.free_sources import build_valuation_context_map
-from data_fetcher import StockDataFetcher
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 from stock_scanner import load_recent_revenue_history, load_stock_universe, scan_tw_market
 from stock_ai_bot.telegram.telegram_stock_formatting import mark_stock_text, strip_stock_markers
 from technical_indicator_service import apply_point_in_time_adjustment

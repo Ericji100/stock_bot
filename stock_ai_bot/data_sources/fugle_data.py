@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 import pandas as pd
 
-from data_source_manager import SourceHealthManager, FugleRateLimiter
+from stock_ai_bot.data_sources.data_source_manager import SourceHealthManager, FugleRateLimiter
 
 # Module-level singletons for health + rate limiting
 _FUGLE_HEALTH = SourceHealthManager()

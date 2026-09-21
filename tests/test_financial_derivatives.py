@@ -5,7 +5,7 @@ import unittest
 
 import pandas as pd
 
-from data_fetcher import _safe_pct_change, _first_match, _to_number, _quarter_number, _derive_quarterly_from_ytd
+from stock_ai_bot.data_sources.data_fetcher import _safe_pct_change, _first_match, _to_number, _quarter_number, _derive_quarterly_from_ytd
 from research_center.scoring_engine import _series, _cash_flow_score, _inventory_score, _operating_margin_score, _profit_growth_score, _revenue_growth_score
 
 
@@ -43,7 +43,7 @@ class TestMonthlyRevenueYoYAlias(unittest.TestCase):
     """Verify monthly revenue DataFrame has YoY, yoy, and revenue_yoy aliases."""
 
     def test_yoy_aliases_present(self):
-        from data_fetcher import StockDataFetcher
+        from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
         # Create a synthetic revenue_df to test alias logic
         rows = []
         for i in range(14):
@@ -93,7 +93,7 @@ class TestQuarterlyFinancialDerivatives(unittest.TestCase):
         ]
         row = financial_data[0]
         # Gross margin = 300/1000 * 100 = 30
-        from data_fetcher import _safe_ratio
+        from stock_ai_bot.data_sources.data_fetcher import _safe_ratio
         self.assertAlmostEqual(_safe_ratio(row["Gross_Profit"], row["Revenue"]) * 100, 30.0)
         # Operating margin = 120/1000 * 100 = 12
         self.assertAlmostEqual(_safe_ratio(row["Operating_Income"], row["Revenue"]) * 100, 12.0)

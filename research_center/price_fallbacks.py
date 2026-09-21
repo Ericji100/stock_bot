@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
-from data_fetcher import StockDataFetcher
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 from stock_scanner import StockUniverseEntry, load_price_metrics
 from .data_source_gateway import run_provider_chain
 

@@ -14,7 +14,7 @@ import httpx
 import pandas as pd
 import yfinance as yf
 
-from data_source_manager import FinMindQuotaManager, SourceHealthManager
+from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, SourceHealthManager
 from stock_ai_bot.data_sources.finmind_client import FinMindClient
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
 

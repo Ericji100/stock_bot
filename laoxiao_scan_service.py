@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from market_risk_service import MarketRiskResult, load_market_risk_map
+from stock_ai_bot.market.market_risk_service import MarketRiskResult, load_market_risk_map
 from research_center.recent_scans import load_recent_scan_results
 from research_center.topic_context import build_stock_topic_context
 from stock_scanner import StockUniverseEntry, load_recent_revenue_history, load_stock_universe

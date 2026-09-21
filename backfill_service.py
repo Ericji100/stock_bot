@@ -61,7 +61,7 @@ from research_center.free_sources import warmup_valuation_history_cache
 from curated_scan_service import CURATED_SCAN_TYPE, build_curated_scan_result, find_cached_curated_scan
 from stock_scanner import load_gross_margin_series, load_recent_revenue_history, load_price_metrics, load_stock_universe
 from technical_scanner import _has_adjusted_history, _load_cached_history, fetch_daily_history
-from market_risk_service import load_market_risk_map
+from stock_ai_bot.market.market_risk_service import load_market_risk_map
 from backfill_gap_service import build_backfill_gap_report, write_gap_report
 
 
@@ -1515,7 +1515,7 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
     fugle_remaining = 60
     cooling_sources: list[str] = []
     try:
-        from data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
+        from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
         fm = FinMindQuotaManager()
         fg = FugleRateLimiter()
         sh = SourceHealthManager()
@@ -1646,7 +1646,7 @@ def _format_backfill_health_summary_legacy(result: "BackfillResult") -> str:
 
         # Add quota and health status
         try:
-            from data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
+            from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
             fm = FinMindQuotaManager()
             fg = FugleRateLimiter()
             sh = SourceHealthManager()
@@ -1730,7 +1730,7 @@ def format_backfill_health_summary(result: "BackfillResult") -> str:
             lines.append(f"- 缺口報告：{gap_path}")
 
         try:
-            from data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
+            from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
             fm = FinMindQuotaManager()
             fg = FugleRateLimiter()
             sh = SourceHealthManager()

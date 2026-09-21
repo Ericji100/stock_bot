@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from data_fetcher import StockDataFetcher, StockMeta
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher, StockMeta
 
 
 def _result(rows):
@@ -11,9 +11,9 @@ def _result(rows):
 
 
 class TestFinMindQuarterlyFinancials(unittest.TestCase):
-    @patch("data_fetcher.FinMindQuotaManager")
-    @patch("data_fetcher.SourceHealthManager")
-    @patch("data_fetcher.FinMindClient")
+    @patch("stock_ai_bot.data_sources.data_fetcher.FinMindQuotaManager")
+    @patch("stock_ai_bot.data_sources.data_fetcher.SourceHealthManager")
+    @patch("stock_ai_bot.data_sources.data_fetcher.FinMindClient")
     def test_maps_three_statements_to_unified_schema(self, client_cls, _health_cls, _quota_cls):
         client = MagicMock()
         client_cls.return_value = client
@@ -69,9 +69,9 @@ class TestFinMindQuarterlyFinancials(unittest.TestCase):
         self.assertAlmostEqual(row["Gross_Margin"], 40.0)
         self.assertEqual(client.request_dataset.call_count, 3)
 
-    @patch("data_fetcher.FinMindQuotaManager")
-    @patch("data_fetcher.SourceHealthManager")
-    @patch("data_fetcher.FinMindClient")
+    @patch("stock_ai_bot.data_sources.data_fetcher.FinMindQuotaManager")
+    @patch("stock_ai_bot.data_sources.data_fetcher.SourceHealthManager")
+    @patch("stock_ai_bot.data_sources.data_fetcher.FinMindClient")
     def test_empty_finmind_preserves_existing_mops_fallback(self, client_cls, _health_cls, _quota_cls):
         client_cls.return_value.request_dataset.return_value = {}
         with StockDataFetcher(twse_delay_seconds=0) as fetcher:

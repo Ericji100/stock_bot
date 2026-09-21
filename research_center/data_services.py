@@ -11,8 +11,8 @@ from typing import Any, Callable
 import pandas as pd
 import yfinance as yf
 
-from data_fetcher import StockDataFetcher, StockNotFoundError
-from market_summary import MarketSummaryError, build_morning_market_report, build_noon_market_report
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher, StockNotFoundError
+from stock_ai_bot.market.market_summary import MarketSummaryError, build_morning_market_report, build_noon_market_report
 from portfolio_manager import list_portfolio, resolve_stock_reference
 from stock_scanner import load_price_metrics, load_recent_revenue_history, load_stock_universe
 from chip_strategies import get_tw_today

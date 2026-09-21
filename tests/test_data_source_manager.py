@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-import data_source_manager
+import stock_ai_bot.data_sources.data_source_manager as data_source_manager
 import importlib
 
 from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache

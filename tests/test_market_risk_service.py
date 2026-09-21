@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-import market_risk_service as risk
+import stock_ai_bot.market.market_risk_service as risk
 
 
 def test_official_market_risk_feeds_are_merged_and_filtered(monkeypatch, tmp_path):

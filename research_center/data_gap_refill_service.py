@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from data_fetcher import StockDataFetcher
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 from stock_scanner import StockUniverseEntry, load_stock_universe
 
 from .chip_sources import build_chip_backup_events, build_chip_backup_snapshot

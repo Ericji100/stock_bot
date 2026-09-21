@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from data_fetcher import StockDataFetcher
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 
 
 class TestStockDataFetcherLocalResolution(unittest.TestCase):
@@ -27,7 +27,7 @@ class TestStockDataFetcherLocalResolution(unittest.TestCase):
         safe_remove_test_cache("data_fetcher/local_resolution")
 
     def test_resolve_stock_code_uses_local_stock_list_without_network(self):
-        with patch("data_fetcher.STOCK_LIST_PATH", self.stock_list), patch.object(StockDataFetcher, "_get_json") as mock_get_json:
+        with patch("stock_ai_bot.data_sources.data_fetcher.STOCK_LIST_PATH", self.stock_list), patch.object(StockDataFetcher, "_get_json") as mock_get_json:
             fetcher = StockDataFetcher()
 
             meta = fetcher.resolve_stock("1785")
@@ -39,7 +39,7 @@ class TestStockDataFetcherLocalResolution(unittest.TestCase):
             mock_get_json.assert_not_called()
 
     def test_resolve_stock_name_uses_local_stock_list_without_network(self):
-        with patch("data_fetcher.STOCK_LIST_PATH", self.stock_list), patch.object(StockDataFetcher, "_get_json") as mock_get_json:
+        with patch("stock_ai_bot.data_sources.data_fetcher.STOCK_LIST_PATH", self.stock_list), patch.object(StockDataFetcher, "_get_json") as mock_get_json:
             fetcher = StockDataFetcher()
 
             meta = fetcher.resolve_stock("光洋科")

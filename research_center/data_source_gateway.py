@@ -101,7 +101,7 @@ def build_data_source_gateway_snapshot(
     """Return a shared snapshot for source health, cooldowns, and quota state."""
     try:
         if health_manager is None or finmind_quota is None or fugle_limiter is None:
-            from data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
+            from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, FugleRateLimiter, SourceHealthManager
 
             health_manager = health_manager or SourceHealthManager()
             finmind_quota = finmind_quota or FinMindQuotaManager()

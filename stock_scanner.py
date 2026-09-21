@@ -846,7 +846,7 @@ def _load_historical_gross_margin_series(symbol: str, as_of_date: date) -> list[
         rows = []
         code = symbol.split(".", 1)[0]
         try:
-            from data_source_manager import FinMindQuotaManager, SourceHealthManager
+            from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, SourceHealthManager
             from stock_ai_bot.data_sources.finmind_client import FinMindClient
 
             result = FinMindClient(

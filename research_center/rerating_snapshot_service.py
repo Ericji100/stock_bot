@@ -101,7 +101,7 @@ def build_rerating_snapshot_for_stock(
         data_gaps.append("法人/籌碼備用資料取得失敗")
 
     # 延遲導入避免循環
-    from data_fetcher import StockDataFetcher
+    from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 
     try:
         with StockDataFetcher() as fetcher:

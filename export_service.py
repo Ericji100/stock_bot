@@ -6,7 +6,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 import pandas as pd
 
-from data_fetcher import StockDataFetcher
+from stock_ai_bot.data_sources.data_fetcher import StockDataFetcher
 
 
 def _format_daily_sheet(daily_df: pd.DataFrame) -> pd.DataFrame:

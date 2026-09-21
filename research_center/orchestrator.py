@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from data_fetcher import StockExportError
-from data_source_manager import SourceHealthManager
+from stock_ai_bot.data_sources.data_fetcher import StockExportError
+from stock_ai_bot.data_sources.data_source_manager import SourceHealthManager
 
 from .command_parser import parse_command_text
 from .config import ROOT_DIR, ResearchCenterConfig, load_research_config

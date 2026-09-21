@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import importlib
-import data_source_manager
+import stock_ai_bot.data_sources.data_source_manager as data_source_manager
 
 from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
 

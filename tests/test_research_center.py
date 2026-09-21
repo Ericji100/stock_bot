@@ -869,7 +869,7 @@ class StructuredCacheIntegrationTests(unittest.TestCase):
     def test_collect_research_data_saves_structured_cache(
         self, mock_resolve, mock_chip_events, mock_chip_backup, mock_free_sources, mock_fetcher_cls, mock_load_cache, mock_save_cache,
     ):
-        from data_fetcher import StockMeta
+        from stock_ai_bot.data_sources.data_fetcher import StockMeta
         import pandas as pd
 
         meta = StockMeta(code="5425", symbol="5425.TWO", market="TPEX", name="台半")

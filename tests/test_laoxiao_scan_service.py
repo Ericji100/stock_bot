@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 import laoxiao_scan_service as lx
-from market_risk_service import MarketRiskResult
+from stock_ai_bot.market.market_risk_service import MarketRiskResult
 
 
 def _history(rows: int = 260, *, base: float = 100.0, daily_step: float = 0.3, volume_lots: float = 1000.0) -> pd.DataFrame:

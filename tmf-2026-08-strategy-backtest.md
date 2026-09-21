@@ -161,6 +161,6 @@ A 加 B2 的研究組合表面為 `+454.0 點`、一口 TMF 約 `+4,540 元`，�
 
 ## 十一、可重現檔案
 
-- `backtest_tmf_aug2026.py`：回測程式。
-- `tmf_aug2026_backtest_results.json`：完整彙總與參數敏感度。
-- `tmf_aug2026_backtest_trades.csv`：逐筆交易紀錄與成本情境。
+- `backtests/backtest_tmf_aug2026.py`：回測程式。
+- `backtests/tmf_aug2026_backtest_results.json`：完整彙總與參數敏感度。
+- `backtests/tmf_aug2026_backtest_trades.csv`：逐筆交易紀錄與成本情境。

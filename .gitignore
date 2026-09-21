@@ -51,6 +51,8 @@ topic_live_audit/
 outputs/
 scratch_*.py
 scratch_*.json
+local_data/
+experiments/scratch/
 
 # Ad-hoc research exports should be promoted into docs/ or config/ before commit.
 *.inspect.json

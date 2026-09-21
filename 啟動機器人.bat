@@ -18,5 +18,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo 啟動要求已送出，Watchdog 將在背景執行，Bot runner 視窗會另行開啟。
+echo 啟動要求已送出；若 Watchdog 已在執行，將立即重新檢查 Bot 狀態。
+echo Bot runner 視窗會另行開啟，健康的既有 Bot 不會重複啟動。
+powershell -NoProfile -Command "Start-Sleep -Seconds 2"
 exit /b 0

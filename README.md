@@ -100,7 +100,7 @@ Windows 可直接執行：
 啟動機器人.bat
 ```
 
-`啟動機器人.bat` 是唯一日常入口，會在背景隱藏啟動外部 watchdog，再由 watchdog 判斷是否需要啟動可見的內部 runner；日常只會保留 runner CMD 視窗。runner 啟動後會註冊 Telegram slash 指令，並建立每日排程：10:00 AI 題材庫維護（MiniMax M3）、12:30 監控掃描、13:50 午報、17:45 持股籌碼推播、08:45/18:00 新聞整理（預設使用 MiniMax M3 分類）、20:30 交易日全部選股、21:30 Radar 推播（預設使用 MiniMax M3 短評），以及籌碼與完整資料回補任務。需要完整關閉時，請執行 `停止機器人.bat`，不要只關閉 runner 視窗，否則背景 watchdog 會在健康檢查時重新啟動 runner。
+`啟動機器人.bat` 是唯一日常入口，會在背景隱藏啟動外部 watchdog，再由 watchdog 判斷是否需要啟動可見的內部 runner；日常只會保留 runner CMD 視窗。重複執行入口時會立即要求既有 watchdog 重新檢查 Bot，不必等待下一個定期檢查週期；健康的既有 Bot 不會重複啟動。runner 啟動後會註冊 Telegram slash 指令，並建立每日排程：10:00 AI 題材庫維護（MiniMax M3）、12:30 監控掃描、13:50 午報、17:45 持股籌碼推播、08:45/18:00 新聞整理（預設使用 MiniMax M3 分類）、20:30 交易日全部選股、21:30 Radar 推播（預設使用 MiniMax M3 短評），以及籌碼與完整資料回補任務。需要完整關閉時，請執行 `停止機器人.bat`，不要只關閉 runner 視窗，否則背景 watchdog 會在健康檢查時重新啟動 runner。
 
 ## 最常用指令
 

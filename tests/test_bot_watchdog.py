@@ -10,7 +10,9 @@ import tools.bot_watchdog as bot_watchdog
 from tools.bot_watchdog import (
     acquire_watchdog_instance,
     append_watchdog_log,
+    consume_watchdog_check_request,
     release_watchdog_instance,
+    request_watchdog_check,
     run_watchdog_once,
     stop_managed_processes,
 )
@@ -203,6 +205,16 @@ class BotWatchdogTests(unittest.TestCase):
             self.assertEqual(pid, 222)
             self.assertEqual(pid_path.read_text(encoding="ascii"), "222")
 
+    def test_watchdog_check_request_is_consumed_once(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wake_path = Path(tmpdir) / "bot_watchdog.wake"
+
+            request_watchdog_check(wake_path)
+
+            self.assertTrue(wake_path.exists())
+            self.assertTrue(consume_watchdog_check_request(wake_path))
+            self.assertFalse(consume_watchdog_check_request(wake_path))
+
     def test_watchdog_log_is_written_and_rotated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = Path(tmpdir) / "watchdog.log"
@@ -218,14 +230,17 @@ class BotWatchdogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             heartbeat_path = Path(tmpdir) / "heartbeat.json"
             pid_path = Path(tmpdir) / "bot_watchdog.pid"
+            wake_path = Path(tmpdir) / "bot_watchdog.wake"
             heartbeat_path.write_text('{"pid": 123}', encoding="utf-8")
             pid_path.write_text("456", encoding="ascii")
+            wake_path.write_text("request", encoding="ascii")
             stopped_bot_pids: list[int | None] = []
             stopped_process_pids: list[int] = []
 
             result = stop_managed_processes(
                 heartbeat_path=heartbeat_path,
                 pid_path=pid_path,
+                wake_path=wake_path,
                 stop_bot=lambda pid: stopped_bot_pids.append(pid),
                 stop_process=lambda pid: stopped_process_pids.append(pid),
             )
@@ -233,6 +248,7 @@ class BotWatchdogTests(unittest.TestCase):
             self.assertEqual(stopped_bot_pids, [123])
             self.assertEqual(stopped_process_pids, [456])
             self.assertFalse(pid_path.exists())
+            self.assertFalse(wake_path.exists())
             self.assertIn("bot_pid=123", result)
             self.assertIn("watchdog_pid=456", result)
 
@@ -260,6 +276,11 @@ class BotWatchdogTests(unittest.TestCase):
         self.assertIn("重新啟動 `啟動機器人_runner.bat`", readme)
         self.assertIn("`停止機器人.bat`", readme)
         self.assertIn("`logs/watchdog/watchdog.log`", readme)
+
+    def test_start_entry_waits_long_enough_to_show_status(self):
+        text = Path("啟動機器人.bat").read_text(encoding="utf-8")
+
+        self.assertIn('Start-Sleep -Seconds 2', text)
 
 
 if __name__ == "__main__":

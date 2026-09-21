@@ -26,6 +26,7 @@ StartBot = Callable[[], None]
 ProcessExists = Callable[[int], bool]
 
 WATCHDOG_PID_PATH = Path(".runtime") / "bot_watchdog.pid"
+WATCHDOG_WAKE_PATH = Path(".runtime") / "bot_watchdog.wake"
 WATCHDOG_LOG_PATH = Path("logs") / "watchdog" / "watchdog.log"
 WATCHDOG_LOG_MAX_BYTES = 2 * 1024 * 1024
 WATCHDOG_LOG_BACKUP_COUNT = 3
@@ -161,6 +162,35 @@ def release_watchdog_instance(pid_path: Path, *, pid: int | None = None) -> None
         pass
 
 
+def request_watchdog_check(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(time.time_ns()), encoding="ascii")
+
+
+def consume_watchdog_check_request(path: Path) -> bool:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def wait_for_watchdog_check(
+    path: Path,
+    *,
+    timeout: float,
+    poll_interval: float = 1.0,
+) -> bool:
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        if consume_watchdog_check_request(path):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(max(0.1, poll_interval), remaining))
+
+
 def _rotate_watchdog_log(path: Path, *, max_bytes: int, backup_count: int) -> None:
     try:
         should_rotate = path.exists() and path.stat().st_size >= max_bytes
@@ -211,6 +241,7 @@ def stop_managed_processes(
     *,
     heartbeat_path: Path,
     pid_path: Path,
+    wake_path: Path | None = None,
     stop_bot: Callable[[int | None], None] = default_stop_bot_processes,
     stop_process: Callable[[int], None] | None = None,
 ) -> str:
@@ -237,6 +268,11 @@ def stop_managed_processes(
         pid_path.unlink()
     except FileNotFoundError:
         pass
+    if wake_path is not None:
+        try:
+            wake_path.unlink()
+        except FileNotFoundError:
+            pass
     return f"stopped: bot_pid={bot_pid or 'none'} watchdog_pid={watchdog_pid or 'none'}"
 
 
@@ -305,6 +341,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check-interval", type=int, default=300)
     parser.add_argument("--launch", default="啟動機器人_runner.bat")
     parser.add_argument("--pid-file", default=str(WATCHDOG_PID_PATH))
+    parser.add_argument("--wake-file", default=str(WATCHDOG_WAKE_PATH))
     parser.add_argument("--log", default=str(WATCHDOG_LOG_PATH))
     parser.add_argument("--stop", action="store_true", help="stop the managed runner and watchdog")
     parser.add_argument("--once", action="store_true", help="run one check and exit")
@@ -315,25 +352,32 @@ def main() -> None:
     args = parse_args()
     heartbeat_path = Path(args.heartbeat)
     pid_path = Path(args.pid_file)
+    wake_path = Path(args.wake_file)
     log_path = Path(args.log)
     launch_script = Path(args.launch)
     if not launch_script.is_absolute():
         launch_script = PROJECT_ROOT / launch_script
 
     if args.stop:
-        result = stop_managed_processes(heartbeat_path=heartbeat_path, pid_path=pid_path)
+        result = stop_managed_processes(
+            heartbeat_path=heartbeat_path,
+            pid_path=pid_path,
+            wake_path=wake_path,
+        )
         emit_watchdog_status(result, log_path=log_path)
         return
 
     acquired, existing_pid = acquire_watchdog_instance(pid_path)
     if not acquired:
+        request_watchdog_check(wake_path)
         emit_watchdog_status(
-            f"already running: pid={existing_pid or 'unknown'}",
+            f"already running: pid={existing_pid or 'unknown'}; immediate check requested",
             log_path=log_path,
         )
         return
 
     try:
+        consume_watchdog_check_request(wake_path)
         emit_watchdog_status(f"started: pid={os.getpid()}", log_path=log_path)
         while True:
             result = run_watchdog_once(
@@ -345,7 +389,10 @@ def main() -> None:
             emit_watchdog_status(result, log_path=log_path)
             if args.once:
                 return
-            time.sleep(max(10, int(args.check_interval)))
+            wait_for_watchdog_check(
+                wake_path,
+                timeout=max(10, int(args.check_interval)),
+            )
     finally:
         release_watchdog_instance(pid_path)
 

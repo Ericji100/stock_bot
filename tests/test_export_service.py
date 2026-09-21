@@ -98,7 +98,7 @@ class ExportServiceInspectionTests(unittest.TestCase):
         self.assertEqual(summary["sheets"]["Monthly_Revenue"]["rows"], 2)
 
     def test_local_export_verifier_reuses_one_workbook_for_preview_and_save(self) -> None:
-        export_cli = importlib.import_module("test")
+        export_cli = importlib.import_module("tools.stock_export_verifier")
         buffer = _build_sample_export_buffer()
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -116,7 +116,7 @@ class ExportServiceInspectionTests(unittest.TestCase):
                 ) as inspect_workbook,
                 patch(
                     "sys.argv",
-                    ["test.py", "2330", "--save", str(save_path), "--preview-rows", "1"],
+                    ["stock_export_verifier", "2330", "--save", str(save_path), "--preview-rows", "1"],
                 ),
                 patch("sys.stdout", new_callable=io.StringIO),
             ):

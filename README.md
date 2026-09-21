@@ -207,15 +207,16 @@ Windows 可直接執行：
 | 檔案或目錄 | 職責 |
 |---|---|
 | `main.py` | Telegram Bot 入口、指令註冊、排程與任務控制 |
-| `technical_scanner.py` | 技術面選股與多策略掃描 |
-| `technical_strategy_engine.py` | 技術策略引擎 |
-| `stock_scanner.py` | 財報、營收與全市場候選股掃描 |
-| `chip_strategies.py` | 法人、投信、大戶與 TDCC 籌碼策略 |
-| `radar_service.py` | 每日 Radar 候選池、評分與推播 |
-| `backfill_service.py` | 全市場資料回補與快取暖機 |
-| `export_service.py` | 個股資料 Excel 匯出 |
-| `portfolio_manager.py` | 個人持股管理 |
-| `market_summary.py` | 晨報、午報與市場摘要 |
+| `stock_ai_bot/scanning/technical_scanner.py` | 技術面選股與多策略掃描 |
+| `stock_ai_bot/scanning/technical_strategy_engine.py` | 技術策略引擎 |
+| `stock_ai_bot/scanning/stock_scanner.py` | 財報、營收與全市場候選股掃描 |
+| `stock_ai_bot/strategies/chip_strategies.py` | 法人、投信、大戶與 TDCC 籌碼策略 |
+| `stock_ai_bot/monitoring/radar_service.py` | 每日 Radar 候選池、評分與推播 |
+| `stock_ai_bot/backfill/backfill_service.py` | 全市場資料回補與快取暖機 |
+| `stock_ai_bot/exports/export_service.py` | 個股資料 Excel 匯出 |
+| `stock_ai_bot/portfolio/portfolio_manager.py` | 個人持股管理 |
+| `stock_ai_bot/market/market_summary.py` | 晨報、午報與市場摘要 |
+| `tools/stock_export_verifier.py` | 本機驗證個股匯出活頁簿 |
 | `research_center/` | AI 投研、新聞、題材、報告、資料服務與 API |
 | `prompt/` | 報告、題材、新聞、評分與規則 Prompt |
 | `config/` | 題材庫、公司知識庫、資料來源與 AI 公開設定 |

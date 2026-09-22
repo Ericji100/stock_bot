@@ -90463,5 +90463,601 @@
     ],
     "updated_at": "2026-09-21T10:07:32",
     "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_semiconductor_demand_2330",
+    "company_code": "2330",
+    "company_name": "台積電",
+    "role": "先進製程與CoWoS晶圓代工，受惠AI/HPC雲端晶片委外",
+    "upstream": [
+      "EUV/設備廠",
+      "光罩廠",
+      "IC設計客戶"
+    ],
+    "downstream": [
+      "3711",
+      "AI伺服器ODM",
+      "雲端服務商"
+    ],
+    "product_keywords": [
+      "N3",
+      "N2",
+      "A14",
+      "CoWoS",
+      "SoIC",
+      "HPC",
+      "HBM整合"
+    ],
+    "theme_id": "ai_semiconductor_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "A14對2026年營收貢獻微乎其微；地緣政治管制、半導體出口禁令升級可能影響HPC客戶投片意願；海外廠折舊對EPS稀釋待觀察"
+    ],
+    "missing_data": [
+      "需追蹤Q3/Q4法說會對AI營收佔比之揭露、CoWoS月產能實際數字、客戶集中度"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_semiconductor_demand_3711",
+    "company_code": "3711",
+    "company_name": "日月光投控",
+    "role": "AI晶片後段封測與先進封裝輔助段",
+    "upstream": [
+      "2330",
+      "晶圓代工",
+      "材料供應商"
+    ],
+    "downstream": [
+      "AI伺服器",
+      "資料中心客戶"
+    ],
+    "product_keywords": [
+      "CoWoS輔助段",
+      "FOPLP",
+      "2.5D/3D封裝",
+      "HPC封測",
+      "Fan-Out"
+    ],
+    "theme_id": "ai_semiconductor_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "CoWoS主要仍由台積電主導，日月光在先進封裝市占需驗證；中國子公司營運受地緣政治影響"
+    ],
+    "missing_data": [
+      "需追蹤Q3法說會對AI封測營收佔比之說明、CoWoS輔助段具體客戶名單"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_semiconductor_demand_2454",
+    "company_code": "2454",
+    "company_name": "聯發科",
+    "role": "AI ASIC、邊緣運算SoC、AI PC處理器",
+    "upstream": [
+      "2330",
+      "晶圓代工",
+      "IP授權商"
+    ],
+    "downstream": [
+      "手機品牌廠",
+      "AI PC品牌",
+      "消費性電子"
+    ],
+    "product_keywords": [
+      "天璣",
+      "Dimensity AI",
+      "ASIC",
+      "AI PC",
+      "Edge AI",
+      "NeuroPilot"
+    ],
+    "theme_id": "ai_semiconductor_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "ASIC實際佔比仍小；手機業務面臨陸系品牌競爭與消費降級；AI PC滲透速度需驗證"
+    ],
+    "missing_data": [
+      "需追蹤Q3/Q4法說會對AI ASIC營收貢獻、AI PC SoC客戶導入時程"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_semiconductor_demand_3443",
+    "company_code": "3443",
+    "company_name": "創意",
+    "role": "AI/HPC ASIC委託設計服務(NRE與量產)",
+    "upstream": [
+      "2330",
+      "IP授權商",
+      "EDA工具"
+    ],
+    "downstream": [
+      "雲端服務商",
+      "AI晶片客戶量產後投片至2330"
+    ],
+    "product_keywords": [
+      "ASIC",
+      "NRE",
+      "HPC",
+      "AI加速器",
+      "7nm/5nm/3nm製程"
+    ],
+    "theme_id": "ai_semiconductor_demand",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "客戶集中度高，NRE認列波動大；對北美雲端客戶依賴度高，地緣政治風險敏感"
+    ],
+    "missing_data": [
+      "需追蹤Q3/NRE後對每季NRE與量產比重、主要客戶身分是否揭露"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "ai_semiconductor_demand_3034",
+    "company_code": "3034",
+    "company_name": "聯詠",
+    "role": "顯示驅動IC(DDI)，市場視為AI PC受惠股之一",
+    "upstream": [
+      "晶圓代工",
+      "封測"
+    ],
+    "downstream": [
+      "面板廠",
+      "筆電/手機品牌"
+    ],
+    "product_keywords": [
+      "DDI",
+      "OLED Driver",
+      "AI PC",
+      "eDP",
+      "TDDI"
+    ],
+    "theme_id": "ai_semiconductor_demand",
+    "confidence": "low",
+    "source_level": "L3_community",
+    "evidence": [
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "與AI/HPC核心供應鏈關聯薄弱，AI PC滲透實質貢獻小；電視/監視器需求具週期性，庫存調整風險"
+    ],
+    "missing_data": [
+      "需驗證聯詠DDI產品線實際應用於AI PC之比例、法人報告原始目標價"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "panel_display_rebound_2409_TFT_LCD大尺寸面板龍頭",
+    "company_code": "2409",
+    "company_name": "友達",
+    "role": "TFT-LCD大尺寸面板龍頭",
+    "upstream": [
+      "玻璃基板（康寧、旭硝子、電氣硝子）",
+      "偏光板（明基材、奇美材）",
+      "彩色濾光片",
+      "驅動IC（聯詠、瑞昱）",
+      "背光模組（瑞儀、奈米）",
+      "光罩"
+    ],
+    "downstream": [
+      "TV品牌廠（Samsung、LG、TCL、Sony、海信）",
+      "Monitor品牌（Dell、HP、Lenovo）",
+      "筆電品牌",
+      "車用Tier 1",
+      "工控與醫療應用"
+    ],
+    "product_keywords": [
+      "TFT-LCD",
+      "大尺寸面板",
+      "IT面板",
+      "車用面板",
+      "Mini LED",
+      "Micro LED",
+      "AmLED"
+    ],
+    "theme_id": "panel_display_rebound",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "面板景氣循環波動大，股價易受外資買賣超與報價變化影響"
+    ],
+    "missing_data": [
+      "9月合併營收、各尺寸面板報價走勢、TV/IT/車用客戶拉貨動能、法說會展望"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "panel_display_rebound_3481_TFT_LCD與觸控面板製造",
+    "company_code": "3481",
+    "company_name": "群創",
+    "role": "TFT-LCD與觸控面板製造",
+    "upstream": [
+      "玻璃基板",
+      "偏光板",
+      "彩色濾光片",
+      "驅動IC",
+      "觸控感測器",
+      "背光模組"
+    ],
+    "downstream": [
+      "TV品牌",
+      "Monitor品牌",
+      "車用客戶",
+      "工控與商用客戶"
+    ],
+    "product_keywords": [
+      "TFT-LCD",
+      "觸控面板",
+      "大尺寸面板",
+      "車用面板",
+      "工控面板",
+      "Mini LED"
+    ],
+    "theme_id": "panel_display_rebound",
+    "confidence": "high",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "面板供需仍受中國產能牽制，毛利率改善幅度有限，需驗證報價與車用轉型進度"
+    ],
+    "missing_data": [
+      "9月合併營收、各尺寸面板報價、車用/觸控業務比重、第三季法說會展望"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
+  },
+  {
+    "node_id": "panel_display_rebound_6116_中小尺寸面板製造",
+    "company_code": "6116",
+    "company_name": "彩晶",
+    "role": "中小尺寸面板製造",
+    "upstream": [
+      "玻璃基板",
+      "驅動IC",
+      "偏光板",
+      "背光模組"
+    ],
+    "downstream": [
+      "手機品牌",
+      "平板品牌",
+      "車用Tier 1",
+      "工控與POS應用"
+    ],
+    "product_keywords": [
+      "中小尺寸TFT-LCD",
+      "車用面板",
+      "工控面板",
+      "觸控面板"
+    ],
+    "theme_id": "panel_display_rebound",
+    "confidence": "medium",
+    "source_level": "L2_media",
+    "evidence": [
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
+    "risk_notes": [
+      "中小尺寸面板競爭激烈，毛利率長期偏低，本業改善動能待驗證"
+    ],
+    "missing_data": [
+      "車用與工控比重、手機/平板面板客戶結構、9月合併營收"
+    ],
+    "updated_at": "2026-09-22T10:07:42",
+    "verification_status": "inferred"
   }
 ]

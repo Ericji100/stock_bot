@@ -7730,11 +7730,51 @@
         "url": "https://money.udn.com/money/story/5607/9735991",
         "publish_date": "2026-09-05",
         "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "營收創高主軸",
+    "role": "A14製程領頭",
     "products": [
       "CoWoS封裝",
       "SoIC",
@@ -7841,7 +7881,7 @@
       "台積電Apple製程節點佔比、N3/N2 Apple晶片投片進度",
       "具體Rubin晶片下單時程、CoWoS-R/L產能配比、ASP變化"
     ],
-    "updated_at": "2026-09-21T10:07:32",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "advanced_packaging_cowos_soic",
@@ -8806,6 +8846,28 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-21T10:07:32"
+      },
+      {
+        "theme_id": "ai_semiconductor_demand",
+        "theme_name": "AI半導體需求熱度",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "先進製程(N3/N2/A14)與CoWoS/SoIC先進封裝主要受惠者，AI雲端晶片關鍵代工夥伴",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      },
+      {
+        "theme_id": "tsmc_a14_node",
+        "theme_name": "台積電A14與2028量產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "A14製程領頭",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -9500,11 +9562,51 @@
         "url": "https://money.udn.com/money/story/5607/9735991",
         "publish_date": "2026-09-05",
         "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "後段封測受惠",
+    "role": "封測龍頭",
     "products": [
       "先進封裝服務",
       "測試服務",
@@ -9598,15 +9700,15 @@
       "客戶名單",
       "後續需追蹤CoWoS封測營收佔比、客戶端拉貨變化、毛利率走勢、資本支出進度"
     ],
-    "updated_at": "2026-09-21T10:07:32",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "cowos_advanced_packaging",
-        "theme_name": "CoWoS先進封裝",
+        "theme_name": "CoWoS與先進封裝",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "CoWoS後段測試/封裝潛在受惠者（待驗證）",
+        "role": "封測龍頭",
         "evidence": [
           "櫃買中心 半導體產業鏈簡介"
         ],
@@ -9615,7 +9717,7 @@
           "AI 晶片客戶名單",
           "TSMC CoWoS 後段合作份額"
         ],
-        "updated_at": "2026-09-17T10:10:47"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "ai_advanced_packaging_cowos",
@@ -9838,6 +9940,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-21T10:07:32"
+      },
+      {
+        "theme_id": "ai_semiconductor_demand",
+        "theme_name": "AI半導體需求熱度",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI晶片後段封測(CoWoS輔助、FOPLP、2.5D/3D封裝)受惠",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -11066,7 +11179,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "IC載板與封測受惠",
+    "role": "ABF載板與AI封裝",
     "products": [
       "ABF載板",
       "伺服器PCB",
@@ -11155,7 +11268,7 @@
       "不要捏造百分比",
       "需追蹤 ABF 載板供需與 CoWoS 客戶分配"
     ],
-    "updated_at": "2026-09-21T10:07:32",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -11222,14 +11335,14 @@
       },
       {
         "theme_id": "cowos_advanced_packaging",
-        "theme_name": "CoWoS與先進封裝產能",
+        "theme_name": "CoWoS與先進封裝",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "待補題材角色",
+        "role": "ABF載板與AI封裝",
         "evidence": [],
         "missing_data": [],
-        "updated_at": "2026-09-15T10:09:19"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "ai_pcb_ccl",
@@ -13683,7 +13796,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "primary",
-    "role": "待補題材角色",
+    "role": "重電",
     "products": [
       "變壓器",
       "配電盤",
@@ -13775,7 +13888,7 @@
       "AI 相關訂單具體營收佔比",
       "2026 年台電變壓器標案分潤、產線稼動率與海外綠能變壓器訂單需追蹤季報與法說"
     ],
-    "updated_at": "2026-09-20T10:07:17",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -13864,14 +13977,14 @@
       },
       {
         "theme_id": "heavy_electrical_power_grid",
-        "theme_name": "重電與強韌電網",
+        "theme_name": "強韌電網與重電",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "待補題材角色",
+        "role": "重電",
         "evidence": [],
         "missing_data": [],
-        "updated_at": "2026-07-08T10:09:43"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "taipower_grid_hardening",
@@ -14340,7 +14453,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "secondary",
-    "role": "待補題材角色",
+    "role": "電纜",
     "products": [
       "電線電纜",
       "太陽能電廠",
@@ -14427,7 +14540,7 @@
       "2025-2026年法說會揭露",
       "2026 年台電地下電纜標案得標比重與銅價避險損益需追蹤月營收與法說"
     ],
-    "updated_at": "2026-09-20T10:07:17",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ev_charging_infra",
@@ -14481,14 +14594,14 @@
       },
       {
         "theme_id": "heavy_electrical_power_grid",
-        "theme_name": "重電與強韌電網",
+        "theme_name": "強韌電網與重電",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "待補題材角色",
+        "role": "電纜",
         "evidence": [],
         "missing_data": [],
-        "updated_at": "2026-06-25T10:07:56"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "taipower_grid_hardening",
@@ -14930,7 +15043,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "secondary",
-    "role": "待補題材角色",
+    "role": "重電與變壓器",
     "products": [
       "變壓器",
       "開關設備",
@@ -14997,7 +15110,7 @@
       "AI 資料中心相關營收",
       "士電與大同重電業務差異"
     ],
-    "updated_at": "2026-09-20T10:07:17",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_power_transformer",
@@ -15034,14 +15147,14 @@
       },
       {
         "theme_id": "heavy_electrical_power_grid",
-        "theme_name": "重電與強韌電網",
+        "theme_name": "強韌電網與重電",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "待補題材角色",
+        "role": "重電與變壓器",
         "evidence": [],
         "missing_data": [],
-        "updated_at": "2026-07-08T10:09:43"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "taipower_grid_hardening",
@@ -16200,7 +16313,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "NOR Flash/ROM製造",
-    "role": "Flash/ROM製造廠",
+    "role": "探針卡",
     "products": [
       "DRAM",
       "NAND Flash",
@@ -16257,7 +16370,7 @@
       "精確客戶名單",
       "兩家公司在 NOR Flash 與利基型 DRAM 產品重疊度、終端應用與客戶分布"
     ],
-    "updated_at": "2026-09-15T10:09:19",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "memory_recovery",
@@ -16450,6 +16563,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-14T10:09:01"
+      },
+      {
+        "theme_id": "tsmc_a14_node",
+        "theme_name": "台積電A14與2028量產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "探針卡",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -22588,11 +22712,51 @@
         "url": "",
         "publish_date": null,
         "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "high",
+    "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "待補題材角色",
+    "role": "AI/HPC ASIC設計服務、雲端晶片委託設計(NRE與量產)",
     "products": [
       "量子科技",
       "後量子密碼",
@@ -22652,7 +22816,7 @@
       "AI 晶片營收佔比",
       "AWS Trainium 具體 design win 細節、2026 Q4 與 2027 訂單能見度"
     ],
-    "updated_at": "2026-09-20T10:07:17",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "asic_design",
@@ -22801,6 +22965,17 @@
           "AWS Trainium 具體 design win 細節、2026 Q4 與 2027 訂單能見度"
         ],
         "updated_at": "2026-09-20T10:07:17"
+      },
+      {
+        "theme_id": "ai_semiconductor_demand",
+        "theme_name": "AI半導體需求熱度",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "AI/HPC ASIC設計服務、雲端晶片委託設計(NRE與量產)",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -24761,7 +24936,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "被動元件同業",
-    "role": "待補題材角色",
+    "role": "MLCC與晶片電阻龍頭",
     "products": [
       "晶片電阻",
       "MLCC",
@@ -24847,7 +25022,7 @@
       "AI 伺服器專用 MLCC 營收佔比",
       "缺 2026 Q2/Q3 合併月營收、自結毛利率、產能利用率、ASP 走勢與法說會展望。"
     ],
-    "updated_at": "2026-09-18T10:07:55",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_server_gb200_gb300_upgrade",
@@ -25144,6 +25319,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-18T10:07:55"
+      },
+      {
+        "theme_id": "passive_components_ai_supply",
+        "theme_name": "被動元件AI需求帶動漲價",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "MLCC與晶片電阻龍頭",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -25589,7 +25775,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "被動元件同業",
-    "role": "待補題材角色",
+    "role": "MLCC被動元件",
     "products": [
       "晶片電阻",
       "MLCC",
@@ -25666,7 +25852,7 @@
       "AI 伺服器專用 MLCC 營收佔比",
       "缺產品結構（高階 / 一般品比例）、主要 AI 客戶身分與實際接單比重。"
     ],
-    "updated_at": "2026-09-18T10:07:55",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "passive_component_price_hike",
@@ -25946,6 +26132,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-18T10:07:55"
+      },
+      {
+        "theme_id": "passive_components_ai_supply",
+        "theme_name": "被動元件AI需求帶動漲價",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "MLCC被動元件",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -26705,7 +26902,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "封測代工",
+    "role": "AI晶圓測試",
     "products": [
       "IC 測試",
       "晶圓測試",
@@ -26768,7 +26965,7 @@
       "具體外包訂單佔營收比重",
       "京元電子記憶體測試營收佔比、對華邦電接單實績"
     ],
-    "updated_at": "2026-09-18T10:07:55",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_advanced_packaging_us_alliance",
@@ -26783,14 +26980,14 @@
       },
       {
         "theme_id": "cowos_advanced_packaging",
-        "theme_name": "CoWoS與先進封裝產能",
+        "theme_name": "CoWoS與先進封裝",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
-        "role": "待補題材角色",
+        "role": "AI晶圓測試",
         "evidence": [],
         "missing_data": [],
-        "updated_at": "2026-09-15T10:09:19"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "advanced_packaging_cowos",
@@ -35536,7 +35733,7 @@
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "工業電腦與嵌入式系統",
+    "role": "法說",
     "products": [
       "邊緣 AI",
       "工業電腦",
@@ -35564,14 +35761,28 @@
       "軟硬整合服務收入佔比",
       "精確題材營收佔比"
     ],
-    "updated_at": "2026-06-18T21:17:40",
+    "updated_at": "2026-09-22T10:07:42",
     "risk_notes": [
       "邊緣 AI 導入速度可能慢於雲端 AI 基礎建設",
       "工業電腦受全球製造業景氣與客戶資本支出影響",
       "AI 功能可能只是附加功能，短期不一定明顯提升毛利率",
       "專案客製化程度高，規模化不易",
       "不要捏造客戶或營收佔比，需以公司公告或法說會驗證"
-    ]
+    ],
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "法說",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
   },
   "3218": {
     "company_name": "大學光",
@@ -37321,11 +37532,51 @@
         "url": "",
         "publish_date": "",
         "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "low",
+    "relation_strength": "medium",
     "relation_type": "candidate",
-    "role": "台股第二大權值股",
+    "role": "ASIC(與NVIDIA/Google合作可能)、AI邊緣運算、AI PC SoC、天璣系列",
     "products": [
       "終端 AI",
       "Wi-Fi",
@@ -37389,7 +37640,7 @@
       "衛星 PCB、射頻元件與地面終端實際出貨量",
       "國際衛星業者採購排程與長約資料"
     ],
-    "updated_at": "2026-09-20T10:07:17",
+    "updated_at": "2026-09-22T10:07:42",
     "risk_notes": [
       "多數台股公司尚未明確揭露 AI 眼鏡營收佔比、客戶名稱或量產訂單",
       "AI 眼鏡產品形態、價格、續航、隱私與殺手級應用仍在驗證",
@@ -37803,6 +38054,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-20T10:07:17"
+      },
+      {
+        "theme_id": "ai_semiconductor_demand",
+        "theme_name": "AI半導體需求熱度",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "ASIC(與NVIDIA/Google合作可能)、AI邊緣運算、AI PC SoC、天璣系列",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -38041,11 +38303,43 @@
         "url": null,
         "publish_date": null,
         "score_contribution": 0.0
+      },
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "low",
+    "relation_strength": "high",
     "relation_type": "candidate",
-    "role": "TFT-LCD龍頭/外資買超第一",
+    "role": "TFT-LCD大尺寸面板龍頭（大尺寸、IT、車用面板）",
     "products": [
       "Micro LED",
       "近眼顯示",
@@ -38078,7 +38372,7 @@
       "精確題材營收佔比",
       "AR 眼鏡微顯示器與光機模組的客戶認證進度"
     ],
-    "updated_at": "2026-09-14T10:09:01",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "panel_advanced_packaging_pivot",
@@ -38123,6 +38417,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-14T10:09:01"
+      },
+      {
+        "theme_id": "panel_display_rebound",
+        "theme_name": "面板雙虎外資大買",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "TFT-LCD大尺寸面板龍頭（大尺寸、IT、車用面板）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -38237,11 +38542,43 @@
         "url": "",
         "publish_date": "",
         "score_contribution": 0.0
+      },
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
-    "relation_strength": "low",
+    "relation_strength": "high",
     "relation_type": "candidate",
-    "role": "面板二哥",
+    "role": "TFT-LCD與觸控面板（大尺寸、觸控、中小尺寸）",
     "products": [
       "Micro LED",
       "近眼顯示",
@@ -38280,7 +38617,7 @@
       "FOPLP 實際營收貢獻時程",
       "主要半導體客戶名單"
     ],
-    "updated_at": "2026-09-14T10:09:01",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "display_microled",
@@ -38325,6 +38662,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-14T10:09:01"
+      },
+      {
+        "theme_id": "panel_display_rebound",
+        "theme_name": "面板雙虎外資大買",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "TFT-LCD與觸控面板（大尺寸、觸控、中小尺寸）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -39373,11 +39721,51 @@
         "url": "https://www.moneydj.com/KMDJ/News/NewsViewer.aspx?a=66e49369-984f-4abe-bdcc-09bf6c2c1a27",
         "publish_date": "2026-07-17",
         "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日盤前／AMD市值創高 第四季AI旺季行情開跑",
+        "source_level": "L2_media",
+        "content": "AMD市值創高代表AI晶片需求暢旺，市場期待Q4 AI旺季行情",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "台股獲利年增逾五成 鉅亨買基金：AI需求支撐長線行情",
+        "source_level": "L2_media",
+        "content": "台股整體獲利年增逾50%，AI需求支撐長線多頭",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "2028年後AI怎麼走？花旗大爆料 四大台廠稱霸下一波浪潮",
+        "source_level": "L2_media",
+        "content": "花旗看好2028年四大台廠主導下一波AI浪潮",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "高盛上調緯穎目標價 通用型、ASIC雙成長動能推升營運表現",
+        "source_level": "L2_media",
+        "content": "高盛上調緯穎目標價，看好通用型伺服器與ASIC雙引擎",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "9月22日重要財經行事曆",
+        "source_level": "L2_media",
+        "content": "9/22有宏普、威強電、鈊象等法說會，並有8月外銷訂單公布",
+        "url": "https://money.udn.com/money/story/5607/9769505",
+        "publish_date": null,
+        "score_contribution": 0.0
       }
     ],
     "relation_strength": "low",
     "relation_type": "upstream",
-    "role": "顯示驅動IC",
+    "role": "顯示驅動IC(DDI)、AI PC與OLED面板驅動IC題材",
     "products": [
       "量子晶片",
       "後量子密碼",
@@ -39423,7 +39811,7 @@
       "政府量子計畫預算與標案落地資料",
       "精確題材營收佔比"
     ],
-    "updated_at": "2026-09-11T10:09:00",
+    "updated_at": "2026-09-22T10:07:42",
     "risk_notes": [
       "量子科技商業化時程長，短期營收貢獻不明確",
       "台股多數公司與量子科技關聯間接，容易產生概念股誤判",
@@ -39537,6 +39925,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-11T10:09:00"
+      },
+      {
+        "theme_id": "ai_semiconductor_demand",
+        "theme_name": "AI半導體需求熱度",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "顯示驅動IC(DDI)、AI PC與OLED面板驅動IC題材",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -40008,7 +40407,7 @@
     ],
     "relation_strength": "high",
     "relation_type": "direct",
-    "role": "氣動元件/機器人",
+    "role": "氣動元件",
     "products": [
       "人形機器人",
       "AI 機器人",
@@ -40058,7 +40457,7 @@
       "人形機器人直接客戶",
       "2025-2026年機器人新品布局"
     ],
-    "updated_at": "2026-09-16T10:12:26",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "humanoid_robotics_components",
@@ -40125,6 +40524,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-16T10:12:26"
+      },
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "氣動元件",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -51407,7 +51817,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "待補題材角色",
+    "role": "濕製程設備",
     "products": [
       "半導體設備",
       "探針卡",
@@ -51428,7 +51838,7 @@
       "未找到可靠來源揭露精確客戶名單",
       "不要捏造百分比"
     ],
-    "updated_at": "2026-09-04T10:03:22",
+    "updated_at": "2026-09-22T10:07:42",
     "risk_notes": [
       "半導體設備訂單受客戶資本支出循環影響大",
       "營收認列可能集中於特定季度，波動較大",
@@ -51479,6 +51889,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-03T10:17:21"
+      },
+      {
+        "theme_id": "tsmc_a14_node",
+        "theme_name": "台積電A14與2028量產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "濕製程設備",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -57883,7 +58304,7 @@
     ],
     "relation_strength": "low",
     "relation_type": "candidate",
-    "role": "被動元件",
+    "role": "鋁質電容",
     "products": [
       "鋁質電容",
       "高分子鋁電",
@@ -57919,7 +58340,7 @@
       "AI伺服器電源客戶與產品規格",
       "報價與庫存週期資料"
     ],
-    "updated_at": "2026-09-08T10:09:27",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "passive_components",
@@ -58002,6 +58423,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-08T10:09:27"
+      },
+      {
+        "theme_id": "passive_components_ai_supply",
+        "theme_name": "被動元件AI需求帶動漲價",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "鋁質電容",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only",
@@ -61559,8 +61991,8 @@
       "華泰為IC封測廠，光通訊封裝業務比重與產品規格待驗證"
     ],
     "relation_strength": "medium",
-    "role": "IC封測",
-    "updated_at": "2026-09-18T10:07:55",
+    "role": "封測",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "ai_silicon_photonics_cpo",
@@ -61585,6 +62017,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-18T10:07:55"
+      },
+      {
+        "theme_id": "cowos_advanced_packaging",
+        "theme_name": "CoWoS與先進封裝",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "封測",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -62149,8 +62592,8 @@
     ],
     "relation_strength": "low",
     "relation_type": "upstream_supplier",
-    "role": "矽晶圓上游受惠",
-    "updated_at": "2026-09-21T10:07:32",
+    "role": "矽晶圓",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "memory_hbm_demand",
@@ -62268,6 +62711,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-21T10:07:32"
+      },
+      {
+        "theme_id": "tsmc_a14_node",
+        "theme_name": "台積電A14與2028量產",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "矽晶圓",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -64831,7 +65285,7 @@
     "missing_data": [
       "0056最新規模、市占率、配息率與00919比較數據需後續查證"
     ],
-    "updated_at": "2026-09-13T10:08:34",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "high_dividend_etf_assets_rotation",
@@ -64857,7 +65311,7 @@
       },
       {
         "theme_id": "high_dividend_etf",
-        "theme_name": "高股息ETF與存股",
+        "theme_name": "高股息ETF百億股利",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
@@ -64866,7 +65320,7 @@
         "missing_data": [
           "0056最新規模、市占率、配息率與00919比較數據需後續查證"
         ],
-        "updated_at": "2026-09-13T10:08:34"
+        "updated_at": "2026-09-22T10:07:42"
       },
       {
         "theme_id": "high_dividend_etf_00919",
@@ -64925,7 +65379,7 @@
     "missing_data": [
       "00878永續篩選標準、與00919重疊成分股比例需後續查證"
     ],
-    "updated_at": "2026-09-13T10:08:34",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "high_dividend_etf_assets_rotation",
@@ -64951,7 +65405,7 @@
       },
       {
         "theme_id": "high_dividend_etf",
-        "theme_name": "高股息ETF與存股",
+        "theme_name": "高股息ETF百億股利",
         "verification_status": "candidate",
         "usage_policy": "hypothesis_only",
         "not_representative": true,
@@ -64960,7 +65414,7 @@
         "missing_data": [
           "00878永續篩選標準、與00919重疊成分股比例需後續查證"
         ],
-        "updated_at": "2026-09-13T10:08:34"
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -70139,7 +70593,7 @@
     "evidence": [],
     "relation_strength": "medium",
     "role": "電線電纜",
-    "updated_at": "2026-09-04T10:03:22",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "heavy_electric_grid_taipower",
@@ -70151,6 +70605,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-04T10:03:22"
+      },
+      {
+        "theme_id": "heavy_electrical_power_grid",
+        "theme_name": "強韌電網與重電",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "電線電纜",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -70602,10 +71067,43 @@
     "company_name": "彩晶",
     "themes": [],
     "primary_theme": "",
-    "evidence": [],
+    "evidence": [
+      {
+        "source": "今日最夯股／友達亮燈漲停 外資大買逾23萬張看到什麼利多？",
+        "source_level": "L2_media",
+        "content": "友達亮燈漲停，外資大買逾23萬張、外資連4日加碼",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "外資大舉敲進面板雙虎",
+        "source_level": "L2_media",
+        "content": "外資買盤集中於友達與群創",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "封測、面板股短多點火 日月光、友達等獲買盤青睞",
+        "source_level": "L2_media",
+        "content": "封測與面板族群短多點火",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      },
+      {
+        "source": "量價榜聚焦 AI！聯發科、創意雙創歷史新高 欣興重返千元",
+        "source_level": "L2_media",
+        "content": "面板族群列入量價榜關注名單",
+        "url": "",
+        "publish_date": null,
+        "score_contribution": 0.0
+      }
+    ],
     "relation_strength": "medium",
-    "role": "中小尺寸面板",
-    "updated_at": "2026-09-14T10:09:01",
+    "role": "中小尺寸面板（手機、平板、車用）",
+    "updated_at": "2026-09-22T10:07:42",
     "candidate_themes": [
       {
         "theme_id": "panel_low_base_foreign_buyback",
@@ -70617,6 +71115,17 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-14T10:09:01"
+      },
+      {
+        "theme_id": "panel_display_rebound",
+        "theme_name": "面板雙虎外資大買",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "中小尺寸面板（手機、平板、車用）",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"
@@ -70990,6 +71499,144 @@
         "evidence": [],
         "missing_data": [],
         "updated_at": "2026-09-20T10:07:17"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "00888": {
+    "company_name": "永豐ESG低碳高息",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "高股息ETF",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "high_dividend_etf",
+        "theme_name": "高股息ETF百億股利",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "高股息ETF",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "1477": {
+    "company_name": "聚陽",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "成衣代工",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "成衣代工",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "1702": {
+    "company_name": "南僑",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "食品與油脂",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "食品與油脂",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "1710": {
+    "company_name": "東聯",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "化工",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "化工",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "2032": {
+    "company_name": "新鋼",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "鋼鐵",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "鋼鐵",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
+      }
+    ],
+    "candidate_usage_policy": "hypothesis_only"
+  },
+  "2534": {
+    "company_name": "宏普",
+    "themes": [],
+    "primary_theme": "",
+    "evidence": [],
+    "relation_strength": "medium",
+    "role": "法說",
+    "updated_at": "2026-09-22T10:07:42",
+    "candidate_themes": [
+      {
+        "theme_id": "investor_conference_sept",
+        "theme_name": "9月下旬法說會題材",
+        "verification_status": "candidate",
+        "usage_policy": "hypothesis_only",
+        "not_representative": true,
+        "role": "法說",
+        "evidence": [],
+        "missing_data": [],
+        "updated_at": "2026-09-22T10:07:42"
       }
     ],
     "candidate_usage_policy": "hypothesis_only"

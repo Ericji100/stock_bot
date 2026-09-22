@@ -1,0 +1,46 @@
+{
+  "strategy_id": "dual-ma",
+  "version": "v0.4-frozen",
+  "status": "FROZEN",
+  "created_at": "2026-09-21",
+  "authority": "雙均線交易系統｜00 研究與規則決策",
+  "base_version": "v0.3-draft",
+  "base_commit": "8b72f4aaa79de2acef35e79e1f40350734d99171",
+  "spec_file": "spec.md",
+  "spec_sha256": "e646e02871be6dd5db5368df7cd599e2399fddb13519ca68daacfaf1d05568c5",
+  "execution_model": "EOD_CLOSE_PROXY_V1",
+  "cost_model": "CATHAY_WEB_028_TW_V1",
+  "baseline": {
+    "moving_average": "SMA",
+    "medium_ma": [5, 21],
+    "long_ma": [21, 144],
+    "entry": "ENTRY_RECLAIM_ONLY",
+    "stop": "STOP_ENTRY_PULLBACK_LOW_PER_LEG",
+    "sizing": "SIZE_MAX_NOTIONAL_10000_MAX_RISK_2000",
+    "max_adds": 3
+  },
+  "add_variants": [
+    "ADD_R1_AGGREGATE",
+    "ADD_SIGNAL_ONLY"
+  ],
+  "exit_variants": [
+    "EXIT_DOW_TRAIL",
+    "EXIT_2R_DOW_TRAIL",
+    "EXIT_2R_21MA_2CLOSE"
+  ],
+  "matrix_ids": ["M1", "M2", "M3", "M4", "M5", "M6"],
+  "external_inputs_required": [
+    "universe_id",
+    "data_snapshot_id",
+    "data_start",
+    "data_end",
+    "data_hash"
+  ],
+  "deployment_allowed": false,
+  "backtest_allowed": true,
+  "notes": [
+    "本版本只允許因果回測，不允許正式監控或下單。",
+    "股票母體與資料快照由01任務交付並在每次run中綁定。",
+    "六組矩陣完成前不得選定正式加碼或停利版本。"
+  ]
+}

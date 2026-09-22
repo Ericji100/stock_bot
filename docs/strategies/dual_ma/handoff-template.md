@@ -7,8 +7,11 @@
 目的：
 任務類型：唯讀盤點／實作／回測／Shadow／驗證
 策略版本：
+策略規格 SHA256：
 基準 Git commit：
-輸入資料或股票母體：
+股票母體 ID（universe_id）：
+資料快照 ID（data_snapshot_id）：
+資料期間與 data_hash：
 允許修改的路徑：
 禁止修改的路徑：
 規則與假設：
@@ -22,8 +25,12 @@
 ```text
 狀態：完成／部分完成／阻塞
 使用的策略版本：
+策略規格 SHA256：
 Git commit／工作區狀態：
-輸入資料及期間：
+run_id：
+universe_id／data_snapshot_id：
+資料期間／data_hash：
+矩陣／成交／成本／滑價模型：
 本次完成項目：
 執行的測試或檢查：
 產出位置：

@@ -4,12 +4,13 @@
 
 ## 目前版本
 
-- 版本：`v0.3-draft`
-- 狀態：`DRAFT`
-- 完整規格：[`versions/v0.3-draft/spec.md`](versions/v0.3-draft/spec.md)
-- 版本資訊：[`versions/v0.3-draft/manifest.json`](versions/v0.3-draft/manifest.json)
+- 版本：`v0.4.1-frozen`
+- 狀態：`FROZEN`
+- 完整規格：[`versions/v0.4.1-frozen/spec.md`](versions/v0.4.1-frozen/spec.md)
+- 版本資訊：[`versions/v0.4.1-frozen/manifest.json`](versions/v0.4.1-frozen/manifest.json)
+- 前一版本：[`versions/v0.4-frozen/spec.md`](versions/v0.4-frozen/spec.md)
 
-`DRAFT` 只可用於盤點、規格檢查及實驗設計，不得直接部署到正式監控。版本生命週期如下：
+`FROZEN` 只允許依凍結契約實作及回測，不得直接部署到正式監控。版本生命週期如下：
 
 ```text
 DRAFT -> FROZEN -> BACKTESTED -> SHADOW -> ACTIVE -> RETIRED
@@ -24,7 +25,7 @@ DRAFT -> FROZEN -> BACKTESTED -> SHADOW -> ACTIVE -> RETIRED
 
 ## 權限原則
 
-1. `雙均線｜00 策略主控與規格決策` 是唯一規則決策來源。
+1. `雙均線交易系統｜00 研究與規則決策` 是唯一規則決策來源。
 2. 執行任務可以發現問題、提出建議、實作指定版本及產生報告，但不得自行改變規則。
 3. 對規格的任何實質變更都必須回到主控任務，寫入決策紀錄並升版。
 4. 回測與監控必須記錄規格版本、Git commit、資料期間、股票母體、成本模型及執行 `run_id`。

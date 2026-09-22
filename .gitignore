@@ -1,5 +1,6 @@
 ﻿.cache/
 .runtime/
+.workdata/
 data/
 memories/
 pytest-cache-files-*/

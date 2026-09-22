@@ -32,6 +32,7 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 | `__pycache__/` | Python bytecode 快取 | 忽略 | 可安全清除，執行時會再產生 | `.gitignore` |
 | `.cache/` | 選股、籌碼、財報、研究資料及回補快取 | 忽略 | 條件式清理；大量刪除會增加重抓時間與 API 用量 | [資料來源](data-sources.md)、[維運手冊](operations.md) |
 | `.runtime/` | Bot heartbeat、watchdog PID、MiniMax 工具、監控及回放執行狀態 | 忽略 | 不可在程序運行時清除；只做有依據的局部維護 | [維運手冊](operations.md)、[監控 README](../trade_monitor/README.md) |
+| `.workdata/` | 正式、開發及救援資料的本機集中存放區；各工作區以 profile 隔離 | 忽略 | 不進 Git；不可整批複製到 worktree | [工作資料配置](workdata-layout.md) |
 | `.v7bridge/` | v7 bridge 隔離驗證的 control、run 與 attestation 產物 | 忽略 | 驗證完成且不需追溯時可封存或清除 | [工作區整理計畫](workspace-organization-plan.md) |
 | `.v7s1/` | v7 stage-one 隔離研究的 control、run 與 attestation 產物 | 忽略 | 驗證完成且不需追溯時可封存或清除 | [工作區整理計畫](workspace-organization-plan.md) |
 | `archive/` | 已退出正式路徑的舊版程式及歷史檔案 | 追蹤 | 不可直接刪除；先確認還原與稽核需求 | 本文件 |
@@ -96,6 +97,8 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 5. `reports/`、`database/`、`local_data/`、`.runtime/` 必須先確認用途與備份，不做整批刪除。
 6. 任何 tracked 目錄搬移都要同步更新 imports、文件、測試、Windows 腳本及排程路徑。
 
+根目錄中既有的 `.runtime/`、`.cache/`、`data/`、`database/`、`local_data/`、`logs/`、`outputs/` 與 `reports/` 可在本機遷移後保留為相容 junction；實體資料統一放在 `.workdata/<profile>/`。這些 junction 仍沿用原本的 Git ignore 規則。
+
 ## 文件權責
 
 - 本文件：目前目錄用途、Git 政策與清理條件。
@@ -103,6 +106,7 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 - [系統架構](architecture.md)：服務層及資料流，不重複維護完整檔案樹。
 - [工作區整理計畫](workspace-organization-plan.md)：尚未完成的搬移方向與相容策略。
 - [維運手冊](operations.md)：啟動、設定、排程、報告位置與日常維護。
+- [工作資料配置](workdata-layout.md)：`.workdata` profile、worktree 共用原則與相容目錄。
 - [監控版本索引](../trade_monitor/rules/VERSION_INDEX.md)：正式監控、回測、歷史版本與延後相容清理。
 
 新增根目錄、變更 Git 追蹤政策或完成延後搬移時，必須同步更新本文件；若內容與實際 `.gitignore`、manifest 或程式路徑衝突，以實際契約為準並立即修正文檔。

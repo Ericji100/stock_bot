@@ -2,6 +2,8 @@
 
 Date: 2026-09-21
 
+> **狀態更新（2026-09-22）**：本文件記錄的是分流前盤點。下列股票研究家族已完整保留在 `codex/stock-monitor-strategy`，並從正式 `main` 移除。後續整理、測試與提交都在該 worktree 進行；不要依本文件把整批研究檔重新加入 `main`。目前工作區與回主線規則以 [開發工作區分流](development-workspaces.md) 為準。
+
 This note records the remaining untracked research files after the product bot, trade monitor, replay, scan, Radar, chart, and research data pipeline commits were pushed.
 
 The goal is to avoid committing the remaining files as one large, mixed change. Each family should be reviewed, moved, tested, and committed separately.

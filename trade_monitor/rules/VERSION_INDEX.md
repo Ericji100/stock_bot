@@ -20,6 +20,8 @@
 
 ## 回測版
 
+`main` 中的 `trade_monitor_replay/` 目前視為凍結相容資產。新的台指期一分 K、因果回放與策略開發只在 `codex/tmf-1m-monitor`（`D:\code\_codex_worktrees\tmf-1m-monitor\stock_ai_bot`）進行，未完成內容不得直接寫回正式工作區。
+
 | 類別 | 版本／位置 | 用途與狀態 |
 |---|---|---|
 | CLI 預設回放 | `formal-v2.1.8-replay-adapter-v3` | `trade_monitor_replay/config.py` 的預設 manifest；不是正式即時監控版本。 |

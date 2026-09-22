@@ -49,12 +49,12 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 | `prompt/` | 報告、新聞、題材、評分與工作流 Prompt | 追蹤 | 正式輸入資產，不可當產物清除 | `prompt/manifest.json`、[AI 投研](ai-research.md) |
 | `reports/` | Markdown、HTML、JSON 投研與回測報告 | 忽略 | 使用者產物；依日期封存，不假設一定可重建 | [維運手冊](operations.md)、[測試文件](testing.md) |
 | `research_center/` | AI 投研、新聞、題材、資料整合、報告及 API | 追蹤 | 正式原始碼，不可直接清理 | [系統架構](architecture.md)、[AI 投研](ai-research.md) |
-| `scripts/` | 回測、資料製作、驗證、遷移及研究腳本 | 追蹤 | 不可批次刪除；未來按研究家族分批整理 | [研究檔案分流](research-file-triage.md)、[工作區整理計畫](workspace-organization-plan.md) |
+| `scripts/` | 正式資料維護及 smoke 驗證腳本 | 追蹤 | 只保留正式維運用途；研究腳本留在開發 worktree | [開發工作區分流](development-workspaces.md) |
 | `stock_ai_bot/` | 正式股票 Bot Python 套件 | 追蹤 | 核心原始碼，不可直接清理或改名 | [README 功能模組](../README.md#功能模組)、[系統架構](architecture.md) |
-| `tests/` | pytest 測試、fixture、監控及回放測試 | 追蹤 | 保留；只清除其中的 cache／臨時輸出 | [測試文件](testing.md) |
+| `tests/` | 正式功能、監控及凍結回放相容測試 | 追蹤 | 保留；研究家族測試跟隨其開發分支 | [測試文件](testing.md) |
 | `tools/` | watchdog、健檢、驗證及維護工具 | 追蹤 | 保留；確認無入口、測試或文件引用後才可移除單一工具 | [維運手冊](operations.md)、[測試文件](testing.md) |
 | `trade_monitor/` | 台指期即時監控、狀態契約、規則版本及 scheduler | 追蹤 | 正式系統；不可批次搬移或刪除 | [監控 README](../trade_monitor/README.md)、[版本索引](../trade_monitor/rules/VERSION_INDEX.md) |
-| `trade_monitor_replay/` | 台指期歷史回放、確定性／AI 比較及重現契約 | 追蹤 | 保留；修正契約前不可重寫舊 manifest 或雜湊 | [回放文件](trade-monitor-replay.md)、[版本索引](../trade_monitor/rules/VERSION_INDEX.md) |
+| `trade_monitor_replay/` | 凍結的台指期歷史回放與重現契約 | 追蹤 | 契約修復前保留相容狀態；新開發移至台指期 worktree | [開發工作區分流](development-workspaces.md)、[版本索引](../trade_monitor/rules/VERSION_INDEX.md) |
 
 ## `stock_ai_bot/` 套件
 
@@ -107,6 +107,7 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 - [工作區整理計畫](workspace-organization-plan.md)：尚未完成的搬移方向與相容策略。
 - [維運手冊](operations.md)：啟動、設定、排程、報告位置與日常維護。
 - [工作資料配置](workdata-layout.md)：`.workdata` profile、worktree 共用原則與相容目錄。
+- [開發工作區分流](development-workspaces.md)：正式 `main`、三條開發分支、同步及回主線規則。
 - [監控版本索引](../trade_monitor/rules/VERSION_INDEX.md)：正式監控、回測、歷史版本與延後相容清理。
 
 新增根目錄、變更 Git 追蹤政策或完成延後搬移時，必須同步更新本文件；若內容與實際 `.gitignore`、manifest 或程式路徑衝突，以實際契約為準並立即修正文檔。

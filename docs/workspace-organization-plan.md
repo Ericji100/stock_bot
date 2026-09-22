@@ -1,11 +1,11 @@
 # Workspace Organization Plan
 
-This repository now contains two active systems:
+The production branch contains two deployed systems:
 
 1. `stock_ai_bot`: Telegram bot, stock scans, Radar, reports, data backfill, and scheduled jobs.
 2. `trade_monitor`: intraday trade monitoring, rule versions, structured AI analysis, replay, and research experiments.
 
-The goal of this plan is to keep those systems from blending together while preserving compatibility with existing commands.
+Active research is isolated in the worktrees listed in [development-workspaces.md](development-workspaces.md). The goal is to keep deployed systems from blending with unfinished research while preserving compatibility with existing commands.
 
 ## Current Boundaries
 
@@ -47,9 +47,9 @@ Current migrated locations:
 - Old clock-probe experiment files now live under `trade_monitor/experiments/clock_probe/`.
 - Old root monitor tests now live under `tests/trade_monitor/`.
 
-### Replay and research
+### Frozen replay compatibility
 
-Use `trade_monitor_replay/` for replay engines and deterministic / AI replay evaluation that still depends on monitor rules.
+`trade_monitor_replay/` remains on `main` as a frozen compatibility asset until the known replay schema hash contracts are repaired. New replay development belongs in `codex/tmf-1m-monitor`.
 
 Suggested ownership:
 
@@ -60,9 +60,9 @@ Suggested ownership:
 
 `trade_monitor_replay/` is intentionally separate from `trade_monitor/`: replay code may simulate historical state, run deterministic or AI review loops, and keep many rule manifests that should not be imported by the live monitor runtime path.
 
-### Research lab scripts
+### Stock research worktree
 
-Large one-off research families should eventually move out of the root `scripts/` namespace into a clearer layout:
+Large one-off stock research families are preserved on `codex/stock-monitor-strategy` and are no longer part of production `main`:
 
 ```text
 research_lab/
@@ -80,7 +80,7 @@ research_lab/
     fixtures/
 ```
 
-Do not move these in the same commit as runtime changes. The script set is large and should be migrated by family with focused tests.
+Do not merge that long-lived branch wholesale into `main`. Promote completed functionality through a short release branch and cherry-pick only reviewed production commits.
 
 ## Ignore Policy
 

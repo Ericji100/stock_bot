@@ -691,6 +691,7 @@ pytest tests/test_backfill_service.py
 |---|---|
 | [docs/directory-map.md](docs/directory-map.md) | 根目錄與套件目錄用途、Git 政策及清理條件 |
 | [docs/workdata-layout.md](docs/workdata-layout.md) | 本機 `.workdata`、正式／開發 profile 與 worktree 資料隔離規則 |
+| [docs/development-workspaces.md](docs/development-workspaces.md) | 正式 `main` 與股票、台指期、雙均線開發工作區的分流規則 |
 | [docs/commands.md](docs/commands.md) | Telegram 指令完整速查 |
 | [docs/architecture.md](docs/architecture.md) | 模組架構、資料流與重要規則 |
 | [docs/ai-research.md](docs/ai-research.md) | AI 投研、模型、搜尋、Prompt 與成本 |

@@ -17,13 +17,17 @@ D:\code\stock_ai_bot\.workdata\
 │  └─ reports\
 ├─ dev\
 │  ├─ stock-monitor\
+│  │  └─ shared\       完整課程回測與知識庫唯讀來源
 │  ├─ tmf-monitor\
+│  │  └─ shared\       完整台指期回放與歷史驗證資料
 │  └─ dual-ma\
 └─ rescue\
    └─ split-20260922\
 ```
 
 正式 Bot 使用 `prod`。每個開發 worktree 必須使用自己的 profile，不可寫入 `prod`。需要共用的大型歷史資料應以唯讀方式引用，不要複製整套資料，也不要讓研究程序覆寫正式狀態。
+
+每個開發 profile 的 `shared/` 保存該研究線的完整歷史資料。worktree 根目錄只保留目前續跑需要的子集；正式 profile 中的舊路徑可暫時透過 junction 唯讀連到 `shared/`，直到所有硬編碼路徑完成遷移。
 
 ## 環境變數
 

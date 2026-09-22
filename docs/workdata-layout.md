@@ -17,9 +17,9 @@ D:\code\stock_ai_bot\.workdata\
 │  └─ reports\
 ├─ dev\
 │  ├─ stock-monitor\
-│  │  └─ shared\       完整課程回測與知識庫唯讀來源
+│  │  └─ shared\       課程回測、知識庫與研究實驗資料
 │  ├─ tmf-monitor\
-│  │  └─ shared\       完整台指期回放與歷史驗證資料
+│  │  └─ shared\       台指期回放、clock probe 與歷史驗證資料
 │  └─ dual-ma\
 └─ rescue\
    └─ split-20260922\
@@ -27,7 +27,7 @@ D:\code\stock_ai_bot\.workdata\
 
 正式 Bot 使用 `prod`。每個開發 worktree 必須使用自己的 profile，不可寫入 `prod`。需要共用的大型歷史資料應以唯讀方式引用，不要複製整套資料，也不要讓研究程序覆寫正式狀態。
 
-每個開發 profile 的 `shared/` 保存該研究線的完整歷史資料。worktree 根目錄只保留目前續跑需要的子集；正式 profile 中的舊路徑可暫時透過 junction 唯讀連到 `shared/`，直到所有硬編碼路徑完成遷移。
+每個開發 profile 的 `shared/` 保存該研究線的完整歷史資料。開發 worktree 可透過 junction 連到自己的 `shared/`；正式 `prod` 不得連到任何 `dev` profile，避免未完成資料重新出現在正式工作區。
 
 ## 環境變數
 
@@ -40,7 +40,7 @@ Python 程式可使用 `stock_ai_bot.workdata` 取得正規路徑。新程式不
 
 ## 相容目錄
 
-現有程式仍有許多根目錄相對路徑。完成本機遷移後，專案根目錄的 `.runtime/`、`.cache/`、`data/`、`database/`、`local_data/`、`logs/`、`outputs/` 與 `reports/` 暫時保留為 Windows directory junction，分別指向所屬 profile 的實體資料。
+現有正式程式仍有許多根目錄相對路徑。完成本機遷移後，專案根目錄的 `.runtime/`、`.cache/`、`data/`、`database/`、`local_data/`、`logs/`、`outputs/` 與 `reports/` 暫時保留為 Windows directory junction，但只能指向 `.workdata/prod/` 的對應目錄。
 
 相容 junction 的目的只是讓既有程式不中斷。新程式應改用 `stock_ai_bot.workdata`；等所有正式入口完成路徑遷移與回歸測試後，才能移除 junction。
 
@@ -49,6 +49,7 @@ Python 程式可使用 `stock_ai_bot.workdata` 取得正規路徑。新程式不
 - Git 追蹤的程式、測試與文件要透過 commit、merge 或 cherry-pick 同步，不人工複製。
 - `.workdata/`、`.runtime/`、`reports/` 等忽略資料不隨 worktree 建立而複製。
 - 每個 worktree 的相容目錄只能指向 `.workdata/dev/<profile>/`。
+- `D:\code\stock_ai_bot` 的正式相容目錄不得指向 `.workdata/dev/`。
 - 正式設定與 Telegram token 不複製到開發 worktree。
 - 分支完成時，只把經測試的正式程式提交回 `main`；研究輸出留在該 profile 或封存區。
 

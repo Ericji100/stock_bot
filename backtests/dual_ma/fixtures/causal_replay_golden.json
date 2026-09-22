@@ -1,0 +1,25 @@
+{
+  "description": "Artificial-only rising warmup, joint reclaim, then medium-only regime failure",
+  "start_date": "2025-01-01",
+  "warmup": {
+    "count": 144,
+    "first_close": "100",
+    "increment": "0.1"
+  },
+  "tail": [
+    {"close": "112", "low": "111.5"},
+    {"close": "115", "low": "114"},
+    {"close": "112", "low": "111.6"},
+    {"close": "112", "low": "111.6"},
+    {"close": "112", "low": "111.6"},
+    {"close": "112", "low": "111.6"},
+    {"close": "112", "low": "111.6"},
+    {"close": "112", "low": "111.6"}
+  ],
+  "expected_transactions": [
+    {"date": "2025-05-26", "strategy": "MEDIUM_5_21", "role": "MOTHER", "status": "FILLED"},
+    {"date": "2025-05-26", "strategy": "LONG_21_144", "role": "MOTHER", "status": "FILLED"},
+    {"date": "2025-05-28", "strategy": "MEDIUM_5_21", "role": "EXIT", "status": "FILLED", "exit_reason": "REGIME_EXIT"}
+  ],
+  "expected_open_strategy": "LONG_21_144"
+}

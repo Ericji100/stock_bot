@@ -31,30 +31,25 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 | `.venv/` | Python 虛擬環境與套件 | 忽略 | 可重建；刪除前停止 Bot，之後依 `requirements.txt` 重裝 | [維運手冊](operations.md) |
 | `__pycache__/` | Python bytecode 快取 | 忽略 | 可安全清除，執行時會再產生 | `.gitignore` |
 | `.cache/` | 選股、籌碼、財報、研究資料及回補快取 | 忽略 | 條件式清理；大量刪除會增加重抓時間與 API 用量 | [資料來源](data-sources.md)、[維運手冊](operations.md) |
-| `.runtime/` | Bot heartbeat、watchdog PID、MiniMax 工具、監控及回放執行狀態 | 忽略 | 不可在程序運行時清除；只做有依據的局部維護 | [維運手冊](operations.md)、[監控 README](../trade_monitor/README.md) |
+| `.runtime/` | Bot heartbeat、watchdog PID、MiniMax 工具及正式監控狀態 | 忽略 | 不可在程序運行時清除；只做有依據的局部維護 | [維運手冊](operations.md)、[監控 README](../trade_monitor/README.md) |
 | `.workdata/` | 正式、開發及救援資料的本機集中存放區；各工作區以 profile 隔離 | 忽略 | 不進 Git；不可整批複製到 worktree | [工作資料配置](workdata-layout.md) |
-| `.v7bridge/` | v7 bridge 隔離驗證的 control、run 與 attestation 產物 | 忽略 | 驗證完成且不需追溯時可封存或清除 | [工作區整理計畫](workspace-organization-plan.md) |
-| `.v7s1/` | v7 stage-one 隔離研究的 control、run 與 attestation 產物 | 忽略 | 驗證完成且不需追溯時可封存或清除 | [工作區整理計畫](workspace-organization-plan.md) |
 | `archive/` | 已退出正式路徑的舊版程式及歷史檔案 | 追蹤 | 不可直接刪除；先確認還原與稽核需求 | 本文件 |
-| `backtests/` | 可重現的獨立回測程式與穩定結果 | 追蹤 | 保留；臨時大型結果改放 `reports/` 或 `outputs/` | [Backtests README](../backtests/README.md) |
 | `config/` | 公開規則、schema、評分、知識庫及服務設定 | 混合 | 追蹤檔不可任意清理；`secrets.json` 僅留本機且不得提交 | [維運手冊](operations.md)、[資料來源](data-sources.md) |
 | `data/` | 題材與 topic 系統的本機資料 | 忽略 | 條件式清理；先確認題材庫與執行狀態是否可重建 | [題材系統](topic-system.md) |
 | `database/` | SQLite 投研、新聞、事件、來源快照與報告索引 | 忽略 | 重要資料；停止寫入並備份後才能維護 | [維運手冊](operations.md)、[系統架構](architecture.md) |
 | `docs/` | 架構、維運、測試、策略與研究文件 | 追蹤 | 保留；過期文件應標記或移入 legacy，不直接丟棄 | 本文件、[README 文件索引](../README.md#文件索引) |
-| `experiments/` | 尚未提升為正式測試或回測的本機 scratch 實驗 | 忽略 | 確認沒有需保存的結論後可清理 | [工作區整理計畫](workspace-organization-plan.md) |
-| `local_data/` | 課程知識庫及保留的歷史備份 | 忽略 | 不可視為快取；需人工確認後才能封存或刪除 | [工作區整理計畫](workspace-organization-plan.md) |
+| `local_data/` | 正式流程仍需相容讀取的本機資料 | 忽略 | 不可視為快取；實體資料依 `.workdata` profile 管理 | [工作資料配置](workdata-layout.md) |
 | `logs/` | 排程、AI、prompt、題材、健檢及 watchdog 日誌 | 忽略 | 可依保留期輪替；問題調查期間保留相關區段 | [維運手冊](operations.md) |
 | `memories/` | 本機 session／工作階段狀態 | 忽略 | 停止相關程序並確認不需續跑後才能清理 | 本文件 |
-| `outputs/` | 回測、探針與研究的中間輸出 | 忽略 | 結論已提升到文件或正式 artifact 後可清理 | [工作區整理計畫](workspace-organization-plan.md) |
+| `outputs/` | 正式驗證與維運工具的中間輸出 | 忽略 | 結論已提升到文件或正式 artifact 後可清理 | [工作資料配置](workdata-layout.md) |
 | `prompt/` | 報告、新聞、題材、評分與工作流 Prompt | 追蹤 | 正式輸入資產，不可當產物清除 | `prompt/manifest.json`、[AI 投研](ai-research.md) |
 | `reports/` | Markdown、HTML、JSON 投研與回測報告 | 忽略 | 使用者產物；依日期封存，不假設一定可重建 | [維運手冊](operations.md)、[測試文件](testing.md) |
 | `research_center/` | AI 投研、新聞、題材、資料整合、報告及 API | 追蹤 | 正式原始碼，不可直接清理 | [系統架構](architecture.md)、[AI 投研](ai-research.md) |
 | `scripts/` | 正式資料維護及 smoke 驗證腳本 | 追蹤 | 只保留正式維運用途；研究腳本留在開發 worktree | [開發工作區分流](development-workspaces.md) |
 | `stock_ai_bot/` | 正式股票 Bot Python 套件 | 追蹤 | 核心原始碼，不可直接清理或改名 | [README 功能模組](../README.md#功能模組)、[系統架構](architecture.md) |
-| `tests/` | 正式功能、監控及凍結回放相容測試 | 追蹤 | 保留；研究家族測試跟隨其開發分支 | [測試文件](testing.md) |
+| `tests/` | 正式功能與正式監控測試 | 追蹤 | 保留；研究家族測試跟隨其開發分支 | [測試文件](testing.md) |
 | `tools/` | watchdog、健檢、驗證及維護工具 | 追蹤 | 保留；確認無入口、測試或文件引用後才可移除單一工具 | [維運手冊](operations.md)、[測試文件](testing.md) |
 | `trade_monitor/` | 台指期即時監控、狀態契約、規則版本及 scheduler | 追蹤 | 正式系統；不可批次搬移或刪除 | [監控 README](../trade_monitor/README.md)、[版本索引](../trade_monitor/rules/VERSION_INDEX.md) |
-| `trade_monitor_replay/` | 凍結的台指期歷史回放與重現契約 | 追蹤 | 契約修復前保留相容狀態；新開發移至台指期 worktree | [開發工作區分流](development-workspaces.md)、[版本索引](../trade_monitor/rules/VERSION_INDEX.md) |
 
 ## `stock_ai_bot/` 套件
 
@@ -104,10 +99,9 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 - 本文件：目前目錄用途、Git 政策與清理條件。
 - [README](../README.md)：使用入口、主要功能與文件索引。
 - [系統架構](architecture.md)：服務層及資料流，不重複維護完整檔案樹。
-- [工作區整理計畫](workspace-organization-plan.md)：尚未完成的搬移方向與相容策略。
 - [維運手冊](operations.md)：啟動、設定、排程、報告位置與日常維護。
 - [工作資料配置](workdata-layout.md)：`.workdata` profile、worktree 共用原則與相容目錄。
 - [開發工作區分流](development-workspaces.md)：正式 `main`、三條開發分支、同步及回主線規則。
-- [監控版本索引](../trade_monitor/rules/VERSION_INDEX.md)：正式監控、回測、歷史版本與延後相容清理。
+- [監控版本索引](../trade_monitor/rules/VERSION_INDEX.md)：正式監控、歷史版本與延後相容清理。
 
 新增根目錄、變更 Git 追蹤政策或完成延後搬移時，必須同步更新本文件；若內容與實際 `.gitignore`、manifest 或程式路徑衝突，以實際契約為準並立即修正文檔。

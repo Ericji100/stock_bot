@@ -17,7 +17,9 @@
 
 股票課程回測、Enlightenment AI、formal AI replay、hybrid v2/v3/v4 與 v2 core 研究家族已由 `codex/stock-monitor-strategy` 保全，並從 `main` 移除。研究輸出與 checkpoint 留在 `stock-monitor` profile。
 
-`trade_monitor_replay/`、對應測試與歷史規則目前仍是凍結相容資產。由於舊 replay schema 雜湊契約尚待修復，暫不從 `main` 搬動；所有新開發只能在 `codex/tmf-1m-monitor` 進行。契約修復完成後，再依版本索引封存舊規則及移除根目錄相容層。
+台指期 replay、clock probe、回測程式、對應測試與研究文件已由 `codex/tmf-1m-monitor` 保全，並從 `main` 移除。完整回放資料留在 `tmf-monitor` profile；已上線的 Telegram bridge、scheduler 與正式監控規則仍保留在 `main`。
+
+雙均線的新回測引擎、因果資料管線與研究文件只存在 `codex/dual-ma-integration-v0.4.1`。`main` 既有的雙均線與 KD 掃描屬於目前線上 `/scan` 與 Radar 正式功能，不是研究分支內容。
 
 ## 同步規則
 

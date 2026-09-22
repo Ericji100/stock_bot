@@ -30,11 +30,13 @@
 - `legacy/` 保存版本化之前的舊規則；`source/` 保存整合來源與審查材料。
 - 歷史版本目前不搬動、不重新命名、不刪除，避免破壞路徑引用、manifest 與 SHA-256 契約。
 
+## 已完成相容整理
+
+- 2026-09-22 已確認正式 Automation `1-k`、本機 scheduler、現行文件與測試使用 `trade_monitor.*` 及版本化 schema。
+- 根目錄舊模組入口與重複的 v1 schema 已移至 `archive/legacy/trade_monitor_root_compat/`，只供歷史還原與稽核。
+
 ## 延後整理
 
 以下正式相容整理仍需另案處理：
 
-> 使用者提醒：下次開始監控回測契約修正或根目錄整理前，先提醒根目錄的監控相容檔仍在保留中，再確認是否進行移除。
-
 1. 完成依賴掃描後，再評估把正式監控的歷史規則實體移入封存區。
-2. 確認所有舊 Automation、文件與測試都已改用 `trade_monitor.*` 後，再移除根目錄的 `trade_monitor_analysis_adapter.py`、`trade_monitor_analysis_contract.py`、`trade_monitor_bridge.py`、`trade_monitor_resume_guard.py` 與舊 schema。

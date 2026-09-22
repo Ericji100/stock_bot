@@ -284,7 +284,7 @@ def test_bridge_import_does_not_import_or_start_main_module():
         [
             sys.executable,
             "-c",
-            "import sys; import trade_monitor_bridge; assert 'main' not in sys.modules; print('ok')",
+            "import sys; import trade_monitor.bridge; assert 'main' not in sys.modules; print('ok')",
         ],
         capture_output=True,
         text=True,

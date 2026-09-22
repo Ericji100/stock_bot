@@ -81,7 +81,7 @@ D:\code\stock_ai_bot\       Git 專案、工作區與執行根目錄
 | `config.example.json`、`portfolio.example.json` | 可提交的設定範例 | 追蹤；設定欄位變更時同步更新 |
 | `stock_list.json` | 股票代號、名稱及市場清單 | 追蹤；目前多個模組依賴根目錄路徑 |
 | `requirements.txt`、`pytest.ini` | Python 依賴及 pytest 收集設定 | 追蹤；保留 |
-| 根目錄 `trade_monitor_*.py` 與舊 schema | 舊 Automation／舊文件相容入口 | 暫時保留；依[版本索引](../trade_monitor/rules/VERSION_INDEX.md#延後整理)處理 |
+| `archive/legacy/trade_monitor_root_compat/` | 已退出正式路徑的台指期根目錄相容入口與 v1 schema | 僅供歷史還原與稽核；不得加入正式執行路徑 |
 
 ## 清理順序
 

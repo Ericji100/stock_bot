@@ -1,1 +1,5 @@
 *.bat text eol=crlf
+docs/strategies/dual_ma/0050-2006-2026-data-and-backtest-v1.md text eol=lf
+docs/strategies/dual_ma/0050-2017-2026-ten-year-same-method-v1.md text eol=lf
+docs/strategies/dual_ma/0050-canonical-layout.md text eol=lf
+docs/strategies/dual_ma/standard-backtest-report-v2.md text eol=lf

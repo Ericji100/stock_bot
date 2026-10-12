@@ -34,7 +34,7 @@ from .paths import WORKDATA_ROOT
 
 OUTPUT_ROOT_DEFAULT = WORKDATA_ROOT / "00635u" / "prep-fixture-v1"
 FORMAL_STOP_CODE = "STOP_WAIT_00_00635U_DATA"
-PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R3"
+PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R4"
 MANIFEST_SCHEMA = "00635U_DATA_SNAPSHOT_V1"
 REPORT_NAME = "00635u-prep-fixture-report.md"
 
@@ -213,10 +213,7 @@ def _section(
     conclusion: str,
     impact: str,
 ) -> str:
-    number, heading = title.split("｜", 1)
-    return f"""## {number}
-
-### {heading}
+    return f"""## {title}
 
 ### 測試目的
 
@@ -238,6 +235,14 @@ def _section(
 
 {impact}
 """
+
+
+def _chapter_anchor(title: str) -> str:
+    """Return the Markdown anchor used by the numeric full chapter heading."""
+
+    without_bar = title.replace("｜", "").lower()
+    without_punctuation = re.sub(r"[^\w\s\-\u4e00-\u9fff]", "", without_bar)
+    return re.sub(r"\s+", "-", without_punctuation.strip())
 
 
 def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
@@ -276,7 +281,7 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
     extras = {
         "performance": "\n" + summary + "\n\n![合成夾具資產曲線](fixture-equity-chart.svg)\n",
         "relative": "\n| 主線 ID | 狀態 |\n|---|---|\n" + seven + "\n",
-        "trades": "\n- [逐筆交易明細](trade-details.csv)\n- [事件 ledger](event-ledger.csv)\n",
+        "trades": "\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件 ledger](event-ledger.csv)\n",
         "attachments": "\n" + "\n".join(
             f"- [{name}]({name})" for name in (
                 "fixture-rows.csv", "fixture-summary.csv", "daily-equity.csv",
@@ -297,7 +302,7 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
         for anchor, title, purpose, method, observation, conclusion, impact in specs
     ]
     toc = "\n".join(
-        f"- [{title}](#{title.split('｜', 1)[0]})" for _anchor, title, *_ in specs
+        f"- [{title}](#{_chapter_anchor(title)})" for _anchor, title, *_ in specs
     )
     return (
         "# 00635U 黃金期貨 ETF 因果回測｜準備版驗證報告\n\n"
@@ -311,13 +316,16 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
-def validate_report_tree(root: Path) -> list[str]:
+def validate_report_tree(root: Path, *, report_name: str = REPORT_NAME) -> list[str]:
     errors: list[str] = []
-    report = root / REPORT_NAME
+    report = root / report_name
     if not report.is_file():
         return [f"missing report: {report}"]
     text = report.read_text(encoding="utf-8")
-    anchors = set(re.findall(r"^## (0[1-9]|1[0-4])$", text, flags=re.MULTILINE))
+    headings = re.findall(
+        r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", text, flags=re.MULTILINE
+    )
+    anchors = {_chapter_anchor(title) for title in headings}
     for target in re.findall(r"\]\(#([^)]+)\)", text):
         if target not in anchors:
             errors.append(f"missing anchor: {target}")
@@ -344,15 +352,17 @@ def validate_report_tree(root: Path) -> list[str]:
     return errors
 
 
-def validate_report_schema(root: Path) -> list[str]:
-    report = root / REPORT_NAME
+def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> list[str]:
+    report = root / report_name
     if not report.is_file():
         return ["report missing"]
     text = report.read_text(encoding="utf-8")
     errors: list[str] = []
     if "<a id=" in text:
         errors.append("raw HTML anchor is forbidden")
-    numbers = re.findall(r"^## (0[1-9]|1[0-4])$", text, flags=re.MULTILINE)
+    numbers = re.findall(
+        r"^## (0[1-9]|1[0-4])｜[^\n]+$", text, flags=re.MULTILINE
+    )
     expected = [f"{index:02d}" for index in range(1, 15)]
     if numbers != expected:
         errors.append("report must contain ordered chapters 01 through 14")
@@ -362,7 +372,7 @@ def validate_report_schema(root: Path) -> list[str]:
     )
     for number in expected:
         match = re.search(
-            rf"^## {number}$([\s\S]*?)(?=^## (?:0[1-9]|1[0-4])$|\Z)",
+            rf"^## {number}｜[^\n]+$([\s\S]*?)(?=^## (?:0[1-9]|1[0-4])｜[^\n]+$|\Z)",
             text,
             flags=re.MULTILINE,
         )
@@ -384,6 +394,28 @@ def validate_report_schema(root: Path) -> list[str]:
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         formal = manifest.get("schema") == "00635U_FORMAL_RUN_V1"
+        if formal:
+            manifest_paths = {item.get("path") for item in manifest.get("files", [])}
+            if report_name != "README.md" or "README.md" not in manifest_paths:
+                errors.append("formal main report must be README.md and manifest-bound")
+            if "trade-details.md" not in manifest_paths:
+                errors.append("formal readable trade report missing from manifest")
+            if "[繁體中文逐筆交易明細](trade-details.md)" not in text:
+                errors.append("formal readable trade report link missing")
+            if re.search(r"(?<![\d-])-?\d+\.\d{3,}", text):
+                errors.append("formal report contains unformatted long decimal")
+            if any(code in text for code in (
+                "A_FIXED_STOP_MACD_21_55_55",
+                "B_FIXED_STOP_2R_KD_9_9_55",
+            )):
+                errors.append("formal report exposes internal strategy code")
+            required_rule_phrases = (
+                "MA21", "MA144", "MACD(21,55,55)", "固定初始防守",
+                "淨成本 2R", "KD(9,9,55)", "固定防守優先",
+                "訊號日收盤成交", "次一個可成交交易日開盤成交",
+            )
+            if any(phrase not in text for phrase in required_rule_phrases):
+                errors.append("formal report is missing self-contained strategy rules")
         expected_charts = {
             ("equity-chart.svg" if formal else "fixture-equity-chart.svg"): "equity_curve",
             "drawdown-chart.svg": "drawdown",
@@ -406,13 +438,18 @@ def validate_report_schema(root: Path) -> list[str]:
             source_hash = re.search(r'data-source-sha256="([0-9a-f]{64})"', svg)
             if kind is None or kind.group(1) != expected_kind:
                 errors.append(f"chart semantic mismatch: {name}")
+            if formal and any(code in svg for code in (
+                "STRATEGY_", "A_FIXED_STOP_MACD_21_55_55",
+                "B_FIXED_STOP_2R_KD_9_9_55",
+            )):
+                errors.append(f"chart legend exposes internal strategy code: {name}")
             if source_hash is None:
                 errors.append(f"chart source hash missing: {name}")
             else:
                 source_hashes.append(source_hash.group(1))
         if source_hashes and len(set(source_hashes)) < 7:
             errors.append("charts do not use sufficiently distinct source datasets")
-    if "[逐筆交易明細](trade-details.csv)" not in text:
+    if "[逐筆交易明細 CSV](trade-details.csv)" not in text:
         errors.append("chapter 06 prominent trade-details link missing")
     return errors
 

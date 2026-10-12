@@ -55,6 +55,8 @@
 }
 ```
 
+端到端測試 manifest 另以 `"data_classification": "SYNTHETIC_TEST_ONLY"` 明標；其輸出的 `README.md` 與 `trade-details.md` 必須同步顯示合成測試警語，禁止被引用為正式實績。正式資料若未帶此值，仍須先通過 00 接受的不可變 SHA 閘門。
+
 正式入口必須同時收到：
 
 1. manifest 實體檔；

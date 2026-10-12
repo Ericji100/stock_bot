@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -66,7 +67,11 @@ def test_fixture_pack_has_chinese_report_links_anchors_manifest_and_readback(tmp
     assert report.count("### 白話結論") == 14
     assert report.count("### 對最終決策的影響") == 14
     assert "<a id=" not in report
-    assert all(f"](#{number:02d})" in report for number in range(1, 15))
+    headings = re.findall(
+        r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE
+    )
+    assert len(headings) == 14
+    assert all(f"](#{subject._chapter_anchor(title)})" in report for title in headings)
     assert subject.validate_report_schema(tmp_path) == []
     assert all(line in report for line in subject.expected_comparison_lines())
 

@@ -81,7 +81,8 @@ def _write_formal_snapshot(
         })
     manifest = {
         "schema": prep.MANIFEST_SCHEMA, "symbol": "00635U",
-        "listing_date": "2015-04-15", "immutable": True, "files": files,
+        "listing_date": "2015-04-15", "immutable": True,
+        "data_classification": "SYNTHETIC_TEST_ONLY", "files": files,
     }
     manifest_path = root / "manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -188,18 +189,58 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     one = formal.run_formal_pack(snapshot, left, accepted_manifest_sha256=sha)
     two = formal.run_formal_pack(snapshot, right, accepted_manifest_sha256=sha)
     assert one["manifest_sha256"] == two["manifest_sha256"]
-    assert prep.validate_report_tree(left) == []
-    assert prep.validate_report_schema(left) == []
-    assert (left / prep.REPORT_NAME).read_bytes() == (right / prep.REPORT_NAME).read_bytes()
+    assert one["status"] == formal.STOP_CODE
+    assert prep.validate_report_tree(left, report_name=formal.REPORT_NAME) == []
+    assert prep.validate_report_schema(left, report_name=formal.REPORT_NAME) == []
+    assert (left / formal.REPORT_NAME).read_bytes() == (right / formal.REPORT_NAME).read_bytes()
+    assert (left / formal.TRADE_REPORT_NAME).read_bytes() == (right / formal.TRADE_REPORT_NAME).read_bytes()
+    assert not (left / prep.REPORT_NAME).exists()
 
-    report = (left / prep.REPORT_NAME).read_text(encoding="utf-8")
+    report = (left / formal.REPORT_NAME).read_text(encoding="utf-8")
+    assert "SYNTHETIC TEST ONLY" in report
     assert "<a id=" not in report
-    assert all(f"](#{number:02d})" in report for number in range(1, 15))
+    headings = re.findall(r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE)
+    assert len(headings) == 14
+    assert all(f"](#{prep._chapter_anchor(title)})" in report for title in headings)
     observations = re.findall(
         r"^### 觀察結果\s*$\n\s*([^\n]+)", report, flags=re.MULTILINE
     )
     assert len(observations) == len(set(observations)) == 14
-    assert "[逐筆交易明細](trade-details.csv)" in report
+    assert "[繁體中文逐筆交易明細](trade-details.md)" in report
+    assert "[逐筆交易明細 CSV](trade-details.csv)" in report
+    assert (left / formal.TRADE_REPORT_NAME).is_file()
+
+    # User-facing Markdown is rounded for reading while CSV retains raw values.
+    assert re.search(r"\d{1,3}(?:,\d{3})*\.\d{2} 元", report)
+    assert re.search(r"[+-]?\d+\.\d{2}%", report)
+    assert "百分點" in report
+    assert not re.search(r"(?<![\d-])-?\d+\.\d{3,}", report)
+    assert "策略 A（次一交易日開盤成交）" in report
+    assert "策略 B（次一交易日開盤成交）" in report
+    assert "A_FIXED_STOP_MACD_21_55_55" not in report
+    assert "B_FIXED_STOP_2R_KD_9_9_55" not in report
+    for line_id in formal.LINE_LABELS:
+        if line_id != "TAIEX_TOTAL_RETURN_SUPPLEMENT":
+            assert report.count(line_id) == 1
+    assert "期末資產" in observations[0]
+    assert "總報酬" in observations[0]
+    assert "年化報酬率" in observations[0]
+    assert "最大回落" in observations[0]
+    for phrase in (
+        "MA21", "MA144", "MACD(21,55,55)", "高價格區間", "低價格區間",
+        "固定初始防守", "策略 A", "策略 B", "淨成本 2R", "KD(9,9,55)",
+        "固定防守優先", "訊號日收盤成交", "次一個可成交交易日開盤成交",
+    ):
+        assert phrase in report
+    assert "命令列" in report
+    assert "fail closed" not in report
+
+    readable_trades = (left / formal.TRADE_REPORT_NAME).read_text(encoding="utf-8")
+    assert "SYNTHETIC TEST ONLY" in readable_trades
+    assert "進場來源／出場理由" in readable_trades
+    assert not re.search(r"(?<![\d-])-?\d+\.\d{3,}", readable_trades)
+    raw_summary = (left / "formal-summary.csv").read_text(encoding="utf-8-sig")
+    assert re.search(r"-?\d+\.\d{6,}", raw_summary)
 
     with (left / "trade-details.csv").open(encoding="utf-8-sig", newline="") as handle:
         trades = list(csv.DictReader(handle))
@@ -236,5 +277,14 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         svg = chart.read_text(encoding="utf-8")
         chart_kinds.add(re.search(r'data-chart-kind="([^"]+)"', svg).group(1))
         chart_hashes.add(re.search(r'data-source-sha256="([0-9a-f]{64})"', svg).group(1))
+        assert "STRATEGY_" not in svg
+        assert "策略 A" in svg or "策略 B" in svg
     assert len(chart_kinds) == 9
     assert len(chart_hashes) >= 7
+
+    output_manifest = json.loads((left / "manifest.json").read_text(encoding="utf-8"))
+    output_names = {item["path"] for item in output_manifest["files"]}
+    assert {formal.REPORT_NAME, formal.TRADE_REPORT_NAME} <= output_names
+    assert output_manifest["input_data_classification"] == "SYNTHETIC_TEST_ONLY"
+    readback = json.loads((left / "readback.json").read_text(encoding="utf-8"))
+    assert readback["stop_code"] == formal.STOP_CODE

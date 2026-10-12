@@ -303,6 +303,7 @@ def test_strict_high_analysis_keeps_original_lines_and_audits_exclusions(tmp_pat
 
 def test_percentage_points_normalizes_negative_zero():
     assert formal._percentage_points(Decimal("-0.000001")) == "0.00 百分點"
+    assert formal._readable_decimal(Decimal("0.0000000000000001")) == "1.000000E-16"
 
 
 def test_macd_only_pack_keeps_original_lines_and_publishes_causal_audit(tmp_path):
@@ -354,6 +355,59 @@ def test_macd_only_pack_keeps_original_lines_and_publishes_causal_audit(tmp_path
     taiex_block = report.split("#### 臺灣加權股價報酬指數機會成本補充", 1)[1]
     assert "純 MACD 策略 A（次一交易日開盤成交）" in taiex_block
     assert "純 MACD 策略 B（次一交易日開盤成交）" in taiex_block
+    with (output / "parameter-grid.csv").open(
+        encoding="utf-8-sig", newline=""
+    ) as handle:
+        grid_rows = list(csv.DictReader(handle))
+    effective_summaries, effective_rows = formal._macd_effective_grid_analysis(
+        grid_rows
+    )
+    assert len(grid_rows) == 486
+    assert len(effective_rows) == 54
+    assert all(row["attachment_rows"] == 243 for row in effective_summaries)
+    assert all(row["effective_macd_settings"] == 27 for row in effective_summaries)
+    assert all(
+        row["diagnostic_ma_repeats_per_setting"] == 9
+        for row in effective_summaries
+    )
+    for phrase in (
+        "每策略保留 243 列",
+        "策略 A、B 各有 243 列、27 種有效 MACD 設定",
+        "每種因 MA 診斷組合重複 9 次",
+        "不得把 243 列解讀為 243 個獨立規則",
+        "有效 MACD 設定數",
+        "27 設定正報酬比例",
+    ):
+        assert phrase in report
+    grid_chart = (output / "parameter-grid-chart.svg").read_text(encoding="utf-8")
+    assert "27 種有效 MACD 設定（附件保留 243 列）" in grid_chart
+    assert "243 格參數分布" not in grid_chart
+
+    warmup = formal._macd_warmup_analysis(data, analysis)
+    assert (
+        f"首筆純 MACD 進場訊號為 {warmup['first_macd_signal']}，"
+        f"是第 {warmup['first_macd_observation']} 筆觀測"
+    ) in report
+    assert (
+        f"MA144 首次可用為 {warmup['ma144_ready']}，"
+        f"是第 {warmup['ma144_ready_observation']} 筆觀測"
+    ) in report
+    assert f"首筆原策略進場訊號為 {warmup['first_original_signal']}" in report
+    assert "不補掛牌前合成 ETF 價格" in report
+    assert "不事後加入暖機門檻" in report
+
+    trade_report = (output / formal.TRADE_REPORT_NAME).read_text(encoding="utf-8")
+    causal_table = trade_report.split("## 純 MACD 逐部位因果欄位", 1)[1]
+    assert "完整原始精度另見 [純 MACD 因果稽核]" in causal_table
+    assert "INITIAL_PROTECTIVE_STOP" not in causal_table
+    assert "MACD_RED_TO_GREEN" not in causal_table
+    assert "KD_2R_DEATH_CROSS_EXIT" not in causal_table
+    assert not re.search(r"(?<![\d-])-?\d+\.\d{7,}", causal_table)
+    strategy_a_rows = [
+        line for line in causal_table.splitlines()
+        if line.startswith("| 純 MACD 策略 A")
+    ]
+    assert strategy_a_rows and all(line.endswith("| — |") for line in strategy_a_rows)
     manifest_payload = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest_payload["schema"] == "00635U_SYNTHETIC_FIXTURE_RUN_V1"
     assert manifest_payload["artifact_classification"] == "SYNTHETIC_TEST_PACK"

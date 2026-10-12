@@ -122,6 +122,19 @@ def _absolute_percentage_points(value: object) -> str:
     return f"{format(points, '.2f')} 百分點"
 
 
+def _readable_decimal(value: object, *, places: int = 6) -> str:
+    if value in (None, ""):
+        return "—"
+    number = research.decimal(value)
+    if number == 0:
+        return "0"
+    threshold = Decimal("1").scaleb(-places)
+    if abs(number) < threshold:
+        return format(number, ".6E")
+    rounded = number.quantize(threshold)
+    return format(rounded, "f").rstrip("0").rstrip(".")
+
+
 def _reason_label(row: Mapping[str, Any]) -> str:
     role = row.get("role")
     if role == "ENTRY":
@@ -217,25 +230,43 @@ def _trade_report(
     body = "\n".join(rows) if rows else "| — | — | — | — | — | — | — | 0 | — | — | — | — | — | — | — | — |"
     audit_section = ""
     if macd_audit:
-        audit_rows = "\n".join(
-            f"| {_line_label(str(item['line_id']))} | `{item['position_id']}` | "
-            f"{item['entry_signal_date']} | {item['entry_prev_histogram']} → {item['entry_current_histogram']} | "
-            f"{item['negative_segment_start']}～{item['negative_segment_end']}／{item['negative_segment_low']} | "
-            f"{_money(item['initial_stop'])} | {_money(item['technical_r_per_share'])} | "
-            f"{_money(item['fee_adjusted_initial_r'])} | {_money(item['fee_adjusted_two_r_threshold'])} | "
-            f"{item['two_r_first_reached_date'] or '—'} | {item['exit_signal_date'] or '—'} | "
-            f"{item['exit_reason']} | "
-            f"{item['exit_prev_histogram'] if item['exit_prev_histogram'] != '' else '—'} → "
-            f"{item['exit_current_histogram'] if item['exit_current_histogram'] != '' else '—'} | "
-            f"{item['exit_prev_k'] if item['exit_prev_k'] != '' else '—'}／{item['exit_prev_d'] if item['exit_prev_d'] != '' else '—'} → "
-            f"{item['exit_current_k'] if item['exit_current_k'] != '' else '—'}／{item['exit_current_d'] if item['exit_current_d'] != '' else '—'} |"
-            for item in macd_audit
-        )
+        audit_lines = []
+        for item in macd_audit:
+            exit_reason = (
+                "未平倉"
+                if item["exit_reason"] == "OPEN" else
+                EXIT_REASON_LABELS.get(item["exit_reason"], "未識別的出場原因")
+            )
+            kd_path = "—"
+            if item["strategy"] == StrategyVersion.B.name:
+                kd_path = (
+                    f"{_readable_decimal(item['exit_prev_k'], places=4)}／"
+                    f"{_readable_decimal(item['exit_prev_d'], places=4)} → "
+                    f"{_readable_decimal(item['exit_current_k'], places=4)}／"
+                    f"{_readable_decimal(item['exit_current_d'], places=4)}"
+                )
+            audit_lines.append(
+                f"| {_line_label(str(item['line_id']))} | `{item['position_id']}` | "
+                f"{item['entry_signal_date']} | "
+                f"{_readable_decimal(item['entry_prev_histogram'])} → "
+                f"{_readable_decimal(item['entry_current_histogram'])} | "
+                f"{item['negative_segment_start']}～{item['negative_segment_end']}／"
+                f"{_money(item['negative_segment_low'])} | "
+                f"{_money(item['technical_entry'])} | {_money(item['initial_stop'])} | "
+                f"{_money(item['technical_r_per_share'])} | "
+                f"{_money(item['fee_adjusted_initial_r'])} | "
+                f"{_money(item['fee_adjusted_two_r_threshold'])} | "
+                f"{item['two_r_first_reached_date'] or '—'} | "
+                f"{item['exit_signal_date'] or '—'} | {exit_reason} | "
+                f"{_readable_decimal(item['exit_prev_histogram'])} → "
+                f"{_readable_decimal(item['exit_current_histogram'])} | {kd_path} |"
+            )
+        audit_rows = "\n".join(audit_lines)
         audit_section = (
             "\n\n## 純 MACD 逐部位因果欄位\n\n"
-            "MA21／MA144 僅為診斷欄位；完整原始值另見 [純 MACD 因果稽核](macd-only-audit.csv)。\n\n"
-            "| 策略 | 部位 ID | 進場訊號日 | 進場柱狀值前→當 | 負柱區段／最低價 | 防守價 | 每股技術 R | 費後初始 R | 費後 2R | 首次達 2R | 出場訊號日 | 出場原因 | 出場柱狀值前→當 | KD 前 K／D→當 K／D |\n"
-            "|---|---|---|---|---|---:|---:|---:|---:|---|---|---|---|---|\n"
+            "MA21／MA144 僅為診斷欄位。柱狀值一般保留六位小數，絕對值小於 0.000001 的非零值改用科學記號，避免交叉被誤讀為零；KD 保留四位小數。策略 A 不使用 KD 出場，因此 KD 欄顯示「—」。完整原始精度另見 [純 MACD 因果稽核](macd-only-audit.csv)。\n\n"
+            "| 策略 | 部位 ID | 進場訊號日 | 進場柱狀值前→當 | 負柱區段／最低價 | 技術進場價 | 防守價 | 每股技術 R | 費後初始 R | 費後 2R | 首次達 2R | 出場訊號日 | 出場原因 | 出場柱狀值前→當 | KD 前 K／D→當 K／D |\n"
+            "|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|\n"
             + audit_rows
             + "\n"
         )
@@ -765,6 +796,120 @@ def macd_only_audit(
     return output
 
 
+def _macd_effective_grid_analysis(
+    grid_rows: Sequence[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Collapse diagnostic MA duplicates without changing the 243-row attachment."""
+
+    outcome_fields = (
+        "ending_equity", "total_return", "cagr", "max_drawdown",
+        "return_drawdown_ratio", "rolling_5y_worst_cagr",
+    )
+    summaries: list[dict[str, Any]] = []
+    unique_rows: list[dict[str, Any]] = []
+    for strategy in StrategyVersion:
+        selected = [row for row in grid_rows if row["strategy"] == strategy.name]
+        groups: dict[tuple[int, int, int], list[Mapping[str, Any]]] = {}
+        for row in selected:
+            key = (
+                int(row["macd_fast"]), int(row["macd_slow"]),
+                int(row["macd_signal"]),
+            )
+            groups.setdefault(key, []).append(row)
+        if len(selected) != 243 or len(groups) != 27:
+            raise AssertionError("MACD-only grid must be 243 rows and 27 effective settings")
+        representatives = []
+        for key, records in groups.items():
+            ma_pairs = {(int(row["ma_fast"]), int(row["ma_slow"])) for row in records}
+            outcomes = {
+                tuple(row.get(field) for field in outcome_fields) for row in records
+            }
+            if len(records) != 9 or len(ma_pairs) != 9 or len(outcomes) != 1:
+                raise AssertionError(
+                    f"diagnostic MA dimensions changed MACD-only result: {strategy.name} {key}"
+                )
+            representatives.append(dict(records[0]))
+        representatives.sort(
+            key=lambda row: (
+                int(row["macd_fast"]), int(row["macd_slow"]),
+                int(row["macd_signal"]),
+            )
+        )
+        unique_rows.extend(representatives)
+        equities = [research.decimal(row["ending_equity"]) for row in representatives]
+        rolling_values = [
+            research.decimal(row["rolling_5y_worst_cagr"])
+            for row in representatives
+            if row.get("rolling_5y_worst_cagr") is not None
+        ]
+        baseline = next(
+            row for row in representatives
+            if (
+                int(row["macd_fast"]), int(row["macd_slow"]),
+                int(row["macd_signal"]),
+            ) == (21, 55, 55)
+        )
+        summaries.append({
+            "strategy": strategy.name,
+            "attachment_rows": len(selected),
+            "effective_macd_settings": len(representatives),
+            "diagnostic_ma_repeats_per_setting": 9,
+            "effective_median_ending_equity": median(equities),
+            "effective_positive_ratio": (
+                Decimal(sum(value > research.INITIAL_CAPITAL for value in equities))
+                / Decimal(len(equities))
+            ),
+            "baseline_ending_equity": research.decimal(baseline["ending_equity"]),
+            "rolling_5y_worst_cagr": min(rolling_values) if rolling_values else None,
+        })
+    return summaries, unique_rows
+
+
+def _macd_warmup_analysis(
+    data: FormalSnapshotData,
+    analysis: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Describe the unequal listing-start indicator maturity without changing it."""
+
+    observation_by_day = {
+        row.day: index for index, row in enumerate(data.indicator_rows, start=1)
+    }
+    macd_entry_dates = [
+        trade["signal_date"]
+        for line_id, payload in analysis["active"].items()
+        if line_id.startswith("MACD_ONLY_")
+        for trade in payload["result"].state.trades
+        if trade["role"] == "ENTRY"
+    ]
+    original_entry_dates = [
+        trade["signal_date"]
+        for line_id, payload in analysis["active"].items()
+        if line_id.startswith("STRATEGY_")
+        for trade in payload["result"].state.trades
+        if trade["role"] == "ENTRY"
+    ]
+    first_macd_signal = min(macd_entry_dates, default=None)
+    first_original_signal = min(original_entry_dates, default=None)
+    ma144_ready = next(
+        (row.day for row in data.indicator_rows if row.sma144 is not None), None
+    )
+    return {
+        "first_macd_signal": first_macd_signal,
+        "first_macd_observation": (
+            None if first_macd_signal is None else observation_by_day[first_macd_signal]
+        ),
+        "ma144_ready": ma144_ready,
+        "ma144_ready_observation": (
+            None if ma144_ready is None else observation_by_day[ma144_ready]
+        ),
+        "first_original_signal": first_original_signal,
+        "original_2015_entries": len({
+            signal_day for signal_day in original_entry_dates
+            if signal_day.year == 2015
+        }),
+    }
+
+
 def run_formal_pack(
     manifest_path: Path,
     output_root: Path,
@@ -960,6 +1105,10 @@ def run_formal_pack(
         for strategy in StrategyVersion
     ]
     prep._write_csv(output_root / "parameter-grid-summary.csv", grid_summary_rows)
+    effective_grid_summary_rows, effective_grid_rows = (
+        _macd_effective_grid_analysis(grid_rows)
+        if macd_only_study else ([], [])
+    )
     core_rows, core_summary, core_ledger = [], [], []
     for strategy in StrategyVersion:
         allocation = research.run_core_allocation_study(
@@ -1043,8 +1192,9 @@ def run_formal_pack(
             if item["strategy"] == strategy.value and item["timing"] == ExecutionTiming.NEXT_SESSION_OPEN.value
         ] for strategy in StrategyVersion
     }
+    chart_grid_rows = effective_grid_rows if macd_only_study else grid_rows
     grid_series = {
-        _strategy_label(strategy): [item["ending_equity"] for item in grid_rows if item["strategy"] == strategy.name]
+        _strategy_label(strategy): [item["ending_equity"] for item in chart_grid_rows if item["strategy"] == strategy.name]
         for strategy in StrategyVersion
     }
     core_series = {
@@ -1073,7 +1223,14 @@ def run_formal_pack(
         "trade-pnl-chart.svg": ("trade_pnl", "逐筆交易淨損益", trade_series, "交易序號", "淨損益（元）", trade_tick_labels),
         "cost-pressure-chart.svg": ("cost_pressure", "成本壓力測試", cost_series, "單邊滑價（基點）", "期末資產（元）", ["20", "40", "60"]),
         "core-allocation-chart.svg": ("core_allocation", "核心持有比例", core_series, "核心比例", "期末資產（元）", ["0%", "20%", "40%", "60%"]),
-        "parameter-grid-chart.svg": ("parameter_grid", "243 格參數分布", grid_series, "參數格序號", "期末資產（元）", [str(index) for index in range(1, 244)]),
+        "parameter-grid-chart.svg": (
+            "parameter_grid",
+            "27 種有效 MACD 設定（附件保留 243 列）" if macd_only_study else "243 格參數分布",
+            grid_series,
+            "有效 MACD 設定序號" if macd_only_study else "參數格序號",
+            "期末資產（元）",
+            [str(index) for index in range(1, 28 if macd_only_study else 244)],
+        ),
     }
     for name, (kind, title, source, x_label, y_label, x_tick_labels) in chart_specs.items():
         (output_root / name).write_text(
@@ -1319,13 +1476,41 @@ def run_formal_pack(
         "成本穩健；成本改變會改寫淨成本 2R 的啟動時點，進而改變後續 KD 出場與交易路徑，"
         "所以結果呈非單調，並顯示策略 B 對成本與路徑敏感"
     )
-    grid_table = "\n".join(
-        f"| {_strategy_label(row['strategy'])} | {_money(row['median_ending_equity'])} | "
-        f"{_percent(row['positive_expectation_cell_ratio'])} | {_money(row['baseline_ending_equity'])} | "
-        f"{_money(row['local_neighborhood_median'])} | "
-        f"{_percent(row['rolling_5y_worst_cagr']) if row['rolling_5y_worst_cagr'] is not None else '資料不足'} |"
-        for row in grid_summary_rows
-    )
+    if macd_only_study:
+        row_weighted_grid = {row["strategy"]: row for row in grid_summary_rows}
+        grid_table = "\n".join(
+            f"| {_strategy_label(row['strategy'])} | {int(row['attachment_rows'])} | "
+            f"{int(row['effective_macd_settings'])} | "
+            f"{int(row['diagnostic_ma_repeats_per_setting'])} | "
+            f"{_money(row_weighted_grid[row['strategy']]['median_ending_equity'])} | "
+            f"{_money(row['effective_median_ending_equity'])} | "
+            f"{_percent(row['effective_positive_ratio'])} | "
+            f"{_money(row['baseline_ending_equity'])} | "
+            f"{_percent(row['rolling_5y_worst_cagr']) if row['rolling_5y_worst_cagr'] is not None else '資料不足'} |"
+            for row in effective_grid_summary_rows
+        )
+        grid_extra = (
+            "\n| 策略 | 附件列數 | 有效 MACD 設定數 | 每設定 MA 診斷重複 | 243 列中位期末資產 | "
+            "27 設定中位期末資產 | 27 設定正報酬比例 | 主設定期末資產 | 五年最差年化 |\n"
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|\n"
+            + grid_table
+            + "\n\n> `parameter-grid.csv` 為維持既有附件結構仍保留每策略 243 列；"
+            "研究證據單位是去除 MA 診斷重複後的 27 種有效 MACD 設定。\n\n"
+            "![27 種有效 MACD 設定](parameter-grid-chart.svg)\n"
+        )
+    else:
+        grid_table = "\n".join(
+            f"| {_strategy_label(row['strategy'])} | {_money(row['median_ending_equity'])} | "
+            f"{_percent(row['positive_expectation_cell_ratio'])} | {_money(row['baseline_ending_equity'])} | "
+            f"{_money(row['local_neighborhood_median'])} | "
+            f"{_percent(row['rolling_5y_worst_cagr']) if row['rolling_5y_worst_cagr'] is not None else '資料不足'} |"
+            for row in grid_summary_rows
+        )
+        grid_extra = (
+            "\n| 策略 | 中位數期末資產 | 正報酬格比例 | 中心格期末資產 | 鄰域中位數 | 五年最差年化 |\n"
+            "|---|---:|---:|---:|---:|---:|\n" + grid_table
+            + "\n\n![243 格參數分布](parameter-grid-chart.svg)\n"
+        )
     core_table = "\n".join(
         f"| {_strategy_label(row['strategy'])} | {int(row['core_pct'])}% | "
         f"{_money(row['ending_equity'])} | {_percent(row['cagr'])} | {_percent(row['max_drawdown'])} |"
@@ -1518,8 +1703,9 @@ def run_formal_pack(
         if analysis["gold_status"] != "AVAILABLE_OFFICIAL" else
         "S&P GSCI Gold ER 官方歷史可用，僅作不可交易基準"
     )
+    core_label_join = " 的" if macd_only_study else ""
     core_tradeoff = "；".join(
-        f"{_strategy_label(strategy)}期末資產最高為核心 {int(max((row for row in core_summary if row['strategy'] == strategy.name), key=lambda row: row['ending_equity'])['core_pct'])}%；"
+        f"{_strategy_label(strategy)}{core_label_join}期末資產最高為核心 {int(max((row for row in core_summary if row['strategy'] == strategy.name), key=lambda row: row['ending_equity'])['core_pct'])}%；"
         f"回落最淺為核心 {int(max((row for row in core_summary if row['strategy'] == strategy.name), key=lambda row: row['max_drawdown'])['core_pct'])}%"
         for strategy in StrategyVersion
     )
@@ -1539,19 +1725,73 @@ def run_formal_pack(
         if macd_only_study else ""
     )
     exclusion_sentence = exclusion_summary.rstrip("。")
+    warmup_disclosure = ""
+    warmup_summary = ""
+    macd_practice_observation = ""
+    macd_practice_conclusion = ""
+    if macd_only_study:
+        warmup = _macd_warmup_analysis(data, analysis)
+        required_warmup_fields = (
+            "first_macd_signal", "first_macd_observation", "ma144_ready",
+            "ma144_ready_observation", "first_original_signal",
+        )
+        if any(warmup[field] is None for field in required_warmup_fields):
+            raise AssertionError("MACD-only warmup disclosure requires both study signals")
+        warmup_disclosure = (
+            "MACD 的 EMA 從 00635U 掛牌首日收盤起以首值初始化；首筆純 MACD 進場訊號為 "
+            f"{warmup['first_macd_signal']}，是第 {warmup['first_macd_observation']} 筆觀測，"
+            f"其前已有 {int(warmup['first_macd_observation']) - 1} 個交易日。"
+            f"原策略必須等 MA144 成熟；MA144 首次可用為 {warmup['ma144_ready']}，"
+            f"是第 {warmup['ma144_ready_observation']} 筆觀測，首筆原策略進場訊號為 "
+            f"{warmup['first_original_signal']}，2015 年原策略新進場訊號為 "
+            f"{warmup['original_2015_entries']} 個。兩者的起始可交易時點不同，早期績效差異不能全歸因於"
+            "進出場規則。不補掛牌前合成 ETF 價格，也不事後加入暖機門檻；若要排除早期，必須另開"
+            "預先定義的敏感度研究。"
+        )
+        warmup_summary = (
+            f"起始口徑不相同：純 MACD 首筆訊號在第 {warmup['first_macd_observation']} 筆觀測，"
+            f"原策略須先等 MA144 於第 {warmup['ma144_ready_observation']} 筆成熟；"
+            "因此差異不可全部解讀為規則效果。"
+        )
+
+        def relative_word(delta: Decimal) -> str:
+            return "高於" if delta > 0 else "低於" if delta < 0 else "等於"
+
+        macd_practice_observation = (
+            f"實務主口徑中，純 MACD 策略 A 期末資產{relative_word(a_delta)}原版 A "
+            f"{_money(abs(a_delta))}，年化報酬率差 "
+            f"{_percentage_points(a_metrics['cagr'] - a_original['cagr'])}；"
+            f"純 MACD 策略 B 期末資產{relative_word(b_delta)}原版 B "
+            f"{_money(abs(b_delta))}，年化報酬率差 "
+            f"{_percentage_points(b_metrics['cagr'] - b_original['cagr'])}。"
+            f"相對買進持有，A、B 期末資產差分別為 "
+            f"{_money(a_metrics['ending_equity'] - hold_metrics['ending_equity'], signed=True)}、"
+            f"{_money(b_metrics['ending_equity'] - hold_metrics['ending_equity'], signed=True)}。"
+            f"A 最大單筆投入 {_money(a_metrics['maximum_single_entry_cash'])}、未平倉 "
+            f"{int(a_metrics['open_positions'])} 個；B 最大單筆投入 "
+            f"{_money(b_metrics['maximum_single_entry_cash'])}、未平倉 "
+            f"{int(b_metrics['open_positions'])} 個。{strategy_b_cost_note}。"
+            "實務監控需持續涵蓋可成交交易日、期貨轉倉、正逆價差、匯率、時區與追蹤缺口。"
+        )
+        macd_practice_conclusion = (
+            f"純 MACD 策略 A 的期末資產{relative_word(a_delta)}原版 A，策略 B "
+            f"{relative_word(b_delta)}原版 B；兩者相對買進持有的期末資產差已列於上段。"
+            + warmup_summary
+            + "本樣本只支持保留為隔離研究，不支持直接採納或取代原策略。"
+        )
     prose = {
-        "conclusion": ("先用實務成交版本回答候選策略在完整成本後的表現。", f"比較{strategy_scope_text}、00635U 買進持有，再檢查最差年度、五年窗口與成本壓力。", practical_summary + f"；本次策略期末資產最高者為 {best_next_text}。{active_hold_comparison}。{exclusion_sentence}。最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；最差五年窗口：{worst_rolling_text}。{cost_pressure}。", research_finding if (high_regime_study or macd_only_study) else "主摘要同時呈現原策略、新策略與持有基準，不以單一有利指標判斷。", deployment_decision),
+        "conclusion": ("先用實務成交版本回答候選策略在完整成本後的表現。", f"比較{strategy_scope_text}、00635U 買進持有，再檢查最差年度、五年窗口與成本壓力。", practical_summary + f"；本次策略期末資產最高者為 {best_next_text}。{active_hold_comparison}。{exclusion_sentence}。" + (warmup_summary if macd_only_study else "") + f"最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；最差五年窗口：{worst_rolling_text}。{cost_pressure}。", research_finding if (high_regime_study or macd_only_study) else "主摘要同時呈現原策略、新策略與持有基準，不以單一有利指標判斷。", deployment_decision),
         "performance": (f"用同一共同期間比較{main_line_text}。", "每線重訂基準至 500,000.00 元並列實際起訖日與觀測數；缺少的官方基準不以代理補入。", f"{main_line_text}的共同期間為 {common_period}；{active_count} 條主動策略的交易數與最大投入直接來自逐筆帳本。{gold_text}。", "年化報酬率與最大回落必須一起看，不能只看期末資產。", "主表是後續相對、期間與壓力分析的唯一母表。"),
         "relative": ("逐策略比較可取得且符合契約的指定基準。", "計算相對 00635U 現金持有與分配再投入的期末資產差、年化報酬率差與最大回落差；官方 Gold ER 缺席時不計算。TAIEX 另作機會成本補充。", f"{active_count} 條策略共輸出 {len(relative_rows):,} 組主要相對比較；{gold_text}；臺灣加權股價報酬指數目前為：{taiex_text}。", "缺少官方 Gold ER 時，不能宣稱已完成對黃金市場基準的超額報酬比較；TAIEX 只能說明放棄臺股的機會成本。", "主要結論只依 00635U 可交易基準；Gold ER 比較維持未完成，TAIEX 不得被當成黃金代理。"),
         "rules": (("確認原策略、本次研究策略、策略 A／B 與兩種成交版本沒有混用。" if macd_only_study else "確認原策略、本次進場門檻、策略 A／B 與兩種成交版本沒有混用。"), ("逐項核對 MACD 新交叉、連續負柱區段固定防守、策略 A／B 出場差異、2R 與成交時點。" if macd_only_study else "逐項核對嚴格均線進場門檻、固定防守、策略 A／B 出場差異、停損優先順序與成交時點。"), strict_rule_note + "所有進場、2R 啟動、現金分配、公司行動與出場都有事件 ID 與部位 ID。" + exclusion_sentence + "。", (research_finding + "進場門檻只排除當下 MA21 <= MA144 的新進場，不使用未來資料，也不新增出場條件。") if high_regime_study else ("純 MACD 規則只使用當下與先前可觀察資料；MA 欄位只作診斷，改寫後的訂單、事件及帳戶重播完全一致。" if macd_only_study else "進場門檻只排除當下條件不符的新進場，不使用未來資料，也不新增出場條件。"), "規則改動必須另開版本並重跑全部附件。"),
         "annual": ("檢查獲利是否集中少數年份。", "連續帳戶以前一年度末為起點，首年用 500,000.00 元，完整納入首交易日。", f"實務成交線的最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；下表完整列出 {active_count} 條策略與 {comparator_count} 個主基準的所有年度。", "年度不重設本金；獲利年度次數不能取代最差年度幅度。", "若少數年度貢獻過大，實務採用需降權。"),
         "trades": ("讓讀者直接核對每筆投入與出場。", "交易表含訊號日、成交日、成交方式、部位／事件 ID、股數、價格、費稅、初始 R、2R 啟動日與淨損益。", (trade_scope_note + "可先閱讀中文明細，再用 CSV 與事件帳本重建。") if synthetic_test else f"本次輸出 {len(trades):,} 列進出場事件；可先閱讀中文明細，再用 CSV 與事件帳本重建。", "每次投入不是固定 500,000.00 元，而受可用現金、整股與 20.00% 初始風險上限約束。", "任何主表交易數都必須能由附件一對一重建。"),
         "execution": ("量化成交時間與成本敏感度。", "同時比較訊號日收盤／次一交易日開盤及 20／40／60 個基點，輸出期末資產、年化報酬率、最大回落與完成回合。", cost_pressure + "。" + strategy_b_cost_note + "。", "成本變動不只扣減每筆損益，也可能改變 2R 啟動、KD 出場與後續交易，因此非單調結果仍代表路徑敏感，不能解讀為成本有利。", "實務主口徑固定為次一個可成交交易日的開盤；策略 B 在成本壓力下不具部署穩健性。"),
-        "periods": ("檢查固定時期、月末滾動窗口與市場狀態。", "固定期輸出期初／期末／總報酬／年化報酬率／最大回落；滾動 3／5／10 年採月末窗口，並另列高、低價格區間。", f"實務成交線的五年最差年化報酬率為：{worst_rolling_text}；下方三張表完整呈現固定期間、滾動摘要與高低價格區間。", "全期正報酬若伴隨長期負窗口，仍不能稱穩健。", "以最差窗口與低／高價格區間的差異限制部位。"),
+        "periods": ("檢查固定時期、月末滾動窗口與市場狀態。", "固定期輸出期初／期末／總報酬／年化報酬率／最大回落；滾動 3／5／10 年採月末窗口，並另列高、低價格區間。", f"實務成交線的五年最差年化報酬率為：{worst_rolling_text}；下方三張表完整呈現固定期間、滾動摘要與高低價格區間。" + (warmup_disclosure if macd_only_study else ""), "全期正報酬若伴隨長期負窗口，仍不能稱穩健。" + ("純 MACD 與原策略起始可交易時點不同，早期差異不能視為純規則效果。" if macd_only_study else ""), "以最差窗口與低／高價格區間的差異限制部位。"),
         "concentration": ("檢查少數交易、連虧與水下期。", "輸出最佳與最差交易、最佳 1 筆／3 筆獲利集中度、最長連續虧損、水下期；移除最佳 1／3／5 筆時，只在原出場日扣除其已實現現金淨損益，不重新計算後續部位大小。", "下表列出每條策略的實際交易穩定度，以及移除最佳 0／1／3／5 筆後的期末資產、年化報酬率與最大回落；這是現金扣除敏感度，不冒充完整訊號重播。", "若扣除少數最佳交易後崩解，期望值證據偏弱。", "集中度過高時只列研究候選。"),
-        "grid": ("檢查中心參數是否位於穩健區域。", "策略 A、策略 B 各 243 格輸出總報酬、年化報酬率、最大回落、報酬／回落比與五年最差，再彙總分位與鄰域。", "下表同時呈現中位數期末資產、正報酬格比例、中心格與鄰域中位數；所有金額與比例均使用人類可讀格式。", "看分布與中心鄰域，不挑單一最高格；KD 9/9/55 與 2R 不參與搜尋。", "中心若顯著弱於鄰域或正報酬格不足，結論降級。"),
+        "grid": (("檢查去除診斷維度重複後的 MACD 參數穩健性。", "附件為維持既有結構，每策略保留 243 列；先按 MACD 快線／慢線／訊號線三元組合併，並驗證每組由 3×3 個 MA 診斷組合重複 9 次且績效完全相同，再以 27 種有效 MACD 設定計算中位數與正報酬比例。", "策略 A、B 各有 243 列、27 種有效 MACD 設定，每種因 MA 診斷組合重複 9 次；下表分開標示 243 列附件統計與 27 種有效設定統計。", "MA21／MA144 在純 MACD 規則中不參與決策，因此 9 次重複不增加獨立證據；穩健性證據應解讀為 27 個獨立結果。KD 9/9/55 與 2R 固定不搜尋。", "不得把 243 列解讀為 243 個獨立規則；若 27 種有效設定的分布不足，結論必須降級。") if macd_only_study else ("檢查中心參數是否位於穩健區域。", "策略 A、策略 B 各 243 格輸出總報酬、年化報酬率、最大回落、報酬／回落比與五年最差，再彙總分位與鄰域。", "下表同時呈現中位數期末資產、正報酬格比例、中心格與鄰域中位數；所有金額與比例均使用人類可讀格式。", "看分布與中心鄰域，不挑單一最高格；KD 9/9/55 與 2R 不參與搜尋。", "中心若顯著弱於鄰域或正報酬格不足，結論降級。")),
         "core": ("評估核心持有 0／20／40／60%。", "核心與戰術各自保存現金、股數、清算值與資產，主方法不再平衡，並列成本與重建誤差。", core_tradeoff + "。完整風險與報酬數字列於下表。", "核心比例提高不必然同時改善報酬與回落；需用期末資產、年化報酬率和最大回落一起取捨。", "年度再平衡只能另列選項，不混入主結果。"),
-        "practice": ("把研究轉成可執行限制。", "以原策略與 00635U 買進持有作門檻；同時監控可成交交易日、期貨轉倉、正逆價差、匯率、時區與追蹤缺口。", active_hold_comparison + "。" + exclusion_sentence + "。" + research_finding, research_finding if (high_regime_study or macd_only_study) else deployment_decision, "只有 00 完成嚴格 QA 後，才能決定是否進入下一階段；本報告本身不構成策略採納。"),
+        "practice": (("把研究轉成可執行限制。", "以原策略與 00635U 買進持有作門檻；同時核對每部位投入、未平倉與成本路徑敏感度。", macd_practice_observation, macd_practice_conclusion, "只有 00 完成嚴格 QA 後，才能決定是否進入下一階段；本報告本身不構成策略採納。") if macd_only_study else ("把研究轉成可執行限制。", "以原策略與 00635U 買進持有作門檻；同時監控可成交交易日、期貨轉倉、正逆價差、匯率、時區與追蹤缺口。", active_hold_comparison + "。" + exclusion_sentence + "。" + research_finding, research_finding if high_regime_study else deployment_decision, "只有 00 完成嚴格 QA 後，才能決定是否進入下一階段；本報告本身不構成策略採納。")),
         "qa": ("證明資料、報告與附件可重現。", "正式執行入口會再次核對資料清單（manifest）本身的 SHA-256、資料格式與每個輸入檔案雜湊；輸出也附自己的資料清單與回讀驗證紀錄（readback）。", f"輸入資料清單 SHA-256 為 `{accepted_manifest_sha256}`；{main_line_text}共同期間已一致，兩個隔離目錄必須產生完全相同的位元組。", "不論從命令列或程式入口執行，只要資料、雜湊、連結或圖表語意有一項不符，就會停止而不產生可採用結果。", "00 只有在全部驗證通過後才可接受此研究包。"),
         "attachments": ("提供完整重建材料。", "逐檔列出主表、交易、事件、期間、參數、核心、對時、圖表與來源收據。", f"本次共有 {len(attachments)} 個可點入口。", "主文摘要不能取代 CSV 與資料清單（manifest）。", "00 以附件雜湊與隔離重播為最終依據。"),
     }
@@ -1588,7 +1828,7 @@ def run_formal_pack(
         "execution": "\n#### 完整成交時點與成本壓力表\n\n| 策略 | 成交時點 | 單邊滑價 | 期末資產 | 年化報酬率 | 最大回落 | 完成回合 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n![成本壓力](cost-pressure-chart.svg)\n",
         "periods": "\n#### 固定期間表\n\n| 策略／基準 | 固定期間 | 實際起訖 | 期初資產 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 |\n|---|---|---|---:|---:|---:|---:|---:|\n" + fixed_table + "\n\n#### 3／5／10 年滾動摘要表\n\n| 策略／基準 | 窗口 | 有效窗口數 | 最差年化 | 中位年化 | 最佳年化 | 窗口最差回落 |\n|---|---:|---:|---:|---:|---:|---:|\n" + rolling_summary_table + "\n\n#### 高低價格區間表\n\n| 策略 | 價格區間 | 交易日數 | 區間複合報酬 |\n|---|---|---:|---:|\n" + regime_table + "\n\n![滾動窗口](rolling-window-chart.svg)\n\n![市場狀態](regime-chart.svg)\n",
         "concentration": "\n#### 交易穩定度表\n\n| 策略 | 已完成交易 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆獲利集中度 | 最佳 3 筆獲利集中度 | 最長連續虧損 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n#### 移除最佳交易敏感度表\n\n| 策略 | 要求移除最佳筆數 | 實際移除筆數 | 期末資產 | 年化報酬率 | 最大回落 | 計算方式 |\n|---|---:|---:|---:|---:|---:|---|\n" + removal_table + "\n\n![逐筆交易淨損益](trade-pnl-chart.svg)\n",
-        "grid": "\n| 策略 | 中位數期末資產 | 正報酬格比例 | 中心格期末資產 | 鄰域中位數 | 五年最差年化 |\n|---|---:|---:|---:|---:|---:|\n" + grid_table + "\n\n![243 格參數分布](parameter-grid-chart.svg)\n",
+        "grid": grid_extra,
         "core": "\n| 策略 | 核心比例 | 期末資產 | 年化報酬率 | 最大回落 |\n|---|---:|---:|---:|---:|\n" + core_table + "\n\n![核心持有比例](core-allocation-chart.svg)\n",
         "attachments": "\n" + "\n".join(f"- [{name}]({name})" for name in attachments) + "\n",
     }

@@ -89,6 +89,62 @@ def _write_formal_snapshot(
     return manifest_path
 
 
+def _table_data_rows(markdown, heading, next_heading):
+    section = markdown.split(heading, 1)[1].split(next_heading, 1)[0]
+    return [
+        line for line in section.splitlines()
+        if line.startswith("|") and not line.startswith("|---")
+    ][1:]
+
+
+def test_trade_report_uses_role_specific_chinese_reason():
+    common = {
+        "line_id": "STRATEGY_A_NEXT_SESSION_OPEN",
+        "signal_date": "2024-01-02",
+        "fill_date": "2024-01-03",
+        "timing": "NEXT_SESSION_OPEN",
+        "entry_type": "LOW_REGIME_MACD_GREEN_TO_RED",
+        "position_id": "P-1",
+        "shares": 1000,
+        "reference_price": "20",
+        "fill_price": "20.1",
+        "commission": "28.64",
+        "tax": "0",
+        "initial_stop": "18",
+        "initial_r": "2.1",
+        "kd_2r_arm_date": None,
+        "net_pnl": None,
+    }
+    report = formal._trade_report(
+        [
+            {**common, "role": "ENTRY", "exit_reason": "MACD_RED_TO_GREEN"},
+            {
+                **common,
+                "role": "EXIT",
+                "exit_reason": "MACD_RED_TO_GREEN",
+                "tax": "60.3",
+                "net_pnl": "1234.56",
+            },
+        ],
+        synthetic=True,
+    )
+    assert report.startswith("# 00635U 因果回測｜合成測試逐筆明細（非正式績效）")
+    assert "合成測試資料／不是正式績效" in report
+    assert "交易筆數刻意縮小，只驗證管線與規則" in report
+    assert "不得解讀為 00635U 上市以來的正式交易紀錄" in report
+    entry_line, exit_line = [
+        line for line in report.splitlines()
+        if line.startswith("| 策略 A（次一交易日開盤成交）")
+    ]
+    assert "低價格區間 MACD 綠翻紅（`LOW_REGIME_MACD_GREEN_TO_RED`）" in entry_line
+    assert "MACD 紅翻綠（`MACD_RED_TO_GREEN`）" in exit_line
+    assert "低價格區間 MACD 綠翻紅" not in exit_line
+    assert not re.search(
+        r"\| (?:LOW_REGIME_MACD_GREEN_TO_RED|MACD_RED_TO_GREEN) \|",
+        report,
+    )
+
+
 def test_manifest_role_adapter_and_formal_analysis_are_data_agnostic(tmp_path):
     etf = tmp_path / "etf.csv"
     gold = tmp_path / "gold.csv"
@@ -197,7 +253,13 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert not (left / prep.REPORT_NAME).exists()
 
     report = (left / formal.REPORT_NAME).read_text(encoding="utf-8")
+    assert report.startswith(
+        "# 00635U 黃金期貨 ETF 因果回測｜合成測試報告（非正式績效）"
+    )
     assert "SYNTHETIC TEST ONLY" in report
+    assert "合成測試資料／不是正式績效" in report
+    assert "交易筆數刻意縮小，只驗證管線與規則" in report
+    assert "不得解讀為 00635U 上市以來的正式結果" in report
     assert "<a id=" not in report
     headings = re.findall(r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE)
     assert len(headings) == 14
@@ -235,9 +297,55 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert "命令列" in report
     assert "fail closed" not in report
 
+    conclusion = report.split("## 01｜", 1)[1].split("## 02｜", 1)[0]
+    for label in (
+        "策略 A（次一交易日開盤成交）",
+        "策略 B（次一交易日開盤成交）",
+    ):
+        assert conclusion.count(label) >= 3
+    assert conclusion.count("並列") >= 3
+    assert "期末資產較高者為 策略 A" not in conclusion
+
+    assert len(_table_data_rows(
+        report, "#### 完整逐年績效表", "![逐年報酬]"
+    )) == 70
+    assert len(_table_data_rows(
+        report, "#### 完整成交時點與成本壓力表", "![成本壓力]"
+    )) == 12
+    assert len(_table_data_rows(report, "#### 固定期間表", "#### 3／5／10 年滾動摘要表")) == 21
+    assert len(_table_data_rows(report, "#### 3／5／10 年滾動摘要表", "#### 高低價格區間表")) == 21
+    assert len(_table_data_rows(report, "#### 高低價格區間表", "![滾動窗口]")) == 8
+    assert len(_table_data_rows(report, "#### 交易穩定度表", "#### 移除最佳交易敏感度表")) == 4
+    assert len(_table_data_rows(report, "#### 移除最佳交易敏感度表", "![逐筆交易淨損益]")) == 16
+    user_prose = re.sub(
+        r"\[[^\]\n]+\]\([^()\n]+\.(?:svg|csv|json|md)\)", "", report
+    )
+    for old_phrase in (
+        "FORMAL PIPELINE", "regime", " session", " stale", "top1", "top3",
+        " PnL", " sizing", "replay", "receipts",
+    ):
+        assert old_phrase not in user_prose
+
     readable_trades = (left / formal.TRADE_REPORT_NAME).read_text(encoding="utf-8")
+    assert readable_trades.startswith(
+        "# 00635U 因果回測｜合成測試逐筆明細（非正式績效）"
+    )
     assert "SYNTHETIC TEST ONLY" in readable_trades
+    assert "交易筆數刻意縮小，只驗證管線與規則" in readable_trades
     assert "進場來源／出場理由" in readable_trades
+    assert any(
+        label in readable_trades
+        for label in (
+            "高價格區間 MA21 新突破（`HIGH_REGIME_MA21_BREAKOUT`）",
+            "低價格區間 MACD 綠翻紅（`LOW_REGIME_MACD_GREEN_TO_RED`）",
+        )
+    )
+    assert "MACD 紅翻綠（`MACD_RED_TO_GREEN`）" in readable_trades
+    assert not re.search(
+        r"\| (?:HIGH_REGIME_MA21_BREAKOUT|LOW_REGIME_MACD_GREEN_TO_RED|"
+        r"INITIAL_PROTECTIVE_STOP|MACD_RED_TO_GREEN|KD_2R_DEATH_CROSS_EXIT) \|",
+        readable_trades,
+    )
     assert not re.search(r"(?<![\d-])-?\d+\.\d{3,}", readable_trades)
     raw_summary = (left / "formal-summary.csv").read_text(encoding="utf-8-sig")
     assert re.search(r"-?\d+\.\d{6,}", raw_summary)
@@ -286,5 +394,12 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     output_names = {item["path"] for item in output_manifest["files"]}
     assert {formal.REPORT_NAME, formal.TRADE_REPORT_NAME} <= output_names
     assert output_manifest["input_data_classification"] == "SYNTHETIC_TEST_ONLY"
+    assert output_manifest["schema"] == "00635U_SYNTHETIC_FIXTURE_RUN_V1"
+    assert output_manifest["artifact_classification"] == "SYNTHETIC_TEST_PACK"
+    assert output_manifest["publication_eligible"] is False
+    assert output_manifest["intended_use"] == "PIPELINE_AND_RULE_VALIDATION_ONLY"
     readback = json.loads((left / "readback.json").read_text(encoding="utf-8"))
     assert readback["stop_code"] == formal.STOP_CODE
+    assert readback["formal"] is False
+    assert readback["artifact_classification"] == "SYNTHETIC_TEST_PACK"
+    assert readback["publication_eligible"] is False

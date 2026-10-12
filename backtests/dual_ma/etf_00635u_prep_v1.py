@@ -34,7 +34,7 @@ from .paths import WORKDATA_ROOT
 
 OUTPUT_ROOT_DEFAULT = WORKDATA_ROOT / "00635u" / "prep-fixture-v1"
 FORMAL_STOP_CODE = "STOP_WAIT_00_00635U_DATA"
-PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R4"
+PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R5"
 MANIFEST_SCHEMA = "00635U_DATA_SNAPSHOT_V1"
 REPORT_NAME = "00635u-prep-fixture-report.md"
 
@@ -393,8 +393,11 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
     manifest_path = root / "manifest.json"
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        formal = manifest.get("schema") == "00635U_FORMAL_RUN_V1"
-        if formal:
+        pipeline_pack = manifest.get("schema") in {
+            "00635U_FORMAL_RUN_V1",
+            "00635U_SYNTHETIC_FIXTURE_RUN_V1",
+        }
+        if pipeline_pack:
             manifest_paths = {item.get("path") for item in manifest.get("files", [])}
             if report_name != "README.md" or "README.md" not in manifest_paths:
                 errors.append("formal main report must be README.md and manifest-bound")
@@ -417,7 +420,7 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
             if any(phrase not in text for phrase in required_rule_phrases):
                 errors.append("formal report is missing self-contained strategy rules")
         expected_charts = {
-            ("equity-chart.svg" if formal else "fixture-equity-chart.svg"): "equity_curve",
+            ("equity-chart.svg" if pipeline_pack else "fixture-equity-chart.svg"): "equity_curve",
             "drawdown-chart.svg": "drawdown",
             "annual-chart.svg": "annual_return",
             "rolling-window-chart.svg": "rolling_window",
@@ -438,7 +441,7 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
             source_hash = re.search(r'data-source-sha256="([0-9a-f]{64})"', svg)
             if kind is None or kind.group(1) != expected_kind:
                 errors.append(f"chart semantic mismatch: {name}")
-            if formal and any(code in svg for code in (
+            if pipeline_pack and any(code in svg for code in (
                 "STRATEGY_", "A_FIXED_STOP_MACD_21_55_55",
                 "B_FIXED_STOP_2R_KD_9_9_55",
             )):

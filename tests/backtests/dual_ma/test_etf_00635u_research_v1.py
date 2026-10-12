@@ -155,6 +155,24 @@ def test_cost_sensitivity_has_both_strategies_both_timings_and_three_costs():
     assert {row["slippage_bps"] for row in output} == {20, 40, 60}
     assert {row["strategy"] for row in output} == {item.value for item in strategy.StrategyVersion}
     assert {row["timing"] for row in output} == {item.value for item in strategy.ExecutionTiming}
+    assert all({"cagr", "max_drawdown", "completed_rounds"} <= set(row) for row in output)
+
+
+def test_main_seven_lines_reject_gold_that_starts_after_etf():
+    rows = prep.fixture_rows()
+    observations = [
+        research.IndexObservation(
+            source_date=row.day,
+            available_date=row.day,
+            value=Decimal("100") + index,
+            source_timezone="America/New_York",
+        )
+        for index, row in enumerate(rows[1:])
+    ]
+    with pytest.raises(ValueError, match="first ETF session"):
+        research.run_seven_lines(
+            rows, observations, gold_alignment_policy="LAST_KNOWN_PUBLISHED"
+        )
 
 
 def test_rolling_windows_explicitly_labels_insufficient_history():
@@ -198,6 +216,11 @@ def test_regime_trade_stability_and_core_allocation_surfaces():
     assert len(study["summary"]) == 4
     assert all(row["reconstruction_error"] == 0 for row in study["daily"])
     assert all("core_cash" in row and "tactical_cash" in row for row in study["daily"])
+    assert all({
+        "cagr", "max_drawdown", "core_ending_equity",
+        "tactical_ending_equity", "maximum_reconstruction_error",
+        "transaction_count", "total_commission", "total_tax",
+    } <= set(row) for row in study["summary"])
 
 
 def test_complete_metrics_rolling_drawdown_path_and_parameter_distribution():

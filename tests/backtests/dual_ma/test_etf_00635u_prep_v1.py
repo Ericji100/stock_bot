@@ -60,11 +60,14 @@ def test_fixture_pack_has_chinese_report_links_anchors_manifest_and_readback(tmp
     assert "美元／新臺幣匯率" in report
     assert "交易時區錯位" in report
     assert "TAIEX 報酬指數只放補充區" in report
-    assert report.count("**目的**") == 14
-    assert report.count("**方法**") == 14
-    assert report.count("**觀察**") == 14
-    assert report.count("**白話結論**") == 14
-    assert report.count("**決策影響**") == 14
+    assert report.count("### 測試目的") == 14
+    assert report.count("### 測試方法") == 14
+    assert report.count("### 觀察結果") == 14
+    assert report.count("### 白話結論") == 14
+    assert report.count("### 對最終決策的影響") == 14
+    assert "<a id=" not in report
+    assert all(f"](#{number:02d})" in report for number in range(1, 15))
+    assert subject.validate_report_schema(tmp_path) == []
     assert all(line in report for line in subject.expected_comparison_lines())
 
     readback = json.loads((tmp_path / "readback.json").read_text(encoding="utf-8"))

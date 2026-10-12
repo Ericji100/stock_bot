@@ -15,10 +15,10 @@
 正式 snapshot 至少應包含下列不可變檔案，實際檔名由 manifest 宣告：
 
 1. 00635U 官方交易日 OHLCV：`date, open, high, low, close, volume, official_session, tradable, tradability_reason`。停牌、零量或缺 open 必須明標；不得把不可成交列當成交價。正式 manifest 中此檔角色為 `etf_daily_causal`。
-2. 公司行動與現金分配：生效日、除息權利鎖定日、付款日、事件 ID、每股現金、單位變更比例及來源。程式列以同一事件 ID 的 `ENTITLEMENT`／`PAYMENT` 兩階段表示，不得只按付款日當時持股推定權利。
+2. 公司行動與現金分配：生效日、除息權利鎖定日、付款日、事件 ID、每股現金、單位變更比例及來源。程式列以同一事件 ID 的 `ENTITLEMENT`／`PAYMENT` 兩階段表示，不得只按付款日當時持股推定權利；FORMAL 一律拒絕有金額但沒有 stage 的舊式股利列。
 3. 臺灣交易日曆與停牌／無法成交註記。
 4. 00635U 官方追蹤的 Gold ER 指數：來源日期、數值、來源時區、發布可用日期與來源版本；manifest 角色為 `gold_er_official`。
-5. 臺灣加權股價報酬指數：只供補充比較，不屬主七線。
+5. 臺灣加權股價報酬指數：可選 manifest 角色為 `taiex_total_return`，只供補充比較，不屬主七線；缺少時報告明標 `HOLD_MISSING_TAIEX_TOTAL_RETURN_ROLE`。
 6. 若報告進行匯率歸因，需另附 USD/TWD 來源、定價時點與時區；不得把匯率序列暗中混入交易訊號。
 
 每個價格欄位必須可追溯到來源檔、原始列與 SHA-256。缺值、重複交易日、非正價格或日期逆序一律中止，不得靜默補值。
@@ -62,7 +62,7 @@
 3. `accepted_by=00`；
 4. manifest 本身與每個列入檔案的雜湊完全一致。
 
-任一條件不成立即回報 `STOP_WAIT_00_00635U_DATA`。即使閘門通過，準備版仍不含正式執行入口，避免把介面測試誤當正式研究。
+任一條件不成立即回報 `STOP_WAIT_00_00635U_DATA`。正式 orchestrator 會在自己的 API 邊界再次驗證 manifest 實體 SHA、schema 與所有檔案雜湊；不能只依賴 CLI 外層檢查。準備版只產生明標合成的測試包，正式執行入口只有閘門完整通過後才可運行。
 
 ## 6. Git 與產物邊界
 

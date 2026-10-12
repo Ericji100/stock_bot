@@ -140,6 +140,7 @@ def run_buy_hold(
             transactions.append({
                 "date": row.day, "role": "CORE_ENTRY", "shares": shares,
                 "cash_amount": entry_order.cash_amount,
+                "commission": entry_order.commission, "tax": entry_order.tax,
             })
             entered = True
         elif not entered:
@@ -154,6 +155,7 @@ def run_buy_hold(
                 transactions.append({
                     "date": row.day, "role": "DIVIDEND_REINVEST", "shares": added,
                     "cash_amount": order.cash_amount,
+                    "commission": order.commission, "tax": order.tax,
                 })
         liquidation = (
             model.sell(row.raw_close, shares, InstrumentType.ETF).cash_amount
@@ -264,7 +266,10 @@ def run_index_line(
 
 def run_seven_lines(
     rows: Sequence[IndicatorRow],
-    gold_er_values: Mapping[date, Decimal | int | float | str],
+    gold_er_values: (
+        Mapping[date, Decimal | int | float | str]
+        | Sequence[IndexObservation]
+    ),
     *,
     slippage_bps: int = 20,
     gold_alignment_policy: str = "STRICT_SAME_SESSION",
@@ -283,6 +288,10 @@ def run_seven_lines(
                     f"STRATEGY_{strategy.name}_{timing.value}",
                     "ACTIVE_STRATEGY",
                     tuple((item["date"], item["equity"]) for item in result.state.daily),
+                    {
+                        "trades": tuple(result.state.trades),
+                        "events": tuple(result.state.events),
+                    },
                 )
             )
     benchmark_config = ETFResearchConfig(slippage_bps=slippage_bps)
@@ -293,6 +302,36 @@ def run_seven_lines(
         [row.day for row in rows],
         alignment_policy=gold_alignment_policy,
     ))
+    common_dates = set(day for day, _value in output[0].curve)
+    for line in output[1:]:
+        common_dates &= {day for day, _value in line.curve}
+    if not common_dates:
+        raise ValueError("main comparison lines have no common period")
+    ordered_common = sorted(common_dates)
+    if ordered_common != [row.day for row in rows]:
+        raise ValueError(
+            "Gold ER must have a causally available value from the first ETF session"
+        )
+    aligned = []
+    for line in output:
+        values = dict(line.curve)
+        base = values[ordered_common[0]]
+        rebased = tuple(
+            (day, INITIAL_CAPITAL * values[day] / base) for day in ordered_common
+        )
+        aligned.append(ComparisonLine(
+            line.line_id,
+            line.role,
+            rebased,
+            {
+                **dict(line.audit),
+                "comparison_start": ordered_common[0],
+                "comparison_end": ordered_common[-1],
+                "comparison_observations": len(ordered_common),
+                "rebased_to": INITIAL_CAPITAL,
+            },
+        ))
+    output = aligned
     if tuple(line.line_id for line in output) != expected_comparison_lines():
         raise AssertionError("main comparison line order changed")
     return tuple(output)
@@ -350,12 +389,17 @@ def cost_sensitivity(
                         slippage_bps=bps,
                     ),
                 )
+                curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
+                metrics = performance_metrics(curve, result.state.trades)
                 output.append(
                     {
                         "slippage_bps": bps,
                         "strategy": strategy.value,
                         "timing": timing.value,
                         "ending_equity": result.final_equity,
+                        "cagr": metrics["cagr"],
+                        "max_drawdown": metrics["max_drawdown"],
+                        "completed_rounds": metrics["closed_positions"],
                     }
                 )
     return output
@@ -380,6 +424,14 @@ def slice_curve(
         "starting_equity": starting_equity,
         "ending_equity": selected[-1][1],
         "return": selected[-1][1] / starting_equity - Decimal("1"),
+        "cagr": Decimal(str(
+            float(selected[-1][1] / starting_equity)
+            ** float(Decimal("365.25") / Decimal(max((selected[-1][0] - selected[0][0]).days + 1, 1)))
+            - 1
+        )),
+        "max_drawdown": max_drawdown(
+            ((selected[0][0], starting_equity), *selected)
+        ),
     }
 
 
@@ -590,9 +642,38 @@ def trade_stability(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         "longest_consecutive_losses": longest,
         "best_trade": max(pnls, default=None),
         "worst_trade": min(pnls, default=None),
-        "pnl_after_removing_best_1": sum(sorted_pnls[1:], Decimal("0")),
-        "pnl_after_removing_best_3": sum(sorted_pnls[3:], Decimal("0")),
-        "pnl_after_removing_best_5": sum(sorted_pnls[5:], Decimal("0")),
+        "pnl_sum_after_removing_best_1": sum(sorted_pnls[1:], Decimal("0")),
+        "pnl_sum_after_removing_best_3": sum(sorted_pnls[3:], Decimal("0")),
+        "pnl_sum_after_removing_best_5": sum(sorted_pnls[5:], Decimal("0")),
+    }
+
+
+def trade_removal_cash_counterfactual(
+    curve: Sequence[tuple[date, Decimal]],
+    trades: Sequence[Mapping[str, object]],
+    remove_best: int,
+) -> dict[str, object]:
+    """Subtract selected realized cash PnL after exit; does not rerun sizing/signals."""
+
+    exits = sorted(
+        (row for row in trades if row.get("role") == "EXIT"),
+        key=lambda row: decimal(row["net_pnl"]),
+        reverse=True,
+    )[:remove_best]
+    adjusted = []
+    for day, equity in curve:
+        removed = sum(
+            (decimal(row["net_pnl"]) for row in exits if row["fill_date"] <= day),
+            Decimal("0"),
+        )
+        adjusted.append((day, equity - removed))
+    metrics = performance_metrics(adjusted)
+    return {
+        "method": "REALIZED_CASH_PNL_SUBTRACTION_NO_RESIZING",
+        "removed_trades": len(exits),
+        "ending_equity": metrics["ending_equity"],
+        "cagr": metrics["cagr"],
+        "max_drawdown": metrics["max_drawdown"],
     }
 
 
@@ -768,9 +849,31 @@ def run_core_allocation_study(
                 "reconstruction_error": combined - core_row["equity"] - tactical_row["equity"],
             })
         last = next(item for item in reversed(daily) if item["core_pct"] == weight)
+        allocation_curve = tuple(
+            (item["date"], item["combined_equity"])
+            for item in daily if item["core_pct"] == weight
+        )
+        metrics = performance_metrics(allocation_curve)
+        allocation_ledger = [item for item in ledger if item["core_pct"] == weight]
         summaries.append({
             "core_pct": weight, "rebalance": "NONE_MAIN_METHOD",
             "ending_equity": last["combined_equity"],
+            "cagr": metrics["cagr"], "max_drawdown": metrics["max_drawdown"],
+            "core_ending_equity": last["core_equity"],
+            "tactical_ending_equity": last["tactical_equity"],
+            "maximum_reconstruction_error": max(
+                abs(item["reconstruction_error"])
+                for item in daily if item["core_pct"] == weight
+            ),
+            "transaction_count": len(allocation_ledger),
+            "total_commission": sum(
+                (decimal(item.get("commission", 0)) for item in allocation_ledger),
+                Decimal("0"),
+            ),
+            "total_tax": sum(
+                (decimal(item.get("tax", 0)) for item in allocation_ledger),
+                Decimal("0"),
+            ),
             "annual_rebalance_sensitivity": "SEPARATE_OPTION_NOT_MAIN_RESULT",
         })
     return {"summary": summaries, "daily": daily, "ledger": ledger}

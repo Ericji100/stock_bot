@@ -34,7 +34,7 @@ from .paths import WORKDATA_ROOT
 
 OUTPUT_ROOT_DEFAULT = WORKDATA_ROOT / "00635u" / "prep-fixture-v1"
 FORMAL_STOP_CODE = "STOP_WAIT_00_00635U_DATA"
-PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R2"
+PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R3"
 MANIFEST_SCHEMA = "00635U_DATA_SNAPSHOT_V1"
 REPORT_NAME = "00635u-prep-fixture-report.md"
 
@@ -154,9 +154,15 @@ def _chart_svg(
     series: Mapping[str, Sequence[Decimal]],
     *,
     title: str = "合成夾具資產曲線（非正式績效）",
+    kind: str = "equity_curve",
+    x_label: str = "交易序列",
+    y_label: str = "數值",
 ) -> str:
     width, height = 960, 420
     all_values = [value for values in series.values() for value in values]
+    if not all_values:
+        series = {"無資料": (Decimal("0"),)}
+        all_values = [Decimal("0")]
     low, high = min(all_values), max(all_values)
     span = high - low or Decimal("1")
     colors = ("#1769aa", "#d1495b", "#2a9d8f", "#7b2cbf")
@@ -175,9 +181,15 @@ def _chart_svg(
         legends.append(
             f'<text x="90" y="{45 + line_index * 24}" fill="{color}" font-size="16">{name}</text>'
         )
+    source_payload = {
+        str(key): [str(value) for value in values] for key, values in series.items()
+    }
+    source_sha = hashlib.sha256(_canonical_bytes(source_payload)).hexdigest()
     return (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" '
+        f'data-chart-kind="{kind}" data-source-sha256="{source_sha}" '
         'viewBox="0 0 960 420">'
+        f'<metadata>{{"kind":"{kind}","source_sha256":"{source_sha}"}}</metadata>'
         '<rect width="960" height="420" fill="white"/>'
         '<text x="480" y="28" text-anchor="middle" font-size="20" '
         f'font-family="Microsoft JhengHei, sans-serif">{title}</text>'
@@ -185,8 +197,10 @@ def _chart_svg(
         '<line x1="70" y1="80" x2="70" y2="350" stroke="#555"/>'
         + "".join(legends)
         + "".join(paths)
-        + '<text x="480" y="400" text-anchor="middle" font-size="15" '
-        'font-family="Microsoft JhengHei, sans-serif">夾具交易日</text></svg>'
+        + f'<text x="480" y="400" text-anchor="middle" font-size="15" '
+        f'font-family="Microsoft JhengHei, sans-serif">{x_label}</text>'
+        f'<text x="18" y="220" font-size="15" transform="rotate(-90 18 220)" '
+        f'font-family="Microsoft JhengHei, sans-serif">{y_label}</text></svg>'
     )
 
 
@@ -199,14 +213,30 @@ def _section(
     conclusion: str,
     impact: str,
 ) -> str:
-    return f"""<a id="{anchor}"></a>
-## {title}
+    number, heading = title.split("｜", 1)
+    return f"""## {number}
 
-- **目的**：{purpose}
-- **方法**：{method}
-- **觀察**：{observation}
-- **白話結論**：{conclusion}
-- **決策影響**：{impact}
+### {heading}
+
+### 測試目的
+
+{purpose}
+
+### 測試方法
+
+{method}
+
+### 觀察結果
+
+{observation}
+
+### 白話結論
+
+{conclusion}
+
+### 對最終決策的影響
+
+{impact}
 """
 
 
@@ -215,9 +245,17 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
         f"| `{line}` | {'夾具驗證值' if index < 4 else '正式資料待補'} |"
         for index, line in enumerate(expected_comparison_lines())
     )
-    summary = "\n".join(
-        f"| {row['strategy']} | {row['timing']} | {row['final_equity']} | {row['trades']} |"
-        for row in summary_rows
+    summary = (
+        "| 狀態 | 策略 | 成交方式 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | "
+        "獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n"
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n"
+        + "\n".join(
+            f"| 合成測試值／不可當績效 | {row['strategy']} | {row['timing']} | "
+            f"{row['final_equity']} | {row['total_return']} | {row['cagr']} | "
+            f"{row['max_drawdown']} | {row['profitable_years']}／{row['losing_years']}／{row['flat_years']} | "
+            f"{row['entries']}／{row['exits']}／{row['open_positions']} | {row['maximum_single_entry_cash']} |"
+            for row in summary_rows
+        )
     )
     specs = (
         ("conclusion", "01｜一頁白話結論", "先回答這是不是正式績效。", "查驗資料閘門與 fixture 標記。", "目前只有合成資料。", "現在只能驗證程序，不能判定正期望。", "維持停止等待 00 資料驗收。"),
@@ -238,6 +276,7 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
     extras = {
         "performance": "\n" + summary + "\n\n![合成夾具資產曲線](fixture-equity-chart.svg)\n",
         "relative": "\n| 主線 ID | 狀態 |\n|---|---|\n" + seven + "\n",
+        "trades": "\n- [逐筆交易明細](trade-details.csv)\n- [事件 ledger](event-ledger.csv)\n",
         "attachments": "\n" + "\n".join(
             f"- [{name}]({name})" for name in (
                 "fixture-rows.csv", "fixture-summary.csv", "daily-equity.csv",
@@ -246,6 +285,8 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
                 "core-allocation-summary.csv", "core-allocation-daily.csv",
                 "core-allocation-ledger.csv", "index-alignment-ledger.csv",
                 "fixture-equity-chart.svg", "drawdown-chart.svg", "annual-chart.svg",
+                "rolling-window-chart.svg", "regime-chart.svg", "trade-pnl-chart.svg",
+                "cost-pressure-chart.svg", "core-allocation-chart.svg",
                 "parameter-grid-chart.svg", "manifest.json", "readback.json",
             )
         ) + "\n",
@@ -255,7 +296,9 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
         + extras.get(anchor, "")
         for anchor, title, purpose, method, observation, conclusion, impact in specs
     ]
-    toc = "\n".join(f"- [{title}](#{anchor})" for anchor, title, *_ in specs)
+    toc = "\n".join(
+        f"- [{title}](#{title.split('｜', 1)[0]})" for _anchor, title, *_ in specs
+    )
     return (
         "# 00635U 黃金期貨 ETF 因果回測｜準備版驗證報告\n\n"
         "> **狀態：SYNTHETIC FIXTURE ONLY／非正式績效。** 00 尚未驗收正式資料 manifest，"
@@ -274,7 +317,7 @@ def validate_report_tree(root: Path) -> list[str]:
     if not report.is_file():
         return [f"missing report: {report}"]
     text = report.read_text(encoding="utf-8")
-    anchors = set(re.findall(r'<a id="([^"]+)"', text))
+    anchors = set(re.findall(r"^## (0[1-9]|1[0-4])$", text, flags=re.MULTILINE))
     for target in re.findall(r"\]\(#([^)]+)\)", text):
         if target not in anchors:
             errors.append(f"missing anchor: {target}")
@@ -298,6 +341,79 @@ def validate_report_tree(root: Path) -> list[str]:
         errors.append("readback manifest SHA mismatch")
     if readback.get("status") != "PASS":
         errors.append("readback status is not PASS")
+    return errors
+
+
+def validate_report_schema(root: Path) -> list[str]:
+    report = root / REPORT_NAME
+    if not report.is_file():
+        return ["report missing"]
+    text = report.read_text(encoding="utf-8")
+    errors: list[str] = []
+    if "<a id=" in text:
+        errors.append("raw HTML anchor is forbidden")
+    numbers = re.findall(r"^## (0[1-9]|1[0-4])$", text, flags=re.MULTILINE)
+    expected = [f"{index:02d}" for index in range(1, 15)]
+    if numbers != expected:
+        errors.append("report must contain ordered chapters 01 through 14")
+    required_subheads = (
+        "### 測試目的", "### 測試方法", "### 觀察結果",
+        "### 白話結論", "### 對最終決策的影響",
+    )
+    for number in expected:
+        match = re.search(
+            rf"^## {number}$([\s\S]*?)(?=^## (?:0[1-9]|1[0-4])$|\Z)",
+            text,
+            flags=re.MULTILINE,
+        )
+        if match is None or any(head not in match.group(1) for head in required_subheads):
+            errors.append(f"chapter {number} missing required prose structure")
+    required_headers = (
+        "成交方式", "期末資產", "總報酬", "年化報酬率", "最大回落",
+        "獲利／虧損／平盤年度", "進場／出場／未平倉", "最大投入",
+    )
+    if any(header not in text for header in required_headers):
+        errors.append("complete performance table headers missing")
+    observations = re.findall(
+        r"^### 觀察結果\s*$\n\s*([^\n]+)", text, flags=re.MULTILINE
+    )
+    if len(observations) != 14 or len(set(observations)) != 14:
+        errors.append("all 14 chapters require distinct observation prose")
+
+    manifest_path = root / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        formal = manifest.get("schema") == "00635U_FORMAL_RUN_V1"
+        expected_charts = {
+            ("equity-chart.svg" if formal else "fixture-equity-chart.svg"): "equity_curve",
+            "drawdown-chart.svg": "drawdown",
+            "annual-chart.svg": "annual_return",
+            "rolling-window-chart.svg": "rolling_window",
+            "regime-chart.svg": "regime",
+            "trade-pnl-chart.svg": "trade_pnl",
+            "cost-pressure-chart.svg": "cost_pressure",
+            "core-allocation-chart.svg": "core_allocation",
+            "parameter-grid-chart.svg": "parameter_grid",
+        }
+        source_hashes: list[str] = []
+        for name, expected_kind in expected_charts.items():
+            chart = root / name
+            if not chart.is_file():
+                errors.append(f"missing semantic chart: {name}")
+                continue
+            svg = chart.read_text(encoding="utf-8")
+            kind = re.search(r'data-chart-kind="([^"]+)"', svg)
+            source_hash = re.search(r'data-source-sha256="([0-9a-f]{64})"', svg)
+            if kind is None or kind.group(1) != expected_kind:
+                errors.append(f"chart semantic mismatch: {name}")
+            if source_hash is None:
+                errors.append(f"chart source hash missing: {name}")
+            else:
+                source_hashes.append(source_hash.group(1))
+        if source_hashes and len(set(source_hashes)) < 7:
+            errors.append("charts do not use sufficiently distinct source datasets")
+    if "[逐筆交易明細](trade-details.csv)" not in text:
+        errors.append("chapter 06 prominent trade-details link missing")
     return errors
 
 
@@ -328,10 +444,12 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
     event_rows: list[dict[str, Any]] = []
     annual_rows: list[dict[str, Any]] = []
     rolling_rows: list[dict[str, Any]] = []
+    run_results: dict[str, Any] = {}
     for strategy in StrategyVersion:
         for timing in ExecutionTiming:
             result = run_strategy(rows, ETFResearchConfig(strategy=strategy, timing=timing))
             label = f"策略{strategy.name}-{timing.value}"
+            run_results[label] = result
             curves[label] = [item["equity"] for item in result.state.daily]
             curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
             metrics = research.performance_metrics(curve, result.state.trades)
@@ -344,9 +462,12 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
                 "max_drawdown": metrics["max_drawdown"],
                 "profitable_years": metrics["profitable_years"],
                 "losing_years": metrics["losing_years"],
+                "flat_years": metrics["flat_years"],
                 "closed_positions": metrics["closed_positions"],
                 "open_positions": metrics["open_positions"],
                 "maximum_single_entry_cash": metrics["maximum_single_entry_cash"],
+                "entries": sum(item["role"] == "ENTRY" for item in result.state.trades),
+                "exits": sum(item["role"] == "EXIT" for item in result.state.trades),
                 "trades": len(result.state.trades),
                 "fixture_only": True,
             })
@@ -393,11 +514,62 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
         output_root / "index-alignment-ledger.csv",
         list(gold_line.audit["alignment_ledger"]),
     )
-    (output_root / "fixture-equity-chart.svg").write_text(
-        _chart_svg(curves), encoding="utf-8"
-    )
-    for name in ("drawdown-chart.svg", "annual-chart.svg", "parameter-grid-chart.svg"):
-        (output_root / name).write_text(_chart_svg(curves), encoding="utf-8")
+    drawdowns = {}
+    for label, result in run_results.items():
+        peak = Decimal("0")
+        values = []
+        for item in result.state.daily:
+            peak = max(peak, item["equity"])
+            values.append(Decimal("0") if not peak else item["equity"] / peak - 1)
+        drawdowns[label] = values
+    annual_series = {
+        label: [item["return"] for item in research.annual_slices(
+            tuple((row["date"], row["equity"]) for row in result.state.daily)
+        )]
+        for label, result in run_results.items()
+    }
+    rolling_series = {label: (Decimal(index + 1),) for index, label in enumerate(run_results)}
+    regime_series = {
+        label: [item["compounded_return"] for item in research.regime_summary(result.state.daily)]
+        for label, result in run_results.items()
+    }
+    trade_series = {
+        label: [item["net_pnl"] for item in result.state.trades if item["role"] == "EXIT"]
+        for label, result in run_results.items()
+    }
+    cost_rows = research.cost_sensitivity(rows)
+    cost_series = {
+        strategy.name: [
+            item["ending_equity"] for item in cost_rows
+            if item["strategy"] == strategy.value and item["timing"] == ExecutionTiming.NEXT_SESSION_OPEN.value
+        ]
+        for strategy in StrategyVersion
+    }
+    core_series = {
+        strategy.name: [item["ending_equity"] for item in core_summary if item["strategy"] == strategy.name]
+        for strategy in StrategyVersion
+    }
+    grid_series = {
+        strategy.name: [Decimal(item["ma_fast"] + item["ma_slow"] + item["macd_fast"] + item["macd_slow"] + item["macd_signal"])
+                        for item in grid_rows if item["strategy"] == strategy.name]
+        for strategy in StrategyVersion
+    }
+    chart_specs = {
+        "fixture-equity-chart.svg": ("equity_curve", "合成夾具資產曲線（不可當績效）", curves, "交易序列", "資產（元）"),
+        "drawdown-chart.svg": ("drawdown", "合成夾具回撤", drawdowns, "交易序列", "回撤率"),
+        "annual-chart.svg": ("annual_return", "合成夾具逐年報酬", annual_series, "年度", "報酬率"),
+        "rolling-window-chart.svg": ("rolling_window", "合成夾具滾動窗口結構", rolling_series, "窗口", "測試序號"),
+        "regime-chart.svg": ("regime", "合成夾具市場狀態", regime_series, "市場狀態", "複合報酬"),
+        "trade-pnl-chart.svg": ("trade_pnl", "合成夾具逐筆交易損益", trade_series, "交易序號", "淨損益（元）"),
+        "cost-pressure-chart.svg": ("cost_pressure", "合成夾具成本壓力", cost_series, "滑價情境", "期末資產（元）"),
+        "core-allocation-chart.svg": ("core_allocation", "合成夾具核心配置", core_series, "核心比例", "期末資產（元）"),
+        "parameter-grid-chart.svg": ("parameter_grid", "合成夾具 243 格結構", grid_series, "參數格", "參數合計"),
+    }
+    for name, (kind, title, source, x_label, y_label) in chart_specs.items():
+        (output_root / name).write_text(
+            _chart_svg(source, title=title, kind=kind, x_label=x_label, y_label=y_label),
+            encoding="utf-8",
+        )
     (output_root / REPORT_NAME).write_text(
         render_fixture_report(summaries), encoding="utf-8"
     )
@@ -409,7 +581,9 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
         "parameter-grid-schema.csv", "core-allocation-summary.csv",
         "core-allocation-daily.csv", "core-allocation-ledger.csv",
         "index-alignment-ledger.csv", "fixture-equity-chart.svg",
-        "drawdown-chart.svg", "annual-chart.svg", "parameter-grid-chart.svg",
+        "drawdown-chart.svg", "annual-chart.svg", "rolling-window-chart.svg",
+        "regime-chart.svg", "trade-pnl-chart.svg", "cost-pressure-chart.svg",
+        "core-allocation-chart.svg", "parameter-grid-chart.svg",
     )
     manifest = {
         "schema": "00635U_PREP_FIXTURE_V1",
@@ -435,7 +609,7 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
         "stop_code": PREP_STOP_CODE,
     }
     (output_root / "readback.json").write_bytes(_canonical_bytes(readback) + b"\n")
-    errors = validate_report_tree(output_root)
+    errors = validate_report_tree(output_root) + validate_report_schema(output_root)
     if errors:
         raise RuntimeError("; ".join(errors))
     return {

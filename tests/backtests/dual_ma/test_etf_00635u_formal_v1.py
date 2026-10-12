@@ -255,6 +255,37 @@ def test_formal_analysis_omits_missing_gold_without_proxy(tmp_path):
     )
 
 
+def test_strict_high_analysis_keeps_original_lines_and_audits_exclusions(tmp_path):
+    manifest = _write_formal_snapshot(
+        tmp_path / "snapshot", include_taiex=True, include_gold=False
+    )
+    data = formal.load_formal_snapshot(manifest)
+    analysis = formal.run_formal_analysis(data, include_strict_high_variants=True)
+    assert len(analysis["lines"]) == 10
+    assert len(analysis["active"]) == 8
+    audit = formal.low_regime_entry_exclusion_audit(data, analysis)
+    assert audit
+    assert all(row["excluded_from_strict_variant"] for row in audit)
+    assert all(Decimal(row["ma21"]) <= Decimal(row["ma144"]) for row in audit)
+    assert all(row["causal_fields"] == "SIGNAL_DATE_MA21_MA144_ONLY" for row in audit)
+    output = tmp_path / "strict-high-pack"
+    result = formal.run_formal_pack(
+        manifest,
+        output,
+        accepted_manifest_sha256=prep.sha256_file(manifest),
+        high_regime_study=True,
+    )
+    assert result["status"] == formal.HIGH_REGIME_STOP_CODE
+    assert (output / "low-regime-entry-exclusion-audit.csv").is_file()
+    report = (output / formal.REPORT_NAME).read_text(encoding="utf-8")
+    assert "MA21 > MA144 高檔限定進場隔離研究" in report
+    assert "舊版基準" in report and "本次高檔限定進場" in report
+    assert formal.HIGH_REGIME_STOP_CODE in report
+    high_manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert high_manifest["publication_eligible"] is False
+    assert high_manifest["intended_use"] == "PIPELINE_AND_RULE_VALIDATION_ONLY"
+
+
 def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_path):
     snapshot = _write_formal_snapshot(tmp_path / "snapshot", include_taiex=True)
     sha = prep.sha256_file(snapshot)
@@ -322,7 +353,9 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert "A_FIXED_STOP_MACD_21_55_55" not in report
     assert "B_FIXED_STOP_2R_KD_9_9_55" not in report
     for line_id in formal.LINE_LABELS:
-        if line_id != "TAIEX_TOTAL_RETURN_SUPPLEMENT":
+        if line_id.startswith("STRICT_HIGH_"):
+            assert line_id not in report
+        elif line_id != "TAIEX_TOTAL_RETURN_SUPPLEMENT":
             assert report.count(line_id) == 1
     assert "期末資產" in observations[0]
     assert "總報酬" in observations[0]

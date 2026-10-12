@@ -44,8 +44,12 @@ def config(
     strategy=subject.StrategyVersion.B,
     timing=subject.ExecutionTiming.SIGNAL_CLOSE,
     bps=20,
+    entry_policy=subject.EntryPolicy.ORIGINAL,
 ):
-    return subject.ETFResearchConfig(strategy=strategy, timing=timing, slippage_bps=bps)
+    return subject.ETFResearchConfig(
+        strategy=strategy, timing=timing, slippage_bps=bps,
+        entry_policy=entry_policy,
+    )
 
 
 def high_entry_rows(*tail):
@@ -54,6 +58,34 @@ def high_entry_rows(*tail):
         row(1, close=11, low=9, hist=-0.5, k=60, d=50),
         *tail,
     ]
+
+
+@pytest.mark.parametrize("strategy", list(subject.StrategyVersion))
+def test_strict_high_entry_gate_requires_ma21_strictly_greater(strategy):
+    strict = subject.EntryPolicy.STRICT_HIGH_ONLY
+    greater = high_entry_rows()
+    equal = [row(0, close=9, low=8, sma21=9, sma144=9), row(1, close=11, low=9, sma21=9, sma144=9)]
+    low_macd = [
+        row(0, close=9, low=8, sma21=10, sma144=11, hist=-0.1),
+        row(1, close=9.5, low=9, sma21=10, sma144=11, hist=0.2),
+    ]
+    assert subject.run_strategy(greater, config(strategy=strategy, entry_policy=strict)).state.position
+    assert not subject.run_strategy(equal, config(strategy=strategy, entry_policy=strict)).state.trades
+    assert not subject.run_strategy(low_macd, config(strategy=strategy, entry_policy=strict)).state.trades
+
+
+@pytest.mark.parametrize("strategy", list(subject.StrategyVersion))
+def test_strict_gate_does_not_change_existing_position_exit_logic(strategy):
+    rows = high_entry_rows(
+        row(2, close=12, low=11, sma21=8, sma144=9, hist=0.2, k=60, d=50),
+        row(3, close=7, low=7, sma21=8, sma144=9, hist=-0.2, k=40, d=50),
+    )
+    original = subject.run_strategy(rows, config(strategy=strategy))
+    strict = subject.run_strategy(
+        rows, config(strategy=strategy, entry_policy=subject.EntryPolicy.STRICT_HIGH_ONLY)
+    )
+    assert original.state.trades == strict.state.trades
+    assert strict.state.trades[0]["entry_type"] == subject.EntryType.HIGH_MA21.value
 
 
 def test_before_2r_kd_death_cross_is_ignored():

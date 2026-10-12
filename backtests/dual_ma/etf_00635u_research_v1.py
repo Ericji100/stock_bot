@@ -18,6 +18,7 @@ from .etf_00635u_strategy_v1 import (
     INITIAL_CAPITAL,
     STRESS_SLIPPAGE_BPS,
     ETFResearchConfig,
+    EntryPolicy,
     ExecutionTiming,
     IndicatorRow,
     StrategyVersion,
@@ -376,6 +377,8 @@ def run_parameter_grid(
 
 def cost_sensitivity(
     rows: Sequence[IndicatorRow],
+    *,
+    entry_policy: EntryPolicy = EntryPolicy.ORIGINAL,
 ) -> list[dict[str, object]]:
     output = []
     for bps in STRESS_SLIPPAGE_BPS:
@@ -387,6 +390,7 @@ def cost_sensitivity(
                         strategy=strategy,
                         timing=timing,
                         slippage_bps=bps,
+                        entry_policy=entry_policy,
                     ),
                 )
                 curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
@@ -793,6 +797,7 @@ def run_core_allocation_study(
     strategy: StrategyVersion,
     timing: ExecutionTiming,
     slippage_bps: int = 20,
+    entry_policy: EntryPolicy = EntryPolicy.ORIGINAL,
 ) -> dict[str, list[dict[str, object]]]:
     """Publish reconstructable no-rebalance core/tactical sleeve accounts."""
 
@@ -809,6 +814,7 @@ def run_core_allocation_study(
                 strategy=strategy,
                 timing=timing,
                 slippage_bps=slippage_bps,
+                entry_policy=entry_policy,
             ),
         )
         tactical_by_day = {item["date"]: item for item in tactical.state.daily}

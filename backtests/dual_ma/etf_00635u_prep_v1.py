@@ -443,6 +443,7 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
         pipeline_pack = manifest.get("schema") in {
             "00635U_FORMAL_RUN_V1",
             "00635U_SYNTHETIC_FIXTURE_RUN_V1",
+            "00635U_STRICT_HIGH_REGIME_STUDY_V1",
         }
         if pipeline_pack:
             manifest_paths = {item.get("path") for item in manifest.get("files", [])}
@@ -714,6 +715,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--snapshot-manifest", type=Path)
     parser.add_argument("--accepted-manifest-sha256")
     parser.add_argument("--accepted-by")
+    parser.add_argument("--high-regime-study", action="store_true")
     args = parser.parse_args(argv)
     if args.mode == "formal":
         validate_formal_snapshot_gate(
@@ -726,6 +728,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.snapshot_manifest,
             args.output_root,
             accepted_manifest_sha256=args.accepted_manifest_sha256,
+            high_regime_study=args.high_regime_study,
         ), ensure_ascii=False, indent=2))
         return 0
     print(json.dumps(build_fixture_pack(args.output_root), ensure_ascii=False, indent=2))

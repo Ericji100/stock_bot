@@ -41,6 +41,11 @@ class ExecutionTiming(str, Enum):
     NEXT_SESSION_OPEN = "NEXT_SESSION_OPEN"
 
 
+class EntryPolicy(str, Enum):
+    ORIGINAL = "ORIGINAL_HIGH_AND_LOW"
+    STRICT_HIGH_ONLY = "STRICT_MA21_GT_MA144_ONLY"
+
+
 class EntryType(str, Enum):
     HIGH_MA21 = "HIGH_REGIME_MA21_BREAKOUT"
     LOW_MACD = "LOW_REGIME_MACD_GREEN_TO_RED"
@@ -62,6 +67,7 @@ class ETFResearchConfig:
     slippage_bps: int = MAIN_SLIPPAGE_BPS
     strategy: StrategyVersion = StrategyVersion.B
     timing: ExecutionTiming = ExecutionTiming.NEXT_SESSION_OPEN
+    entry_policy: EntryPolicy = EntryPolicy.ORIGINAL
 
     @property
     def cost_model(self) -> CostModel:
@@ -411,6 +417,7 @@ def _entry_signal(
     row: IndicatorRow,
     strategy: StrategyVersion,
     listing_date: date,
+    entry_policy: EntryPolicy = EntryPolicy.ORIGINAL,
 ) -> EntryType | None:
     if (
         previous is None
@@ -420,6 +427,8 @@ def _entry_signal(
     ):
         return None
     if row.day < listing_date:
+        return None
+    if entry_policy == EntryPolicy.STRICT_HIGH_ONLY and not row.sma21 > row.sma144:
         return None
     if _regime(row) == "HIGH":
         if previous.technical_close <= previous.sma21 and row.technical_close > row.sma21:
@@ -852,7 +861,9 @@ def run_strategy(
             else:
                 state.pending = PendingOrder("EXIT", row.day, exit_reason=reason)
 
-        selected = _entry_signal(previous, row, config.strategy, config.listing_date)
+        selected = _entry_signal(
+            previous, row, config.strategy, config.listing_date, config.entry_policy
+        )
         candidate_stop = None
         if selected is not None:
             candidate_stop = _candidate_stop(state.phase_low, previous, row)

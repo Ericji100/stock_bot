@@ -19,6 +19,7 @@ from typing import Any, Mapping, Sequence
 from . import etf_00635u_research_v1 as research
 from .etf_00635u_strategy_v1 import (
     ETFResearchConfig,
+    EntryPolicy,
     ExecutionTiming,
     IndicatorRow,
     RawETFRow,
@@ -31,6 +32,7 @@ from .etf_00635u_strategy_v1 import (
 REPORT_NAME = "README.md"
 TRADE_REPORT_NAME = "trade-details.md"
 STOP_CODE = "STOP_WAIT_00_00635U_REPORT_QA"
+HIGH_REGIME_STOP_CODE = "STOP_WAIT_00_00635U_HIGH_REGIME_REPORT_QA"
 
 LINE_LABELS = {
     "STRATEGY_A_SIGNAL_CLOSE": "策略 A（訊號日收盤成交）",
@@ -41,7 +43,20 @@ LINE_LABELS = {
     "00635U_BUY_HOLD_REINVEST": "00635U 買進持有（分配再投入）",
     "GOLD_ER_OFFICIAL_TRACKED_INDEX": "官方追蹤 Gold ER 指數",
     "TAIEX_TOTAL_RETURN_SUPPLEMENT": "臺灣加權股價報酬指數（補充）",
+    "STRICT_HIGH_STRATEGY_A_SIGNAL_CLOSE": "高檔限定策略 A（訊號日收盤成交）",
+    "STRICT_HIGH_STRATEGY_A_NEXT_SESSION_OPEN": "高檔限定策略 A（次一交易日開盤成交）",
+    "STRICT_HIGH_STRATEGY_B_SIGNAL_CLOSE": "高檔限定策略 B（訊號日收盤成交）",
+    "STRICT_HIGH_STRATEGY_B_NEXT_SESSION_OPEN": "高檔限定策略 B（次一交易日開盤成交）",
 }
+
+
+def _active_line_id(
+    strategy: StrategyVersion,
+    timing: ExecutionTiming,
+    entry_policy: EntryPolicy,
+) -> str:
+    prefix = "STRICT_HIGH_STRATEGY" if entry_policy == EntryPolicy.STRICT_HIGH_ONLY else "STRATEGY"
+    return f"{prefix}_{strategy.name}_{timing.value}"
 
 ENTRY_REASON_LABELS = {
     "HIGH_REGIME_MA21_BREAKOUT": "高價格區間 MA21 新突破",
@@ -345,26 +360,38 @@ def load_formal_snapshot(manifest_path: Path) -> FormalSnapshotData:
     )
 
 
-def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
+def run_formal_analysis(
+    data: FormalSnapshotData,
+    *,
+    include_strict_high_variants: bool = False,
+) -> dict[str, Any]:
     rows = data.indicator_rows
-    if data.gold_er is not None:
+    if data.gold_er is not None and not include_strict_high_variants:
         lines = research.run_seven_lines(
             rows, data.gold_er, gold_alignment_policy="LAST_KNOWN_PUBLISHED"
         )
         gold_status = "AVAILABLE_OFFICIAL"
     else:
         raw_lines = []
-        for strategy in StrategyVersion:
-            for timing in ExecutionTiming:
-                result = run_strategy(
-                    rows, ETFResearchConfig(strategy=strategy, timing=timing)
-                )
-                raw_lines.append(research.ComparisonLine(
-                    f"STRATEGY_{strategy.name}_{timing.value}",
-                    "ACTIVE_STRATEGY",
-                    tuple((item["date"], item["equity"]) for item in result.state.daily),
-                    {"trades": tuple(result.state.trades), "events": tuple(result.state.events)},
-                ))
+        policies = (
+            (EntryPolicy.ORIGINAL, EntryPolicy.STRICT_HIGH_ONLY)
+            if include_strict_high_variants else
+            (EntryPolicy.ORIGINAL,)
+        )
+        for entry_policy in policies:
+            for strategy in StrategyVersion:
+                for timing in ExecutionTiming:
+                    result = run_strategy(
+                        rows, ETFResearchConfig(
+                            strategy=strategy, timing=timing, entry_policy=entry_policy
+                        )
+                    )
+                    raw_lines.append(research.ComparisonLine(
+                        _active_line_id(strategy, timing, entry_policy),
+                        "ACTIVE_STRATEGY",
+                        tuple((item["date"], item["equity"]) for item in result.state.daily),
+                        {"trades": tuple(result.state.trades), "events": tuple(result.state.events)},
+                    ))
         raw_lines.extend((
             research.run_buy_hold(rows, reinvest=False),
             research.run_buy_hold(rows, reinvest=True),
@@ -404,10 +431,18 @@ def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
         line_metrics[line.line_id] = metrics
     active: dict[str, Any] = {}
     line_by_id = {line.line_id: line for line in lines}
-    for strategy in StrategyVersion:
+    policies = (
+        (EntryPolicy.ORIGINAL, EntryPolicy.STRICT_HIGH_ONLY)
+        if include_strict_high_variants else
+        (EntryPolicy.ORIGINAL,)
+    )
+    for entry_policy in policies:
+      for strategy in StrategyVersion:
         for timing in ExecutionTiming:
-            result = run_strategy(rows, ETFResearchConfig(strategy=strategy, timing=timing))
-            line_id = f"STRATEGY_{strategy.name}_{timing.value}"
+            result = run_strategy(rows, ETFResearchConfig(
+                strategy=strategy, timing=timing, entry_policy=entry_policy
+            ))
+            line_id = _active_line_id(strategy, timing, entry_policy)
             curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
             metrics = research.performance_metrics(curve, result.state.trades)
             active[line_id] = {
@@ -458,11 +493,68 @@ def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
         "line_metrics": line_metrics,
         "active": active,
         "relative_benchmarks": relative,
-        "cost_sensitivity": research.cost_sensitivity(rows),
+        "cost_sensitivity": research.cost_sensitivity(
+            rows,
+            entry_policy=(
+                EntryPolicy.STRICT_HIGH_ONLY
+                if include_strict_high_variants else EntryPolicy.ORIGINAL
+            ),
+        ),
         "taiex_supplement": taiex_line,
         "taiex_status": taiex_status,
         "gold_status": gold_status,
+        "include_strict_high_variants": include_strict_high_variants,
     }
+
+
+def low_regime_entry_exclusion_audit(
+    data: FormalSnapshotData,
+    analysis: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Trace original entries excluded by the strict contemporaneous MA gate."""
+
+    rows_by_day = {row.day: row for row in data.indicator_rows}
+    audit_rows: list[dict[str, Any]] = []
+    for strategy in StrategyVersion:
+        for timing in ExecutionTiming:
+            original_id = _active_line_id(strategy, timing, EntryPolicy.ORIGINAL)
+            strict_id = _active_line_id(strategy, timing, EntryPolicy.STRICT_HIGH_ONLY)
+            original_trades = analysis["active"][original_id]["result"].state.trades
+            strict_entry_dates = {
+                item["signal_date"]
+                for item in analysis["active"][strict_id]["result"].state.trades
+                if item["role"] == "ENTRY"
+            }
+            exits = {
+                item["position_id"]: item
+                for item in original_trades if item["role"] == "EXIT"
+            }
+            for entry in original_trades:
+                if entry["role"] != "ENTRY":
+                    continue
+                signal_row = rows_by_day[entry["signal_date"]]
+                if signal_row.sma21 > signal_row.sma144:
+                    continue
+                exit_row = exits.get(entry["position_id"])
+                audit_rows.append({
+                    "signal_date": entry["signal_date"],
+                    "strategy": strategy.name,
+                    "timing": timing.value,
+                    "original_line_id": original_id,
+                    "strict_line_id": strict_id,
+                    "original_entry_reason": entry["entry_type"],
+                    "ma21": signal_row.sma21,
+                    "ma144": signal_row.sma144,
+                    "gate_relation": "EQUAL" if signal_row.sma21 == signal_row.sma144 else "LESS_THAN",
+                    "excluded_from_strict_variant": entry["signal_date"] not in strict_entry_dates,
+                    "original_position_id": entry["position_id"],
+                    "original_fill_date": entry["fill_date"],
+                    "original_exit_date": "" if exit_row is None else exit_row["fill_date"],
+                    "original_exit_reason": "OPEN" if exit_row is None else exit_row["exit_reason"],
+                    "original_net_pnl": "" if exit_row is None else exit_row["net_pnl"],
+                    "causal_fields": "SIGNAL_DATE_MA21_MA144_ONLY",
+                })
+    return audit_rows
 
 
 def run_formal_pack(
@@ -470,6 +562,7 @@ def run_formal_pack(
     output_root: Path,
     *,
     accepted_manifest_sha256: str,
+    high_regime_study: bool = False,
 ) -> dict[str, Any]:
     from . import etf_00635u_prep_v1 as prep
 
@@ -483,7 +576,13 @@ def run_formal_pack(
     )
     synthetic_test = input_classification == "SYNTHETIC_TEST_ONLY"
     data = load_formal_snapshot(manifest_path)
-    analysis = run_formal_analysis(data)
+    analysis = run_formal_analysis(
+        data, include_strict_high_variants=high_regime_study
+    )
+    stop_code = HIGH_REGIME_STOP_CODE if high_regime_study else STOP_CODE
+    study_entry_policy = (
+        EntryPolicy.STRICT_HIGH_ONLY if high_regime_study else EntryPolicy.ORIGINAL
+    )
     output_root.mkdir(parents=True, exist_ok=True)
     summary = [
         {"line_id": line_id, **metrics}
@@ -533,6 +632,15 @@ def run_formal_pack(
             for day, value in analysis["taiex_supplement"].curve
         ]
     prep._write_csv(output_root / "taiex-supplement.csv", taiex_rows)
+    exclusion_rows = (
+        low_regime_entry_exclusion_audit(data, analysis)
+        if high_regime_study else []
+    )
+    if high_regime_study:
+        prep._write_csv(
+            output_root / "low-regime-entry-exclusion-audit.csv",
+            exclusion_rows or [{"status": "NO_EXCLUDED_ORIGINAL_ENTRIES"}],
+        )
     diagnostic_rows = []
     for line_id, payload in analysis["active"].items():
         line = next(item for item in analysis["lines"] if item.line_id == line_id)
@@ -571,7 +679,11 @@ def run_formal_pack(
             )
             result = run_strategy(
                 variant,
-                ETFResearchConfig(strategy=strategy, timing=ExecutionTiming.NEXT_SESSION_OPEN),
+                ETFResearchConfig(
+                    strategy=strategy,
+                    timing=ExecutionTiming.NEXT_SESSION_OPEN,
+                    entry_policy=study_entry_policy,
+                ),
             )
             curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
             metrics = research.performance_metrics(curve, result.state.trades)
@@ -607,6 +719,7 @@ def run_formal_pack(
             data.indicator_rows,
             strategy=strategy,
             timing=ExecutionTiming.NEXT_SESSION_OPEN,
+            entry_policy=study_entry_policy,
         )
         core_rows.extend({"strategy": strategy.name, **row} for row in allocation["daily"])
         core_summary.extend({"strategy": strategy.name, **row} for row in allocation["summary"])
@@ -617,7 +730,12 @@ def run_formal_pack(
     buy_hold_cash_line = next(
         line for line in analysis["lines"] if line.line_id == "00635U_BUY_HOLD_CASH"
     )
-    main_chart_lines = [*analysis["lines"][:4], buy_hold_cash_line]
+    chart_active_lines = (
+        [line for line in analysis["lines"] if line.line_id.startswith("STRICT_HIGH_")]
+        if high_regime_study else
+        list(analysis["lines"][:4])
+    )
+    main_chart_lines = [*chart_active_lines, buy_hold_cash_line]
     buy_hold_chart_label = "00635U 買進持有（現金保留／分配再投入，本輪重合）"
     equity_series = {
         (
@@ -641,18 +759,22 @@ def run_formal_pack(
     annual_series = {
         _line_label(line_id): [item["return"] for item in payload["annual"]]
         for line_id, payload in analysis["active"].items()
+        if not high_regime_study or line_id.startswith("STRICT_HIGH_")
     }
     rolling_series = {
         _line_label(line_id): [item["cagr"] for item in payload["rolling"][5] if item.get("status") == "OK"]
         for line_id, payload in analysis["active"].items()
+        if not high_regime_study or line_id.startswith("STRICT_HIGH_")
     }
     regime_series = {
         _line_label(line_id): [item["compounded_return"] for item in payload["regime"]]
         for line_id, payload in analysis["active"].items()
+        if not high_regime_study or line_id.startswith("STRICT_HIGH_")
     }
     trade_series = {
         _line_label(line_id): [item["net_pnl"] for item in payload["comparison_trades"] if item["role"] == "EXIT"]
         for line_id, payload in analysis["active"].items()
+        if not high_regime_study or line_id.startswith("STRICT_HIGH_")
     }
     cost_series = {
         _strategy_label(strategy): [
@@ -847,8 +969,15 @@ def run_formal_pack(
         "regime-chart.svg", "trade-pnl-chart.svg", "cost-pressure-chart.svg",
         "core-allocation-chart.svg", "parameter-grid-chart.svg",
         "manifest.json", "readback.json",
-    )
-    next_open_ids = [key for key in analysis["active"] if "NEXT_SESSION_OPEN" in key]
+    ) + (("low-regime-entry-exclusion-audit.csv",) if high_regime_study else ())
+    study_active_ids = [
+        key for key in analysis["active"]
+        if (
+            key.startswith("STRICT_HIGH_")
+            if high_regime_study else not key.startswith("STRICT_HIGH_")
+        )
+    ]
+    next_open_ids = [key for key in study_active_ids if "NEXT_SESSION_OPEN" in key]
     best_ending = max(
         research.decimal(analysis["active"][key]["metrics"]["ending_equity"])
         for key in next_open_ids
@@ -994,24 +1123,63 @@ def run_formal_pack(
         )
 
     hold_metrics = analysis["line_metrics"]["00635U_BUY_HOLD_CASH"]
-    a_metrics = analysis["line_metrics"]["STRATEGY_A_NEXT_SESSION_OPEN"]
-    b_metrics = analysis["line_metrics"]["STRATEGY_B_NEXT_SESSION_OPEN"]
+    a_line_id = _active_line_id(
+        StrategyVersion.A, ExecutionTiming.NEXT_SESSION_OPEN, study_entry_policy
+    )
+    b_line_id = _active_line_id(
+        StrategyVersion.B, ExecutionTiming.NEXT_SESSION_OPEN, study_entry_policy
+    )
+    a_metrics = analysis["line_metrics"][a_line_id]
+    b_metrics = analysis["line_metrics"][b_line_id]
+    policy_name = "高檔限定" if high_regime_study else "原策略"
     active_hold_comparison = (
-        f"{main_line_text}最高是 {_line_label('00635U_BUY_HOLD_CASH')}，期末資產 "
-        f"{_money(hold_metrics['ending_equity'])}。主動策略中策略 A 最高，但策略 A 次一交易日開盤版"
-        f"期末資產 {_money(a_metrics['ending_equity'])}，少於持有基準 "
-        f"{_money(hold_metrics['ending_equity'] - a_metrics['ending_equity'])}，年化報酬率差 "
-        f"{_percentage_points(a_metrics['cagr'] - hold_metrics['cagr'])}，最大回落較淺 "
-        f"{_percentage_points(a_metrics['max_drawdown'] - hold_metrics['max_drawdown'])}；"
-        f"策略 B 次一交易日開盤版期末資產 {_money(b_metrics['ending_equity'])}，少於持有基準 "
-        f"{_money(hold_metrics['ending_equity'] - b_metrics['ending_equity'])}，年化報酬率差 "
-        f"{_percentage_points(b_metrics['cagr'] - hold_metrics['cagr'])}，最大回落較深 "
-        f"{_percentage_points(b_metrics['max_drawdown'] - hold_metrics['max_drawdown'])}"
+        f"00635U 買進持有期末資產 {_money(hold_metrics['ending_equity'])}。"
+        f"{policy_name}策略 A 次一交易日開盤版期末資產 {_money(a_metrics['ending_equity'])}，"
+        f"相對持有差 {_money(a_metrics['ending_equity'] - hold_metrics['ending_equity'], signed=True)}，"
+        f"年化報酬率差 {_percentage_points(a_metrics['cagr'] - hold_metrics['cagr'])}，"
+        f"最大回落差 {_percentage_points(a_metrics['max_drawdown'] - hold_metrics['max_drawdown'])}；"
+        f"{policy_name}策略 B 次一交易日開盤版期末資產 {_money(b_metrics['ending_equity'])}，"
+        f"相對持有差 {_money(b_metrics['ending_equity'] - hold_metrics['ending_equity'], signed=True)}，"
+        f"年化報酬率差 {_percentage_points(b_metrics['cagr'] - hold_metrics['cagr'])}，"
+        f"最大回落差 {_percentage_points(b_metrics['max_drawdown'] - hold_metrics['max_drawdown'])}"
     )
-    deployment_decision = (
-        "執行決策：兩個主動策略都不取代 00635U 買進持有。策略 A 只保留為降低回落的研究候選，"
-        "在完成新增樣本與前瞻驗證前不部署；策略 B 因報酬落後且回落更深，不支持進入部署候選。"
-    )
+    if high_regime_study:
+        closed_exclusions = [row for row in exclusion_rows if row["original_net_pnl"] != ""]
+        wins = sum(research.decimal(row["original_net_pnl"]) > 0 for row in closed_exclusions)
+        losses = sum(research.decimal(row["original_net_pnl"]) < 0 for row in closed_exclusions)
+        equals = sum(row["gate_relation"] == "EQUAL" for row in exclusion_rows)
+        policy_comparison = "；".join(
+            f"{_line_label(strict_id)}相對{_line_label(original_id)}：期末資產差 "
+            f"{_money(analysis['line_metrics'][strict_id]['ending_equity'] - analysis['line_metrics'][original_id]['ending_equity'], signed=True)}、"
+            f"總報酬差 {_percentage_points(analysis['line_metrics'][strict_id]['total_return'] - analysis['line_metrics'][original_id]['total_return'])}、"
+            f"最大回落差 {_percentage_points(analysis['line_metrics'][strict_id]['max_drawdown'] - analysis['line_metrics'][original_id]['max_drawdown'])}、"
+            f"平均閒置現金差 {_money(
+                sum((research.decimal(row['cash']) for row in analysis['active'][strict_id]['result'].state.daily), Decimal('0')) / len(analysis['active'][strict_id]['result'].state.daily)
+                - sum((research.decimal(row['cash']) for row in analysis['active'][original_id]['result'].state.daily), Decimal('0')) / len(analysis['active'][original_id]['result'].state.daily),
+                signed=True,
+            )}"
+            for original_id, strict_id in (
+                (_active_line_id(strategy, ExecutionTiming.NEXT_SESSION_OPEN, EntryPolicy.ORIGINAL),
+                 _active_line_id(strategy, ExecutionTiming.NEXT_SESSION_OPEN, EntryPolicy.STRICT_HIGH_ONLY))
+                for strategy in StrategyVersion
+            )
+        )
+        exclusion_summary = (
+            f"low-regime-entry-exclusion audit 共列 {len(exclusion_rows):,} 筆原策略被排除進場，"
+            f"其中已結束 {len(closed_exclusions):,} 筆，原交易獲利 {wins:,} 筆、虧損 {losses:,} 筆；"
+            f"歷史樣本 MA21 等於 MA144 的被排除原進場為 {equals:,} 筆。等號排除另由邊界單元測試證明。"
+            f"{policy_comparison}"
+        )
+        deployment_decision = (
+            "執行決策：本次只完成高檔限定 entry gate 的隔離比較，不代表策略採納；"
+            "在 00 嚴格 QA 前不得更新正式總目錄、部署、合併或推送。"
+        )
+    else:
+        exclusion_summary = ""
+        deployment_decision = (
+            "執行決策：兩個主動策略都不取代 00635U 買進持有。策略 A 只保留為降低回落的研究候選，"
+            "在完成新增樣本與前瞻驗證前不部署；策略 B 因報酬落後且回落更深，不支持進入部署候選。"
+        )
     gold_text = (
         "S&P GSCI Gold ER 官方歷史未取得，因此完全省略；未以 FinMind GoldPrice、ETF、TAIEX 或其他代理替代"
         if analysis["gold_status"] != "AVAILABLE_OFFICIAL" else
@@ -1022,28 +1190,48 @@ def run_formal_pack(
         f"回落最淺為核心 {int(max((row for row in core_summary if row['strategy'] == strategy.name), key=lambda row: row['max_drawdown'])['core_pct'])}%"
         for strategy in StrategyVersion
     )
+    active_count = len(analysis["active"])
+    strategy_scope_text = (
+        "原策略四線與本次高檔限定四線"
+        if high_regime_study else "四條主動策略"
+    )
+    strict_rule_note = (
+        "本次新策略只在訊號日嚴格 MA21 > MA144 時允許新進場；MA21 = MA144 與 MA21 < MA144 均不得進場，"
+        "並取消低價格區間 MACD 翻紅進場。此條件只作用於新進場，持倉跨入 MA21 <= MA144 不會因此賣出；"
+        if high_regime_study else ""
+    )
     prose = {
-        "conclusion": ("先用實務成交版本回答候選策略在完整成本後的表現。", "比較策略 A、策略 B 的次一交易日開盤版本與 00635U 買進持有，再檢查最差年度、最差五年窗口與成本壓力。", practical_summary + f"；主動策略期末資產最高者為 {best_next_text}。{active_hold_comparison}。最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；最差五年窗口：{worst_rolling_text}。{cost_pressure}。", "兩個主動策略都沒有打敗 00635U 買進持有；策略 A 只有回落較淺的取捨價值，策略 B 則沒有獲得支持。", deployment_decision),
-        "performance": (f"用同一共同期間比較{main_line_text}。", "每線重訂基準至 500,000.00 元並列實際起訖日與觀測數；缺少的官方基準不以代理補入。", f"{main_line_text}的共同期間為 {common_period}；四條主動策略的交易數與最大投入直接來自逐筆帳本。{gold_text}。", "年化報酬率與最大回落必須一起看，不能只看期末資產。", "主表是後續相對、期間與壓力分析的唯一母表。"),
-        "relative": ("逐策略比較可取得且符合契約的指定基準。", "計算相對 00635U 現金持有與分配再投入的期末資產差、年化報酬率差與最大回落差；官方 Gold ER 缺席時不計算。TAIEX 另作機會成本補充。", f"四條策略共輸出 {len(relative_rows):,} 組主要相對比較；{gold_text}；臺灣加權股價報酬指數目前為：{taiex_text}。", "缺少官方 Gold ER 時，不能宣稱已完成對黃金市場基準的超額報酬比較；TAIEX 只能說明放棄臺股的機會成本。", "主要結論只依 00635U 可交易基準；Gold ER 比較維持未完成，TAIEX 不得被當成黃金代理。"),
-        "rules": ("確認策略 A、策略 B 與兩種成交版本沒有混用。", "逐項核對共同進場、高低價格區間、固定防守、策略 A／B 出場差異、停損優先順序與成交時點。", "共同規則與唯一差異完整列於本章；所有進場、2R 啟動、現金分配、公司行動與出場都有事件 ID 與部位 ID。", "達到 2R 只啟動策略 B 的後續判斷，不會立即賣出，也不會回溯舊死叉。", "規則改動必須另開版本並重跑全部附件。"),
-        "annual": ("檢查獲利是否集中少數年份。", "連續帳戶以前一年度末為起點，首年用 500,000.00 元，完整納入首交易日。", f"實務成交線的最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；下表完整列出主四策略與 {comparator_count} 個主基準的所有年度。", "年度不重設本金；獲利年度次數不能取代最差年度幅度。", "若少數年度貢獻過大，實務採用需降權。"),
+        "conclusion": ("先用實務成交版本回答候選策略在完整成本後的表現。", f"比較{strategy_scope_text}、00635U 買進持有，再檢查最差年度、五年窗口與成本壓力。", practical_summary + f"；本次策略期末資產最高者為 {best_next_text}。{active_hold_comparison}。{exclusion_summary}。最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；最差五年窗口：{worst_rolling_text}。{cost_pressure}。", "主摘要同時呈現原策略、新策略與持有基準，不以單一有利指標判斷。", deployment_decision),
+        "performance": (f"用同一共同期間比較{main_line_text}。", "每線重訂基準至 500,000.00 元並列實際起訖日與觀測數；缺少的官方基準不以代理補入。", f"{main_line_text}的共同期間為 {common_period}；{active_count} 條主動策略的交易數與最大投入直接來自逐筆帳本。{gold_text}。", "年化報酬率與最大回落必須一起看，不能只看期末資產。", "主表是後續相對、期間與壓力分析的唯一母表。"),
+        "relative": ("逐策略比較可取得且符合契約的指定基準。", "計算相對 00635U 現金持有與分配再投入的期末資產差、年化報酬率差與最大回落差；官方 Gold ER 缺席時不計算。TAIEX 另作機會成本補充。", f"{active_count} 條策略共輸出 {len(relative_rows):,} 組主要相對比較；{gold_text}；臺灣加權股價報酬指數目前為：{taiex_text}。", "缺少官方 Gold ER 時，不能宣稱已完成對黃金市場基準的超額報酬比較；TAIEX 只能說明放棄臺股的機會成本。", "主要結論只依 00635U 可交易基準；Gold ER 比較維持未完成，TAIEX 不得被當成黃金代理。"),
+        "rules": ("確認原策略、本次 entry gate、策略 A／B 與兩種成交版本沒有混用。", "逐項核對嚴格 MA gate、固定防守、策略 A／B 出場差異、停損優先順序與成交時點。", strict_rule_note + "所有進場、2R 啟動、現金分配、公司行動與出場都有事件 ID 與部位 ID。" + exclusion_summary, "entry gate 只排除當下 MA21 <= MA144 的新進場，不使用未來資料，也不新增出場條件。", "規則改動必須另開版本並重跑全部附件。"),
+        "annual": ("檢查獲利是否集中少數年份。", "連續帳戶以前一年度末為起點，首年用 500,000.00 元，完整納入首交易日。", f"實務成交線的最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；下表完整列出 {active_count} 條策略與 {comparator_count} 個主基準的所有年度。", "年度不重設本金；獲利年度次數不能取代最差年度幅度。", "若少數年度貢獻過大，實務採用需降權。"),
         "trades": ("讓讀者直接核對每筆投入與出場。", "交易表含訊號日、成交日、成交方式、部位／事件 ID、股數、價格、費稅、初始 R、2R 啟動日與淨損益。", (trade_scope_note + "可先閱讀中文明細，再用 CSV 與事件帳本重建。") if synthetic_test else f"本次輸出 {len(trades):,} 列進出場事件；可先閱讀中文明細，再用 CSV 與事件帳本重建。", "每次投入不是固定 500,000.00 元，而受可用現金、整股與 20.00% 初始風險上限約束。", "任何主表交易數都必須能由附件一對一重建。"),
         "execution": ("量化成交時間與成本敏感度。", "同時比較訊號日收盤／次一交易日開盤及 20／40／60 個基點，輸出期末資產、年化報酬率、最大回落與完成回合。", cost_pressure + "。" + strategy_b_cost_note + "。", "成本變動不只扣減每筆損益，也可能改變 2R 啟動、KD 出場與後續交易，因此非單調結果仍代表路徑敏感，不能解讀為成本有利。", "實務主口徑固定為次一個可成交交易日的開盤；策略 B 在成本壓力下不具部署穩健性。"),
         "periods": ("檢查固定時期、月末滾動窗口與市場狀態。", "固定期輸出期初／期末／總報酬／年化報酬率／最大回落；滾動 3／5／10 年採月末窗口，並另列高、低價格區間。", f"實務成交線的五年最差年化報酬率為：{worst_rolling_text}；下方三張表完整呈現固定期間、滾動摘要與高低價格區間。", "全期正報酬若伴隨長期負窗口，仍不能稱穩健。", "以最差窗口與低／高價格區間的差異限制部位。"),
         "concentration": ("檢查少數交易、連虧與水下期。", "輸出最佳與最差交易、最佳 1 筆／3 筆獲利集中度、最長連續虧損、水下期；移除最佳 1／3／5 筆時，只在原出場日扣除其已實現現金淨損益，不重新計算後續部位大小。", "下表列出每條策略的實際交易穩定度，以及移除最佳 0／1／3／5 筆後的期末資產、年化報酬率與最大回落；這是現金扣除敏感度，不冒充完整訊號重播。", "若扣除少數最佳交易後崩解，期望值證據偏弱。", "集中度過高時只列研究候選。"),
         "grid": ("檢查中心參數是否位於穩健區域。", "策略 A、策略 B 各 243 格輸出總報酬、年化報酬率、最大回落、報酬／回落比與五年最差，再彙總分位與鄰域。", "下表同時呈現中位數期末資產、正報酬格比例、中心格與鄰域中位數；所有金額與比例均使用人類可讀格式。", "看分布與中心鄰域，不挑單一最高格；KD 9/9/55 與 2R 不參與搜尋。", "中心若顯著弱於鄰域或正報酬格不足，結論降級。"),
         "core": ("評估核心持有 0／20／40／60%。", "核心與戰術各自保存現金、股數、清算值與資產，主方法不再平衡，並列成本與重建誤差。", core_tradeoff + "。完整風險與報酬數字列於下表。", "核心比例提高不必然同時改善報酬與回落；需用期末資產、年化報酬率和最大回落一起取捨。", "年度再平衡只能另列選項，不混入主結果。"),
-        "practice": ("把研究轉成可執行限制。", "以 00635U 買進持有作可交易門檻；同時監控可成交交易日、期貨轉倉、正逆價差、美元／新臺幣匯率、時區與追蹤缺口；官方 Gold ER 尚未取得。", active_hold_comparison + "。ETF 載具摩擦與發布時間可能使結果偏離黃金市場，但本輪沒有官方 Gold ER 可量化該差異。", deployment_decision, "若後續前瞻樣本顯示策略 A 能保留較淺回落且縮小持有基準落差，才重新送部署評估；策略 B 停止推進。"),
+        "practice": ("把研究轉成可執行限制。", "以原策略與 00635U 買進持有作門檻；同時監控可成交交易日、期貨轉倉、正逆價差、匯率、時區與追蹤缺口。", active_hold_comparison + "。" + exclusion_summary, deployment_decision, "只有 00 完成嚴格 QA 後，才能決定是否進入下一階段；本報告本身不構成策略採納。"),
         "qa": ("證明資料、報告與附件可重現。", "正式執行入口會再次核對資料清單（manifest）本身的 SHA-256、資料格式與每個輸入檔案雜湊；輸出也附自己的資料清單與回讀驗證紀錄（readback）。", f"輸入資料清單 SHA-256 為 `{accepted_manifest_sha256}`；{main_line_text}共同期間已一致，兩個隔離目錄必須產生完全相同的位元組。", "不論從命令列或程式入口執行，只要資料、雜湊、連結或圖表語意有一項不符，就會停止而不產生可採用結果。", "00 只有在全部驗證通過後才可接受此研究包。"),
         "attachments": ("提供完整重建材料。", "逐檔列出主表、交易、事件、期間、參數、核心、對時、圖表與來源收據。", f"本次共有 {len(attachments)} 個可點入口。", "主文摘要不能取代 CSV 與資料清單（manifest）。", "00 以附件雜湊與隔離重播為最終依據。"),
     }
+    entry_rule_bullet = (
+        "\n- **本次高檔限定進場：** 只用訊號日當下資料；嚴格 `MA21 > MA144` 才能評估新進場。"
+        "`MA21 == MA144` 或 `MA21 < MA144` 一律排除，且不再使用低價格區間 MACD 翻紅進場。"
+        "舊版低區間訊號使用 MACD(21,55,55)，本次只保留作對照。"
+        "高檔突破仍須前一日技術收盤不高於前一日 MA21、當日技術收盤高於當日 MA21。"
+        "此 gate 不作用於既有持倉或出場。\n"
+        "- **舊版基準：** 保留原本 `MA21 >= MA144` 高區間突破與 `MA21 < MA144` 低區間 MACD 翻紅進場，僅供同包對照。\n"
+        if high_regime_study else
+        "\n- **共同進場：** 只用 00635U 自有歷史計算 MA21、MA144 與 MACD(21,55,55)。`MA21 >= MA144`（等號歸高）為高價格區間：前一日技術收盤不高於前一日 MA21、當日技術收盤高於當日 MA21，才是新突破進場。`MA21 < MA144` 為低價格區間：MACD 柱狀值前一日不大於零、當日大於零，才是新綠翻紅進場。\n"
+    )
     extras = {
         "performance": "\n| 主線 | 成交方式 | 實際起訖日（觀測數） | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + table + ("\n\n![合成測試資產曲線](equity-chart.svg)\n" if synthetic_test else "\n\n![正式資產曲線](equity-chart.svg)\n") + "\n> 00635U 買進持有的現金保留與分配再投入兩線在本輪完全重合，主資產曲線與回撤圖以一條黑線呈現；並非未比較。\n",
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n\n> 年化報酬率差與最大回落差均以百分點表示。\n" + taiex_table,
-        "rules": "\n- **共同進場：** 只用 00635U 自有歷史計算 MA21、MA144 與 MACD(21,55,55)。`MA21 >= MA144`（等號歸高）為高價格區間：前一日技術收盤不高於前一日 MA21、當日技術收盤高於當日 MA21，才是新突破進場。`MA21 < MA144` 為低價格區間：MACD 柱狀值前一日不大於零、當日大於零，才是新綠翻紅進場。\n- **固定初始防守：** 取本次 MA21 拉回階段低點、前一交易日低點與訊號日低點三者最小值，而且必須嚴格低於技術進場價。\n- **策略 A：** 高價格區間先檢查固定初始防守，再檢查已啟動的 MACD 柱狀值新紅翻綠；固定防守優先。低價格區間只維護、不執行固定防守，沿用已啟動的 MACD 新紅翻綠出場。\n- **策略 B：** 低價格區間進場部位完全沿用策略 A。只有高價格區間進場部位會從進場到離場持續執行固定防守；在完整買賣成本後的標記淨損益先達到初始風險的 2 倍（淨成本 2R）時，才永久啟動 KD(9,9,55)。啟動後只接受新發生的 K 向下穿越 D；達到 2R 本身不賣出，也不回溯啟動前的死叉。固定防守與有效死叉同日成立時，固定防守優先。\n- **成交版本：** 同時計算訊號日收盤成交與次一個可成交交易日開盤成交；後者為實務主口徑。停牌、零量或缺開盤價時，待成交指令保留至下一個可成交官方交易日。\n",
+        "rules": entry_rule_bullet + "- **固定初始防守：** 取本次 MA21 拉回階段低點、前一交易日低點與訊號日低點三者最小值，而且必須嚴格低於技術進場價。\n- **策略 A：** 高價格區間先檢查固定初始防守，再檢查已啟動的 MACD 柱狀值新紅翻綠；固定防守優先。低價格區間只維護、不執行固定防守，沿用已啟動的 MACD 新紅翻綠出場。\n- **策略 B：** 只有高價格區間進場部位會從進場到離場持續執行固定防守；完整成本後達淨成本 2R 才永久啟動 KD(9,9,55)，啟動後只接受新死叉；固定防守優先。\n- **成交版本：** 進出同時點；同時計算訊號日收盤成交與次一個可成交交易日開盤成交，後者為實務主口徑。\n" + ("\n- [低區間進場排除稽核](low-regime-entry-exclusion-audit.csv)\n" if high_regime_study else ""),
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 | 進場／出場／未平倉 |\n|---|---:|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n![逐年報酬](annual-chart.svg)\n\n![回撤路徑](drawdown-chart.svg)\n",
-        "trades": (f"\n> **本夾具的交易範圍：** {trade_scope_note}\n" if synthetic_test else "") + f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n",
+        "trades": (f"\n> **本夾具的交易範圍：** {trade_scope_note}\n" if synthetic_test else "") + f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n" + ("- [低區間進場排除稽核](low-regime-entry-exclusion-audit.csv)\n" if high_regime_study else ""),
         "execution": "\n#### 完整成交時點與成本壓力表\n\n| 策略 | 成交時點 | 單邊滑價 | 期末資產 | 年化報酬率 | 最大回落 | 完成回合 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n![成本壓力](cost-pressure-chart.svg)\n",
         "periods": "\n#### 固定期間表\n\n| 策略／基準 | 固定期間 | 實際起訖 | 期初資產 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 |\n|---|---|---|---:|---:|---:|---:|---:|\n" + fixed_table + "\n\n#### 3／5／10 年滾動摘要表\n\n| 策略／基準 | 窗口 | 有效窗口數 | 最差年化 | 中位年化 | 最佳年化 | 窗口最差回落 |\n|---|---:|---:|---:|---:|---:|---:|\n" + rolling_summary_table + "\n\n#### 高低價格區間表\n\n| 策略 | 價格區間 | 交易日數 | 區間複合報酬 |\n|---|---|---:|---:|\n" + regime_table + "\n\n![滾動窗口](rolling-window-chart.svg)\n\n![市場狀態](regime-chart.svg)\n",
         "concentration": "\n#### 交易穩定度表\n\n| 策略 | 已完成交易 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆獲利集中度 | 最佳 3 筆獲利集中度 | 最長連續虧損 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n#### 移除最佳交易敏感度表\n\n| 策略 | 要求移除最佳筆數 | 實際移除筆數 | 期末資產 | 年化報酬率 | 最大回落 | 計算方式 |\n|---|---:|---:|---:|---:|---:|---|\n" + removal_table + "\n\n![逐筆交易淨損益](trade-pnl-chart.svg)\n",
@@ -1068,13 +1256,15 @@ def run_formal_pack(
         if synthetic_test else
         "# 00635U 黃金期貨 ETF 因果回測｜正式報告"
     )
+    if high_regime_study:
+        report_title = "# 00635U 黃金期貨 ETF｜MA21 > MA144 高檔限定進場隔離研究"
     report = (
         report_title + "\n\n"
         f"> {status_banner}\n> 輸入資料清單（manifest）SHA-256：`{accepted_manifest_sha256}`。\n"
         f"> 凍結資料：`{input_manifest.get('snapshot_id', '未提供')}`；主來源為 FinMind。{gold_text}。\n"
         "> FinMind 股息／分割／停復牌候選均為 0 列，且未取得官方交叉確認；本報告未自行建立任何事件。\n\n"
         "## 閱讀順序\n\n" + toc + "\n\n" + "\n\n".join(sections)
-        + f"\n\n`{STOP_CODE}`\n"
+        + f"\n\n`{stop_code}`\n"
     )
     (output_root / REPORT_NAME).write_text(report, encoding="utf-8")
     artifact_names = tuple(name for name in attachments if name not in {"manifest.json", "readback.json"}) + (REPORT_NAME,)
@@ -1082,16 +1272,19 @@ def run_formal_pack(
         "schema": (
             "00635U_SYNTHETIC_FIXTURE_RUN_V1"
             if synthetic_test else
-            "00635U_FORMAL_RUN_V1"
+            ("00635U_STRICT_HIGH_REGIME_STUDY_V1" if high_regime_study else "00635U_FORMAL_RUN_V1")
         ),
         "artifact_classification": (
-            "SYNTHETIC_TEST_PACK" if synthetic_test else "FORMAL_RESEARCH_PACK"
+            "SYNTHETIC_TEST_PACK" if synthetic_test else
+            "ISOLATED_RESEARCH_CANDIDATE" if high_regime_study else
+            "FORMAL_RESEARCH_PACK"
         ),
-        "publication_eligible": not synthetic_test,
+        "publication_eligible": not synthetic_test and not high_regime_study,
         "intended_use": (
             "PIPELINE_AND_RULE_VALIDATION_ONLY"
             if synthetic_test else
-            "FORMAL_RESEARCH_REVIEW"
+            "STRICT_00_QA_BEFORE_ANY_PUBLICATION"
+            if high_regime_study else "FORMAL_RESEARCH_REVIEW"
         ),
         "input_manifest_sha256": accepted_manifest_sha256,
         "input_data_classification": input_classification,
@@ -1109,7 +1302,7 @@ def run_formal_pack(
         "status": "PASS", "formal": not synthetic_test,
         "artifact_classification": manifest["artifact_classification"],
         "publication_eligible": manifest["publication_eligible"],
-        "stop_code": STOP_CODE,
+        "stop_code": stop_code,
         "manifest_sha256": prep.sha256_file(output_root / "manifest.json"),
         "files_verified": len(artifact_names),
     }
@@ -1121,7 +1314,7 @@ def run_formal_pack(
     if errors:
         raise RuntimeError("; ".join(errors))
     return {
-        "status": STOP_CODE,
+        "status": stop_code,
         "report": str(output_root / REPORT_NAME),
         "manifest_sha256": readback["manifest_sha256"],
     }

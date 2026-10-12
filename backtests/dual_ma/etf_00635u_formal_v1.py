@@ -29,7 +29,7 @@ from .etf_00635u_strategy_v1 import (
 
 REPORT_NAME = "README.md"
 TRADE_REPORT_NAME = "trade-details.md"
-STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R5"
+STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R6"
 
 LINE_LABELS = {
     "STRATEGY_A_SIGNAL_CLOSE": "策略 A（訊號日收盤成交）",
@@ -96,6 +96,48 @@ def _reason_label(row: Mapping[str, Any]) -> str:
     return f"{label}（`{code}`）"
 
 
+def _synthetic_trade_scope_note(trades: Sequence[Mapping[str, Any]]) -> str:
+    by_line: dict[str, dict[str, int]] = {}
+    for row in trades:
+        role = str(row.get("role"))
+        counts = by_line.setdefault(str(row.get("line_id")), {"ENTRY": 0, "EXIT": 0})
+        if role in counts:
+            counts[role] += 1
+    entry_counts = {counts["ENTRY"] for counts in by_line.values()}
+    exit_counts = {counts["EXIT"] for counts in by_line.values()}
+    if by_line and len(entry_counts) == len(exit_counts) == 1:
+        entries = next(iter(entry_counts))
+        exits = next(iter(exit_counts))
+        rounds = min(entries, exits)
+        note = (
+            f"此合成夾具每條策略線只建立 {rounds} 個完成回合；"
+            f"{len(by_line)} 條策略線 ×（{entries} 次進場（ENTRY）＋"
+            f"{exits} 次出場（EXIT））＝{len(trades)} 列事件。"
+            f"這不是 {len(trades)} 筆獨立交易，也不是 00635U 正式上市歷史交易。"
+        )
+    else:
+        note = f"此合成夾具共有 {len(trades)} 列進出場事件，不代表正式上市歷史交易。"
+    entries_rows = [row for row in trades if row.get("role") == "ENTRY"]
+    exits_rows = [row for row in trades if row.get("role") == "EXIT"]
+    low_only = entries_rows and all(
+        row.get("entry_type") == "LOW_REGIME_MACD_GREEN_TO_RED"
+        for row in entries_rows
+    )
+    macd_exit_only = exits_rows and all(
+        row.get("exit_reason") == "MACD_RED_TO_GREEN" for row in exits_rows
+    )
+    if low_only and macd_exit_only:
+        rounds_text = next(iter(entry_counts)) if len(entry_counts) == 1 else "全部"
+        note += (
+            f"每條策略線的 {rounds_text} 個回合全屬低價格區間 MACD 綠翻紅進場、"
+            "MACD 紅翻綠出場，因此策略 A 與 B 在這份合成夾具中必然相同；"
+            "這不是正式資料得出的 A／B 相同結論。高價格區間、固定初始防守、"
+            "淨成本 2R 啟動、KD(9,9,55) 新死叉等差異分支，由專屬單元測試驗證，"
+            f"未在這 {len(trades)} 列中展示。"
+        )
+    return note
+
+
 def _trade_report(trades: Sequence[Mapping[str, Any]], *, synthetic: bool) -> str:
     banner = (
         "> **合成測試資料／不是正式績效。** 交易筆數刻意縮小，只驗證管線與規則；"
@@ -109,6 +151,7 @@ def _trade_report(trades: Sequence[Mapping[str, Any]], *, synthetic: bool) -> st
         if synthetic else
         "# 00635U 因果回測｜正式逐筆交易明細"
     )
+    scope_note = _synthetic_trade_scope_note(trades) if synthetic else ""
     rows = []
     for row in trades:
         role = row.get("role")
@@ -129,7 +172,8 @@ def _trade_report(trades: Sequence[Mapping[str, Any]], *, synthetic: bool) -> st
     body = "\n".join(rows) if rows else "| — | — | — | — | — | — | — | 0 | — | — | — | — | — | — | — | — |"
     return (
         title + "\n\n" + banner + "\n\n"
-        "金額均為新臺幣；原始精確值保留於 [trade-details.csv](trade-details.csv)。\n\n"
+        + (f"> **本夾具的交易範圍：** {scope_note}\n\n" if scope_note else "")
+        + "金額均為新臺幣；原始精確值保留於 [trade-details.csv](trade-details.csv)。\n\n"
         "| 策略 | 角色 | 訊號日 | 成交日 | 成交時點 | 進場來源／出場理由 | 部位 ID | 股數 | 參考價 | 成交價 | 手續費 | 稅 | 初始防守 | 初始 R | 2R 啟動日 | 淨損益 |\n"
         "|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|\n"
         + body + "\n"
@@ -484,9 +528,9 @@ def run_formal_pack(
         for strategy in StrategyVersion
     }
     chart_specs = {
-        "equity-chart.svg": ("equity_curve", "正式資產曲線", equity_series, "交易序列", "資產（元）"),
-        "drawdown-chart.svg": ("drawdown", "正式回撤路徑", drawdown_series, "交易序列", "回撤率"),
-        "annual-chart.svg": ("annual_return", "正式逐年報酬", annual_series, "年度", "報酬率"),
+        "equity-chart.svg": ("equity_curve", "合成測試資產曲線（非正式績效）" if synthetic_test else "正式資產曲線", equity_series, "交易序列", "資產（元）"),
+        "drawdown-chart.svg": ("drawdown", "合成測試回撤路徑（非正式績效）" if synthetic_test else "正式回撤路徑", drawdown_series, "交易序列", "回撤率"),
+        "annual-chart.svg": ("annual_return", "合成測試逐年報酬（非正式績效）" if synthetic_test else "正式逐年報酬", annual_series, "年度", "報酬率"),
         "rolling-window-chart.svg": ("rolling_window", "五年滾動年化報酬", rolling_series, "月末窗口", "年化報酬率"),
         "regime-chart.svg": ("regime", "市場狀態績效", regime_series, "高／低價格區間", "複合報酬"),
         "trade-pnl-chart.svg": ("trade_pnl", "逐筆交易淨損益", trade_series, "交易序號", "淨損益（元）"),
@@ -625,6 +669,7 @@ def run_formal_pack(
                 "僅在各筆出場後扣除其已實現現金淨損益，不重新計算後續部位大小 |"
             )
     removal_table = "\n".join(removal_rows)
+    trade_scope_note = _synthetic_trade_scope_note(trades) if synthetic_test else ""
     section_titles = (
         ("conclusion", "01｜一頁白話結論"), ("performance", "02｜完整績效總表"),
         ("relative", "03｜相對基準"), ("rules", "04｜策略規則與成交版本"),
@@ -756,7 +801,7 @@ def run_formal_pack(
         "relative": ("逐策略比較三個指定基準。", "分別計算相對現金持有、分配再投入與官方 Gold ER 的期末資產差、年化報酬率差與最大回落差。", f"四條策略各比較三個基準，共 {len(relative_rows):,} 組；臺灣加權股價報酬指數目前為：{taiex_text}。", "Gold ER 差異不是可交易超額報酬，因指數沒有 ETF 費稅、轉倉追蹤與匯率摩擦。", "只有三個基準方向一致時，才提高正期望信心。"),
         "rules": ("確認策略 A、策略 B 與兩種成交版本沒有混用。", "逐項核對共同進場、高低價格區間、固定防守、策略 A／B 出場差異、停損優先順序與成交時點。", "共同規則與唯一差異完整列於本章；所有進場、2R 啟動、現金分配、公司行動與出場都有事件 ID 與部位 ID。", "達到 2R 只啟動策略 B 的後續判斷，不會立即賣出，也不會回溯舊死叉。", "規則改動必須另開版本並重跑全部附件。"),
         "annual": ("檢查獲利是否集中少數年份。", "連續帳戶以前一年度末為起點，首年用 500,000.00 元，完整納入首交易日。", f"實務成交線的最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；下表完整列出主四策略與三個主基準的所有年度。", "年度不重設本金；獲利年度次數不能取代最差年度幅度。", "若少數年度貢獻過大，實務採用需降權。"),
-        "trades": ("讓讀者直接核對每筆投入與出場。", "交易表含訊號日、成交日、成交方式、部位／事件 ID、股數、價格、費稅、初始 R、2R 啟動日與淨損益。", f"本次輸出 {len(trades):,} 筆進出場紀錄；可先閱讀中文明細，再用 CSV 與事件帳本重建。", "每次投入不是固定 500,000.00 元，而受可用現金、整股與 20.00% 初始風險上限約束。", "任何主表交易數都必須能由附件一對一重建。"),
+        "trades": ("讓讀者直接核對每筆投入與出場。", "交易表含訊號日、成交日、成交方式、部位／事件 ID、股數、價格、費稅、初始 R、2R 啟動日與淨損益。", (trade_scope_note + "可先閱讀中文明細，再用 CSV 與事件帳本重建。") if synthetic_test else f"本次輸出 {len(trades):,} 列進出場事件；可先閱讀中文明細，再用 CSV 與事件帳本重建。", "每次投入不是固定 500,000.00 元，而受可用現金、整股與 20.00% 初始風險上限約束。", "任何主表交易數都必須能由附件一對一重建。"),
         "execution": ("量化成交時間與成本敏感度。", "同時比較訊號日收盤／次一交易日開盤及 20／40／60 個基點，輸出期末資產、年化報酬率、最大回落與完成回合。", cost_pressure + "。", "成本升高若快速侵蝕成果，策略優勢可能只是理想成交假象。", "實務主口徑固定為次一個可成交交易日的開盤。"),
         "periods": ("檢查固定時期、月末滾動窗口與市場狀態。", "固定期輸出期初／期末／總報酬／年化報酬率／最大回落；滾動 3／5／10 年採月末窗口，並另列高、低價格區間。", f"實務成交線的五年最差年化報酬率為：{worst_rolling_text}；下方三張表完整呈現固定期間、滾動摘要與高低價格區間。", "全期正報酬若伴隨長期負窗口，仍不能稱穩健。", "以最差窗口與低／高價格區間的差異限制部位。"),
         "concentration": ("檢查少數交易、連虧與水下期。", "輸出最佳與最差交易、最佳 1 筆／3 筆獲利集中度、最長連續虧損、水下期；移除最佳 1／3／5 筆時，只在原出場日扣除其已實現現金淨損益，不重新計算後續部位大小。", "下表列出每條策略的實際交易穩定度，以及移除最佳 0／1／3／5 筆後的期末資產、年化報酬率與最大回落；這是現金扣除敏感度，不冒充完整訊號重播。", "若扣除少數最佳交易後崩解，期望值證據偏弱。", "集中度過高時只列研究候選。"),
@@ -767,11 +812,11 @@ def run_formal_pack(
         "attachments": ("提供完整重建材料。", "逐檔列出主表、交易、事件、期間、參數、核心、對時、圖表與來源收據。", f"本次共有 {len(attachments)} 個可點入口。", "主文摘要不能取代 CSV 與資料清單（manifest）。", "00 以附件雜湊與隔離重播為最終依據。"),
     }
     extras = {
-        "performance": "\n| 主線 | 成交方式 | 實際起訖日（觀測數） | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + table + "\n\n![正式資產曲線](equity-chart.svg)\n",
+        "performance": "\n| 主線 | 成交方式 | 實際起訖日（觀測數） | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + table + ("\n\n![合成測試資產曲線](equity-chart.svg)\n" if synthetic_test else "\n\n![正式資產曲線](equity-chart.svg)\n"),
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n\n> 年化報酬率差與最大回落差均以百分點表示。\n",
         "rules": "\n- **共同進場：** 只用 00635U 自有歷史計算 MA21、MA144 與 MACD(21,55,55)。`MA21 >= MA144`（等號歸高）為高價格區間：前一日技術收盤不高於前一日 MA21、當日技術收盤高於當日 MA21，才是新突破進場。`MA21 < MA144` 為低價格區間：MACD 柱狀值前一日不大於零、當日大於零，才是新綠翻紅進場。\n- **固定初始防守：** 取本次 MA21 拉回階段低點、前一交易日低點與訊號日低點三者最小值，而且必須嚴格低於技術進場價。\n- **策略 A：** 高價格區間先檢查固定初始防守，再檢查已啟動的 MACD 柱狀值新紅翻綠；固定防守優先。低價格區間只維護、不執行固定防守，沿用已啟動的 MACD 新紅翻綠出場。\n- **策略 B：** 低價格區間進場部位完全沿用策略 A。只有高價格區間進場部位會從進場到離場持續執行固定防守；在完整買賣成本後的標記淨損益先達到初始風險的 2 倍（淨成本 2R）時，才永久啟動 KD(9,9,55)。啟動後只接受新發生的 K 向下穿越 D；達到 2R 本身不賣出，也不回溯啟動前的死叉。固定防守與有效死叉同日成立時，固定防守優先。\n- **成交版本：** 同時計算訊號日收盤成交與次一個可成交交易日開盤成交；後者為實務主口徑。停牌、零量或缺開盤價時，待成交指令保留至下一個可成交官方交易日。\n",
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 | 進場／出場／未平倉 |\n|---|---:|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n![逐年報酬](annual-chart.svg)\n\n![回撤路徑](drawdown-chart.svg)\n",
-        "trades": f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n",
+        "trades": (f"\n> **本夾具的交易範圍：** {trade_scope_note}\n" if synthetic_test else "") + f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n",
         "execution": "\n#### 完整成交時點與成本壓力表\n\n| 策略 | 成交時點 | 單邊滑價 | 期末資產 | 年化報酬率 | 最大回落 | 完成回合 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n![成本壓力](cost-pressure-chart.svg)\n",
         "periods": "\n#### 固定期間表\n\n| 策略／基準 | 固定期間 | 實際起訖 | 期初資產 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 |\n|---|---|---|---:|---:|---:|---:|---:|\n" + fixed_table + "\n\n#### 3／5／10 年滾動摘要表\n\n| 策略／基準 | 窗口 | 有效窗口數 | 最差年化 | 中位年化 | 最佳年化 | 窗口最差回落 |\n|---|---:|---:|---:|---:|---:|---:|\n" + rolling_summary_table + "\n\n#### 高低價格區間表\n\n| 策略 | 價格區間 | 交易日數 | 區間複合報酬 |\n|---|---|---:|---:|\n" + regime_table + "\n\n![滾動窗口](rolling-window-chart.svg)\n\n![市場狀態](regime-chart.svg)\n",
         "concentration": "\n#### 交易穩定度表\n\n| 策略 | 已完成交易 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆獲利集中度 | 最佳 3 筆獲利集中度 | 最長連續虧損 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n#### 移除最佳交易敏感度表\n\n| 策略 | 要求移除最佳筆數 | 實際移除筆數 | 期末資產 | 年化報酬率 | 最大回落 | 計算方式 |\n|---|---:|---:|---:|---:|---:|---|\n" + removal_table + "\n\n![逐筆交易淨損益](trade-pnl-chart.svg)\n",

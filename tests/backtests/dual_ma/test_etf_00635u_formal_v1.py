@@ -132,6 +132,9 @@ def test_trade_report_uses_role_specific_chinese_reason():
     assert "合成測試資料／不是正式績效" in report
     assert "交易筆數刻意縮小，只驗證管線與規則" in report
     assert "不得解讀為 00635U 上市以來的正式交易紀錄" in report
+    assert "1 條策略線 ×（1 次進場（ENTRY）＋1 次出場（EXIT））＝2 列事件" in report
+    assert "這不是 2 筆獨立交易" in report
+    assert "低價格區間 MACD 綠翻紅進場、MACD 紅翻綠出場" in report
     entry_line, exit_line = [
         line for line in report.splitlines()
         if line.startswith("| 策略 A（次一交易日開盤成交）")
@@ -260,6 +263,20 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert "合成測試資料／不是正式績效" in report
     assert "交易筆數刻意縮小，只驗證管線與規則" in report
     assert "不得解讀為 00635U 上市以來的正式結果" in report
+    fixture_scope_phrases = (
+        "此合成夾具每條策略線只建立 4 個完成回合",
+        "4 條策略線 ×（4 次進場（ENTRY）＋4 次出場（EXIT））＝32 列事件",
+        "這不是 32 筆獨立交易，也不是 00635U 正式上市歷史交易",
+        "每條策略線的 4 個回合全屬低價格區間 MACD 綠翻紅進場、MACD 紅翻綠出場",
+        "因此策略 A 與 B 在這份合成夾具中必然相同",
+        "這不是正式資料得出的 A／B 相同結論",
+        "高價格區間、固定初始防守、淨成本 2R 啟動、KD(9,9,55) 新死叉",
+        "未在這 32 列中展示",
+    )
+    for phrase in fixture_scope_phrases:
+        assert phrase in report
+    assert "![合成測試資產曲線](equity-chart.svg)" in report
+    assert "![正式資產曲線](equity-chart.svg)" not in report
     assert "<a id=" not in report
     headings = re.findall(r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE)
     assert len(headings) == 14
@@ -332,6 +349,8 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     )
     assert "SYNTHETIC TEST ONLY" in readable_trades
     assert "交易筆數刻意縮小，只驗證管線與規則" in readable_trades
+    for phrase in fixture_scope_phrases:
+        assert phrase in readable_trades
     assert "進場來源／出場理由" in readable_trades
     assert any(
         label in readable_trades
@@ -352,6 +371,21 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
 
     with (left / "trade-details.csv").open(encoding="utf-8-sig", newline="") as handle:
         trades = list(csv.DictReader(handle))
+    assert len(trades) == 32
+    line_ids = {row["line_id"] for row in trades}
+    assert len(line_ids) == 4
+    for line_id in line_ids:
+        line_trades = [row for row in trades if row["line_id"] == line_id]
+        assert sum(row["role"] == "ENTRY" for row in line_trades) == 4
+        assert sum(row["role"] == "EXIT" for row in line_trades) == 4
+    assert all(
+        row["entry_type"] == "LOW_REGIME_MACD_GREEN_TO_RED"
+        for row in trades if row["role"] == "ENTRY"
+    )
+    assert all(
+        row["exit_reason"] == "MACD_RED_TO_GREEN"
+        for row in trades if row["role"] == "EXIT"
+    )
     assert {
         "signal_date", "fill_date", "timing", "entry_type", "position_id",
         "shares", "reference_price", "fill_price", "commission", "tax",
@@ -387,6 +421,9 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         chart_hashes.add(re.search(r'data-source-sha256="([0-9a-f]{64})"', svg).group(1))
         assert "STRATEGY_" not in svg
         assert "策略 A" in svg or "策略 B" in svg
+        if chart.name in {"equity-chart.svg", "drawdown-chart.svg", "annual-chart.svg"}:
+            assert "合成測試" in svg
+            assert "正式資產曲線" not in svg
     assert len(chart_kinds) == 9
     assert len(chart_hashes) >= 7
 
@@ -400,6 +437,7 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert output_manifest["intended_use"] == "PIPELINE_AND_RULE_VALIDATION_ONLY"
     readback = json.loads((left / "readback.json").read_text(encoding="utf-8"))
     assert readback["stop_code"] == formal.STOP_CODE
+    assert readback["stop_code"] == "STOP_WAIT_00_00635U_PREP_QA_R6"
     assert readback["formal"] is False
     assert readback["artifact_classification"] == "SYNTHETIC_TEST_PACK"
     assert readback["publication_eligible"] is False

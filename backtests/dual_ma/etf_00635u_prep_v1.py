@@ -28,12 +28,13 @@ from .etf_00635u_strategy_v1 import (
     expected_comparison_lines,
     run_strategy,
 )
+from . import etf_00635u_research_v1 as research
 from .paths import WORKDATA_ROOT
 
 
 OUTPUT_ROOT_DEFAULT = WORKDATA_ROOT / "00635u" / "prep-fixture-v1"
 FORMAL_STOP_CODE = "STOP_WAIT_00_00635U_DATA"
-PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA"
+PREP_STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R2"
 MANIFEST_SCHEMA = "00635U_DATA_SNAPSHOT_V1"
 REPORT_NAME = "00635u-prep-fixture-report.md"
 
@@ -137,14 +138,23 @@ def fixture_rows() -> list[IndicatorRow]:
 def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     if not rows:
         raise ValueError("cannot write empty CSV")
+    fieldnames: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
 
-def _chart_svg(series: Mapping[str, Sequence[Decimal]]) -> str:
+def _chart_svg(
+    series: Mapping[str, Sequence[Decimal]],
+    *,
+    title: str = "合成夾具資產曲線（非正式績效）",
+) -> str:
     width, height = 960, 420
     all_values = [value for values in series.values() for value in values]
     low, high = min(all_values), max(all_values)
@@ -170,7 +180,7 @@ def _chart_svg(series: Mapping[str, Sequence[Decimal]]) -> str:
         'viewBox="0 0 960 420">'
         '<rect width="960" height="420" fill="white"/>'
         '<text x="480" y="28" text-anchor="middle" font-size="20" '
-        'font-family="Microsoft JhengHei, sans-serif">合成夾具資產曲線（非正式績效）</text>'
+        f'font-family="Microsoft JhengHei, sans-serif">{title}</text>'
         '<line x1="70" y1="350" x2="910" y2="350" stroke="#555"/>'
         '<line x1="70" y1="80" x2="70" y2="350" stroke="#555"/>'
         + "".join(legends)
@@ -209,86 +219,43 @@ def render_fixture_report(summary_rows: Sequence[Mapping[str, Any]]) -> str:
         f"| {row['strategy']} | {row['timing']} | {row['final_equity']} | {row['trades']} |"
         for row in summary_rows
     )
-    sections = [
-        _section(
-            "scope", "01｜研究範圍與禁止事項",
-            "確認準備版只驗證程式與文件，不產生正式績效。",
-            "使用 2016 年起的人工合成小型資料，並在正式入口加上 00 驗收 SHA 閘門。",
-            "目前沒有任何已驗收的 00635U 正式資料快照。",
-            "這份數字只能證明管線會運作，不能拿來判斷策略是否賺錢。",
-            "維持正式回測停止；等待 00 驗收 01 的 manifest。",
-        ),
-        _section(
-            "rules", "02｜策略 A／B 凍結規則",
-            "把唯一允許的策略差異寫成可稽核規則。",
-            "A 沿用 MA21／MA144 分流固定防守＋MACD；B 只改高 regime 進場部位為淨成本 2R 後永久啟用 KD(9,9,55) 新死叉。",
-            "固定防守優先；2R 不直接賣；arm 前與非新死叉均不賣。",
-            "B 不是門檻搜尋，也不改低 regime 部位。",
-            "正式比較只能使用這兩版與兩種完整成交時點。",
-        ),
-        _section(
-            "fixture", "03｜合成夾具執行結果",
-            "檢查四條策略／成交時點管線可以產出一致帳務。",
-            "初始資金 50 萬元、整股、不借款、連續帳戶、20bps 與既定費稅。",
-            "下表與圖只來自人工資料。",
-            "夾具能抓規則錯誤，但完全不代表 00635U 歷史報酬。",
-            "通過後才可進入資料綁定 QA。",
-        )
-        + "\n" + summary
-        + "\n\n![合成夾具資產曲線](fixture-equity-chart.svg)\n",
-        _section(
-            "comparison", "04｜正式七線比較版面",
-            "固定正式報告的主比較集合，避免事後換基準。",
-            "四條策略成交線、兩條 00635U 買進持有與官方追蹤 Gold ER 指數。",
-            "TAIEX 報酬指數只放補充區，不列入主七線。",
-            "主表目前保留欄位，不填正式績效。",
-            "正式資料驗收後依相同順序填入。",
-        )
-        + "\n| 主線 ID | 狀態 |\n|---|---|\n"
-        + seven
-        + "\n",
-        _section(
-            "analysis", "05｜待執行分析矩陣",
-            "預先鎖定完整性與穩健性檢查。",
-            f"全期／年度、固定期間、滾動 3／5／10 年（不足明標）、regime、交易穩定與集中度、{STRESS_SLIPPAGE_BPS}bps、A/B 各 {GRID_SIZE} 格、核心持有 {CORE_ALLOCATIONS}%。",
-            "準備版只檢查欄位與章節存在。",
-            "沒有正式資料就不應產生任何矩陣排名。",
-            "避免把樣本不足或參數搜尋誤當正期望證據。",
-        ),
-        _section(
-            "limitations", "06｜黃金期貨 ETF 特有限制",
-            "防止把 ETF 價格直接等同現貨黃金。",
-            "正式報告逐項揭露期貨轉倉、正逆價差、美元／新臺幣匯率、海外與臺灣交易時區錯位、休市差異、追蹤誤差與追蹤缺口。",
-            "這些來源可使 ETF、Gold ER 指數與臺股帳戶在同日出現不同方向。",
-            "策略結果必須被解讀為 00635U 可交易載具的結果。",
-            "正式結論需區分訊號效果、載具摩擦與資料對時。",
-        ),
-        _section(
-            "attachments", "07｜附件、manifest 與重播",
-            "讓 00 可逐檔核對輸入、輸出與雜湊。",
-            "manifest 記錄附件 SHA-256；readback 重算後保存檢查結果。",
-            "本包可由同一夾具重建。",
-            "任一附件或 SHA 不一致即視為失敗。",
-            "正式快照也必須套用同一不可變驗證介面。",
-        )
-        + "\n- [夾具輸入](fixture-rows.csv)\n"
-        + "- [四版本摘要](fixture-summary.csv)\n"
-        + "- [夾具圖](fixture-equity-chart.svg)\n"
-        + "- [manifest](manifest.json)\n"
-        + "- [readback](readback.json)\n",
-    ]
-    toc = "\n".join(
-        f"- [{label}](#{anchor})"
-        for anchor, label in (
-            ("scope", "01｜研究範圍與禁止事項"),
-            ("rules", "02｜策略 A／B 凍結規則"),
-            ("fixture", "03｜合成夾具執行結果"),
-            ("comparison", "04｜正式七線比較版面"),
-            ("analysis", "05｜待執行分析矩陣"),
-            ("limitations", "06｜黃金期貨 ETF 特有限制"),
-            ("attachments", "07｜附件、manifest 與重播"),
-        )
+    specs = (
+        ("conclusion", "01｜一頁白話結論", "先回答這是不是正式績效。", "查驗資料閘門與 fixture 標記。", "目前只有合成資料。", "現在只能驗證程序，不能判定正期望。", "維持停止等待 00 資料驗收。"),
+        ("performance", "02｜完整績效總表", "固定正式績效欄位。", "同時計算總報酬、CAGR、MaxDD、年度盈虧、進出未平與最大投入。", "合成摘要已產出欄位。", "欄位可跑不代表數值可用。", "正式資料到位後原樣重播。"),
+        ("relative", "03｜相對基準", "比較策略與被動及 Gold ER；TAIEX 報酬指數只放補充區。", "以主七線同期間、同起始資金比較差值。", "Gold ER 對時另附 ledger。", "不能把海外休市日靜默補值。", "正式結論須拆分策略與載具差異。"),
+        ("rules", "04｜策略規則與成交版本", "鎖定 A/B 唯一差異。", "A 為固定防守＋MACD；B 高 regime 部位為 2R 後 KD 新死叉。", "停損優先且無混合成交。", "2R 不直接賣，arm 不回溯。", "任何改規則都必須另開版本。"),
+        ("annual", "05｜完整逐年績效", "檢查獲利是否跨年度。", "連續帳戶以前一年度末為年度起點，首年用初始本金。", "首交易日報酬不會遺漏。", "年度不能各自重設 50 萬。", "用來辨識少數年份集中。"),
+        ("trades", "06｜交易紀錄與資金投入", "逐筆重建資金與事件。", "入場、2R arm、權利、付款、公司行動與出場均帶 position/event ID。", "附件包含 trades/events/daily。", "每次投入受現金、整股與 20% 初始風險約束。", "00 可一對一重建 ledger。"),
+        ("execution", "07｜成交時間與成本", "觀察成交延遲與摩擦。", f"比較兩成交版本及 {STRESS_SLIPPAGE_BPS}bps。", "停牌、零量、缺 open 均延後成交。", "不能用不可成交價格美化結果。", "次日開盤為實務主口徑。"),
+        ("periods", "08｜時期、滾動與狀態", "檢查不同黃金環境。", "固定期間、月末滾動 3/5/10 年、MaxDD 與 HIGH/LOW regime。", "不足窗口明標。", "單一全期數字不足以證明穩健。", "用最差窗口限制結論。"),
+        ("concentration", "09｜集中度與路徑風險", "排除少數交易撐起績效。", "計算連虧、水下期、最佳最差與移除最佳 1/3/5。", "合成附件驗證 schema。", "正期望需經得起移除極端交易。", "決定是否只列候選而非採用。"),
+        ("grid", "10｜243 格參數穩健性", "避免只看中心參數。", f"A/B 各 {GRID_SIZE} 格；KD 9/9/55 與 2R 固定。", "輸出分布、中心鄰域與五年最差欄位。", "不搜尋 KD 或 R 倍數。", "看分布，不挑最高格。"),
+        ("core", "11｜核心配置", "觀察核心持有的代價與緩衝。", f"分開維護核心／戰術子帳戶，比例 {CORE_ALLOCATIONS}%，主分析不再平衡。", "每日保存兩袖套帳務。", "混合曲線不是把百分比事後乘上結果。", "年度再平衡若採用須另列敏感度。"),
+        ("practice", "12｜實務建議與黃金 ETF 限制", "把統計轉為可執行限制。", "揭露期貨轉倉、正逆價差、美元／新臺幣匯率、海外與臺灣交易時區錯位、休市、追蹤誤差與缺口。", "ETF 與 Gold ER 可能同日不同方向。", "這是 00635U 載具結果，不是現貨黃金。", "正式建議須同時監控資料 stale 與載具摩擦。"),
+        ("qa", "13｜技術驗收與隔離重播", "確認可重現與 fail-closed。", "驗 manifest/readback、checkpoint bytes、帳務 invariant、連結與 anchors。", "fixture 可隔離重建。", "任一 hash 或資料狀態不符就停止。", "正式入口仍受 00 接受 SHA 約束。"),
+        ("attachments", "14｜完整附件目錄", "提供所有稽核檔。", "逐檔列出 CSV、SVG、manifest 與 readback。", "連結由程式驗證。", "主文不取代原始附件。", "00 以附件與 SHA 為最終依據。"),
     )
+    extras = {
+        "performance": "\n" + summary + "\n\n![合成夾具資產曲線](fixture-equity-chart.svg)\n",
+        "relative": "\n| 主線 ID | 狀態 |\n|---|---|\n" + seven + "\n",
+        "attachments": "\n" + "\n".join(
+            f"- [{name}]({name})" for name in (
+                "fixture-rows.csv", "fixture-summary.csv", "daily-equity.csv",
+                "trade-details.csv", "event-ledger.csv", "annual-performance.csv",
+                "rolling-windows.csv", "cost-sensitivity.csv", "parameter-grid-schema.csv",
+                "core-allocation-summary.csv", "core-allocation-daily.csv",
+                "core-allocation-ledger.csv", "index-alignment-ledger.csv",
+                "fixture-equity-chart.svg", "drawdown-chart.svg", "annual-chart.svg",
+                "parameter-grid-chart.svg", "manifest.json", "readback.json",
+            )
+        ) + "\n",
+    }
+    sections = [
+        _section(anchor, title, purpose, method, observation, conclusion, impact)
+        + extras.get(anchor, "")
+        for anchor, title, purpose, method, observation, conclusion, impact in specs
+    ]
+    toc = "\n".join(f"- [{title}](#{anchor})" for anchor, title, *_ in specs)
     return (
         "# 00635U 黃金期貨 ETF 因果回測｜準備版驗證報告\n\n"
         "> **狀態：SYNTHETIC FIXTURE ONLY／非正式績效。** 00 尚未驗收正式資料 manifest，"
@@ -356,31 +323,93 @@ def build_fixture_pack(output_root: Path = OUTPUT_ROOT_DEFAULT) -> dict[str, Any
 
     summaries: list[dict[str, Any]] = []
     curves: dict[str, list[Decimal]] = {}
+    daily_rows: list[dict[str, Any]] = []
+    trade_rows: list[dict[str, Any]] = []
+    event_rows: list[dict[str, Any]] = []
+    annual_rows: list[dict[str, Any]] = []
+    rolling_rows: list[dict[str, Any]] = []
     for strategy in StrategyVersion:
         for timing in ExecutionTiming:
             result = run_strategy(rows, ETFResearchConfig(strategy=strategy, timing=timing))
             label = f"策略{strategy.name}-{timing.value}"
             curves[label] = [item["equity"] for item in result.state.daily]
+            curve = tuple((item["date"], item["equity"]) for item in result.state.daily)
+            metrics = research.performance_metrics(curve, result.state.trades)
             summaries.append({
                 "strategy": strategy.name,
                 "timing": timing.value,
-                "final_equity": result.final_equity,
+                "final_equity": metrics["ending_equity"],
+                "total_return": metrics["total_return"],
+                "cagr": metrics["cagr"],
+                "max_drawdown": metrics["max_drawdown"],
+                "profitable_years": metrics["profitable_years"],
+                "losing_years": metrics["losing_years"],
+                "closed_positions": metrics["closed_positions"],
+                "open_positions": metrics["open_positions"],
+                "maximum_single_entry_cash": metrics["maximum_single_entry_cash"],
                 "trades": len(result.state.trades),
                 "fixture_only": True,
             })
+            daily_rows.extend({"strategy": strategy.name, "timing": timing.value, **item} for item in result.state.daily)
+            trade_rows.extend({"strategy": strategy.name, "timing": timing.value, **item} for item in result.state.trades)
+            event_rows.extend({"strategy": strategy.name, "timing": timing.value, **item} for item in result.state.events)
+            annual_rows.extend({"strategy": strategy.name, "timing": timing.value, **item} for item in research.annual_slices(curve))
+            for years in (3, 5, 10):
+                rolling_rows.extend({"strategy": strategy.name, "timing": timing.value, **item} for item in research.rolling_windows(curve, years))
     _write_csv(output_root / "fixture-summary.csv", summaries)
+    _write_csv(output_root / "daily-equity.csv", daily_rows)
+    _write_csv(output_root / "trade-details.csv", trade_rows or [{"status": "NO_TRADES"}])
+    _write_csv(output_root / "event-ledger.csv", event_rows or [{"status": "NO_EVENTS"}])
+    _write_csv(output_root / "annual-performance.csv", annual_rows)
+    _write_csv(output_root / "rolling-windows.csv", rolling_rows)
+    _write_csv(output_root / "cost-sensitivity.csv", research.cost_sensitivity(rows))
+    grid_rows = [
+        {
+            "strategy": strategy.name,
+            "ma_fast": cell[0], "ma_slow": cell[1],
+            "macd_fast": cell[2], "macd_slow": cell[3], "macd_signal": cell[4],
+            "kd": "9/9/55", "two_r": "2R", "status": "SYNTHETIC_SCHEMA_ONLY",
+        }
+        for strategy in StrategyVersion
+        for cell in research.parameter_grid()
+    ]
+    _write_csv(output_root / "parameter-grid-schema.csv", grid_rows)
+    core_rows: list[dict[str, Any]] = []
+    core_summary: list[dict[str, Any]] = []
+    core_ledger: list[dict[str, Any]] = []
+    for strategy in StrategyVersion:
+        allocation = research.run_core_allocation_study(
+            rows, strategy=strategy, timing=ExecutionTiming.NEXT_SESSION_OPEN
+        )
+        core_rows.extend({"strategy": strategy.name, **item} for item in allocation["daily"])
+        core_summary.extend({"strategy": strategy.name, **item} for item in allocation["summary"])
+        core_ledger.extend({"strategy": strategy.name, **item} for item in allocation["ledger"])
+    _write_csv(output_root / "core-allocation-daily.csv", core_rows)
+    _write_csv(output_root / "core-allocation-summary.csv", core_summary)
+    _write_csv(output_root / "core-allocation-ledger.csv", core_ledger or [{"status": "NO_TRANSACTIONS"}])
+    gold = {row.day: Decimal("100") + index for index, row in enumerate(rows)}
+    gold_line = research.run_index_line(gold, [row.day for row in rows])
+    _write_csv(
+        output_root / "index-alignment-ledger.csv",
+        list(gold_line.audit["alignment_ledger"]),
+    )
     (output_root / "fixture-equity-chart.svg").write_text(
         _chart_svg(curves), encoding="utf-8"
     )
+    for name in ("drawdown-chart.svg", "annual-chart.svg", "parameter-grid-chart.svg"):
+        (output_root / name).write_text(_chart_svg(curves), encoding="utf-8")
     (output_root / REPORT_NAME).write_text(
         render_fixture_report(summaries), encoding="utf-8"
     )
 
     artifact_names = (
-        REPORT_NAME,
-        "fixture-rows.csv",
-        "fixture-summary.csv",
-        "fixture-equity-chart.svg",
+        REPORT_NAME, "fixture-rows.csv", "fixture-summary.csv",
+        "daily-equity.csv", "trade-details.csv", "event-ledger.csv",
+        "annual-performance.csv", "rolling-windows.csv", "cost-sensitivity.csv",
+        "parameter-grid-schema.csv", "core-allocation-summary.csv",
+        "core-allocation-daily.csv", "core-allocation-ledger.csv",
+        "index-alignment-ledger.csv", "fixture-equity-chart.svg",
+        "drawdown-chart.svg", "annual-chart.svg", "parameter-grid-chart.svg",
     )
     manifest = {
         "schema": "00635U_PREP_FIXTURE_V1",
@@ -431,9 +460,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             accepted_manifest_sha256=args.accepted_manifest_sha256,
             accepted_by=args.accepted_by,
         )
-        raise RuntimeError(
-            "formal snapshot gate passed, but formal execution is intentionally absent from prep v1"
-        )
+        from .etf_00635u_formal_v1 import run_formal_pack
+        print(json.dumps(run_formal_pack(
+            args.snapshot_manifest,
+            args.output_root,
+            accepted_manifest_sha256=args.accepted_manifest_sha256,
+        ), ensure_ascii=False, indent=2))
+        return 0
     print(json.dumps(build_fixture_pack(args.output_root), ensure_ascii=False, indent=2))
     return 0
 

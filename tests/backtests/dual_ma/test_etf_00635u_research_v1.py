@@ -69,6 +69,50 @@ def test_official_index_alignment_fails_closed_on_missing_session():
         research.run_index_line(gold, [row.day for row in rows])
 
 
+def test_gold_er_last_known_alignment_is_causal_and_has_staleness_provenance():
+    sessions = [date(2021, 1, 4), date(2021, 1, 5), date(2021, 1, 6)]
+    observations = [
+        research.IndexObservation(
+            source_date=sessions[0],
+            available_date=sessions[0],
+            value=Decimal("100"),
+            source_timezone="America/New_York",
+        ),
+        research.IndexObservation(
+            source_date=sessions[1],
+            available_date=sessions[2],
+            value=Decimal("110"),
+            source_timezone="America/New_York",
+        ),
+    ]
+    line = research.run_index_line(
+        observations,
+        sessions,
+        alignment_policy="LAST_KNOWN_PUBLISHED",
+    )
+    assert [value for _, value in line.curve] == [
+        Decimal("500000"), Decimal("500000"), Decimal("550000")
+    ]
+    ledger = line.audit["alignment_ledger"]
+    assert ledger[1]["status"] == "LAST_KNOWN_PUBLISHED"
+    assert ledger[1]["source_date"] == sessions[0]
+    assert ledger[1]["staleness_calendar_days"] == 1
+    assert line.audit["silent_forward_fill"] is False
+
+
+def test_annual_slices_include_first_session_return_from_prior_year_end():
+    curve = (
+        (date(2020, 12, 31), Decimal("100")),
+        (date(2021, 1, 4), Decimal("110")),
+        (date(2021, 12, 31), Decimal("121")),
+    )
+    years = research.annual_slices(curve, initial_capital=Decimal("100"))
+    year_2021 = next(item for item in years if item["start"].year == 2021)
+    assert year_2021["starting_equity"] == Decimal("100")
+    assert year_2021["ending_equity"] == Decimal("121")
+    assert year_2021["return"] == Decimal("0.21")
+
+
 def test_buy_hold_cash_and_reinvest_are_distinct_declared_comparators():
     rows = prep.fixture_rows()
     rows[2] = strategy.IndicatorRow(
@@ -79,6 +123,22 @@ def test_buy_hold_cash_and_reinvest_are_distinct_declared_comparators():
     assert cash.line_id == "00635U_BUY_HOLD_CASH"
     assert reinvest.line_id == "00635U_BUY_HOLD_REINVEST"
     assert cash.curve != reinvest.curve
+
+
+def test_buy_hold_initial_entry_waits_for_first_tradable_open():
+    rows = prep.fixture_rows()
+    rows[0] = strategy.IndicatorRow(
+        **{
+            **rows[0].__dict__,
+            "raw_open": None,
+            "volume": Decimal("0"),
+            "tradable": False,
+            "tradability_reason": "SUSPENDED",
+        }
+    )
+    result = research.run_buy_hold(rows, reinvest=False)
+    assert result.curve[0][1] == Decimal("500000")
+    assert result.audit["initial_entry_deferred_sessions"] == (rows[0].day.isoformat(),)
 
 
 def test_parameter_grid_matches_accepted_243_shape_without_kd_or_r_search():
@@ -130,3 +190,41 @@ def test_regime_trade_stability_and_core_allocation_surfaces():
     )
     assert set(exact) == {0, 20, 40, 60}
     assert all(len(item) == len(prep.fixture_rows()) for item in exact.values())
+    study = research.run_core_allocation_study(
+        prep.fixture_rows(),
+        strategy=strategy.StrategyVersion.A,
+        timing=strategy.ExecutionTiming.SIGNAL_CLOSE,
+    )
+    assert len(study["summary"]) == 4
+    assert all(row["reconstruction_error"] == 0 for row in study["daily"])
+    assert all("core_cash" in row and "tactical_cash" in row for row in study["daily"])
+
+
+def test_complete_metrics_rolling_drawdown_path_and_parameter_distribution():
+    curve = (
+        (date(2020, 1, 31), Decimal("500000")),
+        (date(2020, 2, 28), Decimal("450000")),
+        (date(2020, 3, 31), Decimal("475000")),
+        (date(2023, 1, 31), Decimal("600000")),
+    )
+    metrics = research.performance_metrics(curve)
+    assert metrics["total_return"] == Decimal("0.2")
+    assert metrics["max_drawdown"] == Decimal("-0.1")
+    path = research.path_diagnostics(curve)
+    assert path["longest_consecutive_losing_months"] == 1
+    windows = research.rolling_windows(curve, 3)
+    assert windows[0]["sampling"] == "MONTH_END"
+    assert "max_drawdown" in windows[0]
+
+    grid = []
+    for index, cell in enumerate(research.parameter_grid()):
+        grid.append({
+            "ma_fast": cell[0], "ma_slow": cell[1], "macd_fast": cell[2],
+            "macd_slow": cell[3], "macd_signal": cell[4],
+            "ending_equity": Decimal("400000") + index,
+            "rolling_5y_worst_cagr": Decimal("-0.1") + Decimal(index) / Decimal("10000"),
+        })
+    summary = research.parameter_grid_summary(grid)
+    assert summary["cells"] == 243
+    assert summary["local_neighborhood_cells"] == 11
+    assert summary["rolling_5y_worst_cagr"] == Decimal("-0.1")

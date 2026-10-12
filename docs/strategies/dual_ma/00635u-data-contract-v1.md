@@ -14,10 +14,10 @@
 
 正式 snapshot 至少應包含下列不可變檔案，實際檔名由 manifest 宣告：
 
-1. 00635U 官方交易日 OHLCV：`date, open, high, low, close, volume`。
+1. 00635U 官方交易日 OHLCV：`date, open, high, low, close, volume, official_session, tradable, tradability_reason`。停牌、零量或缺 open 必須明標；不得把不可成交列當成交價。正式 manifest 中此檔角色為 `etf_daily_causal`。
 2. 公司行動與現金分配：生效日、除息權利鎖定日、付款日、事件 ID、每股現金、單位變更比例及來源。程式列以同一事件 ID 的 `ENTITLEMENT`／`PAYMENT` 兩階段表示，不得只按付款日當時持股推定權利。
 3. 臺灣交易日曆與停牌／無法成交註記。
-4. 00635U 官方追蹤的 Gold ER 指數：日期、指數值、幣別、資料時區與來源版本。
+4. 00635U 官方追蹤的 Gold ER 指數：來源日期、數值、來源時區、發布可用日期與來源版本；manifest 角色為 `gold_er_official`。
 5. 臺灣加權股價報酬指數：只供補充比較，不屬主七線。
 6. 若報告進行匯率歸因，需另附 USD/TWD 來源、定價時點與時區；不得把匯率序列暗中混入交易訊號。
 
@@ -29,6 +29,7 @@
 - 技術分析座標只供均線、MACD、KD、進出場事件與固定防守判定。
 - 公司行動於當日訊號判斷前依因果順序套用；股數與技術防守價須以互相對應的比例重訂，重訂本身不是交易或停損。
 - 現金分配的資格日與付款日分開保存；只有付款日才增加帳戶現金。
+- 截止仍未付款的具名應收股息保留在 ledger；正式 equity／drawdown 沿用 0050 現金制，在付款前排除應收，另輸出 `equity_including_receivables_audit` 供稽核。
 - 延遲到次一交易日開盤成交的訂單，若跨越公司行動，必須把訊號日防守價映射到成交日座標，不得使用成交後資訊改寫原訊號。
 
 ## 4. 時區與黃金期貨 ETF 特性
@@ -36,6 +37,7 @@
 - 所有時間戳必須保存來源時區與轉換規則。臺灣收盤、美國期貨結算與 Gold ER 指數日值不是天然同一資訊集合。
 - 正式報告必須揭露期貨轉倉、正逆價差、美元／新臺幣匯率、海外與臺灣交易時區錯位、兩地休市差異、追蹤誤差與追蹤缺口。
 - Gold ER 指數是市場基準，不是假設可無摩擦交易的策略；TAIEX 報酬指數只在補充區呈現。
+- Gold ER 對時必須明選 `STRICT_SAME_SESSION`、`COMMON_PUBLISHED_DAYS` 或 `LAST_KNOWN_PUBLISHED`。採 last-known 時每個臺灣 session 都要輸出來源日、可用日、來源時區與 stale 天數；不得無聲 forward-fill 或使用尚未發布的未來值。
 
 ## 5. Manifest 與 00 驗收閘門
 

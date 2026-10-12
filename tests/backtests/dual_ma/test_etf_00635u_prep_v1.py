@@ -60,11 +60,11 @@ def test_fixture_pack_has_chinese_report_links_anchors_manifest_and_readback(tmp
     assert "美元／新臺幣匯率" in report
     assert "交易時區錯位" in report
     assert "TAIEX 報酬指數只放補充區" in report
-    assert report.count("**目的**") == 7
-    assert report.count("**方法**") == 7
-    assert report.count("**觀察**") == 7
-    assert report.count("**白話結論**") == 7
-    assert report.count("**決策影響**") == 7
+    assert report.count("**目的**") == 14
+    assert report.count("**方法**") == 14
+    assert report.count("**觀察**") == 14
+    assert report.count("**白話結論**") == 14
+    assert report.count("**決策影響**") == 14
     assert all(line in report for line in subject.expected_comparison_lines())
 
     readback = json.loads((tmp_path / "readback.json").read_text(encoding="utf-8"))

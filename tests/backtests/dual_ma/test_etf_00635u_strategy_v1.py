@@ -1,9 +1,11 @@
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from backtests.dual_ma import etf_00635u_strategy_v1 as subject
+from backtests.dual_ma import etf_00635u_research_v1 as research
 from backtests.dual_ma.costs import CATHAY_WEB_028_TW_V1
 
 
@@ -74,6 +76,9 @@ def test_2r_arm_is_permanent_and_later_new_death_cross_exits():
     assert arm["date"] == rows[2].day
     assert exit_trade["exit_reason"] == subject.ExitReason.KD_2R.value
     assert exit_trade["fill_date"] == rows[4].day
+    assert arm["position_id"] == exit_trade["position_id"]
+    assert exit_trade["kd_2r_arm_date"] == arm["date"]
+    assert len({event["event_id"] for event in result.state.events}) == len(result.state.events)
 
 
 def test_arm_while_already_k_below_d_has_no_retroactive_exit():
@@ -141,6 +146,60 @@ def test_signal_close_and_next_session_open_never_mix_execution_prices():
     assert open_entry["fill_date"] == rows[2].day
     assert open_entry["reference_price"] == rows[2].raw_open
     assert all(trade["timing"] == subject.ExecutionTiming.NEXT_SESSION_OPEN.value for trade in open_run.state.trades)
+
+
+def test_pending_next_open_skips_missing_open_zero_volume_and_suspension():
+    rows = high_entry_rows(
+        row(
+            2,
+            close=11,
+            open_=11,
+            low=10,
+            volume=Decimal("0"),
+            tradable=False,
+            tradability_reason="SUSPENDED",
+        ),
+        row(3, close=12, open_=12, low=11, volume=Decimal("0"), tradability_reason="ZERO_VOLUME"),
+        row(4, close=13, open_=15, low=12, volume=Decimal("1000")),
+    )
+    rows[3] = subject.IndicatorRow(**{**rows[3].__dict__, "raw_open": None})
+    result = subject.run_strategy(
+        rows,
+        config(timing=subject.ExecutionTiming.NEXT_SESSION_OPEN),
+    )
+    entry = result.state.trades[0]
+    assert entry["signal_date"] == rows[1].day
+    assert entry["fill_date"] == rows[4].day
+    assert entry["reference_price"] == Decimal("15")
+    deferred = [
+        event for event in result.state.events
+        if event["event"] == "PENDING_ORDER_DEFERRED_NON_TRADABLE"
+    ]
+    assert [event["date"] for event in deferred] == [rows[2].day, rows[3].day]
+
+
+def test_nontradable_close_cannot_fill_or_create_signal_until_next_observable_session():
+    rows = [
+        row(0, close=9, low=8),
+        row(1, close=11, low=9, volume=Decimal("0"), tradable=False),
+        row(2, close=11, low=9, volume=Decimal("100")),
+    ]
+    result = subject.run_strategy(rows, config(timing=subject.ExecutionTiming.SIGNAL_CLOSE))
+    assert result.state.trades[0]["signal_date"] == rows[2].day
+    assert result.state.daily[1]["signal_observable"] is False
+    assert result.state.daily[1]["shares"] == 0
+
+
+def test_next_open_gap_at_or_below_stop_has_named_rejection_not_no_cash():
+    rows = high_entry_rows(row(2, close=7, open_=7, low=7))
+    result = subject.run_strategy(
+        rows,
+        config(timing=subject.ExecutionTiming.NEXT_SESSION_OPEN),
+    )
+    names = [event["event"] for event in result.state.events]
+    assert "ENTRY_REJECTED_GAP_AT_OR_BELOW_STOP" in names
+    assert "ENTRY_REJECTED_NO_CASH" not in names
+    assert result.state.position is None
 
 
 def test_fee_tax_and_20_percent_risk_sizing_match_accepted_cost_model():
@@ -242,6 +301,99 @@ def test_checkpoint_resume_is_byte_semantically_equivalent_to_one_pass():
     first = subject.run_strategy(rows[:2], config())
     resumed = subject.run_strategy(rows[2:], config(), initial_state=first.checkpoint())
     assert resumed.checkpoint() == full.checkpoint()
+
+
+def test_checkpoint_full_schema_multi_cut_replay_and_date_boundary_fail_closed():
+    rows = [
+        row(0, close=9, low=8, hist=-1),
+        row(1, close=11, low=9, hist=-0.5),
+        row(2, close=12, open_=12, low=10, hist=0.1),
+        row(
+            3,
+            close=12,
+            low=11,
+            hist=0.2,
+            dividend_event_id="DIV-CHECKPOINT",
+            dividend_stage="ENTITLEMENT",
+            cash_dividend_per_share=Decimal("0.5"),
+        ),
+        row(4, close=7, low=7, hist=-0.1),
+        row(
+            5,
+            close=3.5,
+            open_=3.5,
+            low=3.4,
+            sma21=5,
+            sma144=4.5,
+            hist=-0.2,
+            price_rebase_factor=Decimal("0.5"),
+            share_factor=Decimal("2"),
+            dividend_event_id="DIV-CHECKPOINT",
+            dividend_stage="PAYMENT",
+        ),
+    ]
+    cfg = config(
+        strategy=subject.StrategyVersion.A,
+        timing=subject.ExecutionTiming.NEXT_SESSION_OPEN,
+    )
+    full = subject.run_strategy(rows, cfg)
+    canonical = lambda result: json.dumps(
+        result.checkpoint(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    for cut in range(1, len(rows)):
+        first = subject.run_strategy(rows[:cut], cfg)
+        restored = subject.state_from_dict(first.checkpoint())
+        if restored.daily:
+            assert isinstance(restored.daily[-1]["date"], date)
+            assert isinstance(restored.daily[-1]["equity"], Decimal)
+        resumed = subject.run_strategy(rows[cut:], cfg, initial_state=first.checkpoint())
+        assert canonical(resumed) == canonical(full)
+        assert research.regime_summary(resumed.state.daily)
+
+    checkpoint = subject.run_strategy(rows[:3], cfg).checkpoint()
+    with pytest.raises(ValueError, match="strictly after checkpoint"):
+        subject.run_strategy(rows[2:], cfg, initial_state=checkpoint)
+    with pytest.raises(ValueError, match="strictly after checkpoint"):
+        subject.run_strategy(rows[1:2], cfg, initial_state=checkpoint)
+
+
+def test_dividend_unknown_duplicate_and_unpaid_receivable_are_fail_closed_and_visible():
+    payment_only = row(
+        0,
+        close=9,
+        dividend_event_id="UNKNOWN",
+        dividend_stage="PAYMENT",
+    )
+    with pytest.raises(ValueError, match="no prior entitlement"):
+        subject.run_strategy([payment_only], config())
+    with pytest.raises(ValueError, match="no prior entitlement"):
+        research.run_buy_hold([payment_only], reinvest=False)
+
+    rows = high_entry_rows(
+        row(
+            2,
+            close=12,
+            low=11,
+            dividend_event_id="OPEN-RIGHT",
+            dividend_stage="ENTITLEMENT",
+            cash_dividend_per_share=Decimal("0.25"),
+        )
+    )
+    result = subject.run_strategy(rows, config())
+    assert "OPEN-RIGHT" in result.state.dividend_receivables
+    assert result.state.daily[-1]["dividend_receivable_cash_excluded"] > 0
+    assert result.state.daily[-1]["equity"] < result.state.daily[-1]["equity_including_receivables_audit"]
+    comparator = research.run_buy_hold(rows, reinvest=False)
+    assert "OPEN-RIGHT" in comparator.audit["unpaid_dividend_receivables"]
+
+    duplicate_payment_rows = rows + [
+        row(3, close=12, low=11, dividend_event_id="OPEN-RIGHT", dividend_stage="PAYMENT"),
+        row(4, close=12, low=11, dividend_event_id="OPEN-RIGHT", dividend_stage="PAYMENT"),
+    ]
+    with pytest.raises(ValueError, match="duplicate dividend payment"):
+        subject.run_strategy(duplicate_payment_rows, config())
+    with pytest.raises(ValueError, match="duplicate dividend payment"):
+        research.run_buy_hold(duplicate_payment_rows, reinvest=False)
 
 
 def test_no_prelisting_rows_and_no_signals_before_indicator_readiness():

@@ -71,7 +71,7 @@ class ETFResearchConfig:
 @dataclass(frozen=True)
 class IndicatorRow:
     day: date
-    raw_open: Decimal
+    raw_open: Decimal | None
     raw_close: Decimal
     technical_close: Decimal
     technical_low: Decimal
@@ -85,6 +85,10 @@ class IndicatorRow:
     cash_dividend_per_share: Decimal = Decimal("0")
     dividend_event_id: str = ""
     dividend_stage: str = ""
+    volume: Decimal = Decimal("1")
+    official_session: bool = True
+    tradable: bool = True
+    tradability_reason: str = ""
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "IndicatorRow":
@@ -94,7 +98,7 @@ class IndicatorRow:
 
         return cls(
             day=row.get("day", row.get("date")),
-            raw_open=decimal(row["raw_open"]),
+            raw_open=(None if row.get("raw_open") is None else decimal(row["raw_open"])),
             raw_close=decimal(row["raw_close"]),
             technical_close=decimal(row["technical_close"]),
             technical_low=decimal(row["technical_low"]),
@@ -108,25 +112,28 @@ class IndicatorRow:
             cash_dividend_per_share=decimal(row.get("cash_dividend_per_share", 0)),
             dividend_event_id=str(row.get("dividend_event_id", "")),
             dividend_stage=str(row.get("dividend_stage", "")),
+            volume=decimal(row.get("volume", 1)),
+            official_session=bool(row.get("official_session", True)),
+            tradable=bool(row.get("tradable", True)),
+            tradability_reason=str(row.get("tradability_reason", "")),
         )
 
     def __post_init__(self) -> None:
         if not isinstance(self.day, date):
             raise TypeError("row day/date must be datetime.date")
-        prices = (
-            self.raw_open,
-            self.raw_close,
-            self.technical_close,
-            self.technical_low,
-        )
+        prices = (self.raw_close, self.technical_close, self.technical_low)
         if any(value <= 0 for value in prices):
             raise ValueError("prices must be positive")
+        if self.raw_open is not None and self.raw_open <= 0:
+            raise ValueError("raw_open must be positive when present")
         if self.technical_low > self.technical_close:
             raise ValueError("technical_low cannot exceed technical_close")
         if self.price_rebase_factor <= 0 or self.share_factor <= 0:
             raise ValueError("corporate-action factors must be positive")
         if self.cash_dividend_per_share < 0:
             raise ValueError("cash dividend cannot be negative")
+        if self.volume < 0:
+            raise ValueError("volume cannot be negative")
         if self.dividend_stage not in ("", "ENTITLEMENT", "PAYMENT"):
             raise ValueError("dividend_stage must be ENTITLEMENT or PAYMENT")
         if self.dividend_stage and not self.dividend_event_id:
@@ -136,7 +143,7 @@ class IndicatorRow:
 @dataclass(frozen=True)
 class RawETFRow:
     day: date
-    open: Decimal
+    open: Decimal | None
     high: Decimal
     low: Decimal
     close: Decimal
@@ -145,6 +152,10 @@ class RawETFRow:
     cash_dividend_per_share: Decimal = Decimal("0")
     dividend_event_id: str = ""
     dividend_stage: str = ""
+    volume: Decimal = Decimal("1")
+    official_session: bool = True
+    tradable: bool = True
+    tradability_reason: str = ""
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "RawETFRow":
@@ -153,7 +164,7 @@ class RawETFRow:
             day = date.fromisoformat(day)
         return cls(
             day=day,
-            open=decimal(row["open"]),
+            open=None if row.get("open") is None else decimal(row["open"]),
             high=decimal(row["high"]),
             low=decimal(row["low"]),
             close=decimal(row["close"]),
@@ -162,12 +173,20 @@ class RawETFRow:
             cash_dividend_per_share=decimal(row.get("cash_dividend_per_share", 0)),
             dividend_event_id=str(row.get("dividend_event_id", "")),
             dividend_stage=str(row.get("dividend_stage", "")),
+            volume=decimal(row.get("volume", 1)),
+            official_session=bool(row.get("official_session", True)),
+            tradable=bool(row.get("tradable", True)),
+            tradability_reason=str(row.get("tradability_reason", "")),
         )
 
     def __post_init__(self) -> None:
         if not isinstance(self.day, date):
             raise TypeError("row day/date must be datetime.date")
-        if self.low > min(self.open, self.close) or self.high < max(self.open, self.close):
+        if self.low > self.close or self.high < self.close:
+            raise ValueError("raw OHLC values are inconsistent")
+        if self.open is not None and (
+            self.low > self.open or self.high < self.open
+        ):
             raise ValueError("raw OHLC values are inconsistent")
         if self.low <= 0 or self.price_rebase_factor <= 0 or self.share_factor <= 0:
             raise ValueError("raw prices and corporate-action factors must be positive")
@@ -269,6 +288,10 @@ def build_causal_indicator_rows(
                 cash_dividend_per_share=raw.cash_dividend_per_share,
                 dividend_event_id=raw.dividend_event_id,
                 dividend_stage=raw.dividend_stage,
+                volume=raw.volume,
+                official_session=raw.official_session,
+                tradable=raw.tradable,
+                tradability_reason=raw.tradability_reason,
             )
         )
     return output
@@ -308,9 +331,12 @@ class EngineState:
     position: Position | None = None
     pending: PendingOrder | None = None
     previous: IndicatorRow | None = None
+    last_processed_day: date | None = None
     phase_low: Decimal | None = None
     position_sequence: int = 0
+    event_sequence: int = 0
     dividend_receivables: dict[str, dict[str, Any]] = field(default_factory=dict)
+    paid_dividend_event_ids: list[str] = field(default_factory=list)
     trades: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     daily: list[dict[str, Any]] = field(default_factory=list)
@@ -344,6 +370,13 @@ def _order_dict(order: OrderCost) -> dict[str, Any]:
     }
 
 
+def _emit_event(state: EngineState, payload: Mapping[str, Any]) -> dict[str, Any]:
+    state.event_sequence += 1
+    event = {"event_id": f"EVT{state.event_sequence:08d}", **dict(payload)}
+    state.events.append(event)
+    return event
+
+
 def _ready(row: IndicatorRow, strategy: StrategyVersion) -> bool:
     common = (
         row.sma21 is not None
@@ -353,6 +386,18 @@ def _ready(row: IndicatorRow, strategy: StrategyVersion) -> bool:
     if strategy == StrategyVersion.B:
         return common and row.k is not None and row.d is not None
     return common
+
+
+def _signal_observable(row: IndicatorRow) -> bool:
+    return row.official_session and row.tradable and row.volume > 0
+
+
+def _can_execute_open(row: IndicatorRow) -> bool:
+    return _signal_observable(row) and row.raw_open is not None
+
+
+def _can_execute_close(row: IndicatorRow) -> bool:
+    return _signal_observable(row)
 
 
 def _regime(row: IndicatorRow) -> str:
@@ -367,7 +412,12 @@ def _entry_signal(
     strategy: StrategyVersion,
     listing_date: date,
 ) -> EntryType | None:
-    if previous is None or not _ready(row, strategy) or not _ready(previous, strategy):
+    if (
+        previous is None
+        or not _signal_observable(row)
+        or not _ready(row, strategy)
+        or not _ready(previous, strategy)
+    ):
         return None
     if row.day < listing_date:
         return None
@@ -413,6 +463,22 @@ def _record_entry(
     entry_type: EntryType,
     histogram: Decimal,
 ) -> None:
+    if initial_stop >= technical_entry:
+        _emit_event(state, {
+            "date": fill_date,
+            "event": "ENTRY_REJECTED_INVALID_TECHNICAL_STOP",
+            "initial_stop": initial_stop,
+        })
+        return
+    if reference_price <= initial_stop:
+        _emit_event(state, {
+            "date": fill_date,
+            "event": "ENTRY_REJECTED_GAP_AT_OR_BELOW_STOP",
+            "signal_date": signal_date,
+            "fill_reference_price": reference_price,
+            "initial_stop": initial_stop,
+        })
+        return
     sized = size_entry(
         reference_price,
         initial_stop,
@@ -423,18 +489,22 @@ def _record_entry(
         max_shares=1_000_000,
     )
     if sized is None:
-        state.events.append({"date": fill_date, "event": "ENTRY_REJECTED_NO_CASH"})
+        one_share_cost = config.cost_model.buy(reference_price, 1).cash_amount
+        reason = (
+            "ENTRY_REJECTED_NO_CASH"
+            if one_share_cost > state.cash
+            else "ENTRY_REJECTED_RISK_LIMIT"
+        )
+        _emit_event(state, {
+            "date": fill_date,
+            "event": reason,
+            "available_cash": state.cash,
+            "one_share_cost": one_share_cost,
+        })
         return
     shares = sized.shares
     buy = sized.buy
     initial_r = sized.initial_r
-    if initial_stop >= technical_entry:
-        state.events.append({
-            "date": fill_date,
-            "event": "ENTRY_REJECTED_INVALID_STOP",
-            "initial_stop": initial_stop,
-        })
-        return
     state.cash -= buy.cash_amount
     state.position_sequence += 1
     state.position = Position(
@@ -459,6 +529,14 @@ def _record_entry(
         "initial_stop": initial_stop,
         "initial_r": initial_r,
         "timing": config.timing.value,
+    })
+    _emit_event(state, {
+        "date": fill_date,
+        "signal_date": signal_date,
+        "event": "ENTRY_FILLED",
+        "position_id": state.position.position_id,
+        "entry_type": entry_type.value,
+        "shares": shares,
     })
 
 
@@ -485,12 +563,22 @@ def _record_exit(
         "exit_reason": reason.value,
         **_order_dict(sale),
         "cash_distributions": position.cash_distributions,
+        "kd_2r_arm_date": position.kd_2r_arm_date,
         "net_pnl": (
             sale.cash_amount
             + position.cash_distributions
             - position.buy.cash_amount
         ),
         "timing": config.timing.value,
+    })
+    _emit_event(state, {
+        "date": fill_date,
+        "signal_date": signal_date,
+        "event": "EXIT_FILLED",
+        "position_id": position.position_id,
+        "exit_reason": reason.value,
+        "kd_2r_arm_date": position.kd_2r_arm_date,
+        "shares": position.shares,
     })
     state.position = None
 
@@ -511,9 +599,10 @@ def _apply_corporate_action(state: EngineState, row: IndicatorRow) -> None:
             state.pending.technical_entry *= row.price_rebase_factor
     if state.phase_low is not None:
         state.phase_low *= row.price_rebase_factor
-    state.events.append({
+    _emit_event(state, {
         "date": row.day,
         "event": "CORPORATE_ACTION_REBASE",
+        "position_id": "" if state.position is None else state.position.position_id,
         "price_rebase_factor": row.price_rebase_factor,
         "share_factor": row.share_factor,
     })
@@ -521,7 +610,10 @@ def _apply_corporate_action(state: EngineState, row: IndicatorRow) -> None:
 
 def _apply_dividend_ledger(state: EngineState, row: IndicatorRow) -> None:
     if row.dividend_stage == "ENTITLEMENT":
-        if row.dividend_event_id in state.dividend_receivables:
+        if (
+            row.dividend_event_id in state.dividend_receivables
+            or row.dividend_event_id in state.paid_dividend_event_ids
+        ):
             raise ValueError("duplicate dividend entitlement id")
         position = state.position
         cash = (
@@ -533,16 +625,20 @@ def _apply_dividend_ledger(state: EngineState, row: IndicatorRow) -> None:
             "cash": cash,
             "position_id": "" if position is None else position.position_id,
         }
-        state.events.append({
+        _emit_event(state, {
             "date": row.day,
             "event": "DIVIDEND_ENTITLEMENT_LOCKED",
             "dividend_event_id": row.dividend_event_id,
+            "position_id": "" if position is None else position.position_id,
             "cash": cash,
         })
     elif row.dividend_stage == "PAYMENT":
-        right = state.dividend_receivables.pop(row.dividend_event_id, None)
-        if right is None:
-            right = {"cash": Decimal("0"), "position_id": ""}
+        if row.dividend_event_id in state.paid_dividend_event_ids:
+            raise ValueError("duplicate dividend payment id")
+        if row.dividend_event_id not in state.dividend_receivables:
+            raise ValueError("dividend payment has no prior entitlement")
+        right = state.dividend_receivables.pop(row.dividend_event_id)
+        state.paid_dividend_event_ids.append(row.dividend_event_id)
         cash = decimal(right["cash"])
         state.cash += cash
         owner = str(right["position_id"])
@@ -556,10 +652,11 @@ def _apply_dividend_ledger(state: EngineState, row: IndicatorRow) -> None:
                     ) + cash
                     trade["net_pnl"] = decimal(trade["net_pnl"]) + cash
                     break
-        state.events.append({
+        _emit_event(state, {
             "date": row.day,
             "event": "DIVIDEND_CASH_PAID",
             "dividend_event_id": row.dividend_event_id,
+            "position_id": owner,
             "cash": cash,
         })
 
@@ -569,6 +666,18 @@ def _execute_pending_open(
 ) -> str | None:
     pending = state.pending
     if pending is None:
+        return None
+    if not _can_execute_open(row):
+        _emit_event(state, {
+            "date": row.day,
+            "event": "PENDING_ORDER_DEFERRED_NON_TRADABLE",
+            "pending_side": pending.side,
+            "signal_date": pending.signal_date,
+            "tradability_reason": (
+                row.tradability_reason
+                or ("MISSING_OPEN" if row.raw_open is None else "NON_TRADABLE_SESSION")
+            ),
+        })
         return None
     state.pending = None
     if pending.side == "ENTRY":
@@ -602,7 +711,12 @@ def _exit_signal(
     row: IndicatorRow,
 ) -> ExitReason | None:
     position = state.position
-    if position is None or previous is None or not _ready(row, config.strategy):
+    if (
+        position is None
+        or previous is None
+        or not _signal_observable(row)
+        or not _ready(row, config.strategy)
+    ):
         return None
     histogram = row.macd_histogram
     prior_histogram = previous.macd_histogram
@@ -612,7 +726,7 @@ def _exit_signal(
     if config.strategy == StrategyVersion.B and position.entry_type == EntryType.HIGH_MA21:
         if stop_hit:
             if position.kd_2r_armed and previous.k >= previous.d and row.k < row.d:
-                state.events.append({"date": row.day, "event": "STOP_PRIORITY_OVER_KD"})
+                _emit_event(state, {"date": row.day, "event": "STOP_PRIORITY_OVER_KD", "position_id": position.position_id})
             return ExitReason.INITIAL_STOP
         marked_sale = config.cost_model.sell(
             row.raw_close, position.shares, config.instrument_type
@@ -625,9 +739,10 @@ def _exit_signal(
         if not position.kd_2r_armed and net_pnl >= Decimal("2") * position.initial_r:
             position.kd_2r_armed = True
             position.kd_2r_arm_date = row.day
-            state.events.append({
+            _emit_event(state, {
                 "date": row.day,
                 "event": "KD_2R_PERMANENTLY_ARMED",
+                "position_id": position.position_id,
                 "net_pnl": net_pnl,
                 "two_r": Decimal("2") * position.initial_r,
             })
@@ -635,18 +750,18 @@ def _exit_signal(
         if position.kd_2r_armed and kd_cross:
             return ExitReason.KD_2R
         if kd_cross:
-            state.events.append({"date": row.day, "event": "KD_DEATH_CROSS_IGNORED_BEFORE_2R"})
+            _emit_event(state, {"date": row.day, "event": "KD_DEATH_CROSS_IGNORED_BEFORE_2R", "position_id": position.position_id})
         return None
 
     if not position.macd_armed and histogram >= 0:
         position.macd_armed = True
-        state.events.append({"date": row.day, "event": "MACD_PERMANENTLY_ARMED"})
+        _emit_event(state, {"date": row.day, "event": "MACD_PERMANENTLY_ARMED", "position_id": position.position_id})
     if stop_hit and _regime(row) == "HIGH":
         if macd_cross and position.macd_armed:
-            state.events.append({"date": row.day, "event": "STOP_PRIORITY_OVER_MACD"})
+            _emit_event(state, {"date": row.day, "event": "STOP_PRIORITY_OVER_MACD", "position_id": position.position_id})
         return ExitReason.INITIAL_STOP
     if stop_hit and _regime(row) == "LOW":
-        state.events.append({"date": row.day, "event": "STOP_EXIT_SUPPRESSED_LOW_REGIME"})
+        _emit_event(state, {"date": row.day, "event": "STOP_EXIT_SUPPRESSED_LOW_REGIME", "position_id": position.position_id})
     if macd_cross and position.macd_armed:
         return ExitReason.MACD
     return None
@@ -670,6 +785,28 @@ def run_strategy(
     else:
         state = state_from_dict(initial_state)
 
+    checkpoint_last = state.last_processed_day
+    if state.daily:
+        daily_last = state.daily[-1].get("date")
+        if not isinstance(daily_last, date):
+            raise ValueError("checkpoint daily date schema is invalid")
+        if checkpoint_last is None:
+            checkpoint_last = daily_last
+            state.last_processed_day = daily_last
+        elif checkpoint_last != daily_last:
+            raise ValueError("checkpoint last processed day is inconsistent")
+    if state.previous is not None:
+        if checkpoint_last is None or state.previous.day > checkpoint_last:
+            raise ValueError("checkpoint previous signal row exceeds processed boundary")
+    elif checkpoint_last is not None:
+        if any(
+            item.get("signal_ready") and item.get("signal_observable", True)
+            for item in state.daily
+        ):
+            raise ValueError("checkpoint has ready daily rows without previous signal state")
+    if normalized and checkpoint_last is not None and normalized[0].day <= checkpoint_last:
+        raise ValueError("resume rows must start strictly after checkpoint day")
+
     for row in normalized:
         if row.day < config.listing_date:
             raise ValueError("pre-listing 00635U prices are forbidden")
@@ -687,11 +824,20 @@ def run_strategy(
             dividend = row.cash_dividend_per_share * state.position.shares
             state.cash += dividend
             state.position.cash_distributions += dividend
-            state.events.append({"date": row.day, "event": "CASH_DIVIDEND", "cash": dividend})
+            _emit_event(state, {
+                "date": row.day,
+                "event": "CASH_DIVIDEND",
+                "position_id": state.position.position_id,
+                "cash": dividend,
+            })
 
         previous = state.previous
         exited_today = False
-        reason = _exit_signal(state, config, previous, row)
+        reason = (
+            None
+            if state.pending is not None
+            else _exit_signal(state, config, previous, row)
+        )
         if reason is not None:
             if config.timing == ExecutionTiming.SIGNAL_CLOSE:
                 _record_exit(
@@ -739,13 +885,17 @@ def run_strategy(
                         histogram_at_signal=row.macd_histogram,
                     )
             elif not blocked:
-                state.events.append({"date": row.day, "event": "ENTRY_REJECTED_INVALID_STOP"})
+                _emit_event(state, {"date": row.day, "event": "ENTRY_REJECTED_INVALID_STOP"})
             state.phase_low = None
-        elif row.sma21 is not None and row.technical_close <= row.sma21:
+        elif (
+            _signal_observable(row)
+            and row.sma21 is not None
+            and row.technical_close <= row.sma21
+        ):
             state.phase_low = min(
                 value for value in (state.phase_low, row.technical_low) if value is not None
             )
-        elif row.sma21 is not None:
+        elif _signal_observable(row) and row.sma21 is not None:
             state.phase_low = None
 
         liquidation = Decimal("0")
@@ -754,6 +904,10 @@ def run_strategy(
                 row.raw_close, state.position.shares, config.instrument_type
             ).cash_amount
         equity = state.cash + liquidation
+        receivable_cash = sum(
+            (decimal(item["cash"]) for item in state.dividend_receivables.values()),
+            Decimal("0"),
+        )
         if state.cash < 0 or equity != state.cash + liquidation:
             raise AssertionError("daily accounting invariant violated")
         state.daily.append({
@@ -761,13 +915,22 @@ def run_strategy(
             "cash": state.cash,
             "liquidation_value": liquidation,
             "equity": equity,
+            "dividend_receivable_cash_excluded": receivable_cash,
+            "equity_including_receivables_audit": equity + receivable_cash,
             "shares": 0 if state.position is None else state.position.shares,
             "pending": "" if state.pending is None else state.pending.side,
             "regime": _regime(row),
             "signal_ready": _ready(row, config.strategy),
+            "signal_observable": _signal_observable(row),
+            "official_session": row.official_session,
+            "tradable": row.tradable,
+            "volume": row.volume,
+            "tradability_reason": row.tradability_reason,
             "open_execution": "" if open_execution is None else open_execution,
         })
-        state.previous = row
+        if _signal_observable(row):
+            state.previous = row
+        state.last_processed_day = row.day
     return RunResult(config=config, state=state)
 
 
@@ -787,6 +950,40 @@ def _jsonable(value: Any) -> Any:
 
 def state_to_dict(state: EngineState) -> dict[str, Any]:
     return _jsonable(asdict(state))
+
+
+_RECORD_DATE_FIELDS = {
+    "date", "signal_date", "fill_date", "entry_date", "kd_2r_arm_date",
+}
+_RECORD_DECIMAL_FIELDS = {
+    "reference_price", "fill_price", "gross", "commission", "tax",
+    "cash_amount", "initial_stop", "initial_r", "net_pnl",
+    "cash_distributions", "cash", "liquidation_value", "equity",
+    "dividend_receivable_cash_excluded", "equity_including_receivables_audit",
+    "price_rebase_factor", "share_factor", "technical_close", "net_pnl",
+    "two_r", "available_cash", "one_share_cost", "fill_reference_price",
+}
+
+
+def _restore_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    restored: dict[str, Any] = {}
+    for key, value in record.items():
+        if value is None:
+            restored[key] = None
+        elif key in _RECORD_DATE_FIELDS and isinstance(value, str):
+            restored[key] = date.fromisoformat(value)
+        elif key in _RECORD_DECIMAL_FIELDS and isinstance(value, str):
+            restored[key] = decimal(value)
+        elif isinstance(value, dict):
+            restored[key] = _restore_record(value)
+        elif isinstance(value, list):
+            restored[key] = [
+                _restore_record(item) if isinstance(item, Mapping) else item
+                for item in value
+            ]
+        else:
+            restored[key] = value
+    return restored
 
 
 def state_from_dict(payload: Mapping[str, Any]) -> EngineState:
@@ -862,13 +1059,21 @@ def state_from_dict(payload: Mapping[str, Any]) -> EngineState:
                 else ExitReason(pending_payload["exit_reason"])
             ),
         )
+    restored_daily = [_restore_record(item) for item in payload.get("daily", [])]
+    last_processed = payload.get("last_processed_day")
+    if isinstance(last_processed, str):
+        last_processed = date.fromisoformat(last_processed)
+    if last_processed is None and restored_daily:
+        last_processed = restored_daily[-1].get("date")
     return EngineState(
         cash=decimal(payload["cash"]),
         position=position,
         pending=pending,
         previous=row(payload.get("previous")),
+        last_processed_day=last_processed,
         phase_low=None if payload.get("phase_low") is None else decimal(payload["phase_low"]),
         position_sequence=int(payload.get("position_sequence", 0)),
+        event_sequence=int(payload.get("event_sequence", 0)),
         dividend_receivables={
             str(key): {
                 "cash": decimal(value["cash"]),
@@ -876,9 +1081,10 @@ def state_from_dict(payload: Mapping[str, Any]) -> EngineState:
             }
             for key, value in payload.get("dividend_receivables", {}).items()
         },
-        trades=[dict(item) for item in payload.get("trades", [])],
-        events=[dict(item) for item in payload.get("events", [])],
-        daily=[dict(item) for item in payload.get("daily", [])],
+        paid_dividend_event_ids=[str(item) for item in payload.get("paid_dividend_event_ids", [])],
+        trades=[_restore_record(item) for item in payload.get("trades", [])],
+        events=[_restore_record(item) for item in payload.get("events", [])],
+        daily=restored_daily,
     )
 
 

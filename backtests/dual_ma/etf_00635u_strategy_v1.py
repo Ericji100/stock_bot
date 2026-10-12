@@ -13,7 +13,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 
-from .costs import CATHAY_WEB_028_TW_V1, CostModel, OrderCost, size_entry
+from .costs import CATHAY_WEB_028_TW_V1, CostModel, OrderCost, SizedEntry, size_entry
 from .models import InstrumentType, decimal
 
 
@@ -44,11 +44,13 @@ class ExecutionTiming(str, Enum):
 class EntryPolicy(str, Enum):
     ORIGINAL = "ORIGINAL_HIGH_AND_LOW"
     STRICT_HIGH_ONLY = "STRICT_MA21_GT_MA144_ONLY"
+    MACD_ONLY = "MACD_ONLY_NO_MA_DECISIONS"
 
 
 class EntryType(str, Enum):
     HIGH_MA21 = "HIGH_REGIME_MA21_BREAKOUT"
     LOW_MACD = "LOW_REGIME_MACD_GREEN_TO_RED"
+    MACD_ONLY = "MACD_ONLY_GREEN_TO_RED"
 
 
 class ExitReason(str, Enum):
@@ -329,6 +331,12 @@ class PendingOrder:
     initial_stop: Decimal | None = None
     histogram_at_signal: Decimal | None = None
     exit_reason: ExitReason | None = None
+    negative_segment_start: date | None = None
+    negative_segment_end: date | None = None
+    negative_segment_low: Decimal | None = None
+    entry_previous_histogram: Decimal | None = None
+    entry_sma21: Decimal | None = None
+    entry_sma144: Decimal | None = None
 
 
 @dataclass
@@ -339,6 +347,9 @@ class EngineState:
     previous: IndicatorRow | None = None
     last_processed_day: date | None = None
     phase_low: Decimal | None = None
+    negative_hist_low: Decimal | None = None
+    negative_hist_start: date | None = None
+    negative_hist_end: date | None = None
     position_sequence: int = 0
     event_sequence: int = 0
     dividend_receivables: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -383,12 +394,14 @@ def _emit_event(state: EngineState, payload: Mapping[str, Any]) -> dict[str, Any
     return event
 
 
-def _ready(row: IndicatorRow, strategy: StrategyVersion) -> bool:
-    common = (
-        row.sma21 is not None
-        and row.sma144 is not None
-        and row.macd_histogram is not None
-    )
+def _ready(
+    row: IndicatorRow,
+    strategy: StrategyVersion,
+    entry_policy: EntryPolicy = EntryPolicy.ORIGINAL,
+) -> bool:
+    common = row.macd_histogram is not None
+    if entry_policy != EntryPolicy.MACD_ONLY:
+        common = common and row.sma21 is not None and row.sma144 is not None
     if strategy == StrategyVersion.B:
         return common and row.k is not None and row.d is not None
     return common
@@ -422,11 +435,15 @@ def _entry_signal(
     if (
         previous is None
         or not _signal_observable(row)
-        or not _ready(row, strategy)
-        or not _ready(previous, strategy)
+        or not _ready(row, strategy, entry_policy)
+        or not _ready(previous, strategy, entry_policy)
     ):
         return None
     if row.day < listing_date:
+        return None
+    if entry_policy == EntryPolicy.MACD_ONLY:
+        if previous.macd_histogram <= 0 and row.macd_histogram > 0:
+            return EntryType.MACD_ONLY
         return None
     if entry_policy == EntryPolicy.STRICT_HIGH_ONLY and not row.sma21 > row.sma144:
         return None
@@ -460,6 +477,37 @@ def _maximum_affordable_shares(
     return upper
 
 
+def _size_entry_exact_binary(
+    reference_price: Decimal,
+    initial_stop: Decimal,
+    config: ETFResearchConfig,
+    cash: Decimal,
+) -> SizedEntry | None:
+    """Return the same largest valid integer size as ``size_entry`` in O(log n)."""
+
+    if initial_stop >= reference_price or initial_stop <= 0:
+        return None
+    model = config.cost_model
+    upper = min(1_000_000, int(cash / model._fill_price(reference_price, "BUY")))
+    low, best = 1, 0
+    risk_limit = cash * Decimal("0.20")
+    while low <= upper:
+        shares = (low + upper) // 2
+        buy = model.buy(reference_price, shares)
+        stop_sale = model.sell(initial_stop, shares, config.instrument_type)
+        risk = buy.cash_amount - stop_sale.cash_amount
+        if buy.cash_amount <= cash and Decimal("0") < risk <= risk_limit:
+            best = shares
+            low = shares + 1
+        else:
+            upper = shares - 1
+    if best == 0:
+        return None
+    buy = model.buy(reference_price, best)
+    stop_sale = model.sell(initial_stop, best, config.instrument_type)
+    return SizedEntry(best, buy, stop_sale, buy.cash_amount - stop_sale.cash_amount)
+
+
 def _record_entry(
     state: EngineState,
     config: ETFResearchConfig,
@@ -471,6 +519,12 @@ def _record_entry(
     initial_stop: Decimal,
     entry_type: EntryType,
     histogram: Decimal,
+    negative_segment_start: date | None = None,
+    negative_segment_end: date | None = None,
+    negative_segment_low: Decimal | None = None,
+    entry_previous_histogram: Decimal | None = None,
+    entry_sma21: Decimal | None = None,
+    entry_sma144: Decimal | None = None,
 ) -> None:
     if initial_stop >= technical_entry:
         _emit_event(state, {
@@ -488,14 +542,18 @@ def _record_entry(
             "initial_stop": initial_stop,
         })
         return
-    sized = size_entry(
-        reference_price,
-        initial_stop,
-        config.instrument_type,
-        cost_model=config.cost_model,
-        max_total_cost=state.cash,
-        max_initial_r=state.cash * Decimal("0.20"),
-        max_shares=1_000_000,
+    sized = (
+        _size_entry_exact_binary(reference_price, initial_stop, config, state.cash)
+        if config.entry_policy == EntryPolicy.MACD_ONLY else
+        size_entry(
+            reference_price,
+            initial_stop,
+            config.instrument_type,
+            cost_model=config.cost_model,
+            max_total_cost=state.cash,
+            max_initial_r=state.cash * Decimal("0.20"),
+            max_shares=1_000_000,
+        )
     )
     if sized is None:
         one_share_cost = config.cost_model.buy(reference_price, 1).cash_amount
@@ -528,7 +586,7 @@ def _record_entry(
         initial_r=initial_r,
         macd_armed=entry_type == EntryType.LOW_MACD or histogram >= 0,
     )
-    state.trades.append({
+    entry_record = {
         "role": "ENTRY",
         "signal_date": signal_date,
         "fill_date": fill_date,
@@ -538,7 +596,21 @@ def _record_entry(
         "initial_stop": initial_stop,
         "initial_r": initial_r,
         "timing": config.timing.value,
-    })
+    }
+    if config.entry_policy == EntryPolicy.MACD_ONLY:
+        entry_record.update({
+            "technical_entry": technical_entry,
+            "technical_r_per_share": technical_entry - initial_stop,
+            "entry_previous_histogram": entry_previous_histogram,
+            "entry_current_histogram": histogram,
+            "negative_segment_start": negative_segment_start,
+            "negative_segment_end": negative_segment_end,
+            "negative_segment_low": negative_segment_low,
+            "entry_sma21_diagnostic": entry_sma21,
+            "entry_sma144_diagnostic": entry_sma144,
+            "ma_decision_role": "DIAGNOSTIC_ONLY_NOT_USED",
+        })
+    state.trades.append(entry_record)
     _emit_event(state, {
         "date": fill_date,
         "signal_date": signal_date,
@@ -608,6 +680,8 @@ def _apply_corporate_action(state: EngineState, row: IndicatorRow) -> None:
             state.pending.technical_entry *= row.price_rebase_factor
     if state.phase_low is not None:
         state.phase_low *= row.price_rebase_factor
+    if state.negative_hist_low is not None:
+        state.negative_hist_low *= row.price_rebase_factor
     _emit_event(state, {
         "date": row.day,
         "event": "CORPORATE_ACTION_REBASE",
@@ -700,6 +774,12 @@ def _execute_pending_open(
             initial_stop=pending.initial_stop,
             entry_type=pending.entry_type,
             histogram=pending.histogram_at_signal,
+            negative_segment_start=pending.negative_segment_start,
+            negative_segment_end=pending.negative_segment_end,
+            negative_segment_low=pending.negative_segment_low,
+            entry_previous_histogram=pending.entry_previous_histogram,
+            entry_sma21=pending.entry_sma21,
+            entry_sma144=pending.entry_sma144,
         )
     else:
         _record_exit(
@@ -724,7 +804,8 @@ def _exit_signal(
         position is None
         or previous is None
         or not _signal_observable(row)
-        or not _ready(row, config.strategy)
+        or not _ready(row, config.strategy, config.entry_policy)
+        or not _ready(previous, config.strategy, config.entry_policy)
     ):
         return None
     histogram = row.macd_histogram
@@ -732,7 +813,19 @@ def _exit_signal(
     macd_cross = prior_histogram is not None and prior_histogram >= 0 and histogram < 0
     stop_hit = row.technical_close < position.initial_stop
 
-    if config.strategy == StrategyVersion.B and position.entry_type == EntryType.HIGH_MA21:
+    if config.entry_policy == EntryPolicy.MACD_ONLY and config.strategy == StrategyVersion.A:
+        if stop_hit:
+            if macd_cross:
+                _emit_event(state, {"date": row.day, "event": "STOP_PRIORITY_OVER_MACD", "position_id": position.position_id})
+            return ExitReason.INITIAL_STOP
+        if macd_cross:
+            return ExitReason.MACD
+        return None
+
+    if config.strategy == StrategyVersion.B and (
+        position.entry_type == EntryType.HIGH_MA21
+        or config.entry_policy == EntryPolicy.MACD_ONLY
+    ):
         if stop_hit:
             if position.kd_2r_armed and previous.k >= previous.d and row.k < row.d:
                 _emit_event(state, {"date": row.day, "event": "STOP_PRIORITY_OVER_KD", "position_id": position.position_id})
@@ -866,14 +959,25 @@ def run_strategy(
         )
         candidate_stop = None
         if selected is not None:
-            candidate_stop = _candidate_stop(state.phase_low, previous, row)
+            candidate_stop = (
+                None
+                if config.entry_policy == EntryPolicy.MACD_ONLY
+                and state.negative_hist_low is None
+                else _candidate_stop(
+                    state.negative_hist_low
+                    if config.entry_policy == EntryPolicy.MACD_ONLY
+                    else state.phase_low,
+                    previous,
+                    row,
+                )
+            )
             blocked = (
                 state.position is not None
                 or state.pending is not None
                 or exited_today
                 or open_execution == "EXIT"
             )
-            if not blocked and candidate_stop < row.technical_close:
+            if not blocked and candidate_stop is not None and candidate_stop < row.technical_close:
                 if config.timing == ExecutionTiming.SIGNAL_CLOSE:
                     _record_entry(
                         state,
@@ -885,6 +989,14 @@ def run_strategy(
                         initial_stop=candidate_stop,
                         entry_type=selected,
                         histogram=row.macd_histogram,
+                        negative_segment_start=state.negative_hist_start,
+                        negative_segment_end=state.negative_hist_end,
+                        negative_segment_low=state.negative_hist_low,
+                        entry_previous_histogram=(
+                            None if previous is None else previous.macd_histogram
+                        ),
+                        entry_sma21=row.sma21,
+                        entry_sma144=row.sma144,
                     )
                 else:
                     state.pending = PendingOrder(
@@ -894,11 +1006,29 @@ def run_strategy(
                         technical_entry=row.technical_close,
                         initial_stop=candidate_stop,
                         histogram_at_signal=row.macd_histogram,
+                        negative_segment_start=state.negative_hist_start,
+                        negative_segment_end=state.negative_hist_end,
+                        negative_segment_low=state.negative_hist_low,
+                        entry_previous_histogram=(
+                            None if previous is None else previous.macd_histogram
+                        ),
+                        entry_sma21=row.sma21,
+                        entry_sma144=row.sma144,
                     )
             elif not blocked:
-                _emit_event(state, {"date": row.day, "event": "ENTRY_REJECTED_INVALID_STOP"})
+                _emit_event(state, {
+                    "date": row.day,
+                    "event": (
+                        "ENTRY_REJECTED_NO_NEGATIVE_HISTOGRAM_SEGMENT"
+                        if config.entry_policy == EntryPolicy.MACD_ONLY
+                        and state.negative_hist_low is None
+                        else "ENTRY_REJECTED_INVALID_STOP"
+                    ),
+                })
             state.phase_low = None
         elif (
+            config.entry_policy != EntryPolicy.MACD_ONLY
+            and
             _signal_observable(row)
             and row.sma21 is not None
             and row.technical_close <= row.sma21
@@ -906,8 +1036,27 @@ def run_strategy(
             state.phase_low = min(
                 value for value in (state.phase_low, row.technical_low) if value is not None
             )
-        elif _signal_observable(row) and row.sma21 is not None:
+        elif (
+            config.entry_policy != EntryPolicy.MACD_ONLY
+            and _signal_observable(row)
+            and row.sma21 is not None
+        ):
             state.phase_low = None
+
+        if _signal_observable(row) and row.macd_histogram is not None:
+            if row.macd_histogram < 0:
+                if state.negative_hist_low is None:
+                    state.negative_hist_start = row.day
+                    state.negative_hist_low = row.technical_low
+                else:
+                    state.negative_hist_low = min(
+                        state.negative_hist_low, row.technical_low
+                    )
+                state.negative_hist_end = row.day
+            else:
+                state.negative_hist_low = None
+                state.negative_hist_start = None
+                state.negative_hist_end = None
 
         liquidation = Decimal("0")
         if state.position is not None:
@@ -931,7 +1080,7 @@ def run_strategy(
             "shares": 0 if state.position is None else state.position.shares,
             "pending": "" if state.pending is None else state.pending.side,
             "regime": _regime(row),
-            "signal_ready": _ready(row, config.strategy),
+            "signal_ready": _ready(row, config.strategy, config.entry_policy),
             "signal_observable": _signal_observable(row),
             "official_session": row.official_session,
             "tradable": row.tradable,
@@ -965,6 +1114,7 @@ def state_to_dict(state: EngineState) -> dict[str, Any]:
 
 _RECORD_DATE_FIELDS = {
     "date", "signal_date", "fill_date", "entry_date", "kd_2r_arm_date",
+    "negative_segment_start", "negative_segment_end",
 }
 _RECORD_DECIMAL_FIELDS = {
     "reference_price", "fill_price", "gross", "commission", "tax",
@@ -973,6 +1123,10 @@ _RECORD_DECIMAL_FIELDS = {
     "dividend_receivable_cash_excluded", "equity_including_receivables_audit",
     "price_rebase_factor", "share_factor", "technical_close", "net_pnl",
     "two_r", "available_cash", "one_share_cost", "fill_reference_price",
+    "entry_previous_histogram", "entry_current_histogram",
+    "negative_segment_low", "entry_sma21_diagnostic",
+    "entry_sma144_diagnostic",
+    "technical_entry", "technical_r_per_share",
 }
 
 
@@ -1069,6 +1223,36 @@ def state_from_dict(payload: Mapping[str, Any]) -> EngineState:
                 if pending_payload.get("exit_reason") is None
                 else ExitReason(pending_payload["exit_reason"])
             ),
+            negative_segment_start=(
+                None
+                if pending_payload.get("negative_segment_start") is None
+                else date.fromisoformat(pending_payload["negative_segment_start"])
+            ),
+            negative_segment_end=(
+                None
+                if pending_payload.get("negative_segment_end") is None
+                else date.fromisoformat(pending_payload["negative_segment_end"])
+            ),
+            negative_segment_low=(
+                None
+                if pending_payload.get("negative_segment_low") is None
+                else decimal(pending_payload["negative_segment_low"])
+            ),
+            entry_previous_histogram=(
+                None
+                if pending_payload.get("entry_previous_histogram") is None
+                else decimal(pending_payload["entry_previous_histogram"])
+            ),
+            entry_sma21=(
+                None
+                if pending_payload.get("entry_sma21") is None
+                else decimal(pending_payload["entry_sma21"])
+            ),
+            entry_sma144=(
+                None
+                if pending_payload.get("entry_sma144") is None
+                else decimal(pending_payload["entry_sma144"])
+            ),
         )
     restored_daily = [_restore_record(item) for item in payload.get("daily", [])]
     last_processed = payload.get("last_processed_day")
@@ -1083,6 +1267,21 @@ def state_from_dict(payload: Mapping[str, Any]) -> EngineState:
         previous=row(payload.get("previous")),
         last_processed_day=last_processed,
         phase_low=None if payload.get("phase_low") is None else decimal(payload["phase_low"]),
+        negative_hist_low=(
+            None
+            if payload.get("negative_hist_low") is None
+            else decimal(payload["negative_hist_low"])
+        ),
+        negative_hist_start=(
+            None
+            if payload.get("negative_hist_start") is None
+            else date.fromisoformat(payload["negative_hist_start"])
+        ),
+        negative_hist_end=(
+            None
+            if payload.get("negative_hist_end") is None
+            else date.fromisoformat(payload["negative_hist_end"])
+        ),
         position_sequence=int(payload.get("position_sequence", 0)),
         event_sequence=int(payload.get("event_sequence", 0)),
         dividend_receivables={

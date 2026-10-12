@@ -305,6 +305,49 @@ def test_percentage_points_normalizes_negative_zero():
     assert formal._percentage_points(Decimal("-0.000001")) == "0.00 百分點"
 
 
+def test_macd_only_pack_keeps_original_lines_and_publishes_causal_audit(tmp_path):
+    manifest = _write_formal_snapshot(tmp_path / "snapshot", include_taiex=True)
+    data = formal.load_formal_snapshot(manifest)
+    analysis = formal.run_formal_analysis(data, include_macd_only_variants=True)
+    assert len(analysis["lines"]) == 10
+    assert len(analysis["active"]) == 8
+    assert all(
+        line_id in analysis["active"]
+        for line_id in (
+            "MACD_ONLY_STRATEGY_A_SIGNAL_CLOSE",
+            "MACD_ONLY_STRATEGY_A_NEXT_SESSION_OPEN",
+            "MACD_ONLY_STRATEGY_B_SIGNAL_CLOSE",
+            "MACD_ONLY_STRATEGY_B_NEXT_SESSION_OPEN",
+        )
+    )
+    output = tmp_path / "macd-only-pack"
+    result = formal.run_formal_pack(
+        manifest,
+        output,
+        accepted_manifest_sha256=prep.sha256_file(manifest),
+        macd_only_study=True,
+    )
+    assert result["status"] == formal.MACD_ONLY_STOP_CODE
+    assert (output / "macd-only-audit.csv").is_file()
+    assert (output / "strategy-rule-contract.md").read_bytes() == formal.MACD_ONLY_CONTRACT.read_bytes()
+    report = (output / formal.REPORT_NAME).read_text(encoding="utf-8")
+    assert "純 MACD 進出場隔離研究" in report
+    assert "MA21／MA144 只留作診斷" in report
+    assert "純 MACD 策略 A（次一交易日開盤成交）" in report
+    assert "純 MACD 策略 B（次一交易日開盤成交）" in report
+    assert "純 MACD策略" not in report
+    assert "一致。。" not in report
+    assert formal.MACD_ONLY_STOP_CODE in report
+    assert len(re.findall(r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE)) == 14
+    taiex_block = report.split("#### 臺灣加權股價報酬指數機會成本補充", 1)[1]
+    assert "純 MACD 策略 A（次一交易日開盤成交）" in taiex_block
+    assert "純 MACD 策略 B（次一交易日開盤成交）" in taiex_block
+    manifest_payload = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest_payload["schema"] == "00635U_SYNTHETIC_FIXTURE_RUN_V1"
+    assert manifest_payload["artifact_classification"] == "SYNTHETIC_TEST_PACK"
+    assert manifest_payload["publication_eligible"] is False
+
+
 def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_path):
     snapshot = _write_formal_snapshot(tmp_path / "snapshot", include_taiex=True)
     sha = prep.sha256_file(snapshot)
@@ -372,7 +415,7 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert "A_FIXED_STOP_MACD_21_55_55" not in report
     assert "B_FIXED_STOP_2R_KD_9_9_55" not in report
     for line_id in formal.LINE_LABELS:
-        if line_id.startswith("STRICT_HIGH_"):
+        if line_id.startswith(("STRICT_HIGH_", "MACD_ONLY_")):
             assert line_id not in report
         elif line_id != "TAIEX_TOTAL_RETURN_SUPPLEMENT":
             assert report.count(line_id) == 1

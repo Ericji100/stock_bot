@@ -60,6 +60,207 @@ def high_entry_rows(*tail):
     ]
 
 
+def macd_only_config(
+    strategy=subject.StrategyVersion.A,
+    timing=subject.ExecutionTiming.SIGNAL_CLOSE,
+    bps=20,
+):
+    return config(
+        strategy=strategy,
+        timing=timing,
+        bps=bps,
+        entry_policy=subject.EntryPolicy.MACD_ONLY,
+    )
+
+
+def macd_entry_rows(*tail):
+    return [
+        row(0, close=9, low=8, hist=-1, k=60, d=50),
+        row(1, close=11, low=9, hist=0.2, k=60, d=50),
+        *tail,
+    ]
+
+
+def test_macd_only_contract_uses_new_cross_and_contiguous_negative_segment_stop():
+    rows = [
+        row(0, close=10, low=8, hist=-0.8),
+        row(1, close=10, low=7, hist=-0.2),
+        row(2, close=11, low=9, hist=0.1),
+        row(3, close=12, low=10, hist=0.3),
+    ]
+    result = subject.run_strategy(rows, macd_only_config())
+    entries = [item for item in result.state.trades if item["role"] == "ENTRY"]
+    assert len(entries) == 1
+    assert entries[0]["signal_date"] == rows[2].day
+    assert entries[0]["entry_type"] == subject.EntryType.MACD_ONLY.value
+    assert entries[0]["initial_stop"] == Decimal("7")
+    assert entries[0]["negative_segment_start"] == rows[0].day
+    assert entries[0]["negative_segment_end"] == rows[1].day
+    assert entries[0]["entry_previous_histogram"] == Decimal("-0.2")
+    assert entries[0]["entry_current_histogram"] == Decimal("0.1")
+
+
+def test_macd_only_zero_histogram_interrupts_segment_and_fails_closed():
+    rows = [
+        row(0, close=10, low=7, hist=-0.5),
+        row(1, close=10, low=8, hist=0),
+        row(2, close=11, low=9, hist=0.2),
+    ]
+    result = subject.run_strategy(rows, macd_only_config())
+    assert not result.state.trades
+    assert any(
+        event["event"] == "ENTRY_REJECTED_NO_NEGATIVE_HISTOGRAM_SEGMENT"
+        for event in result.state.events
+    )
+
+
+def test_macd_only_first_row_has_no_previous_cross_and_invalid_stop_fails_closed():
+    no_previous = subject.run_strategy(
+        [row(0, close=11, low=9, hist=0.2)], macd_only_config()
+    )
+    assert not no_previous.state.trades
+    invalid_stop = subject.run_strategy(
+        [row(0, close=10, low=10, hist=-0.5), row(1, close=10, low=10, hist=0.2)],
+        macd_only_config(),
+    )
+    assert not invalid_stop.state.trades
+    assert any(
+        event["event"] == "ENTRY_REJECTED_INVALID_STOP"
+        for event in invalid_stop.state.events
+    )
+
+
+def test_macd_only_a_exit_is_new_red_to_green_cross_and_reentry_waits_for_new_cross():
+    rows = macd_entry_rows(
+        row(2, close=10, low=9, hist=-0.1),
+        row(3, close=10, low=9, hist=-0.2),
+        row(4, close=11, low=9.5, hist=0.1),
+        row(5, close=12, low=10, hist=0.2),
+    )
+    result = subject.run_strategy(rows, macd_only_config())
+    assert [item["role"] for item in result.state.trades] == ["ENTRY", "EXIT", "ENTRY"]
+    assert result.state.trades[1]["signal_date"] == rows[2].day
+    assert result.state.trades[1]["exit_reason"] == subject.ExitReason.MACD.value
+    assert result.state.trades[2]["signal_date"] == rows[4].day
+
+
+def test_macd_only_fixed_stop_is_always_active_and_has_priority_for_a():
+    rows = macd_entry_rows(row(2, close=7, low=7, hist=-0.1))
+    result = subject.run_strategy(rows, macd_only_config())
+    assert result.state.trades[-1]["exit_reason"] == subject.ExitReason.INITIAL_STOP.value
+    assert any(event["event"] == "STOP_PRIORITY_OVER_MACD" for event in result.state.events)
+
+
+def test_macd_only_b_ignores_pre_2r_cross_and_never_uses_macd_exit():
+    rows = macd_entry_rows(row(2, close=10, low=9, hist=-0.2, k=40, d=50))
+    result = subject.run_strategy(
+        rows, macd_only_config(strategy=subject.StrategyVersion.B)
+    )
+    assert result.state.position is not None
+    assert any(
+        event["event"] == "KD_DEATH_CROSS_IGNORED_BEFORE_2R"
+        for event in result.state.events
+    )
+    assert not any(item["role"] == "EXIT" for item in result.state.trades)
+
+
+def test_macd_only_b_arm_is_permanent_not_retroactive_and_arm_day_new_cross_exits():
+    not_retroactive = macd_entry_rows(
+        row(2, close=12, low=10, hist=-0.1, k=40, d=50),
+        row(3, close=25, low=20, hist=-0.2, k=40, d=50),
+        row(4, close=24, low=20, hist=-0.3, k=40, d=50),
+    )
+    held = subject.run_strategy(
+        not_retroactive, macd_only_config(strategy=subject.StrategyVersion.B)
+    )
+    assert held.state.position is not None
+    assert held.state.position.kd_2r_armed is True
+    assert not any(item["role"] == "EXIT" for item in held.state.trades)
+
+    same_day = subject.run_strategy(
+        macd_entry_rows(row(2, close=25, low=20, hist=-0.1, k=40, d=50)),
+        macd_only_config(strategy=subject.StrategyVersion.B),
+    )
+    assert same_day.state.trades[-1]["exit_reason"] == subject.ExitReason.KD_2R.value
+    assert any(
+        event["event"] == "KD_2R_PERMANENTLY_ARMED"
+        for event in same_day.state.events
+    )
+
+
+def test_macd_only_ma_fields_are_diagnostic_and_do_not_change_orders_or_accounts():
+    baseline = macd_entry_rows(
+        row(2, close=12, low=10, hist=0.3, k=60, d=50),
+        row(3, close=10, low=9, hist=-0.1, k=40, d=50),
+    )
+    mutated = [
+        subject.IndicatorRow(**{
+            **item.__dict__,
+            "sma21": None if index % 2 else Decimal("1000000"),
+            "sma144": None if index % 2 else Decimal("0.0001"),
+        })
+        for index, item in enumerate(baseline)
+    ]
+    for strategy in subject.StrategyVersion:
+        original = subject.run_strategy(baseline, macd_only_config(strategy=strategy))
+        changed = subject.run_strategy(mutated, macd_only_config(strategy=strategy))
+        diagnostic = {"entry_sma21_diagnostic", "entry_sma144_diagnostic"}
+        normalize = lambda records: [
+            {key: value for key, value in item.items() if key not in diagnostic}
+            for item in records
+        ]
+        assert normalize(original.state.trades) == normalize(changed.state.trades)
+        assert original.state.events == changed.state.events
+        audit_fields = ("date", "cash", "shares", "liquidation_value", "equity", "pending")
+        assert [tuple(row_[key] for key in audit_fields) for row_ in original.state.daily] == [
+            tuple(row_[key] for key in audit_fields) for row_ in changed.state.daily
+        ]
+
+
+def test_macd_only_next_open_uses_only_signal_day_state_and_checkpoint_replays():
+    rows = macd_entry_rows(
+        row(2, close=12, open_=15, low=10, hist=0.3),
+        row(3, close=10, open_=14, low=9, hist=-0.1),
+        row(4, close=9, open_=13, low=8.5, hist=-0.2),
+    )
+    cfg = macd_only_config(timing=subject.ExecutionTiming.NEXT_SESSION_OPEN)
+    full = subject.run_strategy(rows, cfg)
+    entry, exit_ = full.state.trades
+    assert entry["signal_date"] == rows[1].day and entry["fill_date"] == rows[2].day
+    assert entry["reference_price"] == rows[2].raw_open
+    assert exit_["signal_date"] == rows[3].day and exit_["fill_date"] == rows[4].day
+    assert exit_["reference_price"] == rows[4].raw_open
+    first = subject.run_strategy(rows[:2], cfg)
+    resumed = subject.run_strategy(rows[2:], cfg, initial_state=first.checkpoint())
+    assert resumed.checkpoint() == full.checkpoint()
+
+
+@pytest.mark.parametrize(
+    "cash,entry,stop,bps",
+    [
+        ("500000", "11", "8", 20),
+        ("472727.35", "24.8", "20.1", 20),
+        ("800000", "55.5", "54.9", 40),
+        ("250000", "17.3", "9.2", 60),
+    ],
+)
+def test_macd_only_binary_sizing_is_exactly_equal_to_accepted_sizing(cash, entry, stop, bps):
+    cfg = macd_only_config(bps=bps)
+    expected = subject.size_entry(
+        Decimal(entry),
+        Decimal(stop),
+        subject.InstrumentType.ETF,
+        cost_model=cfg.cost_model,
+        max_total_cost=Decimal(cash),
+        max_initial_r=Decimal(cash) * Decimal("0.20"),
+        max_shares=1_000_000,
+    )
+    actual = subject._size_entry_exact_binary(
+        Decimal(entry), Decimal(stop), cfg, Decimal(cash)
+    )
+    assert actual == expected
+
+
 @pytest.mark.parametrize("strategy", list(subject.StrategyVersion))
 def test_strict_high_entry_gate_requires_ma21_strictly_greater(strategy):
     strict = subject.EntryPolicy.STRICT_HIGH_ONLY

@@ -444,6 +444,7 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
             "00635U_FORMAL_RUN_V1",
             "00635U_SYNTHETIC_FIXTURE_RUN_V1",
             "00635U_STRICT_HIGH_REGIME_STUDY_V1",
+            "00635U_MACD_ONLY_STUDY_V1",
         }
         if pipeline_pack:
             manifest_paths = {item.get("path") for item in manifest.get("files", [])}
@@ -460,10 +461,20 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
                 "B_FIXED_STOP_2R_KD_9_9_55",
             )):
                 errors.append("formal report exposes internal strategy code")
+            macd_only_pack = "純 MACD 進出場隔離研究" in text
             required_rule_phrases = (
-                "MA21", "MA144", "MACD(21,55,55)", "固定初始防守",
-                "淨成本 2R", "KD(9,9,55)", "固定防守優先",
-                "訊號日收盤成交", "次一個可成交交易日開盤成交",
+                (
+                    "MA21／MA144", "只留作診斷", "MACD 固定為 (21,55,55)",
+                    "histogram < 0", "固定初始防守", "完整費後達 2R",
+                    "KD(9,9,55)", "優先於其他出場", "訊號日收盤成交",
+                    "次一個可成交交易日開盤成交",
+                )
+                if macd_only_pack else
+                (
+                    "MA21", "MA144", "MACD(21,55,55)", "固定初始防守",
+                    "淨成本 2R", "KD(9,9,55)", "固定防守優先",
+                    "訊號日收盤成交", "次一個可成交交易日開盤成交",
+                )
             )
             if any(phrase not in text for phrase in required_rule_phrases):
                 errors.append("formal report is missing self-contained strategy rules")
@@ -716,6 +727,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--accepted-manifest-sha256")
     parser.add_argument("--accepted-by")
     parser.add_argument("--high-regime-study", action="store_true")
+    parser.add_argument("--macd-only-study", action="store_true")
     args = parser.parse_args(argv)
     if args.mode == "formal":
         validate_formal_snapshot_gate(
@@ -729,6 +741,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output_root,
             accepted_manifest_sha256=args.accepted_manifest_sha256,
             high_regime_study=args.high_regime_study,
+            macd_only_study=args.macd_only_study,
         ), ensure_ascii=False, indent=2))
         return 0
     print(json.dumps(build_fixture_pack(args.output_root), ensure_ascii=False, indent=2))

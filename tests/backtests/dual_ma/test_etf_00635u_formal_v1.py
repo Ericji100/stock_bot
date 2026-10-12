@@ -281,9 +281,27 @@ def test_strict_high_analysis_keeps_original_lines_and_audits_exclusions(tmp_pat
     assert "MA21 > MA144 高檔限定進場隔離研究" in report
     assert "舊版基準" in report and "本次高檔限定進場" in report
     assert formal.HIGH_REGIME_STOP_CODE in report
+    relative_chapter = report.split("## 03｜", 1)[1].split("## 04｜", 1)[0]
+    taiex_block = relative_chapter.split("#### 臺灣加權股價報酬指數機會成本補充", 1)[1]
+    assert "高檔限定策略 A（次一交易日開盤成交）" in taiex_block
+    assert "高檔限定策略 B（次一交易日開盤成交）" in taiex_block
+    assert "-0.00 百分點" not in report
+    for phrase in (
+        "進場門檻", "低價格區間進場排除稽核", "不是投資建議",
+        "不支持將它採納為替代主策略",
+    ):
+        assert phrase in report
+    rules_observation = re.search(
+        r"## 04｜[^\n]+[\s\S]*?### 觀察結果\s*\n\s*([^\n]+)", report
+    ).group(1)
+    assert rules_observation.endswith("。")
     high_manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert high_manifest["publication_eligible"] is False
     assert high_manifest["intended_use"] == "PIPELINE_AND_RULE_VALIDATION_ONLY"
+
+
+def test_percentage_points_normalizes_negative_zero():
+    assert formal._percentage_points(Decimal("-0.000001")) == "0.00 百分點"
 
 
 def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_path):

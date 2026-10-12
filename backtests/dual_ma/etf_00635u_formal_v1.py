@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -29,7 +30,7 @@ from .etf_00635u_strategy_v1 import (
 
 REPORT_NAME = "README.md"
 TRADE_REPORT_NAME = "trade-details.md"
-STOP_CODE = "STOP_WAIT_00_00635U_PREP_QA_R6"
+STOP_CODE = "STOP_WAIT_00_00635U_REPORT_QA"
 
 LINE_LABELS = {
     "STRATEGY_A_SIGNAL_CLOSE": "策略 A（訊號日收盤成交）",
@@ -52,6 +53,10 @@ EXIT_REASON_LABELS = {
     "MACD_RED_TO_GREEN": "MACD 紅翻綠",
     "KD_2R_DEATH_CROSS_EXIT": "淨成本 2R 啟動後的 KD 新死叉",
 }
+
+FINMIND_SNAPSHOT_ID = "00635U_FINMIND_PRIMARY_20150415_20261008_V3_D6735B7A5FF5"
+FINMIND_PACKAGE_MANIFEST_SHA256 = "d6735b7a5ff568081f7606e3e8db43aca96f385271858fd96f4cb612e8bcfb95"
+FINMIND_PACKAGE_READBACK_SHA256 = "fcfd1b30c2db5f46ad8f552e3b1c534a001d385c7ce2e98d3a2a7bea401784d2"
 
 
 def _line_label(line_id: str, *, include_id: bool = False) -> str:
@@ -184,7 +189,7 @@ def _trade_report(trades: Sequence[Mapping[str, Any]], *, synthetic: bool) -> st
 class FormalSnapshotData:
     raw_rows: tuple[RawETFRow, ...]
     indicator_rows: tuple[IndicatorRow, ...]
-    gold_er: tuple[research.IndexObservation, ...]
+    gold_er: tuple[research.IndexObservation, ...] | None
     taiex_total_return: tuple[research.IndexObservation, ...] | None = None
 
 
@@ -206,10 +211,90 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def build_finmind_formal_snapshot(
+    package_root: Path,
+    output_root: Path,
+    acceptance_audit: Path,
+) -> dict[str, str]:
+    """Build a hash-pinned formal adapter without mutating the accepted package."""
+
+    from . import etf_00635u_prep_v1 as prep
+
+    package_root = package_root.resolve()
+    output_root = output_root.resolve()
+    package_manifest_path = package_root / "package_manifest.json"
+    package_readback_path = package_root / "package_readback.json"
+    if prep.sha256_file(package_manifest_path) != FINMIND_PACKAGE_MANIFEST_SHA256:
+        raise ValueError("accepted FinMind package manifest SHA mismatch")
+    if prep.sha256_file(package_readback_path) != FINMIND_PACKAGE_READBACK_SHA256:
+        raise ValueError("accepted FinMind package readback SHA mismatch")
+    package_manifest = json.loads(package_manifest_path.read_text(encoding="utf-8"))
+    for item in package_manifest["artifacts"]:
+        path = package_root / item["relative_path"]
+        if path.stat().st_size != item["bytes"] or prep.sha256_file(path).upper() != item["sha256"]:
+            raise ValueError(f"accepted package artifact mismatch: {item['relative_path']}")
+    package_readback = json.loads(package_readback_path.read_text(encoding="utf-8"))
+    if package_readback.get("status") != "PASS" or package_readback.get("mismatch_count") != 0:
+        raise ValueError("accepted package readback is not PASS")
+    prices = _read_csv(package_root / "candidate" / "finmind_00635U_unadjusted_ohlcv.csv")
+    taiex = _read_csv(package_root / "candidate" / "finmind_taiex_total_return.csv")
+    actions = _read_csv(package_root / "candidate" / "finmind_00635U_corporate_action_candidates.csv")
+    suspensions = _read_csv(package_root / "candidate" / "finmind_00635U_suspension_candidates.csv")
+    if len(prices) != 2804 or prices[0]["date"] != "2015-04-15" or prices[-1]["date"] != "2026-10-08":
+        raise ValueError("FinMind 00635U price pin changed")
+    if actions or suspensions:
+        raise ValueError("formal adapter refuses undeclared corporate actions or suspensions")
+    if output_root.exists() and any(output_root.iterdir()):
+        raise FileExistsError(f"refusing to overwrite formal snapshot: {output_root}")
+    output_root.mkdir(parents=True, exist_ok=True)
+    etf_rows = [{
+        "date": row["date"], "open": row["open"], "high": row["high"],
+        "low": row["low"], "close": row["close"], "volume": row["volume"],
+        "official_session": True, "tradable": True, "tradability_reason": "",
+        "price_rebase_factor": 1, "share_factor": 1,
+        "cash_dividend_per_share": 0, "dividend_event_id": "", "dividend_stage": "",
+    } for row in prices]
+    taiex_rows = [{
+        "source_date": row["date"], "available_date": row["date"],
+        "value": row["price"], "source_timezone": "Asia/Taipei",
+    } for row in taiex]
+    prep._write_csv(output_root / "etf-daily-causal.csv", etf_rows)
+    prep._write_csv(output_root / "taiex-total-return.csv", taiex_rows)
+    shutil.copy2(package_manifest_path, output_root / "source-package-manifest.json")
+    shutil.copy2(package_readback_path, output_root / "source-package-readback.json")
+    shutil.copy2(acceptance_audit, output_root / "acceptance-audit.md")
+    files = [
+        ("etf_daily_causal", "etf-daily-causal.csv"),
+        ("taiex_total_return", "taiex-total-return.csv"),
+        ("source_package_manifest", "source-package-manifest.json"),
+        ("source_package_readback", "source-package-readback.json"),
+        ("acceptance_audit", "acceptance-audit.md"),
+    ]
+    manifest = {
+        "schema": prep.MANIFEST_SCHEMA, "symbol": "00635U",
+        "listing_date": "2015-04-15", "immutable": True,
+        "data_classification": "FORMAL_ACCEPTED_SNAPSHOT",
+        "snapshot_id": FINMIND_SNAPSHOT_ID,
+        "source": "FINMIND_PRIMARY_WITH_DECLARED_OFFICIAL_GAPS",
+        "source_package_manifest_sha256": FINMIND_PACKAGE_MANIFEST_SHA256,
+        "source_package_readback_sha256": FINMIND_PACKAGE_READBACK_SHA256,
+        "gold_er_status": "OMITTED_NO_SP_GSCI_GOLD_ER_OFFICIAL_HISTORY",
+        "corporate_action_candidates": 0, "suspension_candidates": 0,
+        "official_cross_confirmation": False,
+        "files": [
+            {"role": role, "path": name, "sha256": prep.sha256_file(output_root / name)}
+            for role, name in files
+        ],
+    }
+    manifest_path = output_root / "manifest.json"
+    manifest_path.write_bytes(prep._canonical_bytes(manifest) + b"\n")
+    return {"manifest": str(manifest_path), "manifest_sha256": prep.sha256_file(manifest_path)}
+
+
 def load_formal_snapshot(manifest_path: Path) -> FormalSnapshotData:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     by_role = {item.get("role"): item for item in manifest.get("files", [])}
-    required = {"etf_daily_causal", "gold_er_official"}
+    required = {"etf_daily_causal"}
     missing = sorted(required - set(by_role))
     if missing:
         raise ValueError(f"formal manifest missing roles: {missing}")
@@ -240,7 +325,7 @@ def load_formal_snapshot(manifest_path: Path) -> FormalSnapshotData:
             source_timezone=item["source_timezone"],
         )
         for item in _read_csv(root / by_role["gold_er_official"]["path"])
-    )
+    ) if "gold_er_official" in by_role else None
     taiex = None
     if "taiex_total_return" in by_role:
         taiex = tuple(
@@ -262,11 +347,47 @@ def load_formal_snapshot(manifest_path: Path) -> FormalSnapshotData:
 
 def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
     rows = data.indicator_rows
-    lines = research.run_seven_lines(
-        rows,
-        data.gold_er,
-        gold_alignment_policy="LAST_KNOWN_PUBLISHED",
-    )
+    if data.gold_er is not None:
+        lines = research.run_seven_lines(
+            rows, data.gold_er, gold_alignment_policy="LAST_KNOWN_PUBLISHED"
+        )
+        gold_status = "AVAILABLE_OFFICIAL"
+    else:
+        raw_lines = []
+        for strategy in StrategyVersion:
+            for timing in ExecutionTiming:
+                result = run_strategy(
+                    rows, ETFResearchConfig(strategy=strategy, timing=timing)
+                )
+                raw_lines.append(research.ComparisonLine(
+                    f"STRATEGY_{strategy.name}_{timing.value}",
+                    "ACTIVE_STRATEGY",
+                    tuple((item["date"], item["equity"]) for item in result.state.daily),
+                    {"trades": tuple(result.state.trades), "events": tuple(result.state.events)},
+                ))
+        raw_lines.extend((
+            research.run_buy_hold(rows, reinvest=False),
+            research.run_buy_hold(rows, reinvest=True),
+        ))
+        common_dates = sorted(set.intersection(*(
+            {day for day, _value in line.curve} for line in raw_lines
+        )))
+        lines = tuple(research.ComparisonLine(
+            line.line_id,
+            line.role,
+            tuple(
+                (day, research.INITIAL_CAPITAL * dict(line.curve)[day] / dict(line.curve)[common_dates[0]])
+                for day in common_dates
+            ),
+            {
+                **dict(line.audit),
+                "comparison_start": common_dates[0],
+                "comparison_end": common_dates[-1],
+                "comparison_observations": len(common_dates),
+                "rebased_to": research.INITIAL_CAPITAL,
+            },
+        ) for line in raw_lines)
+        gold_status = "OMITTED_NO_SP_GSCI_GOLD_ER_OFFICIAL_HISTORY"
     line_metrics = {}
     for line in lines:
         metrics = research.performance_metrics(line.curve, line.audit.get("trades", ()))
@@ -310,11 +431,9 @@ def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
             )
             active[line_id]["comparison_trades"] = comparison_trades
             line_metrics[line_id] = active[line_id]["metrics"]
-    benchmark_ids = (
-        "00635U_BUY_HOLD_CASH",
-        "00635U_BUY_HOLD_REINVEST",
-        "GOLD_ER_OFFICIAL_TRACKED_INDEX",
-    )
+    benchmark_ids = ["00635U_BUY_HOLD_CASH", "00635U_BUY_HOLD_REINVEST"]
+    if data.gold_er is not None:
+        benchmark_ids.append("GOLD_ER_OFFICIAL_TRACKED_INDEX")
     relative = {
         line_id: {
             benchmark_id: research.relative_to_benchmark(
@@ -342,6 +461,7 @@ def run_formal_analysis(data: FormalSnapshotData) -> dict[str, Any]:
         "cost_sensitivity": research.cost_sensitivity(rows),
         "taiex_supplement": taiex_line,
         "taiex_status": taiex_status,
+        "gold_status": gold_status,
     }
 
 
@@ -390,8 +510,16 @@ def run_formal_pack(
     prep._write_csv(output_root / "annual-performance.csv", annual)
     prep._write_csv(output_root / "rolling-windows.csv", rolling)
     prep._write_csv(output_root / "cost-sensitivity.csv", analysis["cost_sensitivity"])
-    index_line = next(line for line in analysis["lines"] if line.line_id == "GOLD_ER_OFFICIAL_TRACKED_INDEX")
-    prep._write_csv(output_root / "index-alignment-ledger.csv", list(index_line.audit["alignment_ledger"]))
+    index_line = next(
+        (line for line in analysis["lines"] if line.line_id == "GOLD_ER_OFFICIAL_TRACKED_INDEX"),
+        None,
+    )
+    prep._write_csv(
+        output_root / "index-alignment-ledger.csv",
+        list(index_line.audit["alignment_ledger"])
+        if index_line is not None else
+        [{"status": "OMITTED_NO_SP_GSCI_GOLD_ER_OFFICIAL_HISTORY"}],
+    )
     relative_rows = [
         {"line_id": line_id, "benchmark_id": benchmark_id, **values}
         for line_id, benchmarks in analysis["relative_benchmarks"].items()
@@ -771,6 +899,9 @@ def run_formal_pack(
         for row in relative_rows
     )
     common_line = analysis["lines"][0]
+    main_line_text = {6: "主六線", 7: "主七線"}.get(
+        len(analysis["lines"]), f"主{len(analysis['lines'])}線"
+    )
     common_period = (
         f"{common_line.audit['comparison_start']} 至 {common_line.audit['comparison_end']}，"
         f"共 {int(common_line.audit['comparison_observations']):,} 筆共同觀測"
@@ -788,7 +919,12 @@ def run_formal_pack(
     taiex_text = (
         "資料角色缺少，補充比較維持暫緩"
         if analysis["taiex_status"] == "HOLD_MISSING_TAIEX_TOTAL_RETURN_ROLE"
-        else "資料可用，但只列補充附件，不納入主七線"
+        else f"資料可用，但只列補充附件，不納入{main_line_text}"
+    )
+    gold_text = (
+        "S&P GSCI Gold ER 官方歷史未取得，因此完全省略；未以 FinMind GoldPrice、ETF、TAIEX 或其他代理替代"
+        if analysis["gold_status"] != "AVAILABLE_OFFICIAL" else
+        "S&P GSCI Gold ER 官方歷史可用，僅作不可交易基準"
     )
     core_tradeoff = "；".join(
         f"{_strategy_label(strategy)}期末資產最高為核心 {int(max((row for row in core_summary if row['strategy'] == strategy.name), key=lambda row: row['ending_equity'])['core_pct'])}%；"
@@ -797,8 +933,8 @@ def run_formal_pack(
     )
     prose = {
         "conclusion": ("先用實務成交版本回答候選策略在完整成本後的表現。", "比較策略 A、策略 B 的次一交易日開盤版本，再檢查最差年度、最差五年窗口與成本壓力。", practical_summary + f"；期末資產最高者為 {best_next_text}。最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；最差五年窗口：{worst_rolling_text}。{cost_pressure}。", "不能只因期末資產較高就稱正期望；最差窗口、集中度與參數分布必須同時支持。", "若任何壓力測試或可比期間失敗，結論降為暫緩。"),
-        "performance": ("用同一共同期間比較主七線。", "每線重訂基準至 500,000.00 元並列實際起訖日與觀測數；Gold ER 只作不可交易基準。", f"主七線的共同期間為 {common_period}；四條主動策略的交易數與最大投入直接來自逐筆帳本。", "年化報酬率與最大回落必須一起看，不能只看期末資產。", "主表是後續相對、期間與壓力分析的唯一母表。"),
-        "relative": ("逐策略比較三個指定基準。", "分別計算相對現金持有、分配再投入與官方 Gold ER 的期末資產差、年化報酬率差與最大回落差。", f"四條策略各比較三個基準，共 {len(relative_rows):,} 組；臺灣加權股價報酬指數目前為：{taiex_text}。", "Gold ER 差異不是可交易超額報酬，因指數沒有 ETF 費稅、轉倉追蹤與匯率摩擦。", "只有三個基準方向一致時，才提高正期望信心。"),
+        "performance": (f"用同一共同期間比較{main_line_text}。", "每線重訂基準至 500,000.00 元並列實際起訖日與觀測數；缺少的官方基準不以代理補入。", f"{main_line_text}的共同期間為 {common_period}；四條主動策略的交易數與最大投入直接來自逐筆帳本。{gold_text}。", "年化報酬率與最大回落必須一起看，不能只看期末資產。", "主表是後續相對、期間與壓力分析的唯一母表。"),
+        "relative": ("逐策略比較可取得且符合契約的指定基準。", "計算相對 00635U 現金持有與分配再投入的期末資產差、年化報酬率差與最大回落差；官方 Gold ER 缺席時不計算。", f"四條策略共輸出 {len(relative_rows):,} 組相對比較；{gold_text}；臺灣加權股價報酬指數目前為：{taiex_text}。", "缺少官方 Gold ER 時，不能宣稱已完成對黃金市場基準的超額報酬比較。", "只有現有基準與壓力測試方向一致時，才提高正期望信心；Gold ER 比較維持未完成。"),
         "rules": ("確認策略 A、策略 B 與兩種成交版本沒有混用。", "逐項核對共同進場、高低價格區間、固定防守、策略 A／B 出場差異、停損優先順序與成交時點。", "共同規則與唯一差異完整列於本章；所有進場、2R 啟動、現金分配、公司行動與出場都有事件 ID 與部位 ID。", "達到 2R 只啟動策略 B 的後續判斷，不會立即賣出，也不會回溯舊死叉。", "規則改動必須另開版本並重跑全部附件。"),
         "annual": ("檢查獲利是否集中少數年份。", "連續帳戶以前一年度末為起點，首年用 500,000.00 元，完整納入首交易日。", f"實務成交線的最差年度為 {worst_annual_text}，年度報酬 {_percent(worst_annual_value)}；下表完整列出主四策略與三個主基準的所有年度。", "年度不重設本金；獲利年度次數不能取代最差年度幅度。", "若少數年度貢獻過大，實務採用需降權。"),
         "trades": ("讓讀者直接核對每筆投入與出場。", "交易表含訊號日、成交日、成交方式、部位／事件 ID、股數、價格、費稅、初始 R、2R 啟動日與淨損益。", (trade_scope_note + "可先閱讀中文明細，再用 CSV 與事件帳本重建。") if synthetic_test else f"本次輸出 {len(trades):,} 列進出場事件；可先閱讀中文明細，再用 CSV 與事件帳本重建。", "每次投入不是固定 500,000.00 元，而受可用現金、整股與 20.00% 初始風險上限約束。", "任何主表交易數都必須能由附件一對一重建。"),
@@ -807,8 +943,8 @@ def run_formal_pack(
         "concentration": ("檢查少數交易、連虧與水下期。", "輸出最佳與最差交易、最佳 1 筆／3 筆獲利集中度、最長連續虧損、水下期；移除最佳 1／3／5 筆時，只在原出場日扣除其已實現現金淨損益，不重新計算後續部位大小。", "下表列出每條策略的實際交易穩定度，以及移除最佳 0／1／3／5 筆後的期末資產、年化報酬率與最大回落；這是現金扣除敏感度，不冒充完整訊號重播。", "若扣除少數最佳交易後崩解，期望值證據偏弱。", "集中度過高時只列研究候選。"),
         "grid": ("檢查中心參數是否位於穩健區域。", "策略 A、策略 B 各 243 格輸出總報酬、年化報酬率、最大回落、報酬／回落比與五年最差，再彙總分位與鄰域。", "下表同時呈現中位數期末資產、正報酬格比例、中心格與鄰域中位數；所有金額與比例均使用人類可讀格式。", "看分布與中心鄰域，不挑單一最高格；KD 9/9/55 與 2R 不參與搜尋。", "中心若顯著弱於鄰域或正報酬格不足，結論降級。"),
         "core": ("評估核心持有 0／20／40／60%。", "核心與戰術各自保存現金、股數、清算值與資產，主方法不再平衡，並列成本與重建誤差。", core_tradeoff + "。完整風險與報酬數字列於下表。", "核心比例提高不必然同時改善報酬與回落；需用期末資產、年化報酬率和最大回落一起取捨。", "年度再平衡只能另列選項，不混入主結果。"),
-        "practice": ("把研究轉成可執行限制。", "同時監控可成交交易日、Gold ER 發布延遲天數、期貨轉倉、正逆價差、美元／新臺幣匯率、時區與追蹤缺口。", "ETF 與 Gold ER 可因載具摩擦與發布時間在同日不同方向。", "這是 00635U 的結果，不是現貨黃金的無摩擦結果。", "上線前需持續監控資料與交易成本漂移。"),
-        "qa": ("證明資料、報告與附件可重現。", "正式執行入口會再次核對資料清單（manifest）本身的 SHA-256、資料格式與每個輸入檔案雜湊；輸出也附自己的資料清單與回讀驗證紀錄（readback）。", f"輸入資料清單 SHA-256 為 `{accepted_manifest_sha256}`；主七線共同期間已一致，兩個隔離目錄必須產生完全相同的位元組。", "不論從命令列或程式入口執行，只要資料、雜湊、連結或圖表語意有一項不符，就會停止而不產生可採用結果。", "00 只有在全部驗證通過後才可接受此研究包。"),
+        "practice": ("把研究轉成可執行限制。", "同時監控可成交交易日、期貨轉倉、正逆價差、美元／新臺幣匯率、時區與追蹤缺口；官方 Gold ER 尚未取得。", "ETF 載具摩擦與發布時間可能使結果偏離黃金市場，但本輪沒有官方 Gold ER 可量化該差異。", "這是 00635U 的結果，不是現貨黃金或 Gold ER 的無摩擦結果。", "上線前需持續監控資料與交易成本漂移，並在取得官方 Gold ER 後補做基準比較。"),
+        "qa": ("證明資料、報告與附件可重現。", "正式執行入口會再次核對資料清單（manifest）本身的 SHA-256、資料格式與每個輸入檔案雜湊；輸出也附自己的資料清單與回讀驗證紀錄（readback）。", f"輸入資料清單 SHA-256 為 `{accepted_manifest_sha256}`；{main_line_text}共同期間已一致，兩個隔離目錄必須產生完全相同的位元組。", "不論從命令列或程式入口執行，只要資料、雜湊、連結或圖表語意有一項不符，就會停止而不產生可採用結果。", "00 只有在全部驗證通過後才可接受此研究包。"),
         "attachments": ("提供完整重建材料。", "逐檔列出主表、交易、事件、期間、參數、核心、對時、圖表與來源收據。", f"本次共有 {len(attachments)} 個可點入口。", "主文摘要不能取代 CSV 與資料清單（manifest）。", "00 以附件雜湊與隔離重播為最終依據。"),
     }
     extras = {
@@ -843,7 +979,9 @@ def run_formal_pack(
     )
     report = (
         report_title + "\n\n"
-        f"> {status_banner}\n> 輸入資料清單（manifest）SHA-256：`{accepted_manifest_sha256}`。\n\n"
+        f"> {status_banner}\n> 輸入資料清單（manifest）SHA-256：`{accepted_manifest_sha256}`。\n"
+        f"> 凍結資料：`{input_manifest.get('snapshot_id', '未提供')}`；主來源為 FinMind。{gold_text}。\n"
+        "> FinMind 股息／分割／停復牌候選均為 0 列，且未取得官方交叉確認；本報告未自行建立任何事件。\n\n"
         "## 閱讀順序\n\n" + toc + "\n\n" + "\n\n".join(sections)
         + f"\n\n`{STOP_CODE}`\n"
     )
@@ -866,6 +1004,10 @@ def run_formal_pack(
         ),
         "input_manifest_sha256": accepted_manifest_sha256,
         "input_data_classification": input_classification,
+        "snapshot_id": input_manifest.get("snapshot_id"),
+        "source_package_manifest_sha256": input_manifest.get("source_package_manifest_sha256"),
+        "source_package_readback_sha256": input_manifest.get("source_package_readback_sha256"),
+        "gold_er_status": analysis["gold_status"],
         "files": [
             {"path": name, "sha256": prep.sha256_file(output_root / name)}
             for name in artifact_names

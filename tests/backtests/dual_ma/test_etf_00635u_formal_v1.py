@@ -25,6 +25,7 @@ def _write_formal_snapshot(
     include_taiex=False,
     gold_delay=0,
     unstaged_dividend=False,
+    include_gold=True,
 ):
     root.mkdir(parents=True, exist_ok=True)
     etf = root / "etf.csv"
@@ -62,8 +63,12 @@ def _write_formal_snapshot(
             })
     files = [
         {"role": "etf_daily_causal", "path": etf.name, "sha256": prep.sha256_file(etf)},
-        {"role": "gold_er_official", "path": gold.name, "sha256": prep.sha256_file(gold)},
     ]
+    if include_gold:
+        files.append({
+            "role": "gold_er_official", "path": gold.name,
+            "sha256": prep.sha256_file(gold),
+        })
     if include_taiex:
         with taiex.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=(
@@ -232,6 +237,22 @@ def test_active_metrics_use_trades_and_taiex_is_supplement_only(tmp_path):
     counts = {line.audit["comparison_observations"] for line in analysis["lines"]}
     assert len(starts) == len(ends) == len(counts) == 1
     assert all(len(benchmarks) == 3 for benchmarks in analysis["relative_benchmarks"].values())
+
+
+def test_formal_analysis_omits_missing_gold_without_proxy(tmp_path):
+    manifest = _write_formal_snapshot(
+        tmp_path / "snapshot", include_taiex=True, include_gold=False
+    )
+    data = formal.load_formal_snapshot(manifest)
+    assert data.gold_er is None
+    analysis = formal.run_formal_analysis(data)
+    assert len(analysis["lines"]) == 6
+    assert analysis["gold_status"] == "OMITTED_NO_SP_GSCI_GOLD_ER_OFFICIAL_HISTORY"
+    assert all(
+        "GOLD_ER_OFFICIAL_TRACKED_INDEX" not in benchmarks
+        and len(benchmarks) == 2
+        for benchmarks in analysis["relative_benchmarks"].values()
+    )
 
 
 def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_path):
@@ -437,7 +458,7 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
     assert output_manifest["intended_use"] == "PIPELINE_AND_RULE_VALIDATION_ONLY"
     readback = json.loads((left / "readback.json").read_text(encoding="utf-8"))
     assert readback["stop_code"] == formal.STOP_CODE
-    assert readback["stop_code"] == "STOP_WAIT_00_00635U_PREP_QA_R6"
+    assert readback["stop_code"] == "STOP_WAIT_00_00635U_REPORT_QA"
     assert readback["formal"] is False
     assert readback["artifact_classification"] == "SYNTHETIC_TEST_PACK"
     assert readback["publication_eligible"] is False

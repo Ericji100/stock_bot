@@ -160,6 +160,7 @@ def _chart_svg(
     x_tick_labels: Sequence[str] | None = None,
 ) -> str:
     width, height = 960, 420
+    plot_top, plot_bottom = 90, 340
     all_values = [value for values in series.values() for value in values]
     if not all_values:
         series = {"無資料": (Decimal("0"),)}
@@ -178,7 +179,7 @@ def _chart_svg(
     y_ticks = []
     for tick_index in range(5):
         value = low + span * Decimal(tick_index) / Decimal(4)
-        y = 350 - tick_index * 67.5
+        y = plot_bottom - tick_index * (plot_bottom - plot_top) / 4
         y_ticks.append(
             f'<line x1="66" y1="{y:.1f}" x2="910" y2="{y:.1f}" stroke="#ddd"/>'
             f'<text data-axis="y-tick" x="62" y="{y + 4:.1f}" text-anchor="end" '
@@ -197,25 +198,30 @@ def _chart_svg(
     for label_index in tick_indices:
         x = 70 + label_index * (width - 120) / max(len(labels) - 1, 1)
         x_ticks.append(
-            f'<line x1="{x:.1f}" y1="350" x2="{x:.1f}" y2="355" stroke="#555"/>'
-            f'<text data-axis="x-tick" x="{x:.1f}" y="370" text-anchor="middle" '
+            f'<line x1="{x:.1f}" y1="{plot_bottom}" x2="{x:.1f}" y2="345" stroke="#555"/>'
+            f'<text data-axis="x-tick" x="{x:.1f}" y="360" text-anchor="middle" '
             f'font-size="11">{labels[label_index]}</text>'
         )
-    colors = ("#1769aa", "#d1495b", "#2a9d8f", "#7b2cbf")
+    colors = ("#1769aa", "#d1495b", "#2a9d8f", "#7b2cbf", "#111111", "#f4a261")
     paths = []
     legends = []
     for line_index, (name, values) in enumerate(series.items()):
+        if not values:
+            continue
         points = []
         for index, value in enumerate(values):
             x = 70 + index * (width - 120) / max(len(values) - 1, 1)
-            y = 350 - float((value - low) / span) * 270
+            y = plot_bottom - float((value - low) / span) * (plot_bottom - plot_top)
             points.append(f"{x:.1f},{y:.1f}")
         color = colors[line_index]
         paths.append(
-            f'<polyline fill="none" stroke="{color}" stroke-width="3" points="{" ".join(points)}"/>'
+            f'<polyline data-series-name="{name}" data-first-value="{values[0]}" '
+            f'data-last-value="{values[-1]}" data-min-value="{min(values)}" '
+            f'fill="none" stroke="{color}" stroke-width="3" points="{" ".join(points)}"/>'
         )
         legends.append(
-            f'<text x="90" y="{45 + line_index * 24}" fill="{color}" font-size="16">{name}</text>'
+            f'<text x="{80 + (line_index % 3) * 290}" y="{50 + (line_index // 3) * 22}" '
+            f'fill="{color}" font-size="14">{name}</text>'
         )
     source_payload = {
         "series": {
@@ -232,8 +238,8 @@ def _chart_svg(
         '<rect width="960" height="420" fill="white"/>'
         '<text x="480" y="28" text-anchor="middle" font-size="20" '
         f'font-family="Microsoft JhengHei, sans-serif">{title}</text>'
-        '<line x1="70" y1="350" x2="910" y2="350" stroke="#555"/>'
-        '<line x1="70" y1="80" x2="70" y2="350" stroke="#555"/>'
+        f'<line x1="70" y1="{plot_bottom}" x2="910" y2="{plot_bottom}" stroke="#555"/>'
+        f'<line x1="70" y1="{plot_top}" x2="70" y2="{plot_bottom}" stroke="#555"/>'
         + "".join(y_ticks)
         + "".join(x_ticks)
         + "".join(legends)

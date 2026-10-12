@@ -298,6 +298,8 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         assert phrase in report
     assert "![合成測試資產曲線](equity-chart.svg)" in report
     assert "![正式資產曲線](equity-chart.svg)" not in report
+    assert "現金保留與分配再投入兩線在本輪完全重合" in report
+    assert "並非未比較" in report
     assert "<a id=" not in report
     headings = re.findall(r"^## ((?:0[1-9]|1[0-4])｜[^\n]+)$", report, flags=re.MULTILINE)
     assert len(headings) == 14
@@ -444,6 +446,13 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         ]
     with (left / "trade-details.csv").open(encoding="utf-8-sig", newline="") as handle:
         trade_rows_for_ticks = list(csv.DictReader(handle))
+    with (left / "formal-summary.csv").open(encoding="utf-8-sig", newline="") as handle:
+        summary_rows_for_charts = list(csv.DictReader(handle))
+    hold_summary = next(
+        row for row in summary_rows_for_charts
+        if row["line_id"] == "00635U_BUY_HOLD_CASH"
+    )
+    hold_chart_label = "00635U 買進持有（現金保留／分配再投入，本輪重合）"
     max_exit_count = max(
         sum(row["line_id"] == line_id and row["role"] == "EXIT" for row in trade_rows_for_ticks)
         for line_id in {row["line_id"] for row in trade_rows_for_ticks}
@@ -484,6 +493,23 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         assert len(set(x_ticks)) >= 2
         assert len(set(y_ticks)) >= 3
         assert expected_x_values[chart.name] <= set(x_ticks)
+        if chart.name == "equity-chart.svg":
+            match = re.search(
+                rf'<polyline data-series-name="{re.escape(hold_chart_label)}" '
+                r'data-first-value="[^"]+" data-last-value="([^"]+)"',
+                svg,
+            )
+            assert match is not None
+            assert Decimal(match.group(1)) == Decimal(hold_summary["ending_equity"])
+        if chart.name == "drawdown-chart.svg":
+            match = re.search(
+                rf'<polyline data-series-name="{re.escape(hold_chart_label)}" '
+                r'data-first-value="[^"]+" data-last-value="[^"]+" '
+                r'data-min-value="([^"]+)"',
+                svg,
+            )
+            assert match is not None
+            assert Decimal(match.group(1)) == Decimal(hold_summary["max_drawdown"])
         if chart.name in {"equity-chart.svg", "drawdown-chart.svg", "annual-chart.svg"}:
             assert "合成測試" in svg
             assert "正式資產曲線" not in svg

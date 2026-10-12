@@ -614,17 +614,30 @@ def run_formal_pack(
     prep._write_csv(output_root / "core-allocation-daily.csv", core_rows)
     prep._write_csv(output_root / "core-allocation-summary.csv", core_summary)
     prep._write_csv(output_root / "core-allocation-ledger.csv", core_ledger or [{"status": "NO_TRANSACTIONS"}])
+    buy_hold_cash_line = next(
+        line for line in analysis["lines"] if line.line_id == "00635U_BUY_HOLD_CASH"
+    )
+    main_chart_lines = [*analysis["lines"][:4], buy_hold_cash_line]
+    buy_hold_chart_label = "00635U 買進持有（現金保留／分配再投入，本輪重合）"
     equity_series = {
-        _line_label(line.line_id): [value for _day, value in line.curve]
-        for line in analysis["lines"][:4]
+        (
+            buy_hold_chart_label
+            if line.line_id == "00635U_BUY_HOLD_CASH"
+            else _line_label(line.line_id)
+        ): [value for _day, value in line.curve]
+        for line in main_chart_lines
     }
     drawdown_series = {}
-    for line in analysis["lines"][:4]:
+    for line in main_chart_lines:
         peak, values = Decimal("0"), []
         for _day, value in line.curve:
             peak = max(peak, value)
             values.append(value / peak - 1 if peak else Decimal("0"))
-        drawdown_series[_line_label(line.line_id)] = values
+        drawdown_series[
+            buy_hold_chart_label
+            if line.line_id == "00635U_BUY_HOLD_CASH"
+            else _line_label(line.line_id)
+        ] = values
     annual_series = {
         _line_label(line_id): [item["return"] for item in payload["annual"]]
         for line_id, payload in analysis["active"].items()
@@ -1026,7 +1039,7 @@ def run_formal_pack(
         "attachments": ("提供完整重建材料。", "逐檔列出主表、交易、事件、期間、參數、核心、對時、圖表與來源收據。", f"本次共有 {len(attachments)} 個可點入口。", "主文摘要不能取代 CSV 與資料清單（manifest）。", "00 以附件雜湊與隔離重播為最終依據。"),
     }
     extras = {
-        "performance": "\n| 主線 | 成交方式 | 實際起訖日（觀測數） | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + table + ("\n\n![合成測試資產曲線](equity-chart.svg)\n" if synthetic_test else "\n\n![正式資產曲線](equity-chart.svg)\n"),
+        "performance": "\n| 主線 | 成交方式 | 實際起訖日（觀測數） | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + table + ("\n\n![合成測試資產曲線](equity-chart.svg)\n" if synthetic_test else "\n\n![正式資產曲線](equity-chart.svg)\n") + "\n> 00635U 買進持有的現金保留與分配再投入兩線在本輪完全重合，主資產曲線與回撤圖以一條黑線呈現；並非未比較。\n",
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n\n> 年化報酬率差與最大回落差均以百分點表示。\n" + taiex_table,
         "rules": "\n- **共同進場：** 只用 00635U 自有歷史計算 MA21、MA144 與 MACD(21,55,55)。`MA21 >= MA144`（等號歸高）為高價格區間：前一日技術收盤不高於前一日 MA21、當日技術收盤高於當日 MA21，才是新突破進場。`MA21 < MA144` 為低價格區間：MACD 柱狀值前一日不大於零、當日大於零，才是新綠翻紅進場。\n- **固定初始防守：** 取本次 MA21 拉回階段低點、前一交易日低點與訊號日低點三者最小值，而且必須嚴格低於技術進場價。\n- **策略 A：** 高價格區間先檢查固定初始防守，再檢查已啟動的 MACD 柱狀值新紅翻綠；固定防守優先。低價格區間只維護、不執行固定防守，沿用已啟動的 MACD 新紅翻綠出場。\n- **策略 B：** 低價格區間進場部位完全沿用策略 A。只有高價格區間進場部位會從進場到離場持續執行固定防守；在完整買賣成本後的標記淨損益先達到初始風險的 2 倍（淨成本 2R）時，才永久啟動 KD(9,9,55)。啟動後只接受新發生的 K 向下穿越 D；達到 2R 本身不賣出，也不回溯啟動前的死叉。固定防守與有效死叉同日成立時，固定防守優先。\n- **成交版本：** 同時計算訊號日收盤成交與次一個可成交交易日開盤成交；後者為實務主口徑。停牌、零量或缺開盤價時，待成交指令保留至下一個可成交官方交易日。\n",
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 | 進場／出場／未平倉 |\n|---|---:|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n![逐年報酬](annual-chart.svg)\n\n![回撤路徑](drawdown-chart.svg)\n",

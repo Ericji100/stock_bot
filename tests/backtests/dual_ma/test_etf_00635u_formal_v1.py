@@ -286,6 +286,7 @@ def test_strict_high_analysis_keeps_original_lines_and_audits_exclusions(tmp_pat
     assert "高檔限定策略 A（次一交易日開盤成交）" in taiex_block
     assert "高檔限定策略 B（次一交易日開盤成交）" in taiex_block
     assert "-0.00 百分點" not in report
+    assert "此 gate" not in report
     for phrase in (
         "進場門檻", "低價格區間進場排除稽核", "不是投資建議",
         "不支持將它採納為替代主策略",

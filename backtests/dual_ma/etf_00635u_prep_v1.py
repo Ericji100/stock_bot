@@ -157,6 +157,7 @@ def _chart_svg(
     kind: str = "equity_curve",
     x_label: str = "交易序列",
     y_label: str = "數值",
+    x_tick_labels: Sequence[str] | None = None,
 ) -> str:
     width, height = 960, 420
     all_values = [value for values in series.values() for value in values]
@@ -165,6 +166,41 @@ def _chart_svg(
         all_values = [Decimal("0")]
     low, high = min(all_values), max(all_values)
     span = high - low or Decimal("1")
+    max_length = max((len(values) for values in series.values()), default=1)
+
+    def axis_value(value: Decimal) -> str:
+        if any(word in y_label for word in ("率", "報酬", "回撤")):
+            return f"{value * 100:.1f}%"
+        if any(word in y_label for word in ("元", "資產", "損益")):
+            return f"{value:,.0f}"
+        return f"{value:,.2f}"
+
+    y_ticks = []
+    for tick_index in range(5):
+        value = low + span * Decimal(tick_index) / Decimal(4)
+        y = 350 - tick_index * 67.5
+        y_ticks.append(
+            f'<line x1="66" y1="{y:.1f}" x2="910" y2="{y:.1f}" stroke="#ddd"/>'
+            f'<text data-axis="y-tick" x="62" y="{y + 4:.1f}" text-anchor="end" '
+            f'font-size="11">{axis_value(value)}</text>'
+        )
+
+    labels = list(x_tick_labels or (str(index + 1) for index in range(max_length)))
+    if not labels:
+        labels = ["1"]
+    tick_count = min(5, len(labels))
+    tick_indices = sorted({
+        round(index * (len(labels) - 1) / max(tick_count - 1, 1))
+        for index in range(tick_count)
+    })
+    x_ticks = []
+    for label_index in tick_indices:
+        x = 70 + label_index * (width - 120) / max(len(labels) - 1, 1)
+        x_ticks.append(
+            f'<line x1="{x:.1f}" y1="350" x2="{x:.1f}" y2="355" stroke="#555"/>'
+            f'<text data-axis="x-tick" x="{x:.1f}" y="370" text-anchor="middle" '
+            f'font-size="11">{labels[label_index]}</text>'
+        )
     colors = ("#1769aa", "#d1495b", "#2a9d8f", "#7b2cbf")
     paths = []
     legends = []
@@ -182,7 +218,10 @@ def _chart_svg(
             f'<text x="90" y="{45 + line_index * 24}" fill="{color}" font-size="16">{name}</text>'
         )
     source_payload = {
-        str(key): [str(value) for value in values] for key, values in series.items()
+        "series": {
+            str(key): [str(value) for value in values] for key, values in series.items()
+        },
+        "x_tick_labels": labels,
     }
     source_sha = hashlib.sha256(_canonical_bytes(source_payload)).hexdigest()
     return (
@@ -195,6 +234,8 @@ def _chart_svg(
         f'font-family="Microsoft JhengHei, sans-serif">{title}</text>'
         '<line x1="70" y1="350" x2="910" y2="350" stroke="#555"/>'
         '<line x1="70" y1="80" x2="70" y2="350" stroke="#555"/>'
+        + "".join(y_ticks)
+        + "".join(x_ticks)
         + "".join(legends)
         + "".join(paths)
         + f'<text x="480" y="400" text-anchor="middle" font-size="15" '

@@ -369,6 +369,7 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         "# 00635U 因果回測｜合成測試逐筆明細（非正式績效）"
     )
     assert "SYNTHETIC TEST ONLY" in readable_trades
+    assert "[返回主報告](README.md)" in readable_trades
     assert "交易筆數刻意縮小，只驗證管線與規則" in readable_trades
     for phrase in fixture_scope_phrases:
         assert phrase in readable_trades
@@ -434,6 +435,42 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         "transaction_count", "total_commission", "total_tax",
     } <= set(core[0])
 
+    source_data = formal.load_formal_snapshot(snapshot)
+    with (left / "rolling-windows.csv").open(encoding="utf-8-sig", newline="") as handle:
+        rolling_rows = [
+            row for row in csv.DictReader(handle)
+            if row["line_id"] == "STRATEGY_A_SIGNAL_CLOSE"
+            and row["years"] == "5" and row["status"] == "OK"
+        ]
+    with (left / "trade-details.csv").open(encoding="utf-8-sig", newline="") as handle:
+        trade_rows_for_ticks = list(csv.DictReader(handle))
+    max_exit_count = max(
+        sum(row["line_id"] == line_id and row["role"] == "EXIT" for row in trade_rows_for_ticks)
+        for line_id in {row["line_id"] for row in trade_rows_for_ticks}
+    )
+    expected_x_values = {
+        "equity-chart.svg": {
+            source_data.indicator_rows[0].day.isoformat(),
+            source_data.indicator_rows[-1].day.isoformat(),
+        },
+        "drawdown-chart.svg": {
+            source_data.indicator_rows[0].day.isoformat(),
+            source_data.indicator_rows[-1].day.isoformat(),
+        },
+        "annual-chart.svg": {
+            str(source_data.indicator_rows[0].day.year),
+            str(source_data.indicator_rows[-1].day.year),
+        },
+        "rolling-window-chart.svg": {
+            f"{rolling_rows[0]['start'][:4]}–{rolling_rows[0]['end'][:4]}",
+            f"{rolling_rows[-1]['start'][:4]}–{rolling_rows[-1]['end'][:4]}",
+        },
+        "regime-chart.svg": {"高", "低"},
+        "trade-pnl-chart.svg": {"1", str(max_exit_count)},
+        "cost-pressure-chart.svg": {"20", "40", "60"},
+        "core-allocation-chart.svg": {"0%", "20%", "40%", "60%"},
+        "parameter-grid-chart.svg": {"1", "243"},
+    }
     chart_kinds = set()
     chart_hashes = set()
     for chart in left.glob("*-chart.svg"):
@@ -442,6 +479,11 @@ def test_formal_pack_revalidates_gate_and_replays_identically_in_two_roots(tmp_p
         chart_hashes.add(re.search(r'data-source-sha256="([0-9a-f]{64})"', svg).group(1))
         assert "STRATEGY_" not in svg
         assert "策略 A" in svg or "策略 B" in svg
+        x_ticks = re.findall(r'<text data-axis="x-tick"[^>]*>([^<]+)</text>', svg)
+        y_ticks = re.findall(r'<text data-axis="y-tick"[^>]*>([^<]+)</text>', svg)
+        assert len(set(x_ticks)) >= 2
+        assert len(set(y_ticks)) >= 3
+        assert expected_x_values[chart.name] <= set(x_ticks)
         if chart.name in {"equity-chart.svg", "drawdown-chart.svg", "annual-chart.svg"}:
             assert "合成測試" in svg
             assert "正式資產曲線" not in svg

@@ -831,6 +831,16 @@ def run_formal_pack(
         annual.extend({"line_id": line_id, **row} for row in payload["annual"])
         for years, records in payload["rolling"].items():
             rolling.extend({"line_id": line_id, **row} for row in records)
+    if macd_only_study:
+        macd_daily_accounts = [
+            {"line_id": line_id, **row}
+            for line_id, payload in analysis["active"].items()
+            if line_id.startswith("MACD_ONLY_")
+            for row in payload["result"].state.daily
+        ]
+        prep._write_csv(
+            output_root / "macd-only-account-daily.csv", macd_daily_accounts
+        )
     prep._write_csv(output_root / "trade-details.csv", trades or [{"status": "NO_TRADES"}])
     (output_root / TRADE_REPORT_NAME).write_text(
         _trade_report(trades, synthetic=synthetic_test, macd_audit=macd_audit_rows),
@@ -1222,7 +1232,10 @@ def run_formal_pack(
         "manifest.json", "readback.json",
     ) + (
         ("low-regime-entry-exclusion-audit.csv",) if high_regime_study else
-        ("macd-only-audit.csv", "strategy-rule-contract.md") if macd_only_study else ()
+        (
+            "macd-only-audit.csv", "macd-only-account-daily.csv",
+            "strategy-rule-contract.md",
+        ) if macd_only_study else ()
     )
     study_active_ids = [
         key for key in analysis["active"]
@@ -1571,7 +1584,7 @@ def run_formal_pack(
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n\n> 年化報酬率差與最大回落差均以百分點表示。\n" + taiex_table,
         "rules": entry_rule_bullet + rules_detail + "- **成交版本：** 進出同時點；同時計算訊號日收盤成交與次一個可成交交易日開盤成交，後者為實務主口徑。\n" + ("\n- [低區間進場排除稽核](low-regime-entry-exclusion-audit.csv)\n" if high_regime_study else "- [純 MACD 因果稽核](macd-only-audit.csv)\n- [純 MACD 規則契約](strategy-rule-contract.md)\n" if macd_only_study else ""),
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 | 進場／出場／未平倉 |\n|---|---:|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n![逐年報酬](annual-chart.svg)\n\n![回撤路徑](drawdown-chart.svg)\n",
-        "trades": (f"\n> **本夾具的交易範圍：** {trade_scope_note}\n" if synthetic_test else "") + f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n" + ("- [低區間進場排除稽核](low-regime-entry-exclusion-audit.csv)\n" if high_regime_study else "- [純 MACD 因果稽核](macd-only-audit.csv)\n" if macd_only_study else ""),
+        "trades": (f"\n> **本夾具的交易範圍：** {trade_scope_note}\n" if synthetic_test else "") + f"\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [事件帳本 CSV](event-ledger.csv)\n" + ("- [低區間進場排除稽核](low-regime-entry-exclusion-audit.csv)\n" if high_regime_study else "- [純 MACD 因果稽核](macd-only-audit.csv)\n- [純 MACD 每日主帳](macd-only-account-daily.csv)\n" if macd_only_study else ""),
         "execution": "\n#### 完整成交時點與成本壓力表\n\n| 策略 | 成交時點 | 單邊滑價 | 期末資產 | 年化報酬率 | 最大回落 | 完成回合 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n![成本壓力](cost-pressure-chart.svg)\n",
         "periods": "\n#### 固定期間表\n\n| 策略／基準 | 固定期間 | 實際起訖 | 期初資產 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 |\n|---|---|---|---:|---:|---:|---:|---:|\n" + fixed_table + "\n\n#### 3／5／10 年滾動摘要表\n\n| 策略／基準 | 窗口 | 有效窗口數 | 最差年化 | 中位年化 | 最佳年化 | 窗口最差回落 |\n|---|---:|---:|---:|---:|---:|---:|\n" + rolling_summary_table + "\n\n#### 高低價格區間表\n\n| 策略 | 價格區間 | 交易日數 | 區間複合報酬 |\n|---|---|---:|---:|\n" + regime_table + "\n\n![滾動窗口](rolling-window-chart.svg)\n\n![市場狀態](regime-chart.svg)\n",
         "concentration": "\n#### 交易穩定度表\n\n| 策略 | 已完成交易 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆獲利集中度 | 最佳 3 筆獲利集中度 | 最長連續虧損 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n#### 移除最佳交易敏感度表\n\n| 策略 | 要求移除最佳筆數 | 實際移除筆數 | 期末資產 | 年化報酬率 | 最大回落 | 計算方式 |\n|---|---:|---:|---:|---:|---:|---|\n" + removal_table + "\n\n![逐筆交易淨損益](trade-pnl-chart.svg)\n",

@@ -329,12 +329,24 @@ def test_macd_only_pack_keeps_original_lines_and_publishes_causal_audit(tmp_path
     )
     assert result["status"] == formal.MACD_ONLY_STOP_CODE
     assert (output / "macd-only-audit.csv").is_file()
+    with (output / "macd-only-account-daily.csv").open(
+        encoding="utf-8-sig", newline=""
+    ) as handle:
+        account_daily = list(csv.DictReader(handle))
+    assert len(account_daily) == 4 * len(data.indicator_rows)
+    assert all(Decimal(row["cash"]) >= 0 for row in account_daily)
+    assert all(
+        Decimal(row["equity"])
+        == Decimal(row["cash"]) + Decimal(row["liquidation_value"])
+        for row in account_daily
+    )
     assert (output / "strategy-rule-contract.md").read_bytes() == formal.MACD_ONLY_CONTRACT.read_bytes()
     report = (output / formal.REPORT_NAME).read_text(encoding="utf-8")
     assert "純 MACD 進出場隔離研究" in report
     assert "MA21／MA144 只留作診斷" in report
     assert "純 MACD 策略 A（次一交易日開盤成交）" in report
     assert "純 MACD 策略 B（次一交易日開盤成交）" in report
+    assert "[純 MACD 每日主帳](macd-only-account-daily.csv)" in report
     assert "純 MACD策略" not in report
     assert "一致。。" not in report
     assert formal.MACD_ONLY_STOP_CODE in report

@@ -240,7 +240,7 @@ def test_pareto_is_practical_and_grouped_with_sparse_candidates_not_auto_selecte
                for row in restricted)
 
 
-def test_attribution_design_has_real_single_factor_controls(formal_output):
+def test_attribution_design_rejects_noop_rule_replacement_labels(formal_output):
     run_root, _ = formal_output
     rows = json.loads((run_root / "replacement-attribution-design.json").read_text(encoding="utf-8-sig"))
     by = {row["case"]: row for row in rows}
@@ -248,10 +248,15 @@ def test_attribution_design_has_real_single_factor_controls(formal_output):
     high = by["HIGH_RULE_ONLY"]
     low = by["LOW_RULE_ONLY"]
     both = by["BOTH_RULES"]
-    assert (high["low_entry"], high["low_exit"], high["stop_policy"]) == (
-        base["low_entry"], base["low_exit"], base["stop_policy"])
-    assert (low["high_entry"], low["high_exit"], low["stop_policy"]) == (
-        base["high_entry"], base["high_exit"], base["stop_policy"])
+    assert (high["high_entry"], high["high_exit"]) == (base["high_entry"], base["high_exit"])
+    assert (low["low_entry"], low["low_exit"]) == (base["low_entry"], base["low_exit"])
+    assert high["identifiable_rule_change"] is False
+    assert low["identifiable_rule_change"] is False
+    assert both["identifiable_rule_change"] is False
+    assert "不可估" in high["factor_changed"]
+    assert "不可估" in low["factor_changed"]
+    assert "不可估" in both["factor_changed"]
+    assert "只換" not in json.dumps(rows, ensure_ascii=False)
     assert (both["high_entry"], both["high_exit"]) == (high["high_entry"], high["high_exit"])
     assert (both["low_entry"], both["low_exit"]) == (low["low_entry"], low["low_exit"])
     assert by["NEW_ENGINE_DAILY_STOP_POLICY_CONTROL"]["stop_policy"] == "DAILY_HIGH_ONLY"
@@ -259,18 +264,55 @@ def test_attribution_design_has_real_single_factor_controls(formal_output):
 
 
 def test_report_is_full_14_section_single_entry_with_trade_details(formal_output):
-    _, report_root = formal_output
+    run_root, report_root = formal_output
     readme = (report_root / "README.md").read_text(encoding="utf-8")
     assert len(readme.encode("utf-8")) > 20_000
-    assert all(f'<a id="{index:02d}"></a>' in readme for index in range(1, 15))
+    assert all(f"## {index:02d}" in readme for index in range(1, 15))
+    assert "<a id=" not in readme
     assert "樣本內正報酬" in readme
     assert "樣本內為正期望" not in readme
+    assert "候選與控制重合檢查" in readme
+    assert "規則替換效果不可估" in readme
+    assert "2026（截至09月）" in readme
+    assert "未滿整個視窗" in readme
     details = (report_root / "trade-details.md").read_text(encoding="utf-8")
+    assert "<a id=" not in details
     assert "HIGH-P1-E1-0007" in details
     assert "完整繁體中文逐筆交易明細" in details
+    assert "## 組合候選｜次日開盤" in details
+    assert "## 組合候選｜訊號收盤" in details
+    attribution = _csv(run_root / "replacement-attribution.csv")
+    attribution_trades = _csv(run_root / "replacement-attribution-trades.csv")
+    for timing in ("NEXT_SESSION_OPEN", "SIGNAL_CLOSE"):
+        summary = next(row for row in attribution
+                       if row["case"] == "BOTH_RULES" and row["timing"] == timing)
+        trades = [row for row in attribution_trades
+                  if row["case"] == "BOTH_RULES" and row["timing"] == timing]
+        assert len(trades) == int(summary["closed_trades"])
+        assert all(row["episode_id"] in details for row in trades)
+    periods = _csv(run_root / "replacement-attribution-periods.csv")
+    both_periods = [row for row in periods if row["case"] == "BOTH_RULES"
+                    and row["timing"] == "NEXT_SESSION_OPEN"
+                    and row["period"].startswith("ROLLING_")]
+    assert len([row for row in both_periods if row["complete_window"] == "False"]) == 3
     assert (report_root / "trade-ledger.csv").is_file()
+    assert (report_root / "replacement-attribution-trades.csv").is_file()
     assert (report_root / "daily-equity.csv").is_file()
     assert (report_root / "event-ledger.csv").is_file()
+
+
+def test_main_equity_chart_is_five_line_same_capital_reader_comparison(formal_output):
+    run_root, report_root = formal_output
+    svg = (report_root / "main-comparison-equity.svg").read_text(encoding="utf-8")
+    assert svg.count("<polyline") == 5
+    for label in ("組合候選", "封存 v1.7", "0050 持有－股利留現金",
+                  "0050 持有－股利再投入", "加權報酬指數等值"):
+        assert label in svg
+    assert "元</text>" in svg
+    assert "2006-01" in svg and "2026-09" in svg
+    assert (run_root / "matrix-equity.svg").read_bytes() == (
+        run_root / "main-comparison-equity.svg").read_bytes()
+    assert (report_root / "regime-candidates-equity.svg").is_file()
 
 
 def test_old_v5_tree_is_byte_exact_after_qa_fix_run(formal_output):

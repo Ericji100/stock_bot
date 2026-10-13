@@ -42,7 +42,7 @@ from .models import InstrumentType
 from .paths import dev_run, report_path
 
 
-VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.1-qa-fix"
+VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.2-qa2-fix"
 START = date(2006, 1, 2)
 END = date(2026, 9, 30)
 CAPITAL = Decimal("500000")
@@ -1004,17 +1004,18 @@ def account_reconciliation_row(
 
 
 def period_rows(cell_id: str, daily: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    definitions: list[tuple[str, date, date]] = [
-        ("2006-2012", START, date(2012, 12, 31)),
-        ("2013-2019", date(2013, 1, 1), date(2019, 12, 31)),
-        ("2020-2026/09", date(2020, 1, 1), END),
+    definitions: list[tuple[str, date, date, bool | None]] = [
+        ("2006-2012", START, date(2012, 12, 31), None),
+        ("2013-2019", date(2013, 1, 1), date(2019, 12, 31), None),
+        ("2020-2026/09", date(2020, 1, 1), END, None),
     ]
     for window in (3, 5, 10):
         for year in range(START.year, END.year - window + 2):
+            nominal_end = date(year + window - 1, 12, 31)
             definitions.append((f"ROLLING_{window}Y_{year}", date(year, 1, 1),
-                                min(END, date(year + window - 1, 12, 31))))
+                                min(END, nominal_end), nominal_end <= END))
     output = []
-    for label, start, end in definitions:
+    for label, start, end, complete_window in definitions:
         chosen = [row for row in daily if start <= row["date"] <= end]
         if not chosen:
             continue
@@ -1032,7 +1033,8 @@ def period_rows(cell_id: str, daily: Sequence[Mapping[str, Any]]) -> list[dict[s
         output.append({"cell_id": cell_id, "period": label, "start": chosen[0]["date"],
                        "end": chosen[-1]["date"], "starting_equity": start_value,
                        "ending_equity": finish, "return": finish / start_value - 1,
-                       "cagr": cagr, "max_drawdown": mdd})
+                       "cagr": cagr, "max_drawdown": mdd,
+                       "complete_window": complete_window})
     return output
 
 
@@ -1055,20 +1057,39 @@ def annual_rows(cell_id: str, daily: Sequence[Mapping[str, Any]]) -> list[dict[s
     return output
 
 
-def _svg_lines(series: Sequence[tuple[str, Sequence[Mapping[str, Any]]]], title: str) -> str:
-    width, height, left, top, plot_w, plot_h = 1000, 460, 80, 70, 850, 320
+def _svg_lines(series: Sequence[tuple[str, Sequence[Mapping[str, Any]]]], title: str,
+               *, source: str) -> str:
+    """Render a reader-facing equity comparison with dates and TWD tick labels."""
+    width, height, left, top, plot_w, plot_h = 1200, 650, 120, 85, 1020, 430
     points_all = [_d(row["equity"]) for _, rows in series for row in rows]
-    lo, hi = min(points_all), max(points_all)
+    lo, hi = min(min(points_all), CAPITAL), max(points_all)
+    lo = Decimal("0")
     span = hi - lo or Decimal("1")
     colors = ("#1565c0", "#c62828", "#2e7d32", "#6a1b9a", "#ef6c00")
     pieces = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" data-chart-kind="equity-comparison">',
-        f'<metadata>source=main-matrix-summary.csv; version={VERSION}</metadata>',
+        f'<metadata>source={source}; version={VERSION}</metadata>',
         '<rect width="100%" height="100%" fill="#fff"/>',
         f'<text x="{left}" y="35" font-size="22" font-family="sans-serif">{title}</text>',
         f'<line x1="{left}" y1="{top+plot_h}" x2="{left+plot_w}" y2="{top+plot_h}" stroke="#555"/>',
         f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top+plot_h}" stroke="#555"/>',
     ]
+    for tick in range(6):
+        value = hi * Decimal(tick) / Decimal(5)
+        y = top + plot_h * (1 - tick / 5)
+        pieces.extend([
+            f'<line x1="{left}" y1="{y:.1f}" x2="{left+plot_w}" y2="{y:.1f}" stroke="#ddd"/>',
+            f'<text x="{left-12}" y="{y+4:.1f}" text-anchor="end" font-size="12" font-family="sans-serif">{value:,.0f} 元</text>',
+        ])
+    first_rows = series[0][1]
+    for tick in range(6):
+        position = round((len(first_rows) - 1) * tick / 5)
+        x = left + plot_w * tick / 5
+        label = str(first_rows[position]["date"])[:7]
+        pieces.extend([
+            f'<line x1="{x:.1f}" y1="{top+plot_h}" x2="{x:.1f}" y2="{top+plot_h+6}" stroke="#555"/>',
+            f'<text x="{x:.1f}" y="{top+plot_h+24}" text-anchor="middle" font-size="12" font-family="sans-serif">{label}</text>',
+        ])
     for index, (name, rows) in enumerate(series):
         step = max(1, len(rows) // 500)
         sampled = rows[::step] + ([rows[-1]] if rows[-1] is not rows[::step][-1] else [])
@@ -1079,7 +1100,9 @@ def _svg_lines(series: Sequence[tuple[str, Sequence[Mapping[str, Any]]]], title:
             coords.append(f"{x:.1f},{y:.1f}")
         color = colors[index % len(colors)]
         pieces.append(f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{" ".join(coords)}"/>')
-        pieces.append(f'<text x="{left + 180*(index%5)}" y="{height-20}" fill="{color}" font-size="13" font-family="sans-serif">{name}</text>')
+        legend_x = left + 205 * (index % 5)
+        pieces.append(f'<line x1="{legend_x}" y1="{height-45}" x2="{legend_x+28}" y2="{height-45}" stroke="{color}" stroke-width="3"/>')
+        pieces.append(f'<text x="{legend_x+34}" y="{height-40}" fill="{color}" font-size="13" font-family="sans-serif">{name}</text>')
     pieces.append('</svg>')
     return "\n".join(pieces)
 
@@ -1102,6 +1125,25 @@ def _md_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> list[str
         "|" + "|".join("---" for _ in headers) + "|",
         *("|" + "|".join(str(value) for value in row) + "|" for row in rows),
     ]
+
+
+def _markdown_slug(heading: str) -> str:
+    """Approximate the Codex/GFM native heading anchor without raw HTML."""
+    plain = re.sub(r"<[^>]+>", "", heading).lower()
+    plain = re.sub(r"[`*_~]", "", plain)
+    plain = re.sub(r"[^\w\s-]", "", plain, flags=re.UNICODE)
+    return re.sub(r"\s+", "-", plain.strip())
+
+
+def _markdown_heading_ids(text: str) -> set[str]:
+    counts: dict[str, int] = defaultdict(int)
+    output = set()
+    for heading in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, flags=re.MULTILINE):
+        base = _markdown_slug(heading)
+        suffix = counts[base]
+        output.add(base if suffix == 0 else f"{base}-{suffix}")
+        counts[base] += 1
+    return output
 
 
 def _svg_bars(*, rows: Sequence[tuple[str, Decimal]], title: str,
@@ -1133,23 +1175,49 @@ def _svg_bars(*, rows: Sequence[tuple[str, Decimal]], title: str,
 def trade_details_text(
     summaries: Sequence[Mapping[str, Any]],
     primary_results: Mapping[str, Mapping[str, Any]],
+    attribution: Sequence[Mapping[str, Any]],
+    attribution_trades: Sequence[Mapping[str, Any]],
 ) -> str:
     summary_by_id = {str(row["cell_id"]): row for row in summaries}
+    both_summaries = {
+        str(row["timing"]): row for row in attribution
+        if row.get("case") == "BOTH_RULES" and row.get("timing") in TIMINGS
+    }
+    both_trades = {
+        timing: [row for row in attribution_trades
+                 if row.get("case") == "BOTH_RULES" and row.get("timing") == timing]
+        for timing in TIMINGS
+    }
     lines = [
         "# 0050 HIGH／LOW 進出場矩陣｜完整繁體中文逐筆交易明細", "",
         "[返回主報告](README.md#06)", "",
-        "本附件列出 36 個 20bps 主矩陣帳戶的全部已平倉交易。股息欄採除息日已成立的經濟權利；付款前仍列應收，不提前列為可用現金。", "",
-        '<a id="快速索引"></a>', "## 快速索引", "",
+        "本附件列出 36 個 20bps 主矩陣帳戶，以及主結論組合候選之次日開盤與訊號收盤帳戶的全部已平倉交易。股息欄採除息日已成立的經濟權利；付款前仍列應收，不提前列為可用現金。", "",
+        "## 快速索引", "",
     ]
-    for cell_id in sorted(primary_results):
-        lines.append(f"- [{cell_id}](#trade-{cell_id.lower().replace('_', '-')})")
+    display_headings: dict[str, str] = {}
+    timing_zh = {"NEXT_SESSION_OPEN": "次日開盤", "SIGNAL_CLOSE": "訊號收盤"}
+    for timing in ("NEXT_SESSION_OPEN", "SIGNAL_CLOSE"):
+        heading = f"組合候選｜{timing_zh[timing]}"
+        display_headings[f"BOTH::{timing}"] = heading
+        lines.append(f"- [{heading}](#{_markdown_slug(heading)})")
     for cell_id in sorted(primary_results):
         summary = summary_by_id[cell_id]
-        trades = primary_results[cell_id]["trades"]
+        heading = (f"{summary['regime']} {summary['entry_rule']}／{summary['exit_rule']}｜"
+                   f"{timing_zh[str(summary['timing'])]}")
+        display_headings[cell_id] = heading
+        lines.append(f"- [{heading}](#{_markdown_slug(heading)})")
+
+    accounts: list[tuple[str, Mapping[str, Any], Sequence[Mapping[str, Any]]]] = []
+    for timing in ("NEXT_SESSION_OPEN", "SIGNAL_CLOSE"):
+        accounts.append((display_headings[f"BOTH::{timing}"], both_summaries[timing],
+                         both_trades[timing]))
+    accounts.extend((display_headings[cell_id], summary_by_id[cell_id],
+                     primary_results[cell_id]["trades"])
+                    for cell_id in sorted(primary_results))
+    for heading, summary, trades in accounts:
         lines.extend([
-            "", f'<a id="trade-{cell_id.lower().replace("_", "-")}"></a>',
-            f"## {cell_id}", "",
-            f"狀態 {summary['regime']}；進場 {summary['entry_rule']}；出場 {summary['exit_rule']}；成交 {summary['timing']}。已平倉 {len(trades)} 筆，期末資產 {_money(summary['ending_equity'])} 元。", "",
+            "", f"## {heading}", "",
+            f"已平倉 {len(trades)} 筆，期末資產 {_money(summary['ending_equity'])} 元。", "",
         ])
         rows = []
         for trade in trades:
@@ -1176,7 +1244,7 @@ def validate_report_links(report_root: Path) -> dict[str, Any]:
     checked = []
     for markdown in sorted(report_root.glob("*.md")):
         text = markdown.read_text(encoding="utf-8")
-        own_ids = set(re.findall(r'<a\s+id="([^"]+)"', text))
+        own_ids = _markdown_heading_ids(text)
         for target in re.findall(r'!?(?:\[[^\]]*\])\(([^)]+)\)', text):
             if target.startswith(("http://", "https://", "mailto:")):
                 continue
@@ -1192,9 +1260,7 @@ def validate_report_links(report_root: Path) -> dict[str, Any]:
                 continue
             if anchor:
                 destination_text = destination.read_text(encoding="utf-8")
-                ids = own_ids if destination == markdown else set(
-                    re.findall(r'<a\s+id="([^"]+)"', destination_text)
-                )
+                ids = own_ids if destination == markdown else _markdown_heading_ids(destination_text)
                 if anchor not in ids:
                     failures.append(f"anchor:{markdown.name}:{target}")
                     continue
@@ -1237,13 +1303,13 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
         "規則、狀態與股息帳務", "完整逐年績效", "交易紀錄與資金投入",
         "成交時間與成本壓力", "不同時期與 rolling 3／5／10 年",
         "交易品質與出場歸因", "HIGH 九格實務矩陣", "LOW 九格實務矩陣",
-        "分組 Pareto 與候選篩選", "單因素替換歸因", "技術驗收與完整附件",
+        "分組 Pareto 與候選篩選", "候選與控制重合檢查", "技術驗收與完整附件",
     ]
     lines.extend(f"- [{index:02d}｜{title}](#{index:02d})" for index, title in enumerate(titles, 1))
 
     def section(number: int, title: str, objective: str, method: str,
                 observations: Sequence[str], conclusion: str, impact: str) -> None:
-        lines.extend(["", f'<a id="{number:02d}"></a>', f"## {number:02d}", "",
+        lines.extend(["", f"## {number:02d}", "",
                       f"### {title}", "", "### 測試目的", "", objective, "",
                       "### 測試方法", "", method, "", "### 觀察結果", ""])
         lines.extend(observations)
@@ -1253,8 +1319,8 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
     first_table = _md_table(
         ["策略／基準", "成交", "期末資產", "總報酬", "CAGR", "MDD", "交易筆數", "最大投入"],
         [
-            ["新候選 BOTH_RULES", "次日開盤", _money(both_next["ending_equity"]), _pct(both_next["total_return"]), _pct(both_next["cagr"]), _pct(both_next["max_drawdown"]), both_next["closed_trades"], _money(both_next["peak_concurrent_investment"])],
-            ["新候選 BOTH_RULES", "訊號收盤", _money(both_close["ending_equity"]), _pct(both_close["total_return"]), _pct(both_close["cagr"]), _pct(both_close["max_drawdown"]), both_close["closed_trades"], _money(both_close["peak_concurrent_investment"])],
+            ["組合候選", "次日開盤", _money(both_next["ending_equity"]), _pct(both_next["total_return"]), _pct(both_next["cagr"]), _pct(both_next["max_drawdown"]), both_next["closed_trades"], _money(both_next["peak_concurrent_investment"])],
+            ["組合候選", "訊號收盤", _money(both_close["ending_equity"]), _pct(both_close["total_return"]), _pct(both_close["cagr"]), _pct(both_close["max_drawdown"]), both_close["closed_trades"], _money(both_close["peak_concurrent_investment"])],
             ["封存 v1.7", "次日開盤", _money(v17_next["ending_equity"]), _pct(v17_next["total_return"]), _pct(v17_next["cagr"]), _pct(v17_next["max_drawdown"]), v17_next["closed_rounds"], _money(v17_next["peak_concurrent_investment"])],
             *[[sealed_by[key]["label"], sealed_by[key]["execution_timing"], _money(sealed_by[key]["ending_equity"]), _pct(sealed_by[key]["total_return"]), _pct(sealed_by[key]["cagr"]), _pct(sealed_by[key]["max_drawdown"]), sealed_by[key].get("closed_rounds", "—"), _money(sealed_by[key].get("peak_concurrent_investment"))] for key in benchmark_ids],
         ],
@@ -1262,7 +1328,8 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
     section(1, titles[0],
             "先回答這套新矩陣在相同資料、成本與資金限制下是否有樣本內正報酬，以及是否值得取代 v1.7。",
             "候選只從 NEXT_SESSION_OPEN、20bps、HIGH 與 LOW 各自 Pareto 母體選出；SIGNAL_CLOSE 只作同規則敏感度對照。",
-            [*first_table, "", "![候選權益曲線](matrix-equity.svg)"],
+            [*first_table, "", "![同本金主策略與基準權益比較](main-comparison-equity.svg)", "",
+             "分組候選曲線另見：[HIGH／LOW 分組候選](regime-candidates-equity.svg)。"],
             f"新候選次日開盤期末 {_money(both_next['ending_equity'])} 元、CAGR {_pct(both_next['cagr'])}、MDD {_pct(both_next['max_drawdown'])}；這是樣本內正報酬，不是已處理選擇偏差後的期望值證明。",
             "維持研究候選；是否採用必須先看它相對封存 v1.7、持有線與大盤是否提供足夠增量。")
 
@@ -1309,13 +1376,14 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                        if row["case"] == "BOTH_RULES" and row["timing"] == "NEXT_SESSION_OPEN"]
     annual_table = _md_table(
         ["年度", "年初資產", "年末／截止資產", "報酬", "年度MDD"],
-        [[row["year"], _money(row["starting_equity"]), _money(row["ending_equity"]),
+        [[("2026（截至09月）" if int(row["year"]) == 2026 else row["year"]),
+          _money(row["starting_equity"]), _money(row["ending_equity"]),
           _pct(row["return"]), _pct(row["max_drawdown"])] for row in selected_annual],
     )
     positive_years = sum(1 for row in selected_annual if _d(row["return"]) > 0)
     section(5, titles[4],
             "檢查樣本內正報酬是否只靠少數年度。",
-            "使用 BOTH_RULES 次日開盤共享帳戶；每年年初等於前一年年末，年度 MDD 以該年獨立峰值計算。",
+            "使用組合候選次日開盤共享帳戶；每年年初等於前一年年末，年度 MDD 以該年獨立峰值計算；2026 僅統計至 09 月 30 日。",
             [*annual_table, "", "![候選逐年報酬](yearly-returns.svg)"],
             f"21 個年度中 {positive_years} 年為正、{len(selected_annual)-positive_years} 年為負；逐年分散度顯示不能只看全期 CAGR。",
             "監控應保留年度與 rolling 視角，不能因全期正報酬忽略長時間弱勢。")
@@ -1327,9 +1395,11 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 *_md_table(["帳戶", "交易筆數", "最大單次投入", "曝險", "周轉總額"], [
                     ["HIGH候選", best_high["closed_trades"], _money(best_high["peak_concurrent_investment"]), _pct(best_high["exposure"]), _money(best_high["turnover"])],
                     ["LOW候選", best_low["closed_trades"], _money(best_low["peak_concurrent_investment"]), _pct(best_low["exposure"]), _money(best_low["turnover"])],
-                    ["BOTH_RULES", both_next["closed_trades"], _money(both_next["peak_concurrent_investment"]), _pct(both_next["exposure"]), _money(both_next["turnover"])],
+                    ["組合候選", both_next["closed_trades"], _money(both_next["peak_concurrent_investment"]), _pct(both_next["exposure"]), _money(both_next["turnover"])],
                 ]),
                 "", "- [完整繁體中文逐筆交易明細](trade-details.md)",
+                "- [組合候選原始逐筆交易 CSV](replacement-attribution-trades.csv)",
+                "- [組合候選逐日帳 CSV](replacement-attribution-daily.csv)",
                 "- [原始逐筆交易 CSV](trade-ledger.csv)",
                 "- [逐日正式／經濟權益 CSV](daily-equity.csv)",
                 "- [完整事件帳 CSV](event-ledger.csv)",
@@ -1366,15 +1436,19 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                         if row["case"] == "BOTH_RULES" and row["timing"] == "NEXT_SESSION_OPEN"]
     fixed_periods = [row for row in selected_periods if not str(row["period"]).startswith("ROLLING_")]
     rolling = [row for row in selected_periods if str(row["period"]).startswith("ROLLING_")]
+    complete_rolling = [row for row in rolling if str(row.get("complete_window", "")).lower() == "true"]
+    partial_rolling = [row for row in rolling if str(row.get("complete_window", "")).lower() != "true"]
     section(8, titles[7],
-            "檢查結果在不同年代與所有 rolling 視窗是否一致。",
-            "固定三期加上每一個可形成的 rolling 3／5／10 年視窗；起始資產取區間前一交易日，MDD 用區間內獨立峰值。",
+            "檢查結果在不同年代與完整 rolling 視窗是否一致，並把樣本尾端未滿期視窗分開揭露。",
+            "固定三期加上完整 rolling 3／5／10 年視窗；起始資產取區間前一交易日，MDD 用區間內獨立峰值。樣本只到 2026-09-30，因此尾端三筆另列為未滿期觀察，不混入完整視窗統計。",
             [
                 *_md_table(["期間", "起日", "迄日", "報酬", "CAGR", "MDD"], [[row["period"], row["start"], row["end"], _pct(row["return"]), _pct(row["cagr"]), _pct(row["max_drawdown"])] for row in fixed_periods]), "",
-                "#### 全部 rolling 視窗", "",
-                *_md_table(["視窗", "起日", "迄日", "報酬", "CAGR", "MDD"], [[row["period"], row["start"], row["end"], _pct(row["return"]), _pct(row["cagr"]), _pct(row["max_drawdown"])] for row in rolling]),
+                "#### 完整 rolling 視窗", "",
+                *_md_table(["視窗", "起日", "迄日", "報酬", "CAGR", "MDD"], [[row["period"], row["start"], row["end"], _pct(row["return"]), _pct(row["cagr"]), _pct(row["max_drawdown"])] for row in complete_rolling]), "",
+                "#### 未滿完整年限（截至 2026-09-30；不納入完整視窗統計）", "",
+                *_md_table(["視窗", "起日", "迄日", "狀態", "報酬", "年化報酬", "MDD"], [[row["period"], row["start"], row["end"], "未滿整個視窗", _pct(row["return"]), _pct(row["cagr"]), _pct(row["max_drawdown"])] for row in partial_rolling]),
             ],
-            f"rolling 視窗共 {len(rolling)} 個；其最差 CAGR 為 {_pct(min(_d(row['cagr']) for row in rolling))}，顯示全期結果不能代表每個持有起點。",
+            f"完整 rolling 視窗共 {len(complete_rolling)} 個，另有 {len(partial_rolling)} 個未滿期觀察；完整視窗最差 CAGR 為 {_pct(min(_d(row['cagr']) for row in complete_rolling))}，顯示全期結果不能代表每個持有起點。",
             "若最差 rolling 視窗不可接受，就不能因全期正報酬直接採用。")
 
     selected_quality = [quality_by[high_id], quality_by[low_id]]
@@ -1433,14 +1507,14 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
 
     practical_attr = [row for row in attribution if row.get("timing") == "NEXT_SESSION_OPEN"]
     section(13, titles[12],
-            "把狀態鎖定、LOW 防守啟用、HIGH 規則、LOW 規則拆成可辨識的單一因素。",
-            "封存 v1.7 只作外部基準；新引擎內先建立 DAILY_HIGH_ONLY、ENTRY_HIGH_ONLY、ALL_STOPS 三個控制，再相對 ALL_STOPS_CONTROL 單獨換 HIGH、單獨換 LOW、兩者皆換。",
+            "檢查候選路由是否真的和控制組不同，避免把完全相同的規則錯稱為單因素替換。",
+            "封存 v1.7 只作外部基準。新引擎內比較三種防守政策；規則替換部分先核對候選與控制路由是否不同。本次 HIGH 與 LOW 候選都恰好等於事先控制路由，因此規則替換效果不可估。",
             [
-                *_md_table(["案例", "HIGH", "LOW", "防守政策", "唯一改變"], [[row["case"], f"{row['high_entry']}/{row['high_exit']}", f"{row['low_entry']}/{row['low_exit']}", row["stop_policy"], row["factor_changed"]] for row in attribution_design]), "",
-                *_md_table(["案例", "期末", "CAGR", "MDD", "Calmar", "交易"], [[row["case"], _money(row["ending_equity"]), _pct(row["cagr"]), _pct(row["max_drawdown"]), _num(row["calmar"]), row["closed_trades"]] for row in practical_attr]),
+                *_md_table(["案例", "HIGH", "LOW", "防守政策", "可辨識規則效果", "說明"], [[row["display_label"], f"{row['high_entry']}/{row['high_exit']}", f"{row['low_entry']}/{row['low_exit']}", row["stop_policy_label"], row["identifiable_rule_change"], row["factor_changed"]] for row in attribution_design]), "",
+                *_md_table(["案例", "期末", "CAGR", "MDD", "Calmar", "交易"], [[next(item["display_label"] for item in attribution_design if item["case"] == row["case"]), _money(row["ending_equity"]), _pct(row["cagr"]), _pct(row["max_drawdown"]), _num(row["calmar"]), row["closed_trades"]] for row in practical_attr]),
             ],
-            "若 HIGH／LOW 最終候選和控制規則相同，HIGH_RULE_ONLY／LOW_RULE_ONLY 的差異應為零；這代表改善來自狀態／防守政策，而不是可錯標成規則替換。",
-            "報告不再用『只換高／只換低』錯標案例推論 v1.7；所有因果說法限於同一新引擎控制。")
+            "本樣本的候選與控制規則完全重合，六列績效相同；這是 no-op 診斷，不是 HIGH／LOW 規則替換的因果估計。三種防守政策在本樣本也未造成已觀察績效差異。",
+            "本節只能判定『規則替換效果不可估』；不得據此推論候選規則優於 v1.7 或任何控制。")
 
     section(14, titles[13],
             "讓 00 可從單一入口重現數值、逐筆交易、股息重建、圖表與 SHA。",
@@ -1449,6 +1523,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "- [主矩陣](matrix-summary.csv)",
                 "- [獨立交易品質表](matrix-trade-metrics.csv)",
                 "- [完整繁體中文逐筆交易](trade-details.md)",
+                "- [組合候選逐筆交易](replacement-attribution-trades.csv)／[逐日帳](replacement-attribution-daily.csv)",
                 "- [原始逐筆交易](trade-ledger.csv)",
                 "- [逐日正式／經濟權益](daily-equity.csv)",
                 "- [事件帳](event-ledger.csv)",
@@ -1458,10 +1533,10 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "- [逐年](annual.csv)／[期間與 rolling](periods.csv)",
                 "- [成本壓力](cost-sensitivity.csv)",
                 "- [分組 Pareto](pareto-candidates.csv)",
-                "- [替換歸因](replacement-attribution.csv)／[設計](replacement-attribution-design.json)",
+                "- [控制重合診斷](replacement-attribution.csv)／[設計](replacement-attribution-design.json)",
                 "- [研究契約](research-contract.json)／[限制](limitations.json)",
                 "- [artifact manifest](artifact-manifest.json)／[readback](readback.json)",
-                "- 圖表：[權益](matrix-equity.svg)／[矩陣](next-open-cagr.svg)／[成本](cost-sensitivity.svg)／[年度](yearly-returns.svg)／[出場](exit-reasons.svg)",
+                "- 圖表：[主比較權益](main-comparison-equity.svg)／[分組候選權益](regime-candidates-equity.svg)／[矩陣](next-open-cagr.svg)／[成本](cost-sensitivity.svg)／[年度](yearly-returns.svg)／[出場](exit-reasons.svg)",
             ],
             "所有報告相對連結與 anchor 都由驗證器實際走訪；任一附件缺失即 FAIL。",
             "維持 STOP_WAIT_00_0050_REGIME_ENTRY_EXIT_QA，等待第二輪獨立 QA；不得 merge、push 或更新總目錄。")
@@ -1588,19 +1663,39 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     candidate_high = (str(best_high["entry_rule"]), str(best_high["exit_rule"]))
     candidate_low = (str(best_low["entry_rule"]), str(best_low["exit_rule"]))
     base_routing = {"HIGH": ("P1", "E1"), "LOW": ("P2", "E1")}
+    high_rule_identifiable = candidate_high != base_routing["HIGH"]
+    low_rule_identifiable = candidate_low != base_routing["LOW"]
     case_definitions = [
         {"case": "NEW_ENGINE_DAILY_STOP_POLICY_CONTROL", "routing": base_routing,
-         "stop_policy": "DAILY_HIGH_ONLY", "factor_changed": "新引擎控制；每日狀態決定防守是否執行"},
+         "display_label": "每日狀態防守控制", "stop_policy": "DAILY_HIGH_ONLY",
+         "stop_policy_label": "每日狀態決定防守", "identifiable_rule_change": False,
+         "factor_changed": "防守政策控制；未替換進出規則"},
         {"case": "LOCKED_ENTRY_STOP_POLICY_CONTROL", "routing": base_routing,
-         "stop_policy": "ENTRY_HIGH_ONLY", "factor_changed": "只把防守執行狀態鎖在進場日"},
+         "display_label": "進場狀態防守控制", "stop_policy": "ENTRY_HIGH_ONLY",
+         "stop_policy_label": "進場狀態鎖定防守", "identifiable_rule_change": False,
+         "factor_changed": "防守政策控制；未替換進出規則"},
         {"case": "ALL_STOPS_CONTROL", "routing": base_routing,
-         "stop_policy": "ALL_LOCKED", "factor_changed": "只把LOW初始防守改為實際執行"},
+         "display_label": "全狀態防守控制", "stop_policy": "ALL_LOCKED",
+         "stop_policy_label": "所有進場狀態均執行防守", "identifiable_rule_change": False,
+         "factor_changed": "規則重合基準；未替換進出規則"},
         {"case": "HIGH_RULE_ONLY", "routing": {"HIGH": candidate_high, "LOW": base_routing["LOW"]},
-         "stop_policy": "ALL_LOCKED", "factor_changed": "相對ALL_STOPS_CONTROL只換HIGH規則"},
+         "display_label": "HIGH 候選重合檢查", "stop_policy": "ALL_LOCKED",
+         "stop_policy_label": "所有進場狀態均執行防守",
+         "identifiable_rule_change": high_rule_identifiable,
+         "factor_changed": ("HIGH 規則與控制不同，可辨識" if high_rule_identifiable
+                            else "HIGH 候選等於控制規則；替換效果不可估")},
         {"case": "LOW_RULE_ONLY", "routing": {"HIGH": base_routing["HIGH"], "LOW": candidate_low},
-         "stop_policy": "ALL_LOCKED", "factor_changed": "相對ALL_STOPS_CONTROL只換LOW規則"},
+         "display_label": "LOW 候選重合檢查", "stop_policy": "ALL_LOCKED",
+         "stop_policy_label": "所有進場狀態均執行防守",
+         "identifiable_rule_change": low_rule_identifiable,
+         "factor_changed": ("LOW 規則與控制不同，可辨識" if low_rule_identifiable
+                            else "LOW 候選等於控制規則；替換效果不可估")},
         {"case": "BOTH_RULES", "routing": {"HIGH": candidate_high, "LOW": candidate_low},
-         "stop_policy": "ALL_LOCKED", "factor_changed": "相對ALL_STOPS_CONTROL同時換HIGH與LOW規則"},
+         "display_label": "組合候選", "stop_policy": "ALL_LOCKED",
+         "stop_policy_label": "所有進場狀態均執行防守",
+         "identifiable_rule_change": high_rule_identifiable or low_rule_identifiable,
+         "factor_changed": ("至少一側規則與控制不同，可辨識" if high_rule_identifiable or low_rule_identifiable
+                            else "HIGH／LOW 候選皆等於控制規則；替換效果不可估")},
     ]
     attribution_design = []
     for definition in case_definitions:
@@ -1611,6 +1706,9 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
             "case": case, "high_entry": routing["HIGH"][0],
             "high_exit": routing["HIGH"][1], "low_entry": routing["LOW"][0],
             "low_exit": routing["LOW"][1], "stop_policy": stop_policy,
+            "display_label": definition["display_label"],
+            "stop_policy_label": definition["stop_policy_label"],
+            "identifiable_rule_change": definition["identifiable_rule_change"],
             "factor_changed": definition["factor_changed"],
         })
         for timing in TIMINGS:
@@ -1689,6 +1787,8 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     _write_csv(run_root / "kd-cycle-audit.csv", kd_audit)
     _write_csv(run_root / "sealed-v1-7-main-comparison-summary.csv", sealed_summary)
     shutil.copy2(SEALED_RUN / "benchmark.csv", run_root / "sealed-v1-7-benchmark.csv")
+    shutil.copy2(SEALED_RUN / "main-comparison-daily.csv",
+                 run_root / "sealed-v1-7-main-comparison-daily.csv")
     contract = {
         "version": VERSION, "formal_start": START, "formal_end": END,
         "warmup_start": rows[0]["date"], "capital": CAPITAL,
@@ -1705,25 +1805,49 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     }
     _write_json(run_root / "research-contract.json", contract)
     representative = [best_high["cell_id"], best_low["cell_id"]]
-    svg = _svg_lines([("HIGH 最佳候選", primary_results[representative[0]]["daily"]),
-                      ("LOW 最佳候選", primary_results[representative[1]]["daily"])],
-                     "0050 HIGH／LOW 代表候選權益曲線（20bps）")
-    (run_root / "matrix-equity.svg").write_text(svg, encoding="utf-8")
+    regime_svg = _svg_lines(
+        [("高檔狀態候選", primary_results[representative[0]]["daily"]),
+         ("低檔狀態候選", primary_results[representative[1]]["daily"])],
+        "0050 高低狀態分組候選權益曲線（20 基點）",
+        source="matrix-summary.csv",
+    )
+    (run_root / "regime-candidates-equity.svg").write_text(regime_svg, encoding="utf-8")
+    sealed_daily = _read_csv(SEALED_RUN / "main-comparison-daily.csv")
+    sealed_daily_by_id = {
+        comparison_id: [row for row in sealed_daily if row["comparison_id"] == comparison_id]
+        for comparison_id in (
+            "FINAL_NEXT_SESSION_OPEN_20BPS", "BUY_HOLD_CASH", "BUY_HOLD_REINVEST",
+            "TAIEX_TOTAL_RETURN_EQUIVALENT_500K",
+        )
+    }
+    both_daily = [row for row in attribution_daily
+                  if row["case"] == "BOTH_RULES" and row["timing"] == "NEXT_SESSION_OPEN"]
+    main_svg = _svg_lines(
+        [("組合候選", both_daily),
+         ("封存 v1.7", sealed_daily_by_id["FINAL_NEXT_SESSION_OPEN_20BPS"]),
+         ("0050 持有－股利留現金", sealed_daily_by_id["BUY_HOLD_CASH"]),
+         ("0050 持有－股利再投入", sealed_daily_by_id["BUY_HOLD_REINVEST"]),
+         ("加權報酬指數等值", sealed_daily_by_id["TAIEX_TOTAL_RETURN_EQUIVALENT_500K"])],
+        "同本金主策略與基準權益比較（2006～2026/09）",
+        source="replacement-attribution-daily.csv + sealed-v1-7-main-comparison-daily.csv",
+    )
+    (run_root / "main-comparison-equity.svg").write_text(main_svg, encoding="utf-8")
+    (run_root / "matrix-equity.svg").write_text(main_svg, encoding="utf-8")
     practical_rows = sorted(
         (row for row in summaries if row["timing"] == "NEXT_SESSION_OPEN"),
         key=lambda row: (row["regime"], row["entry_rule"], row["exit_rule"]),
     )
     (run_root / "next-open-cagr.svg").write_text(_svg_bars(
-        rows=[(f"{row['regime']}-{row['entry_rule']}/{row['exit_rule']}", _d(row["cagr"]))
+        rows=[(f"{'高檔' if row['regime']=='HIGH' else '低檔'}-{row['entry_rule']}/{row['exit_rule']}", _d(row["cagr"]))
               for row in practical_rows],
-        title="NEXT_SESSION_OPEN 20bps｜HIGH／LOW 各九格 CAGR",
+        title="次日開盤、20 基點｜高低狀態各九格年化報酬",
         source="matrix-summary.csv", percent=True,
     ), encoding="utf-8")
     selected_cost_rows = [row for row in costs if row["timing"] == "NEXT_SESSION_OPEN"
                           and ((row["regime"] == "HIGH" and row["entry_rule"] == best_high["entry_rule"] and row["exit_rule"] == best_high["exit_rule"])
                                or (row["regime"] == "LOW" and row["entry_rule"] == best_low["entry_rule"] and row["exit_rule"] == best_low["exit_rule"]))]
     (run_root / "cost-sensitivity.svg").write_text(_svg_bars(
-        rows=[(f"{row['regime']}-{row['slippage_bps']}bps", _d(row["ending_equity"]))
+        rows=[(f"{'高檔' if row['regime']=='HIGH' else '低檔'}-{row['slippage_bps']}基點", _d(row["ending_equity"]))
               for row in selected_cost_rows],
         title="候選規則成本壓力｜期末資產", source="cost-sensitivity.csv",
     ), encoding="utf-8")
@@ -1731,7 +1855,7 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
                             if row["case"] == "BOTH_RULES" and row["timing"] == "NEXT_SESSION_OPEN"]
     (run_root / "yearly-returns.svg").write_text(_svg_bars(
         rows=[(str(row["year"]), _d(row["return"])) for row in selected_attr_annual],
-        title="BOTH_RULES 次日開盤｜逐年報酬", source="replacement-attribution-annual.csv",
+        title="組合候選次日開盤｜逐年報酬（2026 截至 09 月）", source="replacement-attribution-annual.csv",
         percent=True,
     ), encoding="utf-8")
     quality_by_id = {str(row["cell_id"]): row for row in trade_quality}
@@ -1739,9 +1863,9 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     for candidate in (best_high, best_low):
         quality = quality_by_id[str(candidate["cell_id"])]
         prefix = "H" if candidate["regime"] == "HIGH" else "L"
-        for label, field in (("Stop", "fixed_stop_exits"), ("Dow", "dow_defense_exits"),
+        for label, field in (("停損", "fixed_stop_exits"), ("道氏防線", "dow_defense_exits"),
                              ("MACD", "macd_exits"), ("KD", "kd_exits")):
-            exit_chart_rows.append((f"{prefix}-{label}", _d(quality[field])))
+            exit_chart_rows.append((f"{'高檔' if prefix=='H' else '低檔'}-{label}", _d(quality[field])))
     (run_root / "exit-reasons.svg").write_text(_svg_bars(
         rows=exit_chart_rows, title="HIGH／LOW 候選出場原因筆數",
         source="matrix-trade-metrics.csv",
@@ -1754,7 +1878,8 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         attribution_design=attribution_design, best_high=best_high, best_low=best_low,
         named_dividend_case=named_dividend_case,
     )
-    trade_details = trade_details_text(summaries, primary_results)
+    trade_details = trade_details_text(summaries, primary_results, attribution,
+                                       attribution_trades)
     (run_root / "README.md").write_text(report, encoding="utf-8")
     (run_root / "report.md").write_text(report, encoding="utf-8")
     (run_root / "trade-details.md").write_text(trade_details, encoding="utf-8")
@@ -1763,7 +1888,7 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         "limitations": [
             "本研究只證實樣本內正報酬；未定義或證明經選擇偏差校正後的未來正期望。",
             "未做多重檢定校正。",
-            "封存 v1.7 只作外部基準；單因素歸因只在新引擎控制組內解讀。",
+            "封存 v1.7 只作外部基準；本次候選與控制路由重合，規則替換效果不可估。",
             "正式 equity 採 v1.7 現金制；economic_equity 僅作應收股息與交易歸因診斷。",
         ],
     }
@@ -1793,7 +1918,9 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
                     "signal-ledger.csv", "dividend-ledger-reconciliation.csv",
                     "named-dividend-case-2007.json", "periods.csv", "annual.csv",
                     "cost-sensitivity.csv", "account-reconciliation-108.csv",
-                    "sealed-v1-7-main-comparison-summary.csv", "matrix-equity.svg",
+                    "sealed-v1-7-main-comparison-summary.csv",
+                    "sealed-v1-7-main-comparison-daily.csv", "matrix-equity.svg",
+                    "main-comparison-equity.svg", "regime-candidates-equity.svg",
                     "next-open-cagr.svg", "cost-sensitivity.svg", "yearly-returns.svg",
                     "exit-reasons.svg",
                     "limitations.json", "baseline-parity.json", "research-contract.json"]
@@ -1815,7 +1942,7 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
                  "manifest_sha256": _sha(report_root / "artifact-manifest.json")})
     gate = {
         "status": STOP_CODE, "candidate_only": True, "adopted": False,
-        "branch": "codex/0050-regime-entry-exit-comparison-qa-fix",
+        "branch": "codex/0050-regime-entry-exit-qa2",
         "run_root": str(run_root), "report_root": str(report_root),
         "run_manifest_sha256": readback["manifest_sha256"],
         "report_manifest_sha256": _sha(report_root / "artifact-manifest.json"),

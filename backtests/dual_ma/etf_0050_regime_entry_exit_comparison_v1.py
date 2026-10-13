@@ -42,7 +42,7 @@ from .models import InstrumentType
 from .paths import dev_run, report_path
 
 
-VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.3-qa3-fix"
+VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.4-readable-zh"
 START = date(2006, 1, 2)
 END = date(2026, 9, 30)
 CAPITAL = Decimal("500000")
@@ -52,6 +52,47 @@ ENTRIES = ("P1", "P2", "P3")
 EXITS = ("E1", "E2", "E3")
 SLIPPAGE_BPS = (20, 40, 60)
 STOP_CODE = "STOP_WAIT_00_0050_REGIME_ENTRY_EXIT_QA"
+
+REGIME_LABELS = {
+    "HIGH": "多頭區",
+    "LOW": "弱勢區",
+}
+ENTRY_LABELS = {
+    "P1": "均線突破進場",
+    "P2": "MACD 翻紅進場",
+    "P3": "KD 二段轉強進場",
+}
+ENTRY_SHORT_LABELS = {
+    "P1": "均線突破",
+    "P2": "MACD 翻紅",
+    "P3": "KD 二段轉強",
+}
+ENTRY_CHART_LABELS = {
+    "P1": "均線突破",
+    "P2": "MACD翻紅",
+    "P3": "KD二段",
+}
+EXIT_LABELS = {
+    "E1": "MACD 轉弱出場",
+    "E2": "2R 後 KD 停利",
+    "E3": "道氏移動防守",
+}
+EXIT_CHART_LABELS = {
+    "E1": "MACD轉弱",
+    "E2": "2R後KD",
+    "E3": "道氏防守",
+}
+EXIT_REASON_LABELS = {
+    "FIXED_STOP": "固定初始防守",
+    "E1_MACD_DEATH": "MACD 轉弱出場",
+    "E2_POST_2R_KD_DEATH": "2R 後 KD 死亡交叉",
+    "E3_EFFECTIVE_DEFENSE": "道氏移動防守",
+    "E3_MACD_FALLBACK": "MACD 備援出場",
+}
+TIMING_LABELS = {
+    "NEXT_SESSION_OPEN": "次日開盤",
+    "SIGNAL_CLOSE": "訊號收盤",
+}
 
 RUN_ROOT_DEFAULT = dev_run("02-etf-0050-regime-entry-exit-comparison-v1")
 REPORT_ROOT_DEFAULT = report_path(
@@ -70,6 +111,36 @@ OLD_V5_REPORT_TREE_SHA256 = "bbb7aa0d2de2e709d5b3df6a34559eb282484525b357679fdce
 
 def _d(value: Any) -> Decimal:
     return Decimal(str(value))
+
+
+def _regime_label(value: Any) -> str:
+    return REGIME_LABELS.get(str(value), str(value))
+
+
+def _entry_label(value: Any, *, short: bool = False) -> str:
+    labels = ENTRY_SHORT_LABELS if short else ENTRY_LABELS
+    return labels.get(str(value), str(value))
+
+
+def _exit_label(value: Any) -> str:
+    return EXIT_LABELS.get(str(value), str(value))
+
+
+def _strategy_label(entry_rule: Any, exit_rule: Any) -> str:
+    return f"{_entry_label(entry_rule, short=True)}＋{_exit_label(exit_rule)}"
+
+
+def _chart_strategy_label(entry_rule: Any, exit_rule: Any) -> str:
+    entry = ENTRY_CHART_LABELS.get(str(entry_rule), str(entry_rule))
+    exit_name = EXIT_CHART_LABELS.get(str(exit_rule), str(exit_rule))
+    return f"{entry}→{exit_name}"
+
+
+def _candidate_label(row: Mapping[str, Any], *, include_timing: bool = False) -> str:
+    label = f"{_regime_label(row['regime'])}｜{_strategy_label(row['entry_rule'], row['exit_rule'])}"
+    if include_timing:
+        label += f"｜{TIMING_LABELS.get(str(row['timing']), str(row['timing']))}"
+    return label
 
 
 def _sha(path: Path) -> str:
@@ -1287,21 +1358,19 @@ def trade_details_text(
         for timing in TIMINGS
     }
     lines = [
-        "# 0050 HIGH／LOW 進出場矩陣｜完整繁體中文逐筆交易明細", "",
+        "# 0050 多頭區／弱勢區進出場矩陣｜完整繁體中文逐筆交易明細", "",
         "[返回主報告](README.md#06)", "",
-        "本附件列出 36 個 20bps 主矩陣帳戶，以及主結論組合候選之次日開盤與訊號收盤帳戶的全部已平倉交易。股息欄採除息日已成立的經濟權利；付款前仍列應收，不提前列為可用現金。", "",
+        "本附件列出 36 個 20bps 主矩陣帳戶，以及主結論組合候選之次日開盤與訊號收盤帳戶的全部已平倉交易。標題直接使用中文進出場名稱；原始 CSV 仍保留內部識別碼供稽核。股息欄採除息日已成立的經濟權利；付款前仍列應收，不提前列為可用現金。", "",
         "## 快速索引", "",
     ]
     display_headings: dict[str, str] = {}
-    timing_zh = {"NEXT_SESSION_OPEN": "次日開盤", "SIGNAL_CLOSE": "訊號收盤"}
     for timing in ("NEXT_SESSION_OPEN", "SIGNAL_CLOSE"):
-        heading = f"組合候選｜{timing_zh[timing]}"
+        heading = f"組合候選｜{TIMING_LABELS[timing]}"
         display_headings[f"BOTH::{timing}"] = heading
         lines.append(f"- [{heading}](#{_markdown_slug(heading)})")
     for cell_id in sorted(primary_results):
         summary = summary_by_id[cell_id]
-        heading = (f"{summary['regime']} {summary['entry_rule']}／{summary['exit_rule']}｜"
-                   f"{timing_zh[str(summary['timing'])]}")
+        heading = _candidate_label(summary, include_timing=True)
         display_headings[cell_id] = heading
         lines.append(f"- [{heading}](#{_markdown_slug(heading)})")
 
@@ -1318,15 +1387,16 @@ def trade_details_text(
             f"已平倉 {len(trades)} 筆，期末資產 {_money(summary['ending_equity'])} 元。", "",
         ])
         rows = []
-        for trade in trades:
+        for trade_index, trade in enumerate(trades, 1):
             rows.append([
-                trade["episode_id"], trade["entry_date"], trade["exit_date"],
+                f"第 {trade_index:04d} 筆", trade["entry_date"], trade["exit_date"],
                 trade["shares"], _money(trade["entry_fill_price"]),
                 _money(trade["initial_stop_at_entry"]), _money(trade["exit_fill_price"]),
                 _money(trade["dividend_cash"]), _money(trade["dividend_receivable_at_exit"]),
                 _money(trade["pnl"]), _num(trade["r_multiple"]),
                 _num(trade["mfe_r"]), _num(trade["mae_r"]),
-                trade["holding_sessions"], trade["exit_reason"],
+                trade["holding_sessions"],
+                EXIT_REASON_LABELS.get(str(trade["exit_reason"]), str(trade["exit_reason"])),
             ])
         lines.extend(_md_table(
             ["交易編號", "進場日", "出場日", "股數", "進場價", "初始防守",
@@ -1438,7 +1508,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 trade_counts, _money(row.get("peak_concurrent_investment"))]
 
     lines = [
-        "# 0050 2006～2026/09 HIGH／LOW 市場狀態進出場策略分組比較｜QA 修正版", "",
+        "# 0050 2006～2026/09 多頭區／弱勢區進出場策略分組比較｜中文易讀修正版", "",
         "狀態：**研究候選，未採用、未取代 v1.7**。本報告只陳述樣本內正報酬，不把樣本內平均 R 或回測獲利寫成已證明的未來正期望。", "",
         "## 閱讀順序", "",
     ]
@@ -1446,7 +1516,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
         "一頁白話結論", "完整績效總表", "相對 v1.7／0050 持有／大盤",
         "規則、狀態與股息帳務", "完整逐年績效", "交易紀錄與資金投入",
         "成交時間與成本壓力", "不同時期與 rolling 3／5／10 年",
-        "交易品質與出場歸因", "HIGH 九格實務矩陣", "LOW 九格實務矩陣",
+        "交易品質與出場歸因", "多頭區九格實務矩陣", "弱勢區九格實務矩陣",
         "分組 Pareto 與候選篩選", "候選與控制重合檢查", "技術驗收與完整附件",
     ]
     lines.extend(f"- [{index:02d}｜{title}](#{index:02d})" for index, title in enumerate(titles, 1))
@@ -1483,9 +1553,9 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
     )
     section(1, titles[0],
             "先回答這套新矩陣在相同資料、成本與資金限制下是否有樣本內正報酬，以及是否值得取代 v1.7。",
-            "候選只從 NEXT_SESSION_OPEN、20bps、HIGH 與 LOW 各自 Pareto 母體選出；SIGNAL_CLOSE 只作同規則敏感度對照。",
+            "候選只從次日開盤、20 基點、多頭區與弱勢區各自的 Pareto 母體選出；訊號收盤只作同規則敏感度對照。",
             [*first_table, "", "![同本金組合候選與基準權益比較](main-comparison-equity.svg)", "",
-             "分組候選曲線另見：[HIGH／LOW 分組候選](regime-candidates-equity.svg)。"],
+             "分組候選曲線另見：[多頭區／弱勢區分組候選](regime-candidates-equity.svg)。"],
             f"新候選次日開盤期末 {_money(both_next['ending_equity'])} 元、年化報酬率 {_pct(both_next['cagr'])}、最大回落 {_pct(both_next['max_drawdown'])}；這是樣本內正報酬，不是已處理選擇偏差後的期望值證明。",
             "維持研究候選；是否採用必須先看它相對封存 v1.7、持有線與大盤是否提供足夠增量。")
 
@@ -1514,13 +1584,13 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
             "本研究不更新總目錄，也不改採用狀態。")
 
     section(4, titles[3],
-            "消除 HIGH／LOW、P1～P3、E1～E3 與股息時間點的口徑歧義。",
-            "HIGH 為 MA21>=MA144（相等歸 HIGH），進場狀態鎖定；所有新矩陣格的初始防守都實際執行。P1=MA21突破，P2=MACD<=0轉>0，P3=KD(9,9,55)兩次回檔且K2>K1後突破。E1=防守優先加 armed MACD，E2=費後2R永久 armed 後新 KD 死叉，E3=只上移的因果 n=2 道氏防線加 MACD fallback。",
+            "消除市場狀態、三種進場方式、三種出場方式與股息時間點的口徑歧義。",
+            "多頭區為 MA21≥MA144（相等歸多頭區），弱勢區為 MA21<MA144；進場時的市場狀態會鎖定到該筆交易結束。均線突破進場使用 MA21 突破及其拉回結構低點；MACD 翻紅進場使用柱狀體由非正轉正及負柱結構低點；KD 二段轉強進場使用 KD(9,9,55) 兩次回檔、第二段最低 K 高於第一段後突破 MA21，防守設在第二段回檔樞紐低點。三種出場依序為 MACD 轉弱出場、2R 後 KD 停利，以及只上移的因果 n=2 道氏移動防守加 MACD 備援；固定初始防守一律優先。",
             [
-                "股息分四個概念：除息日成立的**經濟權利**立即歸屬原 episode；付款日前不是**可用現金**；交易 PnL/R、MFE/MAE 與 E2 2R 使用已成立權利；正式 daily equity 仍採 v1.7 現金制。",
+                "股息分四個概念：除息日成立的**經濟權利**立即歸屬原交易；付款日前不是**可用現金**；交易損益／R、最大有利與不利變動，以及 2R 後 KD 停利的判斷都使用已成立權利；正式逐日權益仍採 v1.7 現金制。",
                 "",
                 * _md_table(["具名案例", "除息權利", "出場日", "付款日", "交易股息", "出場時應收", "重建"], [[
-                    "HIGH-P1-E1-0007", "2007-10-24", "2007-11-08", "2007-12-03",
+                    "多頭區｜均線突破＋MACD 轉弱｜第 7 筆", "2007-10-24", "2007-11-08", "2007-12-03",
                     _money(named_dividend_case["trade_dividend_cash"]),
                     _money(named_dividend_case["receivable_at_exit"]), named_dividend_case["status"],
                 ]]),
@@ -1549,16 +1619,16 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
             "每次以當時可用現金為預算，費後初始 R 不超過可用現金 20%，只買整股、不借款、不加碼。",
             [
                 *_md_table(["帳戶", "交易筆數", "最大單次投入", "曝險", "周轉總額"], [
-                    ["HIGH候選", best_high["closed_trades"], _money(best_high["peak_concurrent_investment"]), _pct(best_high["exposure"]), _money(best_high["turnover"])],
-                    ["LOW候選", best_low["closed_trades"], _money(best_low["peak_concurrent_investment"]), _pct(best_low["exposure"]), _money(best_low["turnover"])],
+                    ["多頭區候選", best_high["closed_trades"], _money(best_high["peak_concurrent_investment"]), _pct(best_high["exposure"]), _money(best_high["turnover"])],
+                    ["弱勢區候選", best_low["closed_trades"], _money(best_low["peak_concurrent_investment"]), _pct(best_low["exposure"]), _money(best_low["turnover"])],
                     ["組合候選", both_next["closed_trades"], _money(both_next["peak_concurrent_investment"]), _pct(both_next["exposure"]), _money(both_next["turnover"])],
                 ]),
-                "", "- [完整繁體中文逐筆交易明細](trade-details.md)",
+                "", "- [完整繁體中文逐筆交易明細（中文策略名稱）](trade-details.md)",
                 "- [組合候選原始逐筆交易 CSV](replacement-attribution-trades.csv)",
                 "- [組合候選逐日帳 CSV](replacement-attribution-daily.csv)",
-                "- [P3 已結束逐筆摘要 CSV](p3-trades-closed.csv)",
-                "- [P3 未平倉摘要 CSV](p3-positions-open.csv)",
-                "- [P3 逐筆摘要與驗算 JSON](p3-trade-summary.json)",
+                "- [KD 二段轉強進場：已結束逐筆摘要 CSV](p3-trades-closed.csv)",
+                "- [KD 二段轉強進場：未平倉摘要 CSV](p3-positions-open.csv)",
+                "- [KD 二段轉強進場：逐筆摘要與驗算 JSON](p3-trade-summary.json)",
                 "- [原始逐筆交易 CSV](trade-ledger.csv)",
                 "- [逐日正式／經濟權益 CSV](daily-equity.csv)",
                 "- [完整事件帳 CSV](event-ledger.csv)",
@@ -1572,7 +1642,8 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                       and row["entry_rule"] == practical["entry_rule"]
                       and row["exit_rule"] == practical["exit_rule"]
                       and row["timing"] == "SIGNAL_CLOSE")
-        timing_rows.append([practical["regime"], f"{practical['entry_rule']}/{practical['exit_rule']}",
+        timing_rows.append([_regime_label(practical["regime"]),
+                            _strategy_label(practical["entry_rule"], practical["exit_rule"]),
                             _money(practical["ending_equity"]), _pct(practical["cagr"]),
                             _money(paired["ending_equity"]), _pct(paired["cagr"])])
     selected_costs = [row for row in costs if row["timing"] == "NEXT_SESSION_OPEN"
@@ -1580,16 +1651,18 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                            or (row["regime"] == "LOW" and row["entry_rule"] == best_low["entry_rule"] and row["exit_rule"] == best_low["exit_rule"]))]
     section(7, titles[6],
             "檢查可交易時點與成本上升後結果。",
-            "只用 NEXT_SESSION_OPEN_20BPS 選候選；訊號收盤是同一 P/E 規則的配對敏感度。40/60bps 重新做部位 sizing、2R 與完整路徑。",
+            "只用次日開盤、20 基點選候選；訊號收盤是同一進出場規則的配對敏感度。40／60 基點重新計算部位、2R 與完整交易路徑。",
             [
                 *_md_table(["狀態", "規則", "次日開盤期末", "次日CAGR", "收盤期末", "收盤CAGR"], timing_rows), "",
                 *_md_table(["狀態", "規則", "滑價", "期末", "CAGR", "MDD", "交易"], [[
-                    row["regime"], f"{row['entry_rule']}/{row['exit_rule']}", f"{row['slippage_bps']}bps",
+                    _regime_label(row["regime"]),
+                    _strategy_label(row["entry_rule"], row["exit_rule"]),
+                    f"{row['slippage_bps']}基點",
                     _money(row["ending_equity"]), _pct(row["cagr"]), _pct(row["max_drawdown"]), row["closed_trades"],
                 ] for row in selected_costs]), "", "![成本壓力](cost-sensitivity.svg)",
             ],
-            "成本較高可能因整股 sizing 與 E2 armed 路徑改變而非單調，但所有壓力格都按完整規則重播，不能只線性扣成本。",
-            "候選選擇固定以次日開盤 20bps；不得混入收盤版排名。")
+            "成本較高時，結果可能因整股部位計算與 2R 啟動路徑改變而非單調，但所有壓力組合都按完整規則重播，不能只線性扣成本。",
+            "候選選擇固定以次日開盤 20 基點；不得混入收盤版排名。")
 
     selected_periods = [row for row in attribution_periods
                         if row["case"] == "BOTH_RULES" and row["timing"] == "NEXT_SESSION_OPEN"]
@@ -1616,7 +1689,9 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
             "獨立由 trade ledger 重建 R 分位數、勝負平均、MFE/MAE、持有期、出場類型、應收股息與集中度。",
             [
                 *_md_table(["狀態", "規則", "筆數", "期望R(樣本平均)", "R中位", "R P10/P90", "勝R/敗R", "MFE中位", "MAE中位", "前5集中", "出場時有應收"], [[
-                    row["regime"], f"{row['entry_rule']}/{row['exit_rule']}", row["closed_trades"],
+                    _regime_label(row["regime"]),
+                    _strategy_label(row["entry_rule"], row["exit_rule"]),
+                    row["closed_trades"],
                     _num(row["expectancy_r"]), _num(row["r_median"]), f"{_num(row['r_p10'])}/{_num(row['r_p90'])}",
                     f"{_num(row['average_win_r'])}/{_num(row['average_loss_r'])}", _num(row["mfe_median_r"]),
                     _num(row["mae_median_r"]), _pct(row["top5_profit_concentration"]), row["trades_exited_with_receivable"],
@@ -1632,47 +1707,49 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
         paired = {(row["regime"], row["entry_rule"], row["exit_rule"]): row
                   for row in summaries if row["timing"] == "SIGNAL_CLOSE"}
         return _md_table(["進場", "出場", "期末", "CAGR", "MDD", "Calmar", "交易", "平均R", "PF", "收盤版CAGR"], [[
-            row["entry_rule"], row["exit_rule"], _money(row["ending_equity"]), _pct(row["cagr"]),
+            _entry_label(row["entry_rule"]), _exit_label(row["exit_rule"]),
+            _money(row["ending_equity"]), _pct(row["cagr"]),
             _pct(row["max_drawdown"]), _num(row["calmar"]), row["closed_trades"],
             _num(row["average_r"]), _num(row["profit_factor"]),
             _pct(paired[(regime, row["entry_rule"], row["exit_rule"])]["cagr"]),
         ] for row in cohort])
 
     section(10, titles[9],
-            "完整展示 HIGH 狀態的 3×3 實務矩陣。",
-            "九格都採 NEXT_SESSION_OPEN 20bps；最後一欄只展示相同規則的 SIGNAL_CLOSE 敏感度。",
+            "完整展示多頭區的 3×3 實務矩陣。",
+            "九格都採次日開盤、20 基點；最後一欄只展示相同規則的訊號收盤敏感度。",
             [*matrix_observations("HIGH"), "", "![次日開盤九格CAGR](next-open-cagr.svg)"],
-            f"HIGH 實務候選為 {best_high['entry_rule']}/{best_high['exit_rule']}，Calmar {_num(best_high['calmar'])}、{best_high['closed_trades']} 筆。",
-            "只在 HIGH 自己的實務母體內選擇，不讓 LOW 或收盤版支配它。")
+            f"多頭區實務候選為「{_strategy_label(best_high['entry_rule'], best_high['exit_rule'])}」，Calmar {_num(best_high['calmar'])}、{best_high['closed_trades']} 筆。",
+            "只在多頭區自己的實務母體內選擇，不讓弱勢區或收盤版支配它。")
 
     low_sparse = [row for row in pareto if row["regime"] == "LOW" and not row["eligible_for_automatic_selection"]]
     section(11, titles[10],
-            "完整展示 LOW 狀態九格，並揭露稀疏／集中候選。",
-            "選擇母體與 HIGH 相同，但 LOW Pareto 中交易少於20筆或前五獲利集中度>80%的格只列示、不推薦。",
-            [*matrix_observations("LOW"), "", *(["受限候選：" + "；".join(f"{row['cell_id']}（{row['closed_trades']}筆、前5集中{_pct(row['top5_profit_concentration'])}）" for row in low_sparse)] if low_sparse else ["本次沒有受限 LOW Pareto 候選。"])],
-            f"LOW 實務候選為 {best_low['entry_rule']}/{best_low['exit_rule']}，Calmar {_num(best_low['calmar'])}、{best_low['closed_trades']} 筆；稀疏格不因高平均R自動勝出。",
-            "LOW 的結論必須附交易數與集中度，不能只看 CAGR/MDD。")
+            "完整展示弱勢區九格，並揭露稀疏／集中候選。",
+            "選擇母體與多頭區相同，但弱勢區 Pareto 中交易少於20筆或前五獲利集中度>80%的組合只列示、不推薦。",
+            [*matrix_observations("LOW"), "", *(["受限候選：" + "；".join(f"{_candidate_label(row)}（{row['closed_trades']}筆、前5集中{_pct(row['top5_profit_concentration'])}）" for row in low_sparse)] if low_sparse else ["本次沒有受限的弱勢區 Pareto 候選。"])],
+            f"弱勢區實務候選為「{_strategy_label(best_low['entry_rule'], best_low['exit_rule'])}」，Calmar {_num(best_low['calmar'])}、{best_low['closed_trades']} 筆；稀疏組合不因高平均R自動勝出。",
+            "弱勢區的結論必須附交易數與集中度，不能只看 CAGR／MDD。")
 
     section(12, titles[11],
             "在正確分組後縮小候選，避免把不同狀態與成交口徑混為同一 Pareto。",
-            "先固定 NEXT_SESSION_OPEN_20BPS，再分 HIGH、LOW 各自以 CAGR 高、MDD 較淺判定非支配；最後才套交易數與集中度門檻。",
+            "先固定次日開盤、20 基點，再分多頭區、弱勢區各自以 CAGR 高、MDD 較淺判定非支配；最後才套交易數與集中度門檻。",
             _md_table(["狀態", "候選", "CAGR", "MDD", "Calmar", "交易", "前5集中", "可自動選", "說明"], [[
-                row["regime"], row["cell_id"], _pct(row["cagr"]), _pct(row["max_drawdown"]),
+                _regime_label(row["regime"]), _candidate_label(row),
+                _pct(row["cagr"]), _pct(row["max_drawdown"]),
                 _num(row["calmar"]), row["closed_trades"], _pct(row["top5_profit_concentration"]),
                 row["eligible_for_automatic_selection"], row["selection_note"],
             ] for row in pareto]),
             "Pareto 是分組篩選工具，不是採用結論；交易稀疏與獲利集中會否決自動推薦。",
-            "選定 P/E 規則後，收盤版只能作配對敏感度，不能反過來改選候選。")
+            "選定進出場規則後，收盤版只能作配對敏感度，不能反過來改選候選。")
 
     practical_attr = [row for row in attribution if row.get("timing") == "NEXT_SESSION_OPEN"]
     section(13, titles[12],
             "檢查候選路由是否真的和控制組不同，避免把完全相同的規則錯稱為單因素替換。",
-            "封存 v1.7 只作外部基準。新引擎內比較三種防守政策；規則替換部分先核對候選與控制路由是否不同。本次 HIGH 與 LOW 候選都恰好等於事先控制路由，因此規則替換效果不可估。",
+            "封存 v1.7 只作外部基準。新引擎內比較三種防守政策；規則替換部分先核對候選與控制路由是否不同。本次多頭區與弱勢區候選都恰好等於事先控制路由，因此規則替換效果不可估。",
             [
-                *_md_table(["案例", "HIGH", "LOW", "防守政策", "可辨識規則效果", "說明"], [[row["display_label"], f"{row['high_entry']}/{row['high_exit']}", f"{row['low_entry']}/{row['low_exit']}", row["stop_policy_label"], row["identifiable_rule_change"], row["factor_changed"]] for row in attribution_design]), "",
+                *_md_table(["案例", "多頭區", "弱勢區", "防守政策", "可辨識規則效果", "說明"], [[row["display_label"], _strategy_label(row["high_entry"], row["high_exit"]), _strategy_label(row["low_entry"], row["low_exit"]), row["stop_policy_label"], row["identifiable_rule_change"], row["factor_changed"]] for row in attribution_design]), "",
                 *_md_table(["案例", "期末", "CAGR", "MDD", "Calmar", "交易"], [[next(item["display_label"] for item in attribution_design if item["case"] == row["case"]), _money(row["ending_equity"]), _pct(row["cagr"]), _pct(row["max_drawdown"]), _num(row["calmar"]), row["closed_trades"]] for row in practical_attr]),
             ],
-            "本樣本的候選與控制規則完全重合，六列績效相同；這是 no-op 診斷，不是 HIGH／LOW 規則替換的因果估計。三種防守政策在本樣本也未造成已觀察績效差異。",
+            "本樣本的候選與控制規則完全重合，六列績效相同；這是未產生實質變更的診斷，不是多頭區／弱勢區規則替換的因果估計。三種防守政策在本樣本也未造成已觀察績效差異。",
             "本節只能判定『規則替換效果不可估』；不得據此推論候選規則優於 v1.7 或任何控制。")
 
     section(14, titles[13],
@@ -1683,7 +1760,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "- [獨立交易品質表](matrix-trade-metrics.csv)",
                 "- [完整繁體中文逐筆交易](trade-details.md)",
                 "- [組合候選逐筆交易](replacement-attribution-trades.csv)／[逐日帳](replacement-attribution-daily.csv)",
-                "- P3 摘要：[已結束逐筆](p3-trades-closed.csv)／[未平倉](p3-positions-open.csv)／[定義與獨立驗算](p3-trade-summary.json)",
+                "- KD 二段轉強進場摘要：[已結束逐筆](p3-trades-closed.csv)／[未平倉](p3-positions-open.csv)／[定義與獨立驗算](p3-trade-summary.json)",
                 "- [原始逐筆交易](trade-ledger.csv)",
                 "- [逐日正式／經濟權益](daily-equity.csv)",
                 "- [事件帳](event-ledger.csv)",
@@ -1699,7 +1776,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "- 圖表：[主比較權益](main-comparison-equity.svg)／[分組候選權益](regime-candidates-equity.svg)／[矩陣](next-open-cagr.svg)／[成本](cost-sensitivity.svg)／[年度](yearly-returns.svg)／[出場](exit-reasons.svg)",
             ],
             "所有報告相對連結與 anchor 都由驗證器實際走訪；任一附件缺失即 FAIL。",
-            "維持 STOP_WAIT_00_0050_REGIME_ENTRY_EXIT_QA，等待第二輪獨立 QA；不得 merge、push 或更新總目錄。")
+            "本繁體中文易讀修正版已完成獨立重建與完整驗證；仍維持研究候選，不取代 v1.7 正式策略。")
     return "\n".join(lines) + "\n"
 
 
@@ -1840,23 +1917,23 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
          "stop_policy_label": "所有進場狀態均執行防守", "identifiable_rule_change": False,
          "factor_changed": "規則重合基準；未替換進出規則"},
         {"case": "HIGH_RULE_ONLY", "routing": {"HIGH": candidate_high, "LOW": base_routing["LOW"]},
-         "display_label": "HIGH 候選重合檢查", "stop_policy": "ALL_LOCKED",
+         "display_label": "多頭區候選重合檢查", "stop_policy": "ALL_LOCKED",
          "stop_policy_label": "所有進場狀態均執行防守",
          "identifiable_rule_change": high_rule_identifiable,
-         "factor_changed": ("HIGH 規則與控制不同，可辨識" if high_rule_identifiable
-                            else "HIGH 候選等於控制規則；替換效果不可估")},
+         "factor_changed": ("多頭區規則與控制不同，可辨識" if high_rule_identifiable
+                            else "多頭區候選等於控制規則；替換效果不可估")},
         {"case": "LOW_RULE_ONLY", "routing": {"HIGH": base_routing["HIGH"], "LOW": candidate_low},
-         "display_label": "LOW 候選重合檢查", "stop_policy": "ALL_LOCKED",
+         "display_label": "弱勢區候選重合檢查", "stop_policy": "ALL_LOCKED",
          "stop_policy_label": "所有進場狀態均執行防守",
          "identifiable_rule_change": low_rule_identifiable,
-         "factor_changed": ("LOW 規則與控制不同，可辨識" if low_rule_identifiable
-                            else "LOW 候選等於控制規則；替換效果不可估")},
+         "factor_changed": ("弱勢區規則與控制不同，可辨識" if low_rule_identifiable
+                            else "弱勢區候選等於控制規則；替換效果不可估")},
         {"case": "BOTH_RULES", "routing": {"HIGH": candidate_high, "LOW": candidate_low},
          "display_label": "組合候選", "stop_policy": "ALL_LOCKED",
          "stop_policy_label": "所有進場狀態均執行防守",
          "identifiable_rule_change": high_rule_identifiable or low_rule_identifiable,
          "factor_changed": ("至少一側規則與控制不同，可辨識" if high_rule_identifiable or low_rule_identifiable
-                            else "HIGH／LOW 候選皆等於控制規則；替換效果不可估")},
+                            else "多頭區／弱勢區候選皆等於控制規則；替換效果不可估")},
     ]
     attribution_design = []
     for definition in case_definitions:
@@ -2009,16 +2086,16 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         key=lambda row: (row["regime"], row["entry_rule"], row["exit_rule"]),
     )
     (run_root / "next-open-cagr.svg").write_text(_svg_bars(
-        rows=[(f"{'高檔' if row['regime']=='HIGH' else '低檔'}-{row['entry_rule']}/{row['exit_rule']}", _d(row["cagr"]))
+        rows=[(f"{_regime_label(row['regime'])}-{_chart_strategy_label(row['entry_rule'], row['exit_rule'])}", _d(row["cagr"]))
               for row in practical_rows],
-        title="次日開盤、20 基點｜高低狀態各九格年化報酬",
+        title="次日開盤、20 基點｜多頭區與弱勢區各九格年化報酬",
         source="matrix-summary.csv", percent=True,
     ), encoding="utf-8")
     selected_cost_rows = [row for row in costs if row["timing"] == "NEXT_SESSION_OPEN"
                           and ((row["regime"] == "HIGH" and row["entry_rule"] == best_high["entry_rule"] and row["exit_rule"] == best_high["exit_rule"])
                                or (row["regime"] == "LOW" and row["entry_rule"] == best_low["entry_rule"] and row["exit_rule"] == best_low["exit_rule"]))]
     (run_root / "cost-sensitivity.svg").write_text(_svg_bars(
-        rows=[(f"{'高檔' if row['regime']=='HIGH' else '低檔'}-{row['slippage_bps']}基點", _d(row["ending_equity"]))
+        rows=[(f"{_regime_label(row['regime'])}-{row['slippage_bps']}基點", _d(row["ending_equity"]))
               for row in selected_cost_rows],
         title="候選規則成本壓力｜期末資產", source="cost-sensitivity.csv",
     ), encoding="utf-8")
@@ -2036,9 +2113,9 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         prefix = "H" if candidate["regime"] == "HIGH" else "L"
         for label, field in (("停損", "fixed_stop_exits"), ("道氏防線", "dow_defense_exits"),
                              ("MACD", "macd_exits"), ("KD", "kd_exits")):
-            exit_chart_rows.append((f"{'高檔' if prefix=='H' else '低檔'}-{label}", _d(quality[field])))
+            exit_chart_rows.append((f"{'多頭區' if prefix=='H' else '弱勢區'}-{label}", _d(quality[field])))
     (run_root / "exit-reasons.svg").write_text(_svg_bars(
-        rows=exit_chart_rows, title="HIGH／LOW 候選出場原因筆數",
+        rows=exit_chart_rows, title="多頭區／弱勢區候選出場原因筆數",
         source="matrix-trade-metrics.csv",
     ), encoding="utf-8")
     report = _report_text(

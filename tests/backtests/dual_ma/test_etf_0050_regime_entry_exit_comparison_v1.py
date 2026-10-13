@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -344,6 +345,13 @@ def test_report_is_full_14_section_single_entry_with_trade_details(formal_output
     assert "規則替換效果不可估" in readme
     assert "2026（截至09月）" in readme
     assert "未滿整個視窗" in readme
+    assert "均線突破進場" in readme
+    assert "MACD 翻紅進場" in readme
+    assert "KD 二段轉強進場" in readme
+    assert "MACD 轉弱出場" in readme
+    assert "2R 後 KD 停利" in readme
+    assert "道氏移動防守" in readme
+    assert not re.search(r"\b(?:HIGH|LOW|P[123]|E[123])\b", readme)
     table = "|策略／比較基準|" + readme.split("|策略／比較基準|", 1)[1].split("\n\n", 1)[0]
     assert "|成交方式|期末資產|總報酬|年化報酬率|最大回落|" in table
     assert "|獲利年度|虧損年度|平盤年度|進場／出場／未平倉|最大投入|" in table
@@ -351,7 +359,11 @@ def test_report_is_full_14_section_single_entry_with_trade_details(formal_output
     assert "INITIAL_OPEN_THEN_HOLD" not in table and "INDEX_CLOSE" not in table
     details = (report_root / "trade-details.md").read_text(encoding="utf-8")
     assert "<a id=" not in details
-    assert "HIGH-P1-E1-0007" in details
+    assert "HIGH-P1-E1-0007" not in details
+    assert "## 多頭區｜均線突破＋MACD 轉弱出場｜次日開盤" in details
+    assert "## 弱勢區｜KD 二段轉強＋2R 後 KD 停利｜訊號收盤" in details
+    assert "固定初始防守" in details
+    assert not re.search(r"\b(?:HIGH|LOW|P[123]|E[123])\b", details)
     assert "完整繁體中文逐筆交易明細" in details
     assert "## 組合候選｜次日開盤" in details
     assert "## 組合候選｜訊號收盤" in details
@@ -363,7 +375,8 @@ def test_report_is_full_14_section_single_entry_with_trade_details(formal_output
         trades = [row for row in attribution_trades
                   if row["case"] == "BOTH_RULES" and row["timing"] == timing]
         assert len(trades) == int(summary["closed_trades"])
-        assert all(row["episode_id"] in details for row in trades)
+        for index, row in enumerate(trades, 1):
+            assert f"|第 {index:04d} 筆|{row['entry_date']}|{row['exit_date']}|" in details
     periods = _csv(run_root / "replacement-attribution-periods.csv")
     both_periods = [row for row in periods if row["case"] == "BOTH_RULES"
                     and row["timing"] == "NEXT_SESSION_OPEN"

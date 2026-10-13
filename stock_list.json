@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-21T21:01:07",
+  "generated_at": "2026-10-10T21:20:28",
   "source": {
     "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
     "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -4465,6 +4465,13 @@
       "industry": "電機機械"
     },
     {
+      "code": "6604",
+      "symbol": "6604.TWO",
+      "market": "TPEX",
+      "name": "儒億",
+      "industry": "電機機械"
+    },
+    {
       "code": "6609",
       "symbol": "6609.TWO",
       "market": "TPEX",
@@ -5438,6 +5445,13 @@
       "industry": "綠能環保"
     },
     {
+      "code": "7856",
+      "symbol": "7856.TWO",
+      "market": "TPEX",
+      "name": "漢測",
+      "industry": "半導體業"
+    },
+    {
       "code": "8024",
       "symbol": "8024.TWO",
       "market": "TPEX",
@@ -5772,13 +5786,6 @@
       "market": "TPEX",
       "name": "加高",
       "industry": "電子零組件業"
-    },
-    {
-      "code": "8183",
-      "symbol": "8183.TWO",
-      "market": "TPEX",
-      "name": "精星",
-      "industry": "其他電子業"
     },
     {
       "code": "8227",
@@ -13122,6 +13129,13 @@
       "market": "TWSE",
       "name": "雲象科技-創",
       "industry": "生技醫療業"
+    },
+    {
+      "code": "7812",
+      "symbol": "7812.TW",
+      "market": "TWSE",
+      "name": "稜研科技*-創",
+      "industry": "通信網路業"
     },
     {
       "code": "7818",

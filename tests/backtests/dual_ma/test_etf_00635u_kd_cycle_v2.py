@@ -89,9 +89,25 @@ def _valid_cycle(*, breakout_on_cross=False, k2="12", open_after=None):
     return rows
 
 
+def _death_day_signal_then_second_breakout(*, cancellation_open=None):
+    """The historical duplicate path: signal on second-low start, then breakout again."""
+    return [
+        _row(0, "5", "20", close="9", low="8", ma21="10"),
+        _row(1, "6", "20", close="9", low="7", ma21="10"),
+        _row(2, "30", "20", close="10", low="9", high="12", ma21="10"),
+        _row(3, "35", "20", close="9", low="8", high="13", ma21="10"),
+        _row(4, "12", "20", close="11", low="9", ma21="10"),
+        _row(
+            5, "13", "20", close="9", low="8.5", ma21="10",
+            raw_open=cancellation_open,
+        ),
+        _row(6, "14", "20", close="11", low="9", ma21="10"),
+    ]
+
+
 def test_contract_pin_is_exact():
     assert kd_cycle.CONTRACT_SHA256 == (
-        "6575b7dd80447728b91375628bd9f4a7ec6e366e36d30a74b4c0d0e0ce03e0ad"
+        "937975f70c22a1b259c685b1bcfd92815f60bc964531f26d023144417e860486"
     )
     assert kd_cycle.sha256_file(kd_cycle.CONTRACT) == kd_cycle.CONTRACT_SHA256
 
@@ -251,6 +267,62 @@ def test_expired_cycle_rolls_forward_and_consumed_cycle_never_repeats():
     assert any(row["cycle_status"] == "EXPIRED_ROLLED_FORWARD" for row in audit)
     assert len(signals) == 1
     assert len({row["cycle_id"] for row in signals}) == 1
+
+
+def test_filled_signal_on_death_cross_consumes_cycle_immediately():
+    result = kd_cycle.run_kd_cycle_strategy(
+        _death_day_signal_then_second_breakout(),
+        policy=kd_cycle.KDCyclePolicy.D,
+        timing=ExecutionTiming.SIGNAL_CLOSE,
+    )
+    signals = [row for row in result.cycle_audit if row["signal_generated"]]
+    cycle_entries = [
+        row for row in result.state.trades
+        if row["role"] == "ENTRY"
+        and row["entry_type"] == "KD_9_9_55_HIGHER_LOW_MA21_BREAKOUT"
+    ]
+    assert len(signals) == len(cycle_entries) == 1
+    assert signals[0]["execution_status"] == "FILLED"
+    assert result.cycle_audit[-1]["cycle_status"] == "CONSUMED_PATTERN_NOT_REUSED"
+    assert kd_cycle.assert_cycle_consumption(
+        result.cycle_audit, result.state.trades
+    )["maximum_signal_generated_per_line_cycle"] == 1
+
+
+def test_position_already_open_signal_consumes_cycle_immediately():
+    rows = [
+        _row(0, "30", "20", close="9", low="8", ma21="10", ma144="1"),
+        _row(1, "31", "20", close="11", low="9", ma21="10", ma144="1"),
+        _row(2, "5", "20", close="9", low="9", ma21="10", ma144="20"),
+        _row(3, "6", "20", close="9", low="9", ma21="10", ma144="20"),
+        _row(4, "30", "20", close="10", low="9", high="12", ma21="10", ma144="20"),
+        _row(5, "35", "20", close="9", low="9", high="13", ma21="10", ma144="20"),
+        _row(6, "12", "20", close="11", low="9", ma21="10", ma144="20"),
+        _row(7, "13", "20", close="9", low="9", ma21="10", ma144="20"),
+        _row(8, "14", "20", close="11", low="9", ma21="10", ma144="20"),
+    ]
+    result = kd_cycle.run_kd_cycle_strategy(
+        rows, policy=kd_cycle.KDCyclePolicy.C,
+        timing=ExecutionTiming.SIGNAL_CLOSE,
+    )
+    signals = [row for row in result.cycle_audit if row["signal_generated"]]
+    assert len(signals) == 1
+    assert signals[0]["execution_status"] == "EXCLUDED"
+    assert signals[0]["execution_detail"] == "POSITION_ALREADY_OPEN"
+    assert result.cycle_audit[-1]["cycle_status"] == "CONSUMED_PATTERN_NOT_REUSED"
+
+
+def test_next_open_cancellation_consumes_cycle_immediately():
+    result = kd_cycle.run_kd_cycle_strategy(
+        _death_day_signal_then_second_breakout(cancellation_open="9"),
+        policy=kd_cycle.KDCyclePolicy.D,
+        timing=ExecutionTiming.NEXT_SESSION_OPEN,
+    )
+    signals = [row for row in result.cycle_audit if row["signal_generated"]]
+    assert len(signals) == 1
+    assert signals[0]["execution_status"] == "CANCELLED_OPEN_AT_OR_BELOW_STOP"
+    assert not result.state.trades
+    assert result.cycle_audit[-1]["cycle_status"] == "CONSUMED_PATTERN_NOT_REUSED"
 
 
 def test_strategy_c_regime_boundaries_and_d_ignores_ma144():

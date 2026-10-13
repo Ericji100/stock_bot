@@ -447,6 +447,7 @@ def validate_report_schema(root: Path, *, report_name: str = REPORT_NAME) -> lis
             "00635U_MACD_ONLY_STUDY_V1",
             "00635U_KD_CYCLE_ENTRY_STUDY_V1",
             "00635U_KD_9_9_55_CYCLE_ENTRY_STUDY_V2",
+            "00635U_KD_9_9_55_CYCLE_ENTRY_STUDY_V3_R2",
         }
         if pipeline_pack:
             manifest_paths = {item.get("path") for item in manifest.get("files", [])}

@@ -44,12 +44,12 @@ from .etf_00635u_strategy_v1 import (
 CONTRACT = (
     Path(__file__).resolve().parents[2]
     / "docs" / "strategies" / "dual_ma"
-    / "00635u-kd-cycle-ma21-breakout-entry-v2.md"
+    / "00635u-kd-cycle-ma21-breakout-entry-v3.md"
 )
-CONTRACT_SHA256 = "6575b7dd80447728b91375628bd9f4a7ec6e366e36d30a74b4c0d0e0ce03e0ad"
+CONTRACT_SHA256 = "937975f70c22a1b259c685b1bcfd92815f60bc964531f26d023144417e860486"
 SNAPSHOT_ID = "00635U_FINMIND_PRIMARY_20150415_20261008_V3_D6735B7A5FF5"
 INPUT_MANIFEST_SHA256 = "4b0431d777f239241bc1dddd64dba124b61f990dcf907539815dbd685d761d9d"
-STOP_CODE = "STOP_WAIT_00_00635U_KD_9_9_55_REPORT_QA"
+STOP_CODE = "STOP_WAIT_00_00635U_KD_9_9_55_REPORT_QA_R2"
 
 ENTRY_RSV_PERIOD = 9
 ENTRY_K_PERIOD = 9
@@ -412,7 +412,15 @@ class _CycleScanner:
                 return self._snapshot(row, status="MIDDLE_HIGH_UPDATED", previous=previous), None
             if death:
                 self._start_second(row)
-                return self._candidate(previous, row, same_day_golden=False)
+                audit, signal = self._candidate(
+                    previous, row, same_day_golden=False
+                )
+                if signal is not None:
+                    # A legal signal consumes the cycle immediately.  Execution
+                    # outcome (fill, exclusion, pending order, or cancellation)
+                    # must never make the same pattern eligible again.
+                    self.phase = "CONSUMED_WAIT_HIGH"
+                return audit, signal
             self.phase = "MIDDLE_WAIT_LOW"
             return self._snapshot(row, status="EQUAL_BOUNDARY_AFTER_MIDDLE", previous=previous), None
         if self.phase in {"SECOND_LOW", "SECOND_WAIT_HIGH"}:
@@ -446,6 +454,7 @@ def scan_kd_cycles(
     scanner = _CycleScanner(policy)
     audit: list[dict[str, Any]] = []
     signals: list[dict[str, Any]] = []
+    consumed_cycle_ids: set[str] = set()
     previous: KDEntryRow | None = None
     for row in rows:
         if not _signal_observable(row.base):
@@ -456,10 +465,93 @@ def scan_kd_cycles(
         item, signal = scanner.process(previous, row)
         audit.append(item)
         if signal is not None:
+            cycle_id = signal["cycle_id"]
+            if cycle_id in consumed_cycle_ids:
+                raise AssertionError(
+                    f"cycle generated more than one legal signal: {cycle_id}"
+                )
+            consumed_cycle_ids.add(cycle_id)
             signals.append(signal)
         if _signal_observable(row.base):
             previous = row
     return audit, signals
+
+
+def assert_cycle_consumption(
+    cycle_audit: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Fail fast if a cycle is reused after its first legal signal."""
+
+    def key(row: Mapping[str, Any]) -> tuple[str, str]:
+        return str(row.get("line_id", "")), str(row.get("cycle_id", ""))
+
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
+    for row in cycle_audit:
+        group_key = key(row)
+        if not group_key[1]:
+            continue
+        counts = grouped.setdefault(
+            group_key,
+            {"signal_generated": 0, "entry_signal_generated": 0, "filled": 0},
+        )
+        counts["signal_generated"] += int(bool(row.get("signal_generated")))
+        counts["entry_signal_generated"] += int(
+            bool(row.get("entry_signal_generated"))
+        )
+        counts["filled"] += int(
+            bool(row.get("signal_generated"))
+            and row.get("execution_status") == "FILLED"
+        )
+
+    trade_counts: dict[tuple[str, str], int] = {}
+    for row in trades:
+        if (
+            row.get("role") == "ENTRY"
+            and row.get("entry_type") == EntryType.KD_CYCLE_9_9_55.value
+            and row.get("cycle_id")
+        ):
+            group_key = key(row)
+            trade_counts[group_key] = trade_counts.get(group_key, 0) + 1
+
+    violations = []
+    for group_key, counts in grouped.items():
+        for field, count in counts.items():
+            if count > 1:
+                violations.append({
+                    "line_id": group_key[0], "cycle_id": group_key[1],
+                    "field": field, "count": count,
+                })
+    for group_key, count in trade_counts.items():
+        if count > 1:
+            violations.append({
+                "line_id": group_key[0], "cycle_id": group_key[1],
+                "field": "cycle_entry_trades", "count": count,
+            })
+    if violations:
+        raise AssertionError(f"cycle consumption invariant violated: {violations}")
+    return {
+        "status": "PASS",
+        "groups_checked": len(grouped),
+        "signal_groups": sum(
+            counts["signal_generated"] == 1 for counts in grouped.values()
+        ),
+        "filled_groups": sum(counts["filled"] == 1 for counts in grouped.values()),
+        "cycle_entry_trade_groups": len(trade_counts),
+        "maximum_signal_generated_per_line_cycle": max(
+            (counts["signal_generated"] for counts in grouped.values()), default=0
+        ),
+        "maximum_entry_signal_generated_per_line_cycle": max(
+            (counts["entry_signal_generated"] for counts in grouped.values()),
+            default=0,
+        ),
+        "maximum_filled_per_line_cycle": max(
+            (counts["filled"] for counts in grouped.values()), default=0
+        ),
+        "maximum_cycle_entry_trades_per_line_cycle": max(
+            trade_counts.values(), default=0
+        ),
+    }
 
 
 def _high_original_signal(previous: KDEntryRow | None, row: KDEntryRow) -> bool:
@@ -677,11 +769,14 @@ def run_kd_cycle_strategy(
     for item in audit:
         if item["date"] in filled_by_signal:
             trade = filled_by_signal[item["date"]]
+            is_cycle_fill = (
+                trade["entry_type"] == EntryType.KD_CYCLE_9_9_55.value
+            )
             item["execution_status"] = "FILLED"
             item["execution_detail"] = trade["fill_date"]
             item["fill_price"] = trade["fill_price"]
             item["entry_type"] = trade["entry_type"]
-            item["entry_signal_generated"] = True
+            item["entry_signal_generated"] = is_cycle_fill
             item["strategy_branch"] = trade["strategy_branch"]
             item["initial_stop"] = trade["initial_stop"]
             item["initial_r"] = trade["initial_r"]
@@ -738,6 +833,8 @@ def run_kd_cycle_strategy(
                     and exit_row.k < exit_row.d
                 ),
             })
+
+    assert_cycle_consumption(audit, state.trades)
 
     result = RunResult(config=config, state=state)
     return KDCycleRunResult(result=result, cycle_audit=tuple(audit))

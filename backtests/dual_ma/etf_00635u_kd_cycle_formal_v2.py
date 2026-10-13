@@ -39,6 +39,8 @@ GRID_PARAMETERS = tuple(product(GRID_MA_VALUES, GRID_K_VALUES, GRID_D_VALUES))
 DEPRECATION_CODE = "DEPRECATED_WRONG_ENTRY_KD_PARAMETERS"
 SUPERSEDED_REPORT = "formal-run-kd-cycle-v2"
 SUPERSEDED_PUBLISHED_ALIAS = "2015-2026-kd-cycle-ma21-breakout-v1-0"
+REJECTED_DUPLICATE_REPORT = "formal-run-kd-9-9-55-v3"
+REJECTION_CODE = "QA_REJECTED_DUPLICATE_CYCLE_SIGNAL"
 
 
 def _line_id(policy: cycle.KDCyclePolicy, timing: ExecutionTiming) -> str:
@@ -153,6 +155,70 @@ def _named_date_regression(
         for row in output if row["date"] == targets[0]
     ):
         raise AssertionError("2022-10-05 corrected KD(9,9,55) must have K>D")
+    return output
+
+
+def _duplicate_cycle_regression(
+    cycle_audit: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Pin the four historical duplicate paths rejected by strict 00 QA."""
+    specs = (
+        ("KD_CYCLE_C_SIGNAL_CLOSE", "CYCLE000040", "POSITION_ALREADY_OPEN"),
+        ("KD_CYCLE_C_NEXT_SESSION_OPEN", "CYCLE000040", "NEXT_OPEN_CANCEL"),
+        ("KD_CYCLE_D_SIGNAL_CLOSE", "CYCLE000033", "FILLED"),
+        ("KD_CYCLE_D_NEXT_SESSION_OPEN", "CYCLE000033", "NEXT_OPEN_CANCEL"),
+    )
+    output: list[dict[str, Any]] = []
+    first_day, replay_day = date(2021, 3, 29), date(2021, 4, 6)
+    for line_id, cycle_id, case in specs:
+        selected = {
+            row["date"]: row for row in cycle_audit
+            if row["line_id"] == line_id
+            and row["cycle_id"] == cycle_id
+            and row["date"] in {first_day, replay_day}
+        }
+        if set(selected) != {first_day, replay_day}:
+            raise AssertionError(f"missing duplicate-cycle regression rows: {line_id}")
+        first, replay = selected[first_day], selected[replay_day]
+        if not first.get("signal_generated"):
+            raise AssertionError(f"first legal signal missing: {line_id}")
+        if case == "POSITION_ALREADY_OPEN" and not (
+            first.get("execution_status") == "EXCLUDED"
+            and first.get("execution_detail") == "POSITION_ALREADY_OPEN"
+        ):
+            raise AssertionError(f"position-open regression changed: {line_id}")
+        if case == "FILLED" and first.get("execution_status") != "FILLED":
+            raise AssertionError(f"filled regression changed: {line_id}")
+        if case == "NEXT_OPEN_CANCEL" and first.get("execution_status") != (
+            "CANCELLED_OPEN_AT_OR_BELOW_STOP"
+        ):
+            raise AssertionError(f"next-open cancellation regression changed: {line_id}")
+        if replay.get("signal_generated") or replay.get("cycle_status") != (
+            "CONSUMED_PATTERN_NOT_REUSED"
+        ):
+            raise AssertionError(f"consumed cycle was reused: {line_id}")
+        output.extend((
+            {
+                "regression_case": case, "line_id": line_id,
+                "date": first_day, "cycle_id": cycle_id,
+                "signal_generated": True,
+                "execution_status": first.get("execution_status"),
+                "execution_detail": first.get("execution_detail"),
+                "cycle_status": first.get("cycle_status"),
+                "consumption_assertion": "FIRST_LEGAL_SIGNAL_CONSUMED_CYCLE",
+                "status": "PASS",
+            },
+            {
+                "regression_case": case, "line_id": line_id,
+                "date": replay_day, "cycle_id": cycle_id,
+                "signal_generated": False,
+                "execution_status": replay.get("execution_status"),
+                "execution_detail": replay.get("execution_detail"),
+                "cycle_status": replay.get("cycle_status"),
+                "consumption_assertion": "NO_SECOND_SIGNAL_FROM_SAME_CYCLE",
+                "status": "PASS",
+            },
+        ))
     return output
 
 
@@ -412,7 +478,12 @@ def run_formal_pack(
         {"line_id": line_id, "entry_kd": "9/9/55", **row}
         for line_id, result in new_results.items() for row in result.cycle_audit
     ]
+    consumption_readback = cycle.assert_cycle_consumption(cycle_audit, trades)
+    duplicate_regression = _duplicate_cycle_regression(cycle_audit)
     prep._write_csv(output_root / "kd-cycle-audit.csv", cycle_audit)
+    prep._write_csv(
+        output_root / "duplicate-cycle-regression.csv", duplicate_regression
+    )
     named_regression = _named_date_regression(cycle_audit)
     prep._write_csv(
         output_root / "named-date-regression.csv", named_regression
@@ -599,6 +670,29 @@ def run_formal_pack(
                 "trade-details.md": "4191b530c51513590b46c7ed10fbb8f541ea541bb1a76d6b973d56ddf48df073",
                 "formal-summary.csv": "835afb3fbbf9b126f2d6f400942808861df86714fbe570ba97c968376c76b76f",
             },
+            "strict_qa_rejections": [{
+                "report": REJECTED_DUPLICATE_REPORT,
+                "status": REJECTION_CODE,
+                "valid_for_decision": False,
+                "reason": "same (line_id, cycle_id) emitted more than one legal signal",
+                "preserved_report_pack_a_hashes": {
+                    "manifest.json": "4f57043efdaaf9f97f6cd50af9995228e251589139a94097cd688fa0e047abce",
+                    "README.md": "00fe9c70d377d857977eaabf0270e382a1974998b8b7321c3d00eae2a1a05605",
+                    "trade-details.md": "0fe2976c242c6607c79046fe443cbdef287bad13c408f9c897312ac0d0e81457",
+                    "formal-summary.csv": "a90b1f0afa7d3bf82c781a0081b9e11d1e9498ccc4594fb7fdbff8e9a6756cdb",
+                    "kd-cycle-audit.csv": "b240c50fbc3be079f79efcabbb59eaa722fef838053faf4dbc96f5bbfa2690e9",
+                },
+            }],
+        }) + b"\n"
+    )
+    (output_root / "cycle-consumption-readback.json").write_bytes(
+        prep._canonical_bytes({
+            **consumption_readback,
+            "contract": "FIRST_LEGAL_SIGNAL_CONSUMES_CYCLE_REGARDLESS_OF_EXECUTION",
+            "named_regression_cases": sorted({
+                row["regression_case"] for row in duplicate_regression
+            }),
+            "named_regression_rows": len(duplicate_regression),
         }) + b"\n"
     )
     (output_root / "ma144-invariance-readback.json").write_bytes(
@@ -795,6 +889,12 @@ def run_formal_pack(
         f"{row['execution_status']} |"
         for row in named_regression
     )
+    duplicate_table = "\n".join(
+        f"| {row['regression_case']} | {_label(row['line_id'])} | {row['date']} | "
+        f"`{row['cycle_id']}` | {'是' if row['signal_generated'] else '否'} | "
+        f"{row['execution_status'] or '—'} | {row['cycle_status']} | {row['status']} |"
+        for row in duplicate_regression
+    )
     screen_row = next(
         row for row in named_regression
         if row["date"] == date(2022, 10, 5)
@@ -805,7 +905,7 @@ def run_formal_pack(
         "formal-summary.csv", "relative-benchmark.csv", "daily-equity.csv",
         "strategy-account-daily.csv", "trade-details.md", "trade-details.csv",
         "event-ledger.csv", "kd-cycle-audit.csv", "corporate-action-ledger.csv",
-        "named-date-regression.csv",
+        "named-date-regression.csv", "duplicate-cycle-regression.csv",
         "annual-performance.csv", "fixed-periods.csv", "rolling-windows.csv",
         "regime-performance.csv", "path-and-concentration.csv",
         "cost-sensitivity.csv", "parameter-grid.csv", "parameter-grid-summary.csv",
@@ -813,7 +913,7 @@ def run_formal_pack(
         "core-allocation-ledger.csv", "index-alignment-ledger.csv",
         "taiex-supplement.csv", "strategy-rule-contract.md",
         "contract-verification.json", "superseded-artifact-registry.json",
-        "ma144-invariance-readback.json",
+        "ma144-invariance-readback.json", "cycle-consumption-readback.json",
         "equity-chart.svg", "drawdown-chart.svg",
         "annual-chart.svg", "rolling-window-chart.svg", "regime-chart.svg",
         "trade-pnl-chart.svg", "cost-pressure-chart.svg",
@@ -849,7 +949,7 @@ def run_formal_pack(
         "grid": "parameter-grid.csv 合計 54 列；策略 C、D 各 27 組，均由 MA 三值 × K 三值 × D 三值（3×3×3）構成。主規則固定 MA21 與進場 KD(9,9,55)，出場 KD(9,9,55) 與 2R 完全不搜尋。",
         "core": f"C／D 各 0／20／40／60% 共 {len(core_summary)} 組，core 與 tactical 每日分帳且重建誤差為零。",
         "practice": insufficiency_text,
-        "qa": f"輸入 manifest `{accepted_manifest_sha256}` 已由 00 gate 接受；輸出需兩次全新隔離重播 exact parity。",
+        "qa": f"輸入 manifest `{accepted_manifest_sha256}` 已由 00 gate 接受；v3 已標記 `{REJECTION_CODE}`。本版全檔 cycle 唯一性、三種具名消耗案例均 PASS，輸出仍需兩次全新隔離重播 exact parity。",
         "attachments": f"本包提供 {len(attachments)} 個可點入口，含原始 CSV、中文 SVG、契約、manifest 與 readback。",
     }
     prose = {
@@ -871,7 +971,7 @@ def run_formal_pack(
     extras = {
         "performance": "\n| 主線 | 成交方式 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + perf_table + "\n\n![正式資產曲線](equity-chart.svg)\n\n![正式回撤路徑](drawdown-chart.svg)\n",
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n",
-        "rules": f"\n- **修正版新進場：** 使用進場 KD(9,9,55) 的 K<D／K>D 循環、嚴格 K2_so_far > K1 與 MA21 收盤向上突破；策略 C 以 MA21／MA144 嚴格分流，等號不進，策略 D 的 MA144 只作診斷。\n- **棄用舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 使用錯誤進場 KD(9,55,55)，標記 `{DEPRECATION_CODE}`，只保留稽核，不具決策效力。\n- **未改動規則：** 原策略仍保留 MACD(21,55,55) 比較線；新策略沿用固定初始防守、淨成本 2R 永久啟動、出場 KD(9,9,55) 新死叉，固定防守優先。訊號日收盤成交與次一個可成交交易日開盤成交各自進出同口徑。\n\n#### 2022-10-05／2022-11-07 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，差異來自券商畫面未公開的初始化／平滑口徑與正式全歷史遞迴口徑不同，但方向一致為 K>D。2022-11-07 的合法性與成交結果以上表重新計算，不沿用 v1 結論。\n\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
+        "rules": f"\n- **修正版新進場：** 使用進場 KD(9,9,55) 的 K<D／K>D 循環、嚴格 K2_so_far > K1 與 MA21 收盤向上突破；策略 C 以 MA21／MA144 嚴格分流，等號不進，策略 D 的 MA144 只作診斷。\n- **cycle 消耗修正：** 第一次合法訊號成立即永久消耗型態，不受成交、已有持倉排除、次開待成交或開盤取消結果影響。v3 因重複訊號標記 `{REJECTION_CODE}`，不得用於決策。\n- **棄用舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 使用錯誤進場 KD(9,55,55)，標記 `{DEPRECATION_CODE}`，只保留稽核，不具決策效力。\n- **未改動規則：** 原策略仍保留 MACD(21,55,55) 比較線；新策略沿用固定初始防守、淨成本 2R 永久啟動、出場 KD(9,9,55) 新死叉，固定防守優先。訊號日收盤成交與次一個可成交交易日開盤成交各自進出同口徑。\n\n#### 2021-03-29／2021-04-06 重複 cycle 退件回歸\n\n| 案例 | 策略 | 日期 | cycle | 合法訊號 | 成交結果 | cycle 狀態 | 驗證 |\n|---|---|---|---|---|---|---|---|\n{duplicate_table}\n\n上述 FILLED、POSITION_ALREADY_OPEN、NEXT_OPEN_CANCEL 三種結果都在第一次合法訊號當日消耗 cycle；2021-04-06 不再產生第二個訊號。全檔 `(line_id, cycle_id)` 唯一性另見 readback。\n\n#### 2022-10-05／2022-11-07 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，差異來自券商畫面未公開的初始化／平滑口徑與正式全歷史遞迴口徑不同，但方向一致為 K>D。2022-11-07 的合法性與成交結果以上表重新計算，不沿用 v1 結論。\n\n- [重複 cycle 具名回歸 CSV](duplicate-cycle-regression.csv)\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 |\n|---|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n- [完整逐年績效 CSV](annual-performance.csv)\n\n![逐年報酬](annual-chart.svg)\n",
         "trades": f"\n| 新策略 | 進場 | 已完成 | 未平倉 | 最大投入 |\n|---|---:|---:|---:|---:|\n{new_trade_summary}\n\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [每日主帳](strategy-account-daily.csv)\n- [事件帳](event-ledger.csv)\n- [公司行動帳](corporate-action-ledger.csv)\n- [逐循環稽核](kd-cycle-audit.csv)\n\n![新策略逐筆損益](trade-pnl-chart.svg)\n",
         "execution": "\n#### 完整成交與成本壓力表\n\n| 策略 | 成交方式 | 單邊滑價（基點） | 期末資產 | 年化報酬率 | 最大回落 | 完成交易 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n- [完整成本壓力 CSV](cost-sensitivity.csv)\n\n![成本壓力](cost-pressure-chart.svg)\n",
@@ -879,7 +979,7 @@ def run_formal_pack(
         "concentration": "\n| 策略 | 已完成 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆集中度 | 最佳 3 筆集中度 | 最長連虧 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n- [集中度、移除最佳交易與路徑診斷](path-and-concentration.csv)\n",
         "grid": "\n| 策略 | 格數 | 中位期末資產 | 正報酬比例 | 主設定期末資產 | 五年最差年化 |\n|---|---:|---:|---:|---:|---:|\n" + grid_table + "\n\n![每策略 27 組、總計 54 列鄰近參數](parameter-grid-chart.svg)\n",
         "core": "\n| 策略 | 核心比例 | 期末資產 | 年化報酬率 | 最大回落 |\n|---|---:|---:|---:|---:|\n" + core_table + "\n\n![核心持有比例](core-allocation-chart.svg)\n",
-        "qa": "\n- [輸出 manifest](manifest.json)\n- [回讀驗證](readback.json)\n",
+        "qa": "\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [重複 cycle 具名回歸](duplicate-cycle-regression.csv)\n- [輸出 manifest](manifest.json)\n- [回讀驗證](readback.json)\n",
         "attachments": "\n" + "\n".join(f"- [{name}]({name})" for name in attachments) + "\n",
     }
     sections = [
@@ -893,6 +993,7 @@ def run_formal_pack(
     report = (
         "# 00635U 黃金期貨 ETF｜KD(9,9,55) 循環低點墊高＋MA21 突破修正版研究\n\n"
         "> **狀態：隔離研究候選，尚未採納。** 凍結資料與唯一契約均已通過 SHA gate；仍須 00 嚴格 QA。\n"
+        f"> **v3 嚴格 QA 退件：** `{REJECTED_DUPLICATE_REPORT}` 標記 `{REJECTION_CODE}`，只保留稽核；本版已重算全部輸出。\n"
         f"> **取代舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 因進場 KD 誤用 9/55/55，標記 `{DEPRECATION_CODE}`，只保留稽核且不得用於決策。\n"
         f"> 資料快照：`{cycle.SNAPSHOT_ID}`；輸入 manifest SHA-256：`{accepted_manifest_sha256}`。\n"
         f"> 唯一規則契約 SHA-256：`{cycle.CONTRACT_SHA256}`；契約原文已原樣收入附件。\n\n"
@@ -905,7 +1006,7 @@ def run_formal_pack(
         name for name in attachments if name not in {"manifest.json", "readback.json"}
     ) + (REPORT_NAME,)
     manifest = {
-        "schema": "00635U_KD_9_9_55_CYCLE_ENTRY_STUDY_V2",
+        "schema": "00635U_KD_9_9_55_CYCLE_ENTRY_STUDY_V3_R2",
         "artifact_classification": "ISOLATED_RESEARCH_CANDIDATE",
         "publication_eligible": False,
         "intended_use": "STRICT_00_QA_BEFORE_ANY_PUBLICATION",
@@ -914,6 +1015,8 @@ def run_formal_pack(
         "contract_sha256": cycle.CONTRACT_SHA256,
         "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
         "superseded_reason": DEPRECATION_CODE,
+        "rejected_predecessor": REJECTED_DUPLICATE_REPORT,
+        "rejected_predecessor_status": REJECTION_CODE,
         "entry_kd": "9/9/55",
         "exit_kd": "9/9/55",
         "source_package_manifest_sha256": input_manifest.get("source_package_manifest_sha256"),
@@ -934,6 +1037,9 @@ def run_formal_pack(
         "contract_sha256": cycle.CONTRACT_SHA256,
         "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
         "superseded_reason": DEPRECATION_CODE,
+        "rejected_predecessor": REJECTED_DUPLICATE_REPORT,
+        "rejected_predecessor_status": REJECTION_CODE,
+        "cycle_consumption_invariants": consumption_readback,
         "entry_kd": "9/9/55",
     }
     (output_root / "readback.json").write_bytes(prep._canonical_bytes(readback) + b"\n")

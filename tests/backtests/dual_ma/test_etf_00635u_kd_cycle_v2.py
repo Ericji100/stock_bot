@@ -91,23 +91,25 @@ def _valid_cycle(*, breakout_on_cross=False, k2="12", open_after=None):
 
 def _death_day_signal_then_second_breakout(*, cancellation_open=None):
     """The historical duplicate path: signal on second-low start, then breakout again."""
-    return [
+    rows = [
         _row(0, "5", "20", close="9", low="8", ma21="10"),
         _row(1, "6", "20", close="9", low="7", ma21="10"),
         _row(2, "30", "20", close="10", low="9", high="12", ma21="10"),
         _row(3, "35", "20", close="9", low="8", high="13", ma21="10"),
         _row(4, "12", "20", close="11", low="9", ma21="10"),
+        _row(5, "13", "20", close="9", low="8.5", ma21="10"),
+        _row(6, "14", "20", close="11", low="9", ma21="10"),
         _row(
-            5, "13", "20", close="9", low="8.5", ma21="10",
+            7, "30", "20", close="11", low="9", ma21="10",
             raw_open=cancellation_open,
         ),
-        _row(6, "14", "20", close="11", low="9", ma21="10"),
     ]
+    return rows
 
 
 def test_contract_pin_is_exact():
     assert kd_cycle.CONTRACT_SHA256 == (
-        "937975f70c22a1b259c685b1bcfd92815f60bc964531f26d023144417e860486"
+        "2cffeef16decb2b2747ccdff63d2c16143a5d25c03441b8d8858e2d71dc062fc"
     )
     assert kd_cycle.sha256_file(kd_cycle.CONTRACT) == kd_cycle.CONTRACT_SHA256
 
@@ -282,6 +284,12 @@ def test_filled_signal_on_death_cross_consumes_cycle_immediately():
         and row["entry_type"] == "KD_9_9_55_HIGHER_LOW_MA21_BREAKOUT"
     ]
     assert len(signals) == len(cycle_entries) == 1
+    assert any(
+        row["cycle_status"] == "PIVOT_HISTORY_REQUIRED"
+        for row in result.cycle_audit
+    )
+    assert signals[0]["pivot_end"] < signals[0]["date"]
+    assert signals[0]["initial_stop"] == Decimal("8.5")
     assert signals[0]["execution_status"] == "FILLED"
     assert result.cycle_audit[-1]["cycle_status"] == "CONSUMED_PATTERN_NOT_REUSED"
     assert kd_cycle.assert_cycle_consumption(
@@ -300,6 +308,7 @@ def test_position_already_open_signal_consumes_cycle_immediately():
         _row(6, "12", "20", close="11", low="9", ma21="10", ma144="20"),
         _row(7, "13", "20", close="9", low="9", ma21="10", ma144="20"),
         _row(8, "14", "20", close="11", low="9", ma21="10", ma144="20"),
+        _row(9, "15", "20", close="11", low="9", ma21="10", ma144="20"),
     ]
     result = kd_cycle.run_kd_cycle_strategy(
         rows, policy=kd_cycle.KDCyclePolicy.C,
@@ -314,7 +323,7 @@ def test_position_already_open_signal_consumes_cycle_immediately():
 
 def test_next_open_cancellation_consumes_cycle_immediately():
     result = kd_cycle.run_kd_cycle_strategy(
-        _death_day_signal_then_second_breakout(cancellation_open="9"),
+        _death_day_signal_then_second_breakout(cancellation_open="8.5"),
         policy=kd_cycle.KDCyclePolicy.D,
         timing=ExecutionTiming.NEXT_SESSION_OPEN,
     )
@@ -323,6 +332,22 @@ def test_next_open_cancellation_consumes_cycle_immediately():
     assert signals[0]["execution_status"] == "CANCELLED_OPEN_AT_OR_BELOW_STOP"
     assert not result.state.trades
     assert result.cycle_audit[-1]["cycle_status"] == "CONSUMED_PATTERN_NOT_REUSED"
+
+
+def test_pivot_stop_requires_strict_close_below_and_equal_does_not_exit():
+    rows = _valid_cycle() + [
+        _row(6, "30", "20", close="8.5", low="8.4", ma21="10"),
+        _row(7, "31", "20", close="8.49", low="8.3", ma21="10"),
+    ]
+    result = kd_cycle.run_kd_cycle_strategy(
+        rows, policy=kd_cycle.KDCyclePolicy.D,
+        timing=ExecutionTiming.SIGNAL_CLOSE,
+    )
+    entry = next(row for row in result.state.trades if row["role"] == "ENTRY")
+    exit_trade = next(row for row in result.state.trades if row["role"] == "EXIT")
+    assert entry["initial_stop"] == Decimal("8.5")
+    assert exit_trade["signal_date"] == rows[7].day
+    assert exit_trade["exit_reason"] == "INITIAL_PROTECTIVE_STOP"
 
 
 def test_strategy_c_regime_boundaries_and_d_ignores_ma144():
@@ -395,7 +420,7 @@ def test_strategy_d_ma144_rewrite_has_exact_order_event_and_account_parity():
 
 
 def test_next_open_at_or_below_signal_low_is_cancelled():
-    for opening in ("9", "8.99"):
+    for opening in ("8.5", "8.49"):
         result = kd_cycle.run_kd_cycle_strategy(
             _valid_cycle(open_after=opening),
             policy=kd_cycle.KDCyclePolicy.D,

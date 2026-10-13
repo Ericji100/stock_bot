@@ -41,6 +41,8 @@ SUPERSEDED_REPORT = "formal-run-kd-cycle-v2"
 SUPERSEDED_PUBLISHED_ALIAS = "2015-2026-kd-cycle-ma21-breakout-v1-0"
 REJECTED_DUPLICATE_REPORT = "formal-run-kd-9-9-55-v3"
 REJECTION_CODE = "QA_REJECTED_DUPLICATE_CYCLE_SIGNAL"
+SUPERSEDED_INITIAL_STOP_REPORT = "formal-run-kd-9-9-55-v4"
+INITIAL_STOP_DEPRECATION_CODE = "DEPRECATED_WRONG_INITIAL_STOP_DEFINITION"
 
 
 def _line_id(policy: cycle.KDCyclePolicy, timing: ExecutionTiming) -> str:
@@ -158,67 +160,73 @@ def _named_date_regression(
     return output
 
 
-def _duplicate_cycle_regression(
+def _pivot_stop_regression(
     cycle_audit: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Pin the four historical duplicate paths rejected by strict 00 QA."""
+    """Verify the two mandated pivot stops and later non-stop closes."""
     specs = (
-        ("KD_CYCLE_C_SIGNAL_CLOSE", "CYCLE000040", "POSITION_ALREADY_OPEN"),
-        ("KD_CYCLE_C_NEXT_SESSION_OPEN", "CYCLE000040", "NEXT_OPEN_CANCEL"),
-        ("KD_CYCLE_D_SIGNAL_CLOSE", "CYCLE000033", "FILLED"),
-        ("KD_CYCLE_D_NEXT_SESSION_OPEN", "CYCLE000033", "NEXT_OPEN_CANCEL"),
+        (date(2023, 9, 18), date(2023, 9, 14), Decimal("23.63"),
+         date(2023, 9, 22), Decimal("23.78")),
+        (date(2023, 11, 17), date(2023, 11, 13), Decimal("23.71"),
+         date(2023, 11, 20), Decimal("24.23")),
     )
     output: list[dict[str, Any]] = []
-    first_day, replay_day = date(2021, 3, 29), date(2021, 4, 6)
-    for line_id, cycle_id, case in specs:
-        selected = {
-            row["date"]: row for row in cycle_audit
-            if row["line_id"] == line_id
-            and row["cycle_id"] == cycle_id
-            and row["date"] in {first_day, replay_day}
-        }
-        if set(selected) != {first_day, replay_day}:
-            raise AssertionError(f"missing duplicate-cycle regression rows: {line_id}")
-        first, replay = selected[first_day], selected[replay_day]
-        if not first.get("signal_generated"):
-            raise AssertionError(f"first legal signal missing: {line_id}")
-        if case == "POSITION_ALREADY_OPEN" and not (
-            first.get("execution_status") == "EXCLUDED"
-            and first.get("execution_detail") == "POSITION_ALREADY_OPEN"
-        ):
-            raise AssertionError(f"position-open regression changed: {line_id}")
-        if case == "FILLED" and first.get("execution_status") != "FILLED":
-            raise AssertionError(f"filled regression changed: {line_id}")
-        if case == "NEXT_OPEN_CANCEL" and first.get("execution_status") != (
-            "CANCELLED_OPEN_AT_OR_BELOW_STOP"
-        ):
-            raise AssertionError(f"next-open cancellation regression changed: {line_id}")
-        if replay.get("signal_generated") or replay.get("cycle_status") != (
-            "CONSUMED_PATTERN_NOT_REUSED"
-        ):
-            raise AssertionError(f"consumed cycle was reused: {line_id}")
-        output.extend((
-            {
-                "regression_case": case, "line_id": line_id,
-                "date": first_day, "cycle_id": cycle_id,
-                "signal_generated": True,
-                "execution_status": first.get("execution_status"),
-                "execution_detail": first.get("execution_detail"),
-                "cycle_status": first.get("cycle_status"),
-                "consumption_assertion": "FIRST_LEGAL_SIGNAL_CONSUMED_CYCLE",
+    for signal_day, low_day, low, follow_day, follow_close in specs:
+        rows = [
+            row for row in cycle_audit
+            if row["date"] == signal_day
+            and row["line_id"].startswith("KD_CYCLE_")
+        ]
+        if len(rows) != 4:
+            raise AssertionError(
+                f"pivot regression {signal_day} expected four strategy rows"
+            )
+        for row in rows:
+            if not row.get("signal_generated"):
+                raise AssertionError(f"named pivot signal missing: {row['line_id']}")
+            if row.get("pivot_low") != low or row.get("pivot_low_date") != low_day:
+                raise AssertionError(f"named pivot mismatch: {row}")
+            if not row.get("pivot_end") < signal_day:
+                raise AssertionError(f"named pivot used signal/future data: {row}")
+            follow = next(
+                item for item in cycle_audit
+                if item["line_id"] == row["line_id"]
+                and item["date"] == follow_day
+            )
+            if follow.get("technical_close") != follow_close or not follow_close > low:
+                raise AssertionError(f"named follow-up close mismatch: {follow}")
+            stop_exits = [
+                trade for trade in trades
+                if trade["line_id"] == row["line_id"]
+                and trade.get("role") == "EXIT"
+                and trade.get("signal_date") == follow_day
+                and trade.get("exit_reason") == "INITIAL_PROTECTIVE_STOP"
+            ]
+            if stop_exits:
+                raise AssertionError(f"named close incorrectly triggered stop: {stop_exits}")
+            output.append({
+                "line_id": row["line_id"],
+                "timing": (
+                    "NEXT_SESSION_OPEN" if "NEXT_SESSION_OPEN" in row["line_id"]
+                    else "SIGNAL_CLOSE"
+                ),
+                "signal_date": signal_day,
+                "cycle_id": row["cycle_id"],
+                "pivot_start": row["pivot_start"],
+                "pivot_end": row["pivot_end"],
+                "pivot_low": row["pivot_low"],
+                "pivot_low_date": row["pivot_low_date"],
+                "pivot_end_before_signal": row["pivot_end"] < signal_day,
+                "signal_day_low_excluded": row["technical_low"] != row["pivot_low"],
+                "execution_status": row.get("execution_status"),
+                "execution_detail": row.get("execution_detail"),
+                "follow_up_date": follow_day,
+                "follow_up_close": follow_close,
+                "strict_close_below_stop": follow_close < low,
+                "protective_stop_triggered": False,
                 "status": "PASS",
-            },
-            {
-                "regression_case": case, "line_id": line_id,
-                "date": replay_day, "cycle_id": cycle_id,
-                "signal_generated": False,
-                "execution_status": replay.get("execution_status"),
-                "execution_detail": replay.get("execution_detail"),
-                "cycle_status": replay.get("cycle_status"),
-                "consumption_assertion": "NO_SECOND_SIGNAL_FROM_SAME_CYCLE",
-                "status": "PASS",
-            },
-        ))
+            })
     return output
 
 
@@ -479,10 +487,11 @@ def run_formal_pack(
         for line_id, result in new_results.items() for row in result.cycle_audit
     ]
     consumption_readback = cycle.assert_cycle_consumption(cycle_audit, trades)
-    duplicate_regression = _duplicate_cycle_regression(cycle_audit)
+    pivot_readback = cycle.assert_pivot_stops(cycle_audit, trades, events)
+    pivot_regression = _pivot_stop_regression(cycle_audit, trades)
     prep._write_csv(output_root / "kd-cycle-audit.csv", cycle_audit)
     prep._write_csv(
-        output_root / "duplicate-cycle-regression.csv", duplicate_regression
+        output_root / "pivot-stop-regression.csv", pivot_regression
     )
     named_regression = _named_date_regression(cycle_audit)
     prep._write_csv(
@@ -652,8 +661,14 @@ def run_formal_pack(
             "copied_contract_sha256": prep.sha256_file(output_root / "strategy-rule-contract.md"),
             "semantic_rewrite": False,
             "entry_kd": "9/9/55",
-            "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
-            "superseded_reason": DEPRECATION_CODE,
+            "pivot_stop": "SECOND_K_LT_D_START_THROUGH_T_MINUS_1_MIN_LOW",
+            "supersedes": [
+                SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS,
+                SUPERSEDED_INITIAL_STOP_REPORT,
+            ],
+            "superseded_reasons": [
+                DEPRECATION_CODE, INITIAL_STOP_DEPRECATION_CODE,
+            ],
         }) + b"\n"
     )
     (output_root / "superseded-artifact-registry.json").write_bytes(
@@ -683,16 +698,34 @@ def run_formal_pack(
                     "kd-cycle-audit.csv": "b240c50fbc3be079f79efcabbb59eaa722fef838053faf4dbc96f5bbfa2690e9",
                 },
             }],
+            "deprecated_initial_stop_artifact": {
+                "report": SUPERSEDED_INITIAL_STOP_REPORT,
+                "status": INITIAL_STOP_DEPRECATION_CODE,
+                "valid_for_decision": False,
+                "reason": "KD cycle initial stop used signal-day low instead of causal T-1 pivot",
+                "preserved_report_pack_a_hashes": {
+                    "manifest.json": "15ef06b5e0d28dfd451e1b49675a31f57e6e5891226b6764a931bf91193422d3",
+                    "readback.json": "91949ed94fb74d6afa37fe92bf3d675f3fffc4a26d965b46aeb086f212632c79",
+                    "README.md": "28ed44d0bf928e5719d00a676c478e286fc399b786128c9b03ec566d2c219040",
+                    "trade-details.md": "b10d5baa562ff52e99aed31f4d108f096f50b86a0c5354b299f1a97a031fbdf3",
+                    "formal-summary.csv": "bb05984bbec5ecf9d2afc86f8910514bb8985bf3867916b2ad02c78e9b3ade98",
+                    "kd-cycle-audit.csv": "f7df6b98d49b31ec93fae46255fee8b43d47d2edcf79588ffbfa7deb9c41656d",
+                },
+            },
         }) + b"\n"
     )
     (output_root / "cycle-consumption-readback.json").write_bytes(
         prep._canonical_bytes({
             **consumption_readback,
             "contract": "FIRST_LEGAL_SIGNAL_CONSUMES_CYCLE_REGARDLESS_OF_EXECUTION",
-            "named_regression_cases": sorted({
-                row["regression_case"] for row in duplicate_regression
-            }),
-            "named_regression_rows": len(duplicate_regression),
+        }) + b"\n"
+    )
+    (output_root / "pivot-stop-readback.json").write_bytes(
+        prep._canonical_bytes({
+            **pivot_readback,
+            "contract": "SECOND_K_LT_D_START_THROUGH_T_MINUS_1_MIN_TECHNICAL_LOW",
+            "named_regression_dates": ["2023-09-18", "2023-11-17"],
+            "named_regression_rows": len(pivot_regression),
         }) + b"\n"
     )
     (output_root / "ma144-invariance-readback.json").write_bytes(
@@ -889,11 +922,13 @@ def run_formal_pack(
         f"{row['execution_status']} |"
         for row in named_regression
     )
-    duplicate_table = "\n".join(
-        f"| {row['regression_case']} | {_label(row['line_id'])} | {row['date']} | "
-        f"`{row['cycle_id']}` | {'是' if row['signal_generated'] else '否'} | "
-        f"{row['execution_status'] or '—'} | {row['cycle_status']} | {row['status']} |"
-        for row in duplicate_regression
+    pivot_table = "\n".join(
+        f"| {row['signal_date']} | {_label(row['line_id'])} | "
+        f"{row['pivot_start']} | {row['pivot_end']} | {row['pivot_low']:.2f} | "
+        f"{row['pivot_low_date']} | {row['execution_status'] or '—'} | "
+        f"{row['follow_up_date']} | {row['follow_up_close']:.2f} | "
+        f"{'是' if row['protective_stop_triggered'] else '否'} | {row['status']} |"
+        for row in pivot_regression
     )
     screen_row = next(
         row for row in named_regression
@@ -905,7 +940,7 @@ def run_formal_pack(
         "formal-summary.csv", "relative-benchmark.csv", "daily-equity.csv",
         "strategy-account-daily.csv", "trade-details.md", "trade-details.csv",
         "event-ledger.csv", "kd-cycle-audit.csv", "corporate-action-ledger.csv",
-        "named-date-regression.csv", "duplicate-cycle-regression.csv",
+        "named-date-regression.csv", "pivot-stop-regression.csv",
         "annual-performance.csv", "fixed-periods.csv", "rolling-windows.csv",
         "regime-performance.csv", "path-and-concentration.csv",
         "cost-sensitivity.csv", "parameter-grid.csv", "parameter-grid-summary.csv",
@@ -914,6 +949,7 @@ def run_formal_pack(
         "taiex-supplement.csv", "strategy-rule-contract.md",
         "contract-verification.json", "superseded-artifact-registry.json",
         "ma144-invariance-readback.json", "cycle-consumption-readback.json",
+        "pivot-stop-readback.json",
         "equity-chart.svg", "drawdown-chart.svg",
         "annual-chart.svg", "rolling-window-chart.svg", "regime-chart.svg",
         "trade-pnl-chart.svg", "cost-pressure-chart.svg",
@@ -937,10 +973,10 @@ def run_formal_pack(
         ("attachments", "14｜完整附件目錄"),
     )
     observations = {
-        "conclusion": f"本版以 KD(9,9,55) 取代錯誤參數舊版 `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}`（`{DEPRECATION_CODE}`）。策略 C 次開期末資產 {_money(metrics[practical_ids[0]]['ending_equity'])}；策略 D 次開期末資產 {_money(metrics[practical_ids[1]]['ending_equity'])}。{insufficiency_text}",
+        "conclusion": f"本版以第二段 K<D 起點至訊號 T-1 的最低 technical_low 作固定 pivot stop，取代 `{SUPERSEDED_INITIAL_STOP_REPORT}` 的訊號日低點定義（`{INITIAL_STOP_DEPRECATION_CODE}`）。策略 C 次開期末資產 {_money(metrics[practical_ids[0]]['ending_equity'])}；策略 D 次開期末資產 {_money(metrics[practical_ids[1]]['ending_equity'])}。{insufficiency_text}",
         "performance": f"共同期間保留原策略、純 MACD、新策略 C／D 與兩條買進持有，共 {len(lines)} 條比較線。",
         "relative": "策略 C／D 均逐一比較 00635U 現金保留與分配再投入；官方 Gold ER 未取得，因此不以代理替代。",
-        "rules": f"契約原文 SHA-256 為 `{cycle.CONTRACT_SHA256}`，複製檔與來源位元組一致；本輪唯一參數修正為進場 KD(9,9,55)。2022-10-05 正式值 K={screen_row['entry_k']:.2f}、D={screen_row['entry_d']:.2f}，確認 K>D。",
+        "rules": f"契約原文 SHA-256 為 `{cycle.CONTRACT_SHA256}`，複製檔與來源位元組一致；KD 維持 (9,9,55)，唯一修正是 KD cycle initial_stop 改為因果 T-1 pivot。2023-09-18 與 2023-11-17 的 pivot 分別為 23.63 與 23.71。",
         "annual": f"完整逐年附件含 {len(annual):,} 列，年度帳戶連續、不重設本金。",
         "trades": f"逐循環稽核共 {len(cycle_audit):,} 列，合法訊號 {len(cycle_signals):,} 列，次開低於或等於防守價取消 {len(cancellations):,} 列。",
         "execution": f"成本附件含 {len(costs):,} 列，涵蓋 C／D、收盤／次開及 20／40／60 基點。",
@@ -949,7 +985,7 @@ def run_formal_pack(
         "grid": "parameter-grid.csv 合計 54 列；策略 C、D 各 27 組，均由 MA 三值 × K 三值 × D 三值（3×3×3）構成。主規則固定 MA21 與進場 KD(9,9,55)，出場 KD(9,9,55) 與 2R 完全不搜尋。",
         "core": f"C／D 各 0／20／40／60% 共 {len(core_summary)} 組，core 與 tactical 每日分帳且重建誤差為零。",
         "practice": insufficiency_text,
-        "qa": f"輸入 manifest `{accepted_manifest_sha256}` 已由 00 gate 接受；v3 已標記 `{REJECTION_CODE}`。本版全檔 cycle 唯一性、三種具名消耗案例均 PASS，輸出仍需兩次全新隔離重播 exact parity。",
+        "qa": f"輸入 manifest `{accepted_manifest_sha256}` 已由 00 gate 接受；v3 標記 `{REJECTION_CODE}`，v4 標記 `{INITIAL_STOP_DEPRECATION_CODE}`。本版全檔 cycle 與 pivot 因果唯一性均 PASS，輸出仍需兩次全新隔離重播 exact parity。",
         "attachments": f"本包提供 {len(attachments)} 個可點入口，含原始 CSV、中文 SVG、契約、manifest 與 readback。",
     }
     prose = {
@@ -971,7 +1007,7 @@ def run_formal_pack(
     extras = {
         "performance": "\n| 主線 | 成交方式 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + perf_table + "\n\n![正式資產曲線](equity-chart.svg)\n\n![正式回撤路徑](drawdown-chart.svg)\n",
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n",
-        "rules": f"\n- **修正版新進場：** 使用進場 KD(9,9,55) 的 K<D／K>D 循環、嚴格 K2_so_far > K1 與 MA21 收盤向上突破；策略 C 以 MA21／MA144 嚴格分流，等號不進，策略 D 的 MA144 只作診斷。\n- **cycle 消耗修正：** 第一次合法訊號成立即永久消耗型態，不受成交、已有持倉排除、次開待成交或開盤取消結果影響。v3 因重複訊號標記 `{REJECTION_CODE}`，不得用於決策。\n- **棄用舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 使用錯誤進場 KD(9,55,55)，標記 `{DEPRECATION_CODE}`，只保留稽核，不具決策效力。\n- **未改動規則：** 原策略仍保留 MACD(21,55,55) 比較線；新策略沿用固定初始防守、淨成本 2R 永久啟動、出場 KD(9,9,55) 新死叉，固定防守優先。訊號日收盤成交與次一個可成交交易日開盤成交各自進出同口徑。\n\n#### 2021-03-29／2021-04-06 重複 cycle 退件回歸\n\n| 案例 | 策略 | 日期 | cycle | 合法訊號 | 成交結果 | cycle 狀態 | 驗證 |\n|---|---|---|---|---|---|---|---|\n{duplicate_table}\n\n上述 FILLED、POSITION_ALREADY_OPEN、NEXT_OPEN_CANCEL 三種結果都在第一次合法訊號當日消耗 cycle；2021-04-06 不再產生第二個訊號。全檔 `(line_id, cycle_id)` 唯一性另見 readback。\n\n#### 2022-10-05／2022-11-07 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，差異來自券商畫面未公開的初始化／平滑口徑與正式全歷史遞迴口徑不同，但方向一致為 K>D。2022-11-07 的合法性與成交結果以上表重新計算，不沿用 v1 結論。\n\n- [重複 cycle 具名回歸 CSV](duplicate-cycle-regression.csv)\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
+        "rules": f"\n- **KD cycle 進場：** 進場與出場 KD 均維持 KD(9,9,55)；K2_so_far>K1、MA21 收盤突破、C／D 分流與第一次合法訊號即消耗均不變。原策略比較線仍保留 MACD(21,55,55)。\n- **pivot stop 唯一修正：** 固定初始防守 initial_stop 為當前第二段 K<D 起點至訊號 T-1 的最低 technical_low；不得使用訊號日或未來資料。若沒有至少一個完成的第二段交易日，fail closed。\n- **成交與出場：** SIGNAL_CLOSE 於訊號日收盤成交；NEXT_SESSION_OPEN 於次一個可成交交易日開盤成交，open<=stop 取消。持倉後只有 technical_close<stop 才觸發，等號不出場；固定防守優先於淨成本 2R 後 KD 死叉。策略 C 高均線原始 MA21 分支仍用既有 structural stop。\n- **棄用版本：** `{SUPERSEDED_INITIAL_STOP_REPORT}` 使用訊號日低點，標記 `{INITIAL_STOP_DEPRECATION_CODE}`；舊 9/55/55 版仍標記 `{DEPRECATION_CODE}`；v3 重複 cycle 退件仍標記 `{REJECTION_CODE}`。\n\n#### 2023-09-18／2023-11-17 pivot stop 具名回歸\n\n| 訊號日 | 策略 | pivot 起點 | pivot T-1 | pivot | 最低日 | 成交結果 | 後續日 | 後續收盤 | 觸發防守 | 驗證 |\n|---|---|---|---|---:|---|---|---|---:|---|---|\n{pivot_table}\n\n2023-09-18 的防守固定為 2023-09-14 低點 23.63，2023-09-22 收盤 23.78 不觸發；2023-11-17 的防守固定為 2023-11-13 低點 23.71，2023-11-20 收盤 24.23 不觸發。表內同列 SIGNAL_CLOSE 與 NEXT_SESSION_OPEN 的成交差異；全檔次開取消仍以 open<=pivot stop 驗證。\n\n#### 2022-10-05／2022-11-07 KD 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，方向一致為 K>D。\n\n- [pivot stop 具名回歸 CSV](pivot-stop-regression.csv)\n- [pivot stop 全檔回讀](pivot-stop-readback.json)\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 |\n|---|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n- [完整逐年績效 CSV](annual-performance.csv)\n\n![逐年報酬](annual-chart.svg)\n",
         "trades": f"\n| 新策略 | 進場 | 已完成 | 未平倉 | 最大投入 |\n|---|---:|---:|---:|---:|\n{new_trade_summary}\n\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [每日主帳](strategy-account-daily.csv)\n- [事件帳](event-ledger.csv)\n- [公司行動帳](corporate-action-ledger.csv)\n- [逐循環稽核](kd-cycle-audit.csv)\n\n![新策略逐筆損益](trade-pnl-chart.svg)\n",
         "execution": "\n#### 完整成交與成本壓力表\n\n| 策略 | 成交方式 | 單邊滑價（基點） | 期末資產 | 年化報酬率 | 最大回落 | 完成交易 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n- [完整成本壓力 CSV](cost-sensitivity.csv)\n\n![成本壓力](cost-pressure-chart.svg)\n",
@@ -979,7 +1015,7 @@ def run_formal_pack(
         "concentration": "\n| 策略 | 已完成 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆集中度 | 最佳 3 筆集中度 | 最長連虧 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n- [集中度、移除最佳交易與路徑診斷](path-and-concentration.csv)\n",
         "grid": "\n| 策略 | 格數 | 中位期末資產 | 正報酬比例 | 主設定期末資產 | 五年最差年化 |\n|---|---:|---:|---:|---:|---:|\n" + grid_table + "\n\n![每策略 27 組、總計 54 列鄰近參數](parameter-grid-chart.svg)\n",
         "core": "\n| 策略 | 核心比例 | 期末資產 | 年化報酬率 | 最大回落 |\n|---|---:|---:|---:|---:|\n" + core_table + "\n\n![核心持有比例](core-allocation-chart.svg)\n",
-        "qa": "\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [重複 cycle 具名回歸](duplicate-cycle-regression.csv)\n- [輸出 manifest](manifest.json)\n- [回讀驗證](readback.json)\n",
+        "qa": "\n- [pivot stop 全檔回讀](pivot-stop-readback.json)\n- [pivot stop 具名回歸](pivot-stop-regression.csv)\n- [cycle 消耗全檔回讀](cycle-consumption-readback.json)\n- [輸出 manifest](manifest.json)\n- [回讀驗證](readback.json)\n",
         "attachments": "\n" + "\n".join(f"- [{name}]({name})" for name in attachments) + "\n",
     }
     sections = [
@@ -991,9 +1027,10 @@ def run_formal_pack(
         for _anchor, title in section_titles
     )
     report = (
-        "# 00635U 黃金期貨 ETF｜KD(9,9,55) 循環低點墊高＋MA21 突破修正版研究\n\n"
+        "# 00635U 黃金期貨 ETF｜KD(9,9,55) 循環進場＋T-1 Pivot Stop 修正版研究\n\n"
         "> **狀態：隔離研究候選，尚未採納。** 凍結資料與唯一契約均已通過 SHA gate；仍須 00 嚴格 QA。\n"
         f"> **v3 嚴格 QA 退件：** `{REJECTED_DUPLICATE_REPORT}` 標記 `{REJECTION_CODE}`，只保留稽核；本版已重算全部輸出。\n"
+        f"> **v4 防守定義棄用：** `{SUPERSEDED_INITIAL_STOP_REPORT}` 標記 `{INITIAL_STOP_DEPRECATION_CODE}`；訊號日低點不得再作 KD cycle 防守。\n"
         f"> **取代舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 因進場 KD 誤用 9/55/55，標記 `{DEPRECATION_CODE}`，只保留稽核且不得用於決策。\n"
         f"> 資料快照：`{cycle.SNAPSHOT_ID}`；輸入 manifest SHA-256：`{accepted_manifest_sha256}`。\n"
         f"> 唯一規則契約 SHA-256：`{cycle.CONTRACT_SHA256}`；契約原文已原樣收入附件。\n\n"
@@ -1006,19 +1043,23 @@ def run_formal_pack(
         name for name in attachments if name not in {"manifest.json", "readback.json"}
     ) + (REPORT_NAME,)
     manifest = {
-        "schema": "00635U_KD_9_9_55_CYCLE_ENTRY_STUDY_V3_R2",
+        "schema": "00635U_KD_9_9_55_PIVOT_STOP_STUDY_V4",
         "artifact_classification": "ISOLATED_RESEARCH_CANDIDATE",
         "publication_eligible": False,
         "intended_use": "STRICT_00_QA_BEFORE_ANY_PUBLICATION",
         "snapshot_id": input_manifest.get("snapshot_id"),
         "input_manifest_sha256": accepted_manifest_sha256,
         "contract_sha256": cycle.CONTRACT_SHA256,
-        "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
-        "superseded_reason": DEPRECATION_CODE,
+        "supersedes": [
+            SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS,
+            SUPERSEDED_INITIAL_STOP_REPORT,
+        ],
+        "superseded_reasons": [DEPRECATION_CODE, INITIAL_STOP_DEPRECATION_CODE],
         "rejected_predecessor": REJECTED_DUPLICATE_REPORT,
         "rejected_predecessor_status": REJECTION_CODE,
         "entry_kd": "9/9/55",
         "exit_kd": "9/9/55",
+        "initial_stop": "SECOND_K_LT_D_START_THROUGH_T_MINUS_1_MIN_TECHNICAL_LOW",
         "source_package_manifest_sha256": input_manifest.get("source_package_manifest_sha256"),
         "source_package_readback_sha256": input_manifest.get("source_package_readback_sha256"),
         "files": [
@@ -1035,12 +1076,17 @@ def run_formal_pack(
         "files_verified": len(artifact_names),
         "account_invariants": "PASS",
         "contract_sha256": cycle.CONTRACT_SHA256,
-        "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
-        "superseded_reason": DEPRECATION_CODE,
+        "supersedes": [
+            SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS,
+            SUPERSEDED_INITIAL_STOP_REPORT,
+        ],
+        "superseded_reasons": [DEPRECATION_CODE, INITIAL_STOP_DEPRECATION_CODE],
         "rejected_predecessor": REJECTED_DUPLICATE_REPORT,
         "rejected_predecessor_status": REJECTION_CODE,
         "cycle_consumption_invariants": consumption_readback,
+        "pivot_stop_invariants": pivot_readback,
         "entry_kd": "9/9/55",
+        "initial_stop": "SECOND_K_LT_D_START_THROUGH_T_MINUS_1_MIN_TECHNICAL_LOW",
     }
     (output_root / "readback.json").write_bytes(prep._canonical_bytes(readback) + b"\n")
     errors = (

@@ -44,12 +44,12 @@ from .etf_00635u_strategy_v1 import (
 CONTRACT = (
     Path(__file__).resolve().parents[2]
     / "docs" / "strategies" / "dual_ma"
-    / "00635u-kd-cycle-ma21-breakout-entry-v3.md"
+    / "00635u-kd-cycle-ma21-breakout-entry-v4.md"
 )
-CONTRACT_SHA256 = "937975f70c22a1b259c685b1bcfd92815f60bc964531f26d023144417e860486"
+CONTRACT_SHA256 = "2cffeef16decb2b2747ccdff63d2c16143a5d25c03441b8d8858e2d71dc062fc"
 SNAPSHOT_ID = "00635U_FINMIND_PRIMARY_20150415_20261008_V3_D6735B7A5FF5"
 INPUT_MANIFEST_SHA256 = "4b0431d777f239241bc1dddd64dba124b61f990dcf907539815dbd685d761d9d"
-STOP_CODE = "STOP_WAIT_00_00635U_KD_9_9_55_REPORT_QA_R2"
+STOP_CODE = "STOP_WAIT_00_00635U_KD_PIVOT_STOP_REPORT_QA"
 
 ENTRY_RSV_PERIOD = 9
 ENTRY_K_PERIOD = 9
@@ -283,6 +283,9 @@ class _CycleScanner:
         same_day_golden: bool = False,
         signal_generated: bool = False,
         branch: str = "",
+        pivot_end: date | None = None,
+        pivot_low: Decimal | None = None,
+        pivot_low_date: date | None = None,
     ) -> dict[str, Any]:
         return {
             "cycle_id": self.cycle_id,
@@ -307,6 +310,13 @@ class _CycleScanner:
             "second_death_cross_date": self.death_cross_date,
             "second_k_lt_d_start": self.second_start,
             "second_k_lt_d_end": self.second_end,
+            "pivot_start": self.second_start if pivot_end is not None else None,
+            "pivot_end": pivot_end,
+            "pivot_low": pivot_low,
+            "pivot_low_date": pivot_low_date,
+            "pivot_uses_signal_day": bool(
+                pivot_end is not None and pivot_end >= row.day
+            ),
             "k2_so_far": self.k2,
             "k2_low_date": self.k2_date,
             "k2_strictly_above_k1": (
@@ -327,7 +337,7 @@ class _CycleScanner:
             "sma144": row.base.sma144,
             "technical_close": row.base.technical_close,
             "technical_low": row.base.technical_low,
-            "initial_stop": row.base.technical_low if signal_generated else None,
+            "initial_stop": pivot_low if signal_generated else None,
             "execution_status": "SIGNAL_GENERATED" if signal_generated else "",
             "execution_detail": "",
         }
@@ -338,18 +348,36 @@ class _CycleScanner:
         row: KDEntryRow,
         *,
         same_day_golden: bool,
+        pivot_end: date | None,
+        pivot_low: Decimal | None,
+        pivot_low_date: date | None,
     ) -> tuple[dict[str, Any], dict[str, Any] | None]:
         allowed, branch = _cycle_policy_branch(row, self.policy)
         valid = bool(self.k2 is not None and self.k1 is not None and self.k2 > self.k1)
-        signal = valid and _ma21_breakout(previous, row) and allowed
+        pivot_ready = bool(
+            pivot_end is not None
+            and pivot_low is not None
+            and pivot_low_date is not None
+            and self.second_start is not None
+            and self.second_start <= pivot_low_date <= pivot_end < row.day
+        )
+        breakout_ready = valid and _ma21_breakout(previous, row) and allowed
+        signal = breakout_ready and pivot_ready
         audit = self._snapshot(
             row,
-            status=("LEGAL_SIGNAL" if signal else "CANDIDATE_CHECKED"),
+            status=(
+                "LEGAL_SIGNAL" if signal else
+                "PIVOT_HISTORY_REQUIRED" if breakout_ready else
+                "CANDIDATE_CHECKED"
+            ),
             previous=previous,
             in_signal_window=True,
             same_day_golden=same_day_golden,
             signal_generated=signal,
             branch=branch,
+            pivot_end=pivot_end,
+            pivot_low=pivot_low,
+            pivot_low_date=pivot_low_date,
         )
         return audit, dict(audit) if signal else None
 
@@ -413,7 +441,8 @@ class _CycleScanner:
             if death:
                 self._start_second(row)
                 audit, signal = self._candidate(
-                    previous, row, same_day_golden=False
+                    previous, row, same_day_golden=False,
+                    pivot_end=None, pivot_low=None, pivot_low_date=None,
                 )
                 if signal is not None:
                     # A legal signal consumes the cycle immediately.  Execution
@@ -430,13 +459,24 @@ class _CycleScanner:
                     # a complete high cannot be joined to it, so roll causally.
                     self._new_first(row)
                     return self._snapshot(row, status="SECOND_BROKEN_NEW_FIRST_LOW", previous=previous), None
+                pivot_end = self.second_end
+                pivot_low = self.second_l1
+                pivot_low_date = self.second_l1_date
                 self._update_second(row)
-                audit, signal = self._candidate(previous, row, same_day_golden=False)
+                audit, signal = self._candidate(
+                    previous, row, same_day_golden=False,
+                    pivot_end=pivot_end, pivot_low=pivot_low,
+                    pivot_low_date=pivot_low_date,
+                )
                 if signal is not None:
                     self.phase = "CONSUMED_WAIT_HIGH"
                 return audit, signal
             if golden:
-                audit, signal = self._candidate(previous, row, same_day_golden=True)
+                audit, signal = self._candidate(
+                    previous, row, same_day_golden=True,
+                    pivot_end=self.second_end, pivot_low=self.second_l1,
+                    pivot_low_date=self.second_l1_date,
+                )
                 if signal is not None:
                     self.phase = "SEEK_FIRST_LOW"
                     return audit, signal
@@ -554,6 +594,97 @@ def assert_cycle_consumption(
     }
 
 
+def assert_pivot_stops(
+    cycle_audit: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]] = (),
+    events: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Recompute every cycle signal's T-1 pivot and verify executions."""
+
+    def line_cycle(row: Mapping[str, Any]) -> tuple[str, str]:
+        return str(row.get("line_id", "")), str(row.get("cycle_id", ""))
+
+    signals = [row for row in cycle_audit if row.get("signal_generated")]
+    signal_by_key: dict[tuple[str, str, Any], Mapping[str, Any]] = {}
+    for signal in signals:
+        pivot_start = signal.get("pivot_start")
+        pivot_end = signal.get("pivot_end")
+        pivot_low = signal.get("pivot_low")
+        pivot_low_date = signal.get("pivot_low_date")
+        if not (
+            pivot_start is not None
+            and pivot_end is not None
+            and pivot_low is not None
+            and pivot_low_date is not None
+            and pivot_start <= pivot_low_date <= pivot_end < signal["date"]
+            and not signal.get("pivot_uses_signal_day")
+        ):
+            raise AssertionError(f"invalid or non-causal pivot: {signal}")
+        expected_rows = [
+            row for row in cycle_audit
+            if line_cycle(row) == line_cycle(signal)
+            and pivot_start <= row["date"] <= pivot_end
+            and row.get("entry_k_relation") == "K_LT_D_SEGMENT"
+        ]
+        if not expected_rows:
+            raise AssertionError(f"pivot has no completed second-low row: {signal}")
+        expected_low = min(row["technical_low"] for row in expected_rows)
+        expected_low_date = next(
+            row["date"] for row in expected_rows
+            if row["technical_low"] == expected_low
+        )
+        if pivot_low != expected_low or pivot_low_date != expected_low_date:
+            raise AssertionError(
+                f"pivot mismatch for {line_cycle(signal)} on {signal['date']}: "
+                f"reported {(pivot_low, pivot_low_date)}, "
+                f"expected {(expected_low, expected_low_date)}"
+            )
+        if signal.get("initial_stop") != pivot_low:
+            raise AssertionError(f"signal stop does not equal pivot: {signal}")
+        signal_by_key[(*line_cycle(signal), signal["date"])] = signal
+
+    cycle_entries = [
+        row for row in trades
+        if row.get("role") == "ENTRY"
+        and row.get("entry_type") == EntryType.KD_CYCLE_9_9_55.value
+    ]
+    for trade in cycle_entries:
+        key = (
+            str(trade.get("line_id", "")), str(trade.get("cycle_id", "")),
+            trade["signal_date"],
+        )
+        signal = signal_by_key.get(key)
+        if signal is None or trade.get("initial_stop") != signal.get("pivot_low"):
+            raise AssertionError(f"cycle entry stop is not its causal pivot: {trade}")
+        for field in ("pivot_start", "pivot_end", "pivot_low", "pivot_low_date"):
+            if trade.get(field) != signal.get(field):
+                raise AssertionError(f"cycle entry missing {field}: {trade}")
+
+    cancellations = [
+        row for row in events
+        if row.get("event") == "ENTRY_REJECTED_GAP_AT_OR_BELOW_STOP"
+        and (
+            not row.get("line_id")
+            or str(row.get("line_id", "")).startswith("KD_CYCLE_")
+        )
+    ]
+    for event in cancellations:
+        if event.get("fill_reference_price") > event.get("initial_stop"):
+            raise AssertionError(f"invalid next-open pivot cancellation: {event}")
+
+    return {
+        "status": "PASS",
+        "signals_checked": len(signals),
+        "cycle_entries_checked": len(cycle_entries),
+        "next_open_cancellations_checked": len(cancellations),
+        "all_pivot_ends_strictly_before_signal": True,
+        "all_cycle_entry_stops_equal_recomputed_pivot": True,
+        "signal_day_and_future_lows_excluded": True,
+        "next_open_cancellation_operator": "OPEN_LE_INITIAL_STOP",
+        "protective_exit_operator": "TECHNICAL_CLOSE_LT_INITIAL_STOP",
+    }
+
+
 def _high_original_signal(previous: KDEntryRow | None, row: KDEntryRow) -> bool:
     return bool(
         previous is not None
@@ -636,7 +767,7 @@ def run_kd_cycle_strategy(
 
         candidate_stop = None
         if selected == EntryType.KD_CYCLE_9_9_55:
-            candidate_stop = row.technical_low
+            candidate_stop = signal_payload.get("pivot_low")
         elif selected == EntryType.HIGH_MA21:
             candidate_stop = _candidate_stop(state.phase_low, previous_base, row)
 
@@ -756,6 +887,12 @@ def run_kd_cycle_strategy(
                 source.get("same_day_golden_cross", False)
                 if is_cycle_entry else False
             ),
+            "pivot_start": source.get("pivot_start") if is_cycle_entry else None,
+            "pivot_end": source.get("pivot_end") if is_cycle_entry else None,
+            "pivot_low": source.get("pivot_low") if is_cycle_entry else None,
+            "pivot_low_date": (
+                source.get("pivot_low_date") if is_cycle_entry else None
+            ),
             "entry_sma21_diagnostic": row_by_day[trade["signal_date"]].base.sma21,
             "entry_sma144_diagnostic": row_by_day[trade["signal_date"]].base.sma144,
         })
@@ -835,6 +972,7 @@ def run_kd_cycle_strategy(
             })
 
     assert_cycle_consumption(audit, state.trades)
+    assert_pivot_stops(audit, state.trades, state.events)
 
     result = RunResult(config=config, state=state)
     return KDCycleRunResult(result=result, cycle_audit=tuple(audit))

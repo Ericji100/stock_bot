@@ -54,6 +54,7 @@ class EntryType(str, Enum):
     LOW_MACD = "LOW_REGIME_MACD_GREEN_TO_RED"
     MACD_ONLY = "MACD_ONLY_GREEN_TO_RED"
     KD_CYCLE = "KD_9_55_55_HIGHER_LOW_MA21_BREAKOUT"
+    KD_CYCLE_9_9_55 = "KD_9_9_55_HIGHER_LOW_MA21_BREAKOUT"
 
 
 class ExitReason(str, Enum):
@@ -829,7 +830,10 @@ def _exit_signal(
 
     if config.strategy == StrategyVersion.B and (
         position.entry_type == EntryType.HIGH_MA21
-        or position.entry_type == EntryType.KD_CYCLE
+        or position.entry_type in (
+            EntryType.KD_CYCLE,
+            EntryType.KD_CYCLE_9_9_55,
+        )
         or config.entry_policy == EntryPolicy.MACD_ONLY
     ):
         if stop_hit:

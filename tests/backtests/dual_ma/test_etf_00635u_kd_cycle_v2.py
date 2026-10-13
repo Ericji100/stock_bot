@@ -96,6 +96,14 @@ def test_contract_pin_is_exact():
     assert kd_cycle.sha256_file(kd_cycle.CONTRACT) == kd_cycle.CONTRACT_SHA256
 
 
+def test_corrected_parameter_grid_is_3_by_3_by_3_per_strategy():
+    assert formal.GRID_MA_VALUES == (18, 21, 24)
+    assert formal.GRID_K_VALUES == (8, 9, 10)
+    assert formal.GRID_D_VALUES == (45, 55, 65)
+    assert len(formal.GRID_PARAMETERS) == 27
+    assert (21, 9, 55) in formal.GRID_PARAMETERS
+
+
 def test_entry_kd_is_raw_ohlc_derived_and_prefix_stable():
     raw = [
         RawETFRow(

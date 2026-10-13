@@ -535,9 +535,15 @@ def run_formal_pack(
                 "max_drawdown": result_metrics["max_drawdown"],
                 "rolling_5y_worst_cagr": min(rolling5) if rolling5 else None,
             })
+    if len(grid) != 54:
+        raise AssertionError("parameter grid must contain 54 rows total")
     grid_summary = []
     for policy in cycle.KDCyclePolicy:
         selected = [row for row in grid if row["policy"] == policy.name]
+        if len(selected) != 27:
+            raise AssertionError(
+                f"parameter grid for {policy.name} must contain 27 rows"
+            )
         baseline = next(
             row for row in selected
             if row["ma_fast"] == 21 and row["entry_kd"] == "9/9/55"
@@ -661,7 +667,7 @@ def run_formal_pack(
         "trade-pnl-chart.svg": ("trade_pnl", "新策略逐筆交易淨損益", pnl_series, "交易序號", "淨損益（元）", None),
         "cost-pressure-chart.svg": ("cost_pressure", "成本壓力測試", cost_series, "單邊滑價（基點）", "期末資產（元）", ["20", "40", "60"]),
         "core-allocation-chart.svg": ("core_allocation", "核心持有比例", core_series, "核心比例", "期末資產（元）", ["0%", "20%", "40%", "60%"]),
-        "parameter-grid-chart.svg": ("parameter_grid", "27 組預先凍結鄰近參數", grid_series, "參數序號", "期末資產（元）", [str(i) for i in range(1, 28)]),
+        "parameter-grid-chart.svg": ("parameter_grid", "每策略 27 組（總 54 列）預先凍結鄰近參數", grid_series, "參數序號", "期末資產（元）", [str(i) for i in range(1, 28)]),
     }
     for name, (kind, title, source, x_label, y_label, ticks) in chart_specs.items():
         (output_root / name).write_text(
@@ -838,7 +844,7 @@ def run_formal_pack(
         "execution": f"成本附件含 {len(costs):,} 列，涵蓋 C／D、收盤／次開及 20／40／60 基點。",
         "periods": f"固定期間 {len(fixed):,} 列、滾動窗口 {len(rolling):,} 列；C／D 高低均線區間另列 {len(regimes):,} 列。",
         "concentration": f"{len(active)} 條主動線均列勝率、最佳／最差交易、獲利集中度、連虧與水下期。",
-        "grid": "策略 C、D 各 27 組預先凍結鄰近參數；主規則固定 MA21 與進場 KD(9,9,55)，出場 KD(9,9,55) 與 2R 完全不搜尋。",
+        "grid": "parameter-grid.csv 合計 54 列；策略 C、D 各 27 組，均由 MA 三值 × K 三值 × D 三值（3×3×3）構成。主規則固定 MA21 與進場 KD(9,9,55)，出場 KD(9,9,55) 與 2R 完全不搜尋。",
         "core": f"C／D 各 0／20／40／60% 共 {len(core_summary)} 組，core 與 tactical 每日分帳且重建誤差為零。",
         "practice": insufficiency_text,
         "qa": f"輸入 manifest `{accepted_manifest_sha256}` 已由 00 gate 接受；輸出需兩次全新隔離重播 exact parity。",
@@ -854,7 +860,7 @@ def run_formal_pack(
         "execution": ("量化成交時間與摩擦。", "兩種成交版本各自進出同口徑，並施加三種滑價。", observations["execution"], "成本可能改變 2R 與出場路徑，不能只線性扣減。", "實務判讀固定使用次一交易日開盤。"),
         "periods": ("檢查不同時期、滾動窗口與均線區間。", "輸出固定期、月末滾動 3／5／10 年及 HIGH／LOW 診斷。", observations["periods"], "全期正報酬不代表每個長窗口穩健。", "最差窗口限制最終結論。"),
         "concentration": ("檢查少數交易與路徑依賴。", "列勝率、最佳／最差、前 1／3 筆獲利集中、連虧與水下期。", observations["concentration"], "少數交易撐起結果時，正期望證據偏弱。", "集中度過高只能保留研究候選。"),
-        "grid": ("檢查主參數是否只在單點有效。", "事前固定 MA 18／21／24、進場 K 平滑 8／9／10、D 平滑 45／55／65，共 27 組；RSV9、出場 KD 與 2R 固定。", observations["grid"], "鄰近格只作敏感度，不用來事後改選漂亮參數。", "主設定若顯著偏離分布，結論降級。"),
+        "grid": ("檢查主參數是否只在單點有效。", "事前固定 MA 18／21／24、進場 K 平滑 8／9／10、D 平滑 45／55／65；每策略為 3×3×3＝27 組，兩策略合計 54 列。RSV9、出場 KD 與 2R 固定。", observations["grid"], "鄰近格只作敏感度，不用來事後改選漂亮參數。", "主設定若顯著偏離分布，結論降級。"),
         "core": ("觀察核心持有比例的報酬與回落取捨。", "core 與 tactical 分帳，主方法不再平衡。", observations["core"], "混合結果不是事後線性乘權重。", "年度再平衡若研究必須另開版本。"),
         "practice": ("把歷史研究轉成限制條件。", "檢查交易筆數、成本、轉倉、匯率、時區與追蹤誤差。", observations["practice"], "00635U 是期貨 ETF 載具，不等於現貨黃金。", "只有 00 QA 通過才可決定下一步；本報告不代表採納。"),
         "qa": ("證明資料、規則、帳務與輸出可重現。", "驗契約 SHA、輸入 gate、帳務守恆、連結、圖表 metadata、manifest 與雙重播。", observations["qa"], "任一 hash、因果或帳務差異都必須停止。", "狀態只可停在指定 QA stop code。"),
@@ -869,7 +875,7 @@ def run_formal_pack(
         "execution": "\n#### 完整成交與成本壓力表\n\n| 策略 | 成交方式 | 單邊滑價（基點） | 期末資產 | 年化報酬率 | 最大回落 | 完成交易 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n- [完整成本壓力 CSV](cost-sensitivity.csv)\n\n![成本壓力](cost-pressure-chart.svg)\n",
         "periods": "\n#### 固定期間完整表\n\n| 策略／基準 | 期間 | 實際起訖 | 期初資產 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 |\n|---|---|---|---:|---:|---:|---:|---:|\n" + fixed_table + "\n\n#### 滾動 3／5／10 年摘要\n\n| 策略／基準 | 窗口 | 有效數 | 最差年化 | 中位年化 | 最佳年化 | 窗口最差回落 |\n|---|---:|---:|---:|---:|---:|---:|\n" + rolling_table + "\n\n#### 高低均線區間\n\n| 策略 | 區間 | 交易日數 | 區間複合報酬 |\n|---|---|---:|---:|\n" + regime_table + "\n\n- [固定期間 CSV](fixed-periods.csv)\n- [完整滾動窗口 CSV](rolling-windows.csv)\n- [高低均線區間 CSV](regime-performance.csv)\n\n![五年滾動年化](rolling-window-chart.svg)\n\n![高低均線區間](regime-chart.svg)\n",
         "concentration": "\n| 策略 | 已完成 | 勝率 | 最佳交易 | 最差交易 | 最佳 1 筆集中度 | 最佳 3 筆集中度 | 最長連虧 | 最長水下期 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n" + concentration_table + "\n\n- [集中度、移除最佳交易與路徑診斷](path-and-concentration.csv)\n",
-        "grid": "\n| 策略 | 格數 | 中位期末資產 | 正報酬比例 | 主設定期末資產 | 五年最差年化 |\n|---|---:|---:|---:|---:|---:|\n" + grid_table + "\n\n![27 組鄰近參數](parameter-grid-chart.svg)\n",
+        "grid": "\n| 策略 | 格數 | 中位期末資產 | 正報酬比例 | 主設定期末資產 | 五年最差年化 |\n|---|---:|---:|---:|---:|---:|\n" + grid_table + "\n\n![每策略 27 組、總計 54 列鄰近參數](parameter-grid-chart.svg)\n",
         "core": "\n| 策略 | 核心比例 | 期末資產 | 年化報酬率 | 最大回落 |\n|---|---:|---:|---:|---:|\n" + core_table + "\n\n![核心持有比例](core-allocation-chart.svg)\n",
         "qa": "\n- [輸出 manifest](manifest.json)\n- [回讀驗證](readback.json)\n",
         "attachments": "\n" + "\n".join(f"- [{name}]({name})" for name in attachments) + "\n",

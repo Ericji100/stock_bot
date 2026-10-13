@@ -57,7 +57,9 @@ ENTRY_D_PERIOD = 55
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Git may check out the Markdown contract with CRLF on Windows.  Pin its
+    # canonical LF content so line-ending conversion cannot change the rule.
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 class KDCyclePolicy(str, Enum):
@@ -980,4 +982,3 @@ def run_kd_cycle_strategy(
 
 if sha256_file(CONTRACT) != CONTRACT_SHA256:
     raise RuntimeError("00635U KD-cycle contract SHA-256 mismatch")
-

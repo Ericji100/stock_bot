@@ -185,4 +185,3 @@ def test_ma21_equal_ma144_is_high_and_later_regime_change_does_not_resize(setup,
     assert curve[post_entry_day]["active_signal_regime"] == "HIGH"
     assert {row["role"] for row in replay["transactions"]
             if row["leg_id"] == first_entry["leg_id"]} == {"MOTHER", "EXIT"}
-

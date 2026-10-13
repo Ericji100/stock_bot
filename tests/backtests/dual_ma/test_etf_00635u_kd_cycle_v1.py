@@ -2,7 +2,9 @@ from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 
+from backtests.dual_ma import etf_00635u_kd_cycle_formal_v1 as formal
 from backtests.dual_ma import etf_00635u_kd_cycle_v1 as kd_cycle
+from backtests.dual_ma import etf_00635u_research_v1 as research
 from backtests.dual_ma.etf_00635u_strategy_v1 import (
     ExecutionTiming,
     IndicatorRow,
@@ -11,6 +13,25 @@ from backtests.dual_ma.etf_00635u_strategy_v1 import (
 
 
 START = date(2024, 1, 2)
+
+
+def test_passive_comparator_metrics_retain_open_position_and_entry_cash():
+    line = research.ComparisonLine(
+        "PASSIVE",
+        "TRADABLE_PASSIVE_COMPARATOR",
+        ((START, Decimal("500000")), (START + timedelta(days=1), Decimal("510000"))),
+        {
+            "transactions": (
+                {"cash_amount": Decimal("499994.89660")},
+            ),
+        },
+    )
+
+    metrics = formal._metrics_for_lines((line,), {})["PASSIVE"]
+
+    assert metrics["closed_positions"] == 0
+    assert metrics["open_positions"] == 1
+    assert metrics["maximum_single_entry_cash"] == Decimal("499994.89660")
 
 
 def _row(

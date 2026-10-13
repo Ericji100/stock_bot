@@ -60,6 +60,33 @@ def _curve(result: cycle.KDCycleRunResult) -> tuple[tuple[date, Decimal], ...]:
     return tuple((row["date"], row["equity"]) for row in result.state.daily)
 
 
+def _metrics_for_lines(
+    lines: Sequence[research.ComparisonLine],
+    active: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build summary metrics without losing passive comparator position audit."""
+    output: dict[str, dict[str, Any]] = {}
+    for line in lines:
+        metrics = research.performance_metrics(
+            line.curve, active.get(line.line_id, {}).get("trades", ())
+        )
+        if line.role == "TRADABLE_PASSIVE_COMPARATOR":
+            transactions = line.audit["transactions"]
+            metrics.update({
+                "closed_positions": 0,
+                "open_positions": 1,
+                "maximum_single_entry_cash": max(
+                    (
+                        research.decimal(item["cash_amount"])
+                        for item in transactions
+                    ),
+                    default=Decimal("0"),
+                ),
+            })
+        output[line.line_id] = metrics
+    return output
+
+
 def _regime_daily(
     result: cycle.KDCycleRunResult,
     rows: Sequence[cycle.KDEntryRow],
@@ -278,12 +305,7 @@ def run_formal_pack(
             "daily": list(result.state.daily),
         }
 
-    metrics = {
-        line.line_id: research.performance_metrics(
-            line.curve, active.get(line.line_id, {}).get("trades", ())
-        )
-        for line in lines
-    }
+    metrics = _metrics_for_lines(lines, active)
     summary = [{"line_id": key, **value} for key, value in metrics.items()]
     prep._write_csv(output_root / "formal-summary.csv", summary)
     prep._write_csv(output_root / "daily-equity.csv", [

@@ -136,3 +136,47 @@ def test_signal_close_is_only_a_paired_sensitivity(setup):
     assert result["summary"]["execution_timing"] == study.TIMING_SIGNAL_CLOSE
     assert result["summary"]["slippage_bps"] == 20
 
+
+@pytest.mark.parametrize("high_pct", (50, 75))
+def test_ma21_equal_ma144_is_high_and_later_regime_change_does_not_resize(setup, high_pct):
+    package, scheduled = setup
+    source = scheduled[study.TIMING_NEXT_OPEN]
+    first_entry = next(row for row in source.transactions if row["role"] == "MOTHER")
+    synthetic = {}
+    for row in source.transactions:
+        if row["role"] != "MOTHER":
+            continue
+        if row["leg_id"] == first_entry["leg_id"]:
+            synthetic[row["signal_date"]] = {"sma21": Decimal("100"),
+                                              "sma144": Decimal("100")}
+        elif row["signal_regime"] == "HIGH":
+            synthetic[row["signal_date"]] = {"sma21": Decimal("101"),
+                                              "sma144": Decimal("100")}
+        else:
+            synthetic[row["signal_date"]] = {"sma21": Decimal("99"),
+                                              "sma144": Decimal("100")}
+    entry_index = package.sessions.index(first_entry["date"])
+    post_entry_day = package.sessions[entry_index + 1]
+    synthetic[post_entry_day] = {"sma21": Decimal("90"), "sma144": Decimal("100")}
+
+    annotated = study.annotate_signal_regime(source, synthetic)
+    boundary = next(row for row in annotated.transactions
+                    if row["leg_id"] == first_entry["leg_id"] and row["role"] == "MOTHER")
+    assert boundary["signal_regime"] == "HIGH"
+    assert boundary["regime_equality_is_high"] is True
+
+    replay = study.replay_regime_sizing(
+        package=package, run=annotated, start=study.START, end=study.END,
+        slippage_bps=20, initial_capital=study.CAPITAL,
+        high_weight_pct=high_pct,
+    )
+    filled = next(row for row in replay["transactions"]
+                  if row["leg_id"] == first_entry["leg_id"] and row["role"] == "MOTHER")
+    assert filled["entry_budget_fraction"] == Decimal(high_pct) / 100
+    curve = {row["date"]: row for row in replay["curve"]}
+    assert curve[first_entry["date"]]["shares"] > 0
+    assert curve[post_entry_day]["shares"] == curve[first_entry["date"]]["shares"]
+    assert curve[post_entry_day]["active_signal_regime"] == "HIGH"
+    assert {row["role"] for row in replay["transactions"]
+            if row["leg_id"] == first_entry["leg_id"]} == {"MOTHER", "EXIT"}
+

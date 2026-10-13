@@ -12,6 +12,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import shutil
 import statistics
 from collections import defaultdict
@@ -43,7 +44,7 @@ from .models import InstrumentType
 from .paths import dev_run, report_path
 
 
-VERSION = "dual-ma-0050-regime-sizing-core-v1.0"
+VERSION = "dual-ma-0050-regime-sizing-core-v1.2-qa3"
 START = accepted.FORMAL_START
 END = accepted.CUTOFF
 CAPITAL = CONTINUOUS_CAPITAL
@@ -54,9 +55,9 @@ TIMING_NEXT_OPEN = analysis.TIMING_NEXT_OPEN
 TIMING_SIGNAL_CLOSE = analysis.TIMING_SIGNAL_CLOSE
 STOP_CODE = "STOP_WAIT_00_0050_REGIME_SIZING_CORE_QA"
 
-RUN_ROOT_DEFAULT = dev_run("02-etf-0050-regime-sizing-core-v1")
+RUN_ROOT_DEFAULT = dev_run("02-etf-0050-regime-sizing-core-v1-qa3")
 REPORT_ROOT_DEFAULT = report_path(
-    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1"
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa3"
 )
 SEALED_RUN = dev_run("02-etf-0050-final-strategy-v1-7")
 SEALED_REPORT = report_path("etf", "0050", "final", "2006-2026-final-strategy-v1-7")
@@ -71,6 +72,22 @@ PRIOR_RUN_MANIFEST = "35ef1ece6307733b0c31e36450b5a97feaf16e79f576faf15aaa676e56
 PRIOR_RUN_READBACK = "bad39956584592b4824a9bd6a17a12183090b9476ace06c93b2c501fb0e89500"
 PRIOR_REPORT_MANIFEST = "1696023369d84ebf5b38f008afcec8137fe2587c7a484617942f685883d017b5"
 PRIOR_REPORT_READBACK = "ab4a9b0a5222d080198e9dd57d73d368d9b151894982545e5a0714bd41b7aa30"
+V1_RUN = dev_run("02-etf-0050-regime-sizing-core-v1")
+V1_REPORT = report_path(
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1"
+)
+V1_RUN_MANIFEST = "6c76af9d0b508ffbeb84db1964e43d823d5dd8e2d8f5879e372653177c9fa7b0"
+V1_RUN_READBACK = "d2c816d834aed2d757251467ad2ea833acfed17cf8dd974ea6405ddbe71289d6"
+V1_REPORT_MANIFEST = "d4fc89bab063be05b9176d3e16a91b4f388de8443dabecfa2bdcc88f6ba63bbf"
+V1_REPORT_READBACK = "32e3954492a6b8f37a3cdf94d3474a9bcb0ac7df108acb282795f97115280367"
+QA2_RUN = dev_run("02-etf-0050-regime-sizing-core-v1-qa2")
+QA2_REPORT = report_path(
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa2"
+)
+QA2_RUN_MANIFEST = "daadbf6da9521f6a09f2b78c0c9e1ac25e08b0b61989dc1552d8a134691e1b5d"
+QA2_RUN_READBACK = "824126b0dde9ba7a382502fc5fcff2e2514e5345097b9f3fd2c367577912e452"
+QA2_REPORT_MANIFEST = "a1f8b786217eb05026ecdb05b3e93519cf8f52536f33ff6b32c3cd94621139a0"
+QA2_REPORT_READBACK = "4d043d0adfacf4e421289a4e50dac31908c3b40e34502f092ef7a44e2459fc0a"
 
 
 def _d(value: Any) -> Decimal:
@@ -116,6 +133,14 @@ def validate_source_pins() -> dict[str, Any]:
         "prior_run_readback": (PRIOR_RUN / "readback.json", PRIOR_RUN_READBACK),
         "prior_report_manifest": (PRIOR_REPORT / "artifact-manifest.json", PRIOR_REPORT_MANIFEST),
         "prior_report_readback": (PRIOR_REPORT / "readback.json", PRIOR_REPORT_READBACK),
+        "v1_run_manifest": (V1_RUN / "artifact-manifest.json", V1_RUN_MANIFEST),
+        "v1_run_readback": (V1_RUN / "readback.json", V1_RUN_READBACK),
+        "v1_report_manifest": (V1_REPORT / "artifact-manifest.json", V1_REPORT_MANIFEST),
+        "v1_report_readback": (V1_REPORT / "readback.json", V1_REPORT_READBACK),
+        "qa2_run_manifest": (QA2_RUN / "artifact-manifest.json", QA2_RUN_MANIFEST),
+        "qa2_run_readback": (QA2_RUN / "readback.json", QA2_RUN_READBACK),
+        "qa2_report_manifest": (QA2_REPORT / "artifact-manifest.json", QA2_REPORT_MANIFEST),
+        "qa2_report_readback": (QA2_REPORT / "readback.json", QA2_REPORT_READBACK),
     }
     checks = {
         name: {"path": str(path), "expected": expected, "actual": _sha(path)}
@@ -128,6 +153,10 @@ def validate_source_pins() -> dict[str, Any]:
         (SEALED_REPORT, "artifact-manifest.json"),
         (PRIOR_RUN, "artifact-manifest.json"),
         (PRIOR_REPORT, "artifact-manifest.json"),
+        (V1_RUN, "artifact-manifest.json"),
+        (V1_REPORT, "artifact-manifest.json"),
+        (QA2_RUN, "artifact-manifest.json"),
+        (QA2_REPORT, "artifact-manifest.json"),
     )
     artifact_checks = []
     for root, name in manifests:
@@ -722,9 +751,22 @@ def _scenario_tables(matrix: Mapping[str, Any]) -> dict[str, list[dict[str, Any]
             if item["summary"]["execution_timing"] == TIMING_NEXT_OPEN]
     timing = [item["summary"] for item in scenarios
               if int(item["summary"]["slippage_bps"]) == 20]
+    first_entries = []
+    for item in main:
+        first = min(item["details"], key=lambda row: row["entry_date"])
+        first_entries.append({
+            "scenario_id": item["summary"]["scenario_id"],
+            "scenario_name_zh": item["summary"]["scenario_name_zh"],
+            "core_weight_pct": item["summary"]["core_weight_pct"],
+            "high_weight_pct": item["summary"]["high_weight_pct"],
+            **{key: first[key] for key in (
+                "entry_date", "signal_regime", "available_cash_before_entry",
+                "target_budget", "buy_total",
+            )},
+        })
     return {"main": [item["summary"] for item in main], "annual": annual,
             "periods": periods, "rolling": rolling, "regime": regime_attr,
-            "cost": cost, "timing": timing}
+            "cost": cost, "timing": timing, "first_entries": first_entries}
 
 
 def _fmt_money(value: Any) -> str:
@@ -733,6 +775,19 @@ def _fmt_money(value: Any) -> str:
 
 def _fmt_pct(value: Any) -> str:
     return f"{_d(value) * 100:.2f}%"
+
+
+def _fmt_price(value: Any) -> str:
+    """Keep the source Decimal's effective precision for trade-level auditing."""
+    return format(_d(value), "f")
+
+
+def _exit_reason_zh(value: Any) -> str:
+    code = "" if value in (None, "") else str(value)
+    return {
+        "MACD_RED_TO_GREEN": "MACD 翻綠",
+        "INITIAL_PROTECTIVE_STOP": "固定初始防守",
+    }.get(code, "截止日仍持有" if not code else f"其他出場（{code}）")
 
 
 def _md_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> list[str]:
@@ -746,100 +801,436 @@ def report_text(*, tables: Mapping[str, Sequence[Mapping[str, Any]]],
                 concentration: Sequence[Mapping[str, Any]],
                 prior_row: Mapping[str, Any], benchmark_rows: Sequence[Mapping[str, Any]],
                 replay_digest: str) -> str:
-    main = sorted(tables["main"], key=lambda row: (-_d(row["cagr"]), _d(row["max_drawdown"])))
-    best = main[0]
-    baseline = next(row for row in main if int(row["core_weight_pct"]) == 0
+    ordered_main = sorted(tables["main"], key=lambda item: (
+        int(item["core_weight_pct"]), int(item["high_weight_pct"])))
+    ranked = sorted(ordered_main, key=lambda row: _d(row["cagr"]), reverse=True)
+    best = ranked[0]
+    baseline = next(row for row in ordered_main if int(row["core_weight_pct"]) == 0
                     and int(row["high_weight_pct"]) == 100)
+    by_id = {str(row["scenario_id"]): row for row in ordered_main}
+    annual_by_id = {sid: [row for row in tables["annual"] if row["scenario_id"] == sid]
+                    for sid in by_id}
+    period_by_id = {sid: [row for row in tables["periods"] if row["scenario_id"] == sid]
+                    for sid in by_id}
+    cost_by_key = {(int(row["core_weight_pct"]), int(row["high_weight_pct"]),
+                    int(row["slippage_bps"])): row for row in tables["cost"]}
+    timing_by_key = {(int(row["core_weight_pct"]), int(row["high_weight_pct"]),
+                      str(row["execution_timing"])): row for row in tables["timing"]}
+    concentration_by_key = {(str(row["scenario_id"]), int(row["removed_top_profit_trades"])): row
+                            for row in concentration}
+
+    section_titles = [
+        "01｜先講結論", "02｜研究問題與唯一改動", "03｜六組主結果",
+        "04｜每次到底投入多少", "05｜因果與成交時序",
+        "06｜核心帳、股利、公司行動與逐筆帳", "07｜高低檔歸因",
+        "08｜最差完整 3／5／10 年", "09｜逐年與三段期間",
+        "10｜成本與成交時點敏感度", "11｜獲利集中與移除大贏家",
+        "12｜與 v1.7、上一組合候選及基準比較", "13｜可重現性與完整性",
+        "14｜限制、判定與待 00 決策",
+    ]
     lines = ["# 0050 高低市場狀態差別投入 × 核心持有｜因果回測研究報告", "",
-             f"版本：{VERSION}｜樣本：{START}～{END}｜初始本金：500,000 元｜正式口徑：次一交易日開盤、20 基點。", ""]
-    sections: list[tuple[str, list[str]]] = []
-    sections.append(("01｜先講結論", [
-        f"六組中樣本內 CAGR 最高的是「{best['scenario_name_zh']}」，期末資產 {_fmt_money(best['ending_equity'])} 元、CAGR {_fmt_pct(best['cagr'])}、MDD {_fmt_pct(best['max_drawdown'])}、Calmar {_d(best['calmar']):.3f}。",
-        f"原 v1.7 等價組合為期末 {_fmt_money(baseline['ending_equity'])} 元、CAGR {_fmt_pct(baseline['cagr'])}、MDD {_fmt_pct(baseline['max_drawdown'])}。",
-        "這是同一歷史樣本內的候選比較，不足以證明未來正期望；在 00 審查前不採用、不覆寫 v1.7。",
-    ]))
-    sections.append(("02｜研究問題與唯一改動", [
-        "只改兩件事：進場訊號日若 MA21＜MA144（低檔）投入戰術帳全部可用現金；若 MA21≥MA144（高檔，等號歸高檔）分別投入 50%、75%、100%。",
-        "核心權重為 0% 或 20%；20% 核心在共同起始日以開盤價買進 0050，股利付款後次一正式交易日再投入，之後永不再平衡。",
-    ]))
-    sections.append(("03｜六組主結果", _md_table(
-        ["組合", "期末資產", "CAGR", "MDD", "Calmar", "最長水下天數"],
-        [[row["scenario_name_zh"], _fmt_money(row["ending_equity"]), _fmt_pct(row["cagr"]),
-          _fmt_pct(row["max_drawdown"]), f"{_d(row['calmar']):.3f}", row["longest_underwater_days"]]
-         for row in sorted(tables["main"], key=lambda item: (int(item["core_weight_pct"]),
-                                                              int(item["high_weight_pct"])))],
-    )))
-    sections.append(("04｜每次到底投入多少", [
-        "投入比例的分母是『該次進場前戰術帳可用現金』，不是固定 50 萬，也不是總合併資產。低檔固定 100%；高檔依方案為 50%、75% 或 100%。股數仍受整股、手續費與每筆初始風險不超過該次預算 20% 約束，因此實際買進金額會略低於目標預算。",
-        "核心 20% 方案一開始把 100,000 元交給核心帳、400,000 元交給戰術帳；兩帳不互借、不補款、不再平衡。未投入的高檔戰術現金保留為現金。",
-    ]))
-    sections.append(("05｜因果與成交時序", [
-        "訊號只使用訊號日收盤後已知的 MA21、MA144；市場狀態鎖在進場訊號日。主口徑到下一正式交易日開盤才成交，訊號日收盤僅是成對敏感度。",
-        "持倉期間即使 MA21／MA144 跨越，也不加碼、不減碼、不強制出場；退出完全沿用封存 v1.7 決策。",
-        f"v1.7 精確同值閘門：{parity['status']}。",
-    ]))
-    sections.append(("06｜核心帳、股利與公司行動", [
-        "核心帳與戰術帳分別記現金、股數、手續費、稅、滑價、除息權利、付款與分割；每日最後才相加成總權益。",
-        "除息日先鎖定權利，付款日才增加現金；核心再投入必須等付款後下一個正式交易日。分割只重算股數，不製造損益。",
-        "完整紀錄：[逐日帳](daily-equity.csv)、[交易流水](transactions.csv)、[股利流水](dividend-ledger.csv)、[分割流水](corporate-actions.csv)。",
-    ]))
-    sections.append(("07｜高低檔歸因", _md_table(
-        ["組合", "狀態", "已平倉", "勝筆", "淨損益", "平均每筆"],
-        [[row["scenario_name_zh"], "高檔" if row["signal_regime"] == "HIGH" else "低檔",
-          row["closed_trades"], row["wins"], _fmt_money(row["net_pnl"]),
-          _fmt_money(row["average_trade_pnl"])] for row in tables["regime"]],
-    )))
-    sections.append(("08｜最差完整 3／5／10 年", _md_table(
-        ["組合", "3 年 CAGR", "5 年 CAGR", "10 年 CAGR"],
-        [[row["scenario_name_zh"], _fmt_pct(row["worst_complete_3y_cagr"]),
-          _fmt_pct(row["worst_complete_5y_cagr"]), _fmt_pct(row["worst_complete_10y_cagr"])]
-         for row in tables["main"]],
-    ) + ["完整月末滾動窗口明細見 [rolling-3-5-10.csv](rolling-3-5-10.csv)。"]))
-    sections.append(("09｜逐年與三段期間", [
-        "逐年報酬與年內回撤見 [annual.csv](annual.csv)；固定三段（2006–2012、2013–2019、2020–2026/09）見 [fixed-periods.csv](fixed-periods.csv)。",
-        "圖：[六組主權益曲線](six-main-equity.svg)／[逐年報酬](annual-returns.svg)。",
-    ]))
-    sections.append(("10｜成本與成交時點敏感度", [
-        "主口徑另以 40／60 基點重跑；不是把 20 基點結果事後線性扣除。結果見 [cost-sensitivity.csv](cost-sensitivity.csv)。",
-        "六組另以訊號日收盤、20 基點成對重跑，僅用於觀察成交落差，不作實務主結論。結果見 [timing-sensitivity.csv](timing-sensitivity.csv)。",
-        "圖：[成本壓力](cost-sensitivity.svg)。",
-    ]))
-    sections.append(("11｜獲利集中與移除大贏家", [
-        "每組均以已平倉淨利排序，移除前 1／3／5 筆後，用相同凍結訊號重新記帳；不是直接從期末資產減掉原損益。",
-        "完整結果見 [concentration-counterfactual.csv](concentration-counterfactual.csv)。六組主結果也列出前五大獲利占全部正獲利比重與最長連敗。",
-    ]))
-    sections.append(("12｜與 v1.7、上一組合候選及基準比較", _md_table(
-        ["對照", "期末資產", "CAGR", "MDD"],
-        [["封存 v1.7 次日開盤", _fmt_money(baseline["ending_equity"]),
-          _fmt_pct(baseline["cagr"]), _fmt_pct(baseline["max_drawdown"])],
-         ["上一組合候選（凍結）", _fmt_money(prior_row["ending_equity"]),
-          _fmt_pct(prior_row["cagr"]), _fmt_pct(prior_row["max_drawdown"])]] +
-        [[row["label"], _fmt_money(row["ending_equity"]), _fmt_pct(row["cagr"]),
-          _fmt_pct(row.get("max_asset_drawdown") or row["max_drawdown"])]
-         for row in benchmark_rows],
-    )))
-    sections.append(("13｜可重現性與完整性", [
-        f"兩次獨立記憶體重播的正規化 SHA-256 完全相同：`{replay_digest}`。",
-        f"來源封存釘選：{sources['status']}；資料套件 SHA-256 另記於 [research-contract.json](research-contract.json)。",
-        "所有輸出列入 [artifact-manifest.json](artifact-manifest.json)，再由 readback 逐檔重算；報告內部連結也另行驗證。",
-        "重跑：`python -m backtests.dual_ma.etf_0050_regime_sizing_core_v1 run --run-root <run> --report-root <report>`；驗證：將 `run` 改為 `validate`。",
-    ]))
-    sections.append(("14｜限制、判定與待 00 決策", [
-        "本研究仍是單一 ETF、單一歷史區間、同樣本內三個高檔投入比例與兩個核心比例的比較；未做樣本外鎖定、跨商品驗證或多重檢定校正。",
-        "判定標準不是只看期末資產：需同時檢查 CAGR、MDD、Calmar、最差滾動期、長水下期、連敗、獲利集中、成本與成交敏感度。",
-        f"目前狀態：`{STOP_CODE}`。只提交研究候選，等待 00 嚴格檢查；不採用、不合併、不改正式索引。",
-    ]))
-    for heading, body in sections:
-        lines.extend([f"## {heading}", "", *body, ""])
+             f"版本：{VERSION}｜樣本：{START}～{END}｜初始本金：500,000 元｜正式口徑：次一交易日開盤、20 基點。", "",
+             "本頁可單獨閱讀；CSV 是稽核附件，不是理解結論的前提。逐筆帳另見 [繁體中文逐筆交易明細](trade-details.md)。", "",
+             "## 建議閱讀順序", ""]
+    lines.extend(f"- [{title}](#{prior_research._markdown_slug(title)})"
+                 for title in section_titles)
+    lines.extend(["", "建議先讀 01、03、08、10、11、12、14；要查單筆交易再開啟 [繁體中文逐筆交易明細](trade-details.md)。", ""])
+
+    def add_section(title: str, *, purpose: str, method: str,
+                    observations: Sequence[str], plain: str, impact: str) -> None:
+        lines.extend([f"## {title}", "", "### 測試目的", "", purpose, "",
+                      "### 測試方法", "", method, "", "### 觀察結果", ""])
+        lines.extend(observations)
+        lines.extend(["", "### 白話結論", "", plain, "",
+                      "### 對最終決策的影響", "", impact, ""])
+
+    add_section(section_titles[0],
+        purpose="回答六組配置是否比封存 v1.7 更值得採用，以及樣本內正報酬能否直接解讀為未來正期望。",
+        method="以次一交易日開盤、20 基點為唯一主口徑，同時比較年化報酬（CAGR）、最大回落（MDD）、年化報酬÷最大回落（Calmar）、最差滾動期與集中度，不用單一期末資產決定勝負。",
+        observations=[
+            f"- 樣本內年化報酬最高為「{best['scenario_name_zh']}」：期末 {_fmt_money(best['ending_equity'])} 元、年化報酬 {_fmt_pct(best['cagr'])}、最大回落 {_fmt_pct(best['max_drawdown'])}、年化報酬÷最大回落 {_d(best['calmar']):.3f}。",
+            f"- v1.7 等價組合：期末 {_fmt_money(baseline['ending_equity'])} 元、年化報酬 {_fmt_pct(baseline['cagr'])}、最大回落 {_fmt_pct(baseline['max_drawdown'])}、年化報酬÷最大回落 {_d(baseline['calmar']):.3f}。",
+            f"- 高年化報酬候選多賺 {_fmt_money(_d(best['ending_equity'])-_d(baseline['ending_equity']))} 元，但最大回落多 {_fmt_pct(abs(_d(best['max_drawdown']))-abs(_d(baseline['max_drawdown'])))}。",
+        ],
+        plain="20% 核心加上高檔全投入，賺得較多，但跌得也明顯更深；它不是全面勝過 v1.7。六組都在本樣本賺錢，只能說歷史證據為正，不能保證未來正期望。",
+        impact="維持 v1.7，不採用新候選；把核心20%／高檔100%保留為需要樣本外驗證的非支配候選。")
+
+    add_section(section_titles[1],
+        purpose="隔離『市場狀態差別投入』與『20% 長期核心』兩個變因，避免同時修改進出場規則造成歸因混亂。",
+        method="凍結 v1.7 的 91 個進場回合與全部退出決策；低檔固定投入戰術現金 100%，高檔只改為 50%、75%、100%；核心只取 0% 或 20%，形成六組。",
+        observations=[
+            "- 高檔定義：訊號日 MA21≥MA144，等號歸高檔；低檔為 MA21＜MA144。",
+            "- 20% 核心初始 100,000 元；戰術帳初始 400,000 元。0% 核心的戰術帳初始為 500,000 元。",
+            "- 持倉後跨越 MA21／MA144 不改股數、不加碼、不減碼、不強制出場。",
+        ],
+        plain="這次不是發明新買賣訊號，只是在同一批交易上測試『高檔少押一點』與『先留兩成長抱』。",
+        impact="若結果不同，可以歸因於資金配置；不得把差異誤認為新進出場規則的效果。")
+
+    add_section(section_titles[2],
+        purpose="把六組主方案的報酬、風險與復原時間放在同一張表，判斷是否存在全面優於 v1.7 的配置。",
+        method="每組以相同 500,000 元、相同交易日、相同 20 基點成本重播；年化報酬÷最大回落＝年化報酬／|最大回落|，水下期從前高到重新創高計日。",
+        observations=_md_table(
+            ["組合", "期末資產", "年化報酬", "最大回落", "年化報酬÷最大回落", "最長水下"],
+            [[row["scenario_name_zh"], _fmt_money(row["ending_equity"]), _fmt_pct(row["cagr"]),
+              _fmt_pct(row["max_drawdown"]), f"{_d(row['calmar']):.3f}",
+              f"{row['longest_underwater_days']} 天"] for row in ordered_main]),
+        plain="高檔投入比例愈高，期末資產與年化報酬愈高；加入 20% 核心雖提高部分組合的期末資產，卻把整體最大回落拉深到約 28.7%～29.0%。",
+        impact="沒有任何新組合同時提高年化報酬又降低最大回落；核心20%／高檔100%僅列非支配候選，不取代 v1.7。")
+
+    first_entry_rows = []
+    for row in tables["first_entries"]:
+        first_entry_rows.append([row["scenario_name_zh"], row["signal_regime"],
+                                 _fmt_money(row["available_cash_before_entry"]),
+                                 _fmt_money(row["target_budget"]), _fmt_money(row["buy_total"]),
+                                 _fmt_money(_d(row["available_cash_before_entry"])-_d(row["buy_total"]))])
+    add_section(section_titles[3],
+        purpose="釐清『投入 50%／75%／100%』的分母與實際成交金額，避免誤以為每筆固定投入 50 萬。",
+        method="分母固定為該筆進場前的戰術帳可用現金；目標預算再經整股、手續費與初始風險上限換算成實際股數。",
+        observations=["以下為六組在 2006-02-07 第一筆高檔進場的實際帳：", ""] + _md_table(
+            ["組合", "狀態", "進場前現金", "目標預算", "實際投入", "投入後留現金"], first_entry_rows),
+        plain="每筆金額會隨前一筆盈虧改變。高檔 50% 是拿當時戰術現金的一半，不是永遠拿 250,000 元；低檔則拿當時戰術現金全部。",
+        impact="資金使用符合研究問題；不能用固定本金回測結果替代本次複利現金帳。")
+
+    add_section(section_titles[4],
+        purpose="確認沒有用下一交易日價格反推訊號，也沒有在持倉期間用新狀態偷改部位。",
+        method="訊號日收盤後才計算 MA21／MA144 並鎖定高檔／低檔；主口徑映射到次一正式交易日開盤。逐筆核對訊號日、成交日與持倉回合。",
+        observations=[
+            f"- v1.7 精確同值閘門：{parity['status']}；逐日 5,093 列、交易 181 筆、回合 91 筆均逐欄相同。",
+            "- 每次只有 MOTHER 或 EXIT；沒有 RESIZE、ADD、REDUCE 或第二個同時持倉。",
+            "- 訊號收盤 20 基點只作配對敏感度，不納入主排名。",
+        ],
+        plain="今天收盤看到訊號，最早明天開盤成交；持有後市場變高檔或低檔都不會偷偷調倉。",
+        impact="因果時序可接受，且核心0%／高檔100%可精確回到 v1.7；本次差異確實來自配置。")
+
+    add_section(section_titles[5],
+        purpose="確認核心帳、戰術帳、股利與分割分開記帳且每日守恆，並提供可讀的逐筆稽核入口。",
+        method="兩帳各自持有現金與股數；除息日鎖權、付款日入現金、核心於付款後下一正式交易日再投入；分割只重算股數。每日總權益＝核心權益＋戰術權益。",
+        observations=[
+            "- 20% 核心只出現『初始買進、股利再投入、分割重算』，沒有再平衡交易。",
+            "- 六組所有日期的核心現金與戰術現金皆非負，合併現金與合併權益逐日守恆。",
+            "- 可讀明細：[繁體中文逐筆交易明細](trade-details.md)；原始稽核：[交易流水](transactions.csv)、[股利流水](dividend-ledger.csv)、[分割流水](corporate-actions.csv)、[逐日帳](daily-equity.csv)。",
+        ],
+        plain="核心和戰術像兩個不能互相借錢的信封；股利真的付款後才能再買，分割也不會憑空創造獲利。",
+        impact="帳務隔離與公司行動處理通過；逐筆問題可從中文頁回查原始 CSV。")
+
+    add_section(section_titles[6],
+        purpose="判斷歷史獲利主要來自高檔或低檔進場，並觀察降低高檔投入是否真的改善風險報酬。",
+        method="依進場訊號日鎖定的高檔／低檔將 90 筆已平倉交易分組，合計勝筆、淨損益與平均每筆損益；未平倉不混入已實現統計。",
+        observations=_md_table(
+            ["組合", "狀態", "已平倉", "勝筆", "淨損益", "平均每筆"],
+            [[row["scenario_name_zh"], "高檔" if row["signal_regime"] == "HIGH" else "低檔",
+              row["closed_trades"], row["wins"], _fmt_money(row["net_pnl"]),
+              _fmt_money(row["average_trade_pnl"])] for row in tables["regime"]]),
+        plain="降低高檔投入會直接縮小高檔贏家與輸家的金額，但歷史上高檔淨貢獻為正，因此縮小後總報酬也下降。",
+        impact="目前沒有證據支持把高檔壓到 50% 或 75%；兩者報酬下降且最大回落幾乎未改善。")
+
+    rolling_rows = [[row["scenario_name_zh"],
+                     f"{_fmt_pct(row['worst_complete_3y_cagr'])}（{row['worst_complete_3y_start']}～{row['worst_complete_3y_end']}）",
+                     f"{_fmt_pct(row['worst_complete_5y_cagr'])}（{row['worst_complete_5y_start']}～{row['worst_complete_5y_end']}）",
+                     f"{_fmt_pct(row['worst_complete_10y_cagr'])}（{row['worst_complete_10y_start']}～{row['worst_complete_10y_end']}）"]
+                    for row in ordered_main]
+    add_section(section_titles[7],
+        purpose="避免長樣本的漂亮年化報酬掩蓋投資人可能實際遇到的差勁三年、五年或十年。",
+        method="只用完整月末滾動窗口；對每組找出 3／5／10 年年化報酬最低的窗口與實際起訖日，不拿不足年限的尾端資料充數。",
+        observations=_md_table(["組合", "最差完整3年", "最差完整5年", "最差完整10年"], rolling_rows) +
+                     ["", "完整窗口逐列見 [rolling-3-5-10.csv](rolling-3-5-10.csv)。"],
+        plain="六組最差完整三年與部分五年仍可能小幅虧損；即使全期年化報酬為正，投資人仍可能連續多年沒有正報酬。",
+        impact="『樣本內正期望』不能被翻譯成任何持有三年都賺；採用前仍需樣本外與承受期檢驗。")
+
+    annual_extrema = []
+    partial_2026 = []
+    for sid, bucket in annual_by_id.items():
+        complete = [row for row in bucket if int(row["year"]) < 2026]
+        worst = min(complete, key=lambda row: _d(row["return"]))
+        best_year = max(complete, key=lambda row: _d(row["return"]))
+        partial = next(row for row in bucket if int(row["year"]) == 2026)
+        annual_extrema.append([by_id[sid]["scenario_name_zh"],
+                               f"{worst['year']}／{_fmt_pct(worst['return'])}",
+                               f"{best_year['year']}／{_fmt_pct(best_year['return'])}"])
+        partial_2026.append([by_id[sid]["scenario_name_zh"],
+                             _fmt_pct(partial["return"])])
+    period_rows = []
+    for sid, bucket in period_by_id.items():
+        values = {row["period"]: _fmt_pct(row["cagr"]) for row in bucket}
+        period_rows.append([by_id[sid]["scenario_name_zh"], values["2006_2012"],
+                            values["2013_2019"], values["2020_2026M09"]])
+    add_section(section_titles[8],
+        purpose="檢查績效是否只集中在特定年份或最近一段行情。",
+        method="以每年第一筆權益前的期末值作年初基準，計算年度報酬與年內最大回落；完整年度最好／最差排行只使用 2006～2025。2026 樣本只到 9 月 30 日，另列年初至 9 月底累計報酬，不把它當完整年度排行。另固定切成 2006–2012、2013–2019、2020–2026/09 三段並算年化報酬。",
+        observations=["各組最好／最差完整年度（排除未完的 2026）：", ""] + _md_table(
+            ["組合", "最差完整年度／報酬", "最佳完整年度／報酬"], annual_extrema) +
+            ["", "2026 年初至 9/30 累計報酬（未滿全年）：", ""] + _md_table(
+            ["組合", "2026 年初至9/30"], partial_2026) +
+            ["", "三段期間年化報酬：", ""] + _md_table(
+            ["組合", "2006–2012", "2013–2019", "2020–2026/09"], period_rows) +
+            ["", "**報表口徑註：**20% 核心方案的 2006 年度與固定期間報酬，以首個交易日收盤後、已扣除核心建倉費的帳面資產為期初；因此不等同於用原始 500,000 元作期初的全期報酬。此處只說明既有序列口徑，不調整任何數值。", "",
+             "圖：[六組權益曲線](six-main-equity.svg)／[最佳年化報酬候選逐年報酬](annual-returns.svg)。"],
+        plain="策略不是每年都賺，且不同年代的成長速度差很多；全期平均會把壞年份與弱期間平滑掉。",
+        impact="保留逐年與分段風險揭露；不能只用 2006～2026 的單一年化報酬宣稱穩定正期望。")
+
+    cost_rows = []
+    timing_rows = []
+    for row in ordered_main:
+        key = (int(row["core_weight_pct"]), int(row["high_weight_pct"]))
+        cost_rows.append([row["scenario_name_zh"],
+                          _fmt_pct(cost_by_key[key+(20,)]["cagr"]),
+                          _fmt_pct(cost_by_key[key+(40,)]["cagr"]),
+                          _fmt_pct(cost_by_key[key+(60,)]["cagr"]),
+                          _fmt_money(cost_by_key[key+(60,)]["ending_equity"])])
+        next_open = timing_by_key[key+(TIMING_NEXT_OPEN,)]
+        signal_close = timing_by_key[key+(TIMING_SIGNAL_CLOSE,)]
+        timing_rows.append([row["scenario_name_zh"], _fmt_pct(signal_close["cagr"]),
+                            _fmt_pct(next_open["cagr"]),
+                            _fmt_money(_d(next_open["ending_equity"])-_d(signal_close["ending_equity"]))])
+    add_section(section_titles[9],
+        purpose="確認候選不是只在低摩擦或理想化收盤成交下才成立。",
+        method="20／40／60 基點各自完整重播，不事後線性扣成本；另以訊號日收盤 20 基點與次日開盤 20 基點成對比較。",
+        observations=["成本壓力：", ""] + _md_table(
+            ["組合", "20基點年化報酬", "40基點年化報酬", "60基點年化報酬", "60基點期末"], cost_rows) +
+            ["", "成交時點：", ""] + _md_table(
+            ["組合", "訊號收盤年化報酬", "次日開盤年化報酬", "次日開盤期末差"], timing_rows) +
+            ["", "圖：[成本壓力圖](cost-sensitivity.svg)。"],
+        plain="成本提高會明顯侵蝕報酬，但六組在 60 基點下仍維持正年化報酬；收盤與次日開盤差異不可忽略，所以只能把次日開盤當實務主口徑。",
+        impact="成本韌性未推翻候選，但不構成採用理由；正式決策仍使用次日開盤 20 基點。")
+
+    concentration_rows = []
+    for row in ordered_main:
+        sid = str(row["scenario_id"])
+        concentration_rows.append([row["scenario_name_zh"],
+                                   _fmt_pct(row["top5_profit_concentration"]),
+                                   row["longest_losing_streak"],
+                                   _fmt_pct(concentration_by_key[(sid, 0)]["cagr"]),
+                                   _fmt_pct(concentration_by_key[(sid, 1)]["cagr"]),
+                                   _fmt_pct(concentration_by_key[(sid, 3)]["cagr"]),
+                                   _fmt_pct(concentration_by_key[(sid, 5)]["cagr"])])
+    add_section(section_titles[10],
+        purpose="檢查全期正報酬是否只靠少數幸運大贏家，以及移除大贏家後策略是否仍有正成長。",
+        method="按已平倉淨利排序，分別移除前 1／3／5 個 leg，再用原始凍結訊號與完整現金帳重新重播；不是直接從原期末資產扣除損益。",
+        observations=_md_table(
+            ["組合", "前5獲利集中", "最長連敗", "原年化報酬", "移除1筆", "移除3筆", "移除5筆"],
+            concentration_rows) + ["", "完整反事實見 [concentration-counterfactual.csv](concentration-counterfactual.csv)。"],
+        plain="移除五大贏家後六組仍是正年化報酬，代表不是只靠五筆交易；但前五筆約占全部正獲利 51%～56%，集中度仍高。",
+        impact="歷史正報酬具一定廣度，但集中風險不能忽略；不足以單獨證明未來正期望。")
+
+    comparison_rows = [["封存 v1.7 次日開盤", _fmt_money(baseline["ending_equity"]),
+                        _fmt_pct(baseline["cagr"]), _fmt_pct(baseline["max_drawdown"])],
+                       ["上一組合候選（凍結）", _fmt_money(prior_row["ending_equity"]),
+                        _fmt_pct(prior_row["cagr"]), _fmt_pct(prior_row["max_drawdown"])]]
+    comparison_rows += [[row["label"], _fmt_money(row["ending_equity"]), _fmt_pct(row["cagr"]),
+                         _fmt_pct(row.get("max_asset_drawdown") or row["max_drawdown"])]
+                        for row in benchmark_rows]
+    add_section(section_titles[11],
+        purpose="把新候選放回既有正式策略、上一輪組合候選、0050 長抱與市場指數的共同尺度。",
+        method="全部使用 500,000 元等值起點與相同截止日；0050 長抱含實際交易成本，TAIEX 為不可直接交易且未扣成本的參考。",
+        observations=_md_table(["對照", "期末資產", "年化報酬", "最大回落"], comparison_rows) +
+                     ["", f"本輪最高年化報酬候選另為：{best['scenario_name_zh']}，期末 {_fmt_money(best['ending_equity'])} 元、年化報酬 {_fmt_pct(best['cagr'])}、最大回落 {_fmt_pct(best['max_drawdown'])}。"],
+        plain="新候選沒有打敗股利再投入長抱的報酬，也沒有保住 v1.7 的較淺回撤；它只是在策略族內換取較高報酬。",
+        impact="不升級正式策略；v1.7 仍是風險調整後較合理的預設比較基準。")
+
+    add_section(section_titles[12],
+        purpose="證明報告、數字與圖表能由同一套凍結資料重建，且本次修版沒有改寫 v1、v1.7 或上一研究。",
+        method="完整研究在記憶體獨立跑兩次後比正規化 SHA-256；輸出再建立 artifact manifest、逐檔 readback、Markdown 連結與圖表中文標籤稽核。",
+        observations=[
+            f"- 雙重重播 SHA-256：`{replay_digest}`，兩次完全相同。",
+            f"- v1.7、上一研究與本研究 v1 來源釘選：{sources['status']}。",
+            "- 資料套件 SHA-256、完整規格與重跑命令見 [research-contract.json](research-contract.json)。",
+            "- 圖表中文標籤稽核見 [chart-label-audit.json](chart-label-audit.json)，報告連結稽核見 [link-validation.json](link-validation.json)。",
+        ],
+        plain="相同輸入會得到相同結果；這次只新增 qa2 目錄，不會把舊正式檔案悄悄換掉。",
+        impact="可重現性通過，但仍需 00 對計算與程式作獨立 QA 才能進下一步。")
+
+    add_section(section_titles[13],
+        purpose="明確界定這份回測能回答與不能回答的問題，並給出目前唯一允許的決策狀態。",
+        method="逐項檢查單一商品、同樣本挑選、多重比較、樣本外、交易可行性與指數可交易性限制；決策同時看報酬、回撤、滾動期、集中度與成本。",
+        observations=[
+            "- 單一 0050、單一 2006～2026/09 歷史區間；三個高檔投入比例與兩個核心比例都在同一樣本比較。",
+            "- 未做多重檢定校正、封存樣本外、跨商品或即時前瞻驗證。",
+            "- TAIEX 僅為市場參考，不可直接交易且未扣策略成本。",
+            f"- 目前狀態：`{STOP_CODE}`；候選未採用、未合併、未改正式索引。",
+        ],
+        plain="這份報告能說『歷史上怎麼表現』，不能說『未來一定賺』。",
+        impact="維持停止並等待 00 嚴格檢查；即使數值 QA 通過，也應先定義樣本外驗證再談採用。")
+
     lines.extend(["## 附件索引", "",
+                  "- [繁體中文逐筆交易明細](trade-details.md)",
                   "- [六組主摘要](main-six-summary.csv)",
                   "- [全部 24 情境摘要](scenario-summary.csv)",
-                  "- [逐筆交易](trade-details.csv)",
+                  "- [逐筆交易原始 CSV](trade-details.csv)",
                   "- [執行排程稽核](execution-audit.csv)",
                   "- [v1.7 精確同值](v1-7-exact-parity.json)",
                   "- [來源釘選](source-pins.json)",
                   "- [限制](limitations.json)", ""])
     return "\n".join(lines)
+
+
+def trade_details_text(details: Sequence[Mapping[str, Any]]) -> str:
+    """Readable Traditional-Chinese ledger for the six primary scenarios."""
+    groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in details:
+        groups[str(row["scenario_id"])].append(row)
+    ordered = sorted(groups.values(), key=lambda bucket: (
+        int(bucket[0]["core_weight_pct"]), int(bucket[0]["high_weight_pct"])))
+    main_section = "06｜核心帳、股利、公司行動與逐筆帳"
+    lines = ["# 0050 差別投入 × 核心持有｜繁體中文逐筆交易明細", "",
+             f"[返回主報告首頁](README.md)｜[返回主報告第 06 節](README.md#{prior_research._markdown_slug(main_section)})", "",
+             "本頁只列六組正式主口徑（次一交易日開盤、20 基點）的戰術交易；未平倉交易獨立標示，股息為實際付款入帳金額。", "",
+             "## 快速索引", ""]
+    headings = []
+    for bucket in ordered:
+        heading = str(bucket[0]["scenario_name_zh"])
+        headings.append((heading, bucket))
+        lines.append(f"- [{heading}](#{prior_research._markdown_slug(heading)})")
+    for heading, bucket in headings:
+        closed = sum(row.get("exit_date") not in (None, "") for row in bucket)
+        lines.extend(["", f"## {heading}", "",
+                      f"共 {len(bucket)} 個回合：已平倉 {closed} 筆、截止日未平倉 {len(bucket)-closed} 筆。", ""])
+        rows = []
+        for row in sorted(bucket, key=lambda item: (item["entry_date"], item["leg_id"])):
+            rows.append([
+                row["leg_id"], row["entry_date"], row.get("exit_date") or "未平倉",
+                "高檔" if row["signal_regime"] == "HIGH" else "低檔",
+                _fmt_pct(row["entry_budget_fraction"]),
+                _fmt_money(row["available_cash_before_entry"]),
+                _fmt_money(row["target_budget"]), _fmt_money(row["buy_total"]),
+                row["entry_shares"], _fmt_price(row["entry_fill_price"]),
+                _fmt_price(row["initial_stop"]), _fmt_price(row["exit_fill_or_mark_price"]),
+                _exit_reason_zh(row.get("exit_reason")), _fmt_money(row["cash_dividends"]),
+                _fmt_money(row["net_pnl_or_estimate"]), _fmt_pct(row["return_rate_or_estimate"]),
+            ])
+        lines.extend(_md_table(
+            ["交易編號", "進場日", "出場日", "訊號狀態", "預算比例", "進場前現金",
+             "目標預算", "實際投入", "股數", "進場成交價", "初始防守", "出場／估值價",
+             "出場原因", "現金股利", "淨損益／估值", "報酬率／估值"], rows))
+        lines.extend(["", "[回到快速索引](#快速索引)｜[返回主報告](README.md)"])
+    return "\n".join(lines) + "\n"
+
+
+def chart_label_audit(root: Path) -> dict[str, Any]:
+    rows = []
+    forbidden = re.compile(r"CORE\d|HIGH\d|NEXT_SESSION|SIGNAL_CLOSE|BPS|REGIME-FIX")
+    for name in ("six-main-equity.svg", "cost-sensitivity.svg", "annual-returns.svg"):
+        text = (root / name).read_text(encoding="utf-8")
+        labels = [re.sub(r"<[^>]+>", "", value)
+                  for value in re.findall(r"<text\b[^>]*>(.*?)</text>", text, re.DOTALL)]
+        semantic = [label for label in labels if any(char.isalpha() for char in label)]
+        has_zh = any(any("\u4e00" <= char <= "\u9fff" for char in label)
+                     for label in semantic)
+        bad = [label for label in semantic if forbidden.search(label)]
+        rows.append({"path": name, "text_labels": labels, "has_traditional_chinese": has_zh,
+                     "forbidden_internal_labels": bad,
+                     "status": "PASS" if has_zh and not bad else "FAIL"})
+    return {"status": "PASS" if all(row["status"] == "PASS" for row in rows) else "FAIL",
+            "charts": rows,
+            "rule": "可讀圖表需含中文語意標籤，且不得顯示內部情境代碼。"}
+
+
+def six_main_equity_svg(series: Sequence[tuple[str, Sequence[Mapping[str, Any]]]]) -> str:
+    """Six lines with a dedicated two-row, three-column legend."""
+    width, height, left, top, plot_w, plot_h = 1400, 800, 125, 80, 1200, 500
+    values = [_d(row["equity"]) for _, rows in series for row in rows]
+    hi = max(values)
+    span = hi or Decimal("1")
+    colors = ("#1565c0", "#ef6c00", "#2e7d32", "#c62828", "#6a1b9a", "#00838f")
+    short = {
+        "核心0%／高檔投入50%／低檔投入100%": "無核心・高檔50%",
+        "核心0%／高檔投入75%／低檔投入100%": "無核心・高檔75%",
+        "核心0%／高檔投入100%／低檔投入100%": "無核心・高檔100%",
+        "核心20%／高檔投入50%／低檔投入100%": "核心20%・高檔50%",
+        "核心20%／高檔投入75%／低檔投入100%": "核心20%・高檔75%",
+        "核心20%／高檔投入100%／低檔投入100%": "核心20%・高檔100%",
+    }
+    pieces = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" data-chart-kind="six-equity">',
+        f'<metadata>source=daily-equity.csv; version={VERSION}; legend=two-row-three-column</metadata>',
+        '<rect width="100%" height="100%" fill="#fff"/>',
+        f'<text x="{left}" y="35" font-size="24" font-family="sans-serif">六組差別投入 × 核心持有權益曲線</text>',
+        f'<line x1="{left}" y1="{top+plot_h}" x2="{left+plot_w}" y2="{top+plot_h}" stroke="#555"/>',
+        f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top+plot_h}" stroke="#555"/>',
+    ]
+    for tick in range(6):
+        value = hi * Decimal(tick) / 5
+        y = top + plot_h * (1 - tick / 5)
+        pieces.extend([
+            f'<line x1="{left}" y1="{y:.1f}" x2="{left+plot_w}" y2="{y:.1f}" stroke="#e0e0e0"/>',
+            f'<text x="{left-12}" y="{y+4:.1f}" text-anchor="end" font-size="13" font-family="sans-serif">{value:,.0f} 元</text>',
+        ])
+    first_rows = series[0][1]
+    for tick in range(6):
+        pos = round((len(first_rows) - 1) * tick / 5)
+        x = left + plot_w * tick / 5
+        pieces.append(f'<text x="{x:.1f}" y="{top+plot_h+28}" text-anchor="middle" font-size="13" font-family="sans-serif">{str(first_rows[pos]["date"])[:7]}</text>')
+    for index, (name, rows) in enumerate(series):
+        step = max(1, len(rows) // 600)
+        sampled = list(rows[::step])
+        if sampled[-1] is not rows[-1]:
+            sampled.append(rows[-1])
+        coords = []
+        for cursor, row in enumerate(sampled):
+            x = left + plot_w * cursor / max(len(sampled) - 1, 1)
+            y = top + plot_h * float((hi - _d(row["equity"])) / span)
+            coords.append(f"{x:.1f},{y:.1f}")
+        color = colors[index]
+        pieces.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.4" points="{" ".join(coords)}"/>')
+        col, row_index = index % 3, index // 3
+        legend_x, legend_y = left + col * 400, 665 + row_index * 52
+        pieces.append(f'<line x1="{legend_x}" y1="{legend_y}" x2="{legend_x+42}" y2="{legend_y}" stroke="{color}" stroke-width="4"/>')
+        pieces.append(f'<text x="{legend_x+54}" y="{legend_y+5}" fill="{color}" font-size="16" font-family="sans-serif">{short[name]}</text>')
+    pieces.append('<text x="125" y="770" font-size="12" fill="#555" font-family="sans-serif">低檔進場皆投入戰術帳可用現金 100%；圖例中的百分比為高檔進場投入比例。</text>')
+    pieces.append('</svg>')
+    return "\n".join(pieces)
+
+
+def grouped_cost_svg(rows: Sequence[Mapping[str, Any]]) -> str:
+    """Six readable groups, each containing 20/40/60-bps bars."""
+    width, height, left, top, plot_w, plot_h = 1400, 780, 110, 105, 1240, 460
+    ordered = sorted(rows, key=lambda row: (int(row["core_weight_pct"]),
+                                           int(row["high_weight_pct"]),
+                                           int(row["slippage_bps"])))
+    groups: dict[tuple[int, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in ordered:
+        groups[(int(row["core_weight_pct"]), int(row["high_weight_pct"]))].append(row)
+    maximum = max(_d(row["ending_equity"]) for row in ordered)
+    colors = {20: "#1565c0", 40: "#ef6c00", 60: "#c62828"}
+    pieces = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" data-chart-kind="grouped-cost">',
+        f'<metadata>source=cost-sensitivity.csv; version={VERSION}; grouped=core-high-by-bps</metadata>',
+        '<rect width="100%" height="100%" fill="#fff"/>',
+        f'<text x="{left}" y="32" font-size="24" font-family="sans-serif">六組成本壓力：期末資產</text>',
+    ]
+    for index, bps in enumerate((20, 40, 60)):
+        x = 650 + index * 190
+        pieces.extend([
+            f'<rect x="{x}" y="52" width="24" height="14" fill="{colors[bps]}"/>',
+            f'<text x="{x+34}" y="65" font-size="15" font-family="sans-serif">{bps} 基點</text>',
+        ])
+    pieces.extend([
+        f'<line x1="{left}" y1="{top+plot_h}" x2="{left+plot_w}" y2="{top+plot_h}" stroke="#555"/>',
+        f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top+plot_h}" stroke="#555"/>',
+    ])
+    for tick in range(6):
+        value = maximum * Decimal(tick) / 5
+        y = top + plot_h * (1 - tick / 5)
+        pieces.extend([
+            f'<line x1="{left}" y1="{y:.1f}" x2="{left+plot_w}" y2="{y:.1f}" stroke="#e0e0e0"/>',
+            f'<text x="{left-10}" y="{y+4:.1f}" text-anchor="end" font-size="13" font-family="sans-serif">{value:,.0f}</text>',
+        ])
+    group_w = plot_w / len(groups)
+    bar_w = 42
+    for group_index, ((core, high), bucket) in enumerate(groups.items()):
+        center = left + group_w * (group_index + .5)
+        for bar_index, row in enumerate(sorted(bucket, key=lambda item: int(item["slippage_bps"]))):
+            value = _d(row["ending_equity"])
+            bar_h = plot_h * float(value / maximum)
+            x = center - 1.5 * bar_w + bar_index * bar_w
+            y = top + plot_h - bar_h
+            bps = int(row["slippage_bps"])
+            pieces.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w-5}" height="{bar_h:.1f}" fill="{colors[bps]}"/>')
+            pieces.append(f'<text x="{x+(bar_w-5)/2:.1f}" y="{max(y-6, 95):.1f}" text-anchor="middle" font-size="10" font-family="sans-serif">{value/Decimal(10000):.0f}萬</text>')
+        core_label = "無核心" if core == 0 else "核心20%"
+        pieces.append(f'<text x="{center:.1f}" y="{top+plot_h+32}" text-anchor="middle" font-size="15" font-family="sans-serif"><tspan x="{center:.1f}">{core_label}</tspan><tspan x="{center:.1f}" dy="21">高檔{high}%</tspan></text>')
+    pieces.append('<text x="110" y="735" font-size="12" fill="#555" font-family="sans-serif">每組三根柱依序為 20、40、60 基點；縱軸為期末資產（元），柱頂以萬元顯示。</text>')
+    pieces.append('</svg>')
+    return "\n".join(pieces)
 
 
 def _replay_payload(matrix: Mapping[str, Any]) -> dict[str, Any]:
@@ -851,8 +1242,8 @@ def _replay_payload(matrix: Mapping[str, Any]) -> dict[str, Any]:
 
 def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
               report_root: Path = REPORT_ROOT_DEFAULT) -> dict[str, Any]:
-    if run_root.resolve() in {SEALED_RUN.resolve(), PRIOR_RUN.resolve()} or report_root.resolve() in {
-        SEALED_REPORT.resolve(), PRIOR_REPORT.resolve()
+    if run_root.resolve() in {SEALED_RUN.resolve(), PRIOR_RUN.resolve(), V1_RUN.resolve(), QA2_RUN.resolve()} or report_root.resolve() in {
+        SEALED_REPORT.resolve(), PRIOR_REPORT.resolve(), V1_REPORT.resolve(), QA2_REPORT.resolve()
     }:
         raise ETF0050Error("output root overlaps a protected source")
     sources_before = validate_source_pins()
@@ -941,23 +1332,31 @@ def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
                          benchmark_rows=benchmark_rows, replay_digest=digest_first)
     (run_root / "README.md").write_text(report, encoding="utf-8")
     (run_root / "report.md").write_text(report, encoding="utf-8")
+    main_ids = {str(row["scenario_id"]) for row in tables["main"]}
+    readable_details = trade_details_text(
+        [row for row in all_details if str(row["scenario_id"]) in main_ids]
+    )
+    (run_root / "trade-details.md").write_text(readable_details, encoding="utf-8")
     main_results = [item for item in first["scenarios"]
                     if item["summary"]["execution_timing"] == TIMING_NEXT_OPEN
                     and int(item["summary"]["slippage_bps"]) == 20]
-    (run_root / "six-main-equity.svg").write_text(prior_research._svg_lines(
-        [(item["summary"]["scenario_name_zh"], item["daily"]) for item in main_results],
-        "六組差別投入 × 核心持有權益曲線", source="main-six-summary.csv + daily-equity.csv"),
+    (run_root / "six-main-equity.svg").write_text(six_main_equity_svg(
+        [(item["summary"]["scenario_name_zh"], item["daily"]) for item in main_results]),
         encoding="utf-8")
-    (run_root / "cost-sensitivity.svg").write_text(prior_research._svg_bars(
-        rows=[(f"核{row['core_weight_pct']}-高{row['high_weight_pct']}-{row['slippage_bps']}bp",
-               _d(row["ending_equity"])) for row in tables["cost"]],
-        title="六組成本壓力：期末資產", source="cost-sensitivity.csv"), encoding="utf-8")
+    (run_root / "cost-sensitivity.svg").write_text(
+        grouped_cost_svg(tables["cost"]), encoding="utf-8")
     best = max(tables["main"], key=lambda row: _d(row["cagr"]))
     annual_best = [row for row in tables["annual"] if row["scenario_id"] == best["scenario_id"]]
     (run_root / "annual-returns.svg").write_text(prior_research._svg_bars(
-        rows=[(str(row["year"]), _d(row["return"])) for row in annual_best],
-        title=f"{best['scenario_name_zh']}：逐年報酬", source="annual.csv", percent=True),
+        rows=[("2026至9/30（未滿全年）" if int(row["year"]) == 2026 else str(row["year"]),
+               _d(row["return"])) for row in annual_best],
+        title=f"{best['scenario_name_zh']}：逐年報酬（2026僅至9/30）",
+        source="annual.csv", percent=True),
         encoding="utf-8")
+    chart_audit = chart_label_audit(run_root)
+    _write_json(run_root / "chart-label-audit.json", chart_audit)
+    if chart_audit["status"] != "PASS":
+        raise ETF0050Error(f"chart label audit failed: {chart_audit}")
     excluded = {"artifact-manifest.json", "readback.json", STOP_CODE + ".json"}
     run_artifacts = _artifact_rows(run_root, excluded)
     _write_json(run_root / "artifact-manifest.json", {
@@ -981,6 +1380,7 @@ def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
             shutil.copy2(path, report_root / path.name)
     _write_json(report_root / "artifact-manifest.json", {})
     _write_json(report_root / "readback.json", {})
+    _write_json(report_root / "link-validation.json", {})
     links = prior_research.validate_report_links(report_root)
     _write_json(report_root / "link-validation.json", links)
     if links["status"] != "PASS":
@@ -1026,6 +1426,41 @@ def validate(*, run_root: Path = RUN_ROOT_DEFAULT,
     concentration = _read_csv(run_root / "concentration-counterfactual.csv")
     tx = _read_csv(run_root / "transactions.csv")
     daily = _read_csv(run_root / "daily-equity.csv")
+    detail_rows = _read_csv(run_root / "trade-details.csv")
+    report_text_value = (report_root / "README.md").read_text(encoding="utf-8")
+    trade_text_value = (report_root / "trade-details.md").read_text(encoding="utf-8")
+    numbered = re.findall(r"^## (\d{2})｜", report_text_value, re.MULTILINE)
+    required_subheads = ("測試目的", "測試方法", "觀察結果", "白話結論", "對最終決策的影響")
+    section_contract = numbered == [f"{number:02d}" for number in range(1, 15)]
+    for number in range(1, 15):
+        start_match = re.search(rf"^## {number:02d}｜", report_text_value, re.MULTILINE)
+        next_match = re.search(rf"^## {number+1:02d}｜", report_text_value, re.MULTILINE) if number < 14 else None
+        if start_match is None:
+            section_contract = False
+            continue
+        segment = report_text_value[start_match.start():next_match.start() if next_match else len(report_text_value)]
+        section_contract = section_contract and all(f"### {heading}" in segment
+                                                     for heading in required_subheads)
+    navigation_contract = (
+        "## 建議閱讀順序" in report_text_value
+        and len(re.findall(r"\]\(#\d{2}", report_text_value)) >= 14
+        and "[繁體中文逐筆交易明細](trade-details.md)" in report_text_value
+        and "[返回主報告首頁](README.md)" in trade_text_value
+        and "## 快速索引" in trade_text_value
+        and trade_text_value.count("## 核心") == 6
+    )
+    primary_details = [row for row in detail_rows
+                       if row["execution_timing"] == TIMING_NEXT_OPEN
+                       and int(row["slippage_bps"]) == 20]
+    readable_trade_contract = (
+        len(primary_details) == 546
+        and trade_text_value == trade_details_text(primary_details)
+        and "MACD_RED_TO_GREEN" not in trade_text_value
+        and "INITIAL_PROTECTIVE_STOP" not in trade_text_value
+        and "MACD 翻綠" in trade_text_value
+        and "固定初始防守" in trade_text_value
+    )
+    chart_audit = json.loads((run_root / "chart-label-audit.json").read_text(encoding="utf-8-sig"))
     entries = [row for row in tx if row.get("sleeve") == "TACTICAL" and row.get("role") == "MOTHER"]
     sizing_ok = all(
         (row["signal_regime"] == "LOW" and _d(row["entry_budget_fraction"]) == 1)
@@ -1038,13 +1473,19 @@ def validate(*, run_root: Path = RUN_ROOT_DEFAULT,
     result = {"status": "PASS" if not run_bad and not report_bad
               and parity["status"] == "PASS_EXACT" and links["status"] == "PASS"
               and len(summaries) == 24 and len(main) == 6 and len(concentration) == 24
-              and sizing_ok and no_negative_cash and validate_source_pins()["status"] == "PASS_EXACT"
+              and sizing_ok and no_negative_cash and section_contract and navigation_contract
+              and readable_trade_contract and chart_audit["status"] == "PASS"
+              and validate_source_pins()["status"] == "PASS_EXACT"
               else "FAIL",
               "run_mismatches": run_bad, "report_mismatches": report_bad,
               "scenario_count": len(summaries), "main_scenario_count": len(main),
               "concentration_rows": len(concentration), "v1_7_parity": parity["status"],
               "links": links["status"], "entry_sizing": sizing_ok,
-              "cash_conservation": no_negative_cash, "network_used": False,
+              "cash_conservation": no_negative_cash,
+              "fourteen_section_five_part_contract": section_contract,
+              "navigation_and_trade_details": navigation_contract,
+              "trade_price_precision_and_exit_labels": readable_trade_contract,
+              "chart_labels": chart_audit["status"], "network_used": False,
               "writes_performed": False}
     return result
 

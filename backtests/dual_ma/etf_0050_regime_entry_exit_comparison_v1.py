@@ -42,7 +42,7 @@ from .models import InstrumentType
 from .paths import dev_run, report_path
 
 
-VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.2-qa2-fix"
+VERSION = "dual-ma-0050-regime-entry-exit-comparison-v1.3-qa3-fix"
 START = date(2006, 1, 2)
 END = date(2026, 9, 30)
 CAPITAL = Decimal("500000")
@@ -449,20 +449,25 @@ def entry_candidates(
                 if _d(row["technical_low"]) < negative_low:
                     negative_low, negative_low_date = _d(row["technical_low"]), row["date"]
         if prior_hist is not None and prior_hist <= 0 and histogram > 0:
-            stop, stop_date = min(
-                ((negative_low, negative_low_date),
-                 (_d(previous["technical_low"]), previous["date"]),
-                 (_d(row["technical_low"]), row["date"])),
-                key=lambda item: item[0],
-            )
-            candidates["P2"][row["date"]] = {
-                "entry_type": "P2_MACD_21_55_55_GREEN_TO_RED",
-                "structure_start": negative_start,
-                "structure_end": previous["date"],
-                "pivot_low": stop,
-                "pivot_low_date": stop_date,
-                "initial_stop": stop,
-            }
+            # A zero-to-positive crossing has no named negative segment.  P2 requires
+            # a real preceding histogram<0 interval, so this boundary fails closed
+            # instead of comparing Decimal lows with a None placeholder.
+            if (negative_start is not None and negative_low is not None
+                    and negative_low_date is not None):
+                stop, stop_date = min(
+                    ((negative_low, negative_low_date),
+                     (_d(previous["technical_low"]), previous["date"]),
+                     (_d(row["technical_low"]), row["date"])),
+                    key=lambda item: item[0],
+                )
+                candidates["P2"][row["date"]] = {
+                    "entry_type": "P2_MACD_21_55_55_GREEN_TO_RED",
+                    "structure_start": negative_start,
+                    "structure_end": previous["date"],
+                    "pivot_low": stop,
+                    "pivot_low_date": stop_date,
+                    "initial_stop": stop,
+                }
             negative_start = None
             negative_low = None
             negative_low_date = None
@@ -1146,6 +1151,99 @@ def _markdown_heading_ids(text: str) -> set[str]:
     return output
 
 
+P3_TRADE_SUMMARY_FIELDS = (
+    "cell_id", "episode_id", "regime", "entry_rule", "exit_rule", "timing",
+    "entry_date", "exit_date", "buy_total", "exit_cash",
+    "dividend_economic_rights", "net_pnl", "net_return_pct", "status",
+    "status_zh", "pnl_reconstruction_difference",
+    "return_recalculation_difference", "audit_status",
+)
+
+
+def _write_csv_with_fields(path: Path, rows: Sequence[Mapping[str, Any]],
+                           fields: Sequence[str]) -> None:
+    """Write a stable schema even when an intentionally separate table is empty."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(fields), extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(_jsonable(row) for row in rows)
+
+
+def p3_trade_summary_rows(
+    summaries: Sequence[Mapping[str, Any]],
+    primary_results: Mapping[str, Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """Build closed/open P3 ledgers and independently reconcile net return."""
+    summary_by_id = {str(row["cell_id"]): row for row in summaries}
+    p3_ids = sorted(cell_id for cell_id, row in summary_by_id.items()
+                    if row["entry_rule"] == "P3")
+    expected_coverage = {
+        (regime, exit_rule, timing)
+        for regime in REGIMES for exit_rule in EXITS for timing in TIMINGS
+    }
+    observed_coverage = {
+        (str(summary_by_id[cell_id]["regime"]),
+         str(summary_by_id[cell_id]["exit_rule"]),
+         str(summary_by_id[cell_id]["timing"]))
+        for cell_id in p3_ids
+    }
+    closed: list[dict[str, Any]] = []
+    opened: list[dict[str, Any]] = []
+    for cell_id in p3_ids:
+        summary = summary_by_id[cell_id]
+        result = primary_results[cell_id]
+        for trade in result["trades"]:
+            buy_total = _d(trade["buy_total"])
+            dividend_rights = _d(trade["dividend_cash"])
+            reconstructed_pnl = _d(trade["exit_cash"]) + dividend_rights - buy_total
+            net_pnl = _d(trade["pnl"])
+            net_return_pct = net_pnl / buy_total * Decimal("100")
+            independently_recalculated_return = reconstructed_pnl / buy_total * Decimal("100")
+            pnl_difference = net_pnl - reconstructed_pnl
+            return_difference = net_return_pct - independently_recalculated_return
+            closed.append({
+                "cell_id": cell_id, "episode_id": trade["episode_id"],
+                "regime": summary["regime"], "entry_rule": "P3",
+                "exit_rule": summary["exit_rule"], "timing": summary["timing"],
+                "entry_date": trade["entry_date"], "exit_date": trade["exit_date"],
+                "buy_total": buy_total, "exit_cash": trade["exit_cash"],
+                "dividend_economic_rights": dividend_rights,
+                "net_pnl": net_pnl, "net_return_pct": net_return_pct,
+                "status": "CLOSED", "status_zh": "已結束",
+                "pnl_reconstruction_difference": pnl_difference,
+                "return_recalculation_difference": return_difference,
+                "audit_status": "PASS" if pnl_difference == 0 and return_difference == 0 else "FAIL",
+            })
+        position = result["open_position"]
+        if position is not None:
+            opened.append({
+                "cell_id": cell_id, "episode_id": position["episode_id"],
+                "regime": summary["regime"], "entry_rule": "P3",
+                "exit_rule": summary["exit_rule"], "timing": summary["timing"],
+                "entry_date": position["entry_date"], "exit_date": "",
+                "buy_total": position["buy_total"], "exit_cash": "",
+                "dividend_economic_rights": position["dividend_entitlement_cash"],
+                "net_pnl": "", "net_return_pct": "", "status": "OPEN",
+                "status_zh": "未平倉", "pnl_reconstruction_difference": "",
+                "return_recalculation_difference": "", "audit_status": "NOT_REALIZED",
+            })
+    failures = [row for row in closed if row["audit_status"] != "PASS"]
+    audit = {
+        "status": "PASS" if observed_coverage == expected_coverage and not failures else "FAIL",
+        "definition": {
+            "net_pnl": "exit_cash（已扣賣出手續費與交易稅）＋該筆交易股息經濟權利－buy_total（含買進手續費）",
+            "net_return_pct": "net_pnl / buy_total * 100",
+            "open_positions": "與已結束交易分開；net_pnl 與 net_return_pct 留空，不混入已實現損益",
+        },
+        "expected_account_coverage": 12,
+        "observed_account_coverage": len(observed_coverage),
+        "closed_trade_count": len(closed), "open_position_count": len(opened),
+        "reconciliation_failures": len(failures),
+    }
+    return closed, opened, audit
+
+
 def _svg_bars(*, rows: Sequence[tuple[str, Decimal]], title: str,
               source: str, percent: bool = False) -> str:
     width, height, left, top = 1100, 520, 95, 65
@@ -1272,6 +1370,7 @@ def validate_report_links(report_root: Path) -> dict[str, Any]:
 def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                  pareto: Sequence[Mapping[str, Any]], parity: Mapping[str, Any],
                  sealed_summary: Sequence[Mapping[str, Any]],
+                 sealed_annual: Sequence[Mapping[str, Any]],
                  trade_quality: Sequence[Mapping[str, Any]],
                  costs: Sequence[Mapping[str, Any]], periods: Sequence[Mapping[str, Any]],
                  annual: Sequence[Mapping[str, Any]],
@@ -1292,6 +1391,51 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
     v17_next = sealed_by["FINAL_NEXT_SESSION_OPEN_20BPS"]
     v17_close = sealed_by["FINAL_SIGNAL_CLOSE_20BPS"]
     benchmark_ids = ("BUY_HOLD_CASH", "BUY_HOLD_REINVEST", "TAIEX_TOTAL_RETURN_EQUIVALENT_500K")
+
+    def annual_counts(rows: Sequence[Mapping[str, Any]]) -> tuple[int, int, int]:
+        values = [_d(row["return"]) for row in rows]
+        return (sum(value > 0 for value in values), sum(value < 0 for value in values),
+                sum(value == 0 for value in values))
+
+    candidate_annual = {
+        timing: annual_counts([row for row in attribution_annual
+                               if row["case"] == "BOTH_RULES" and row["timing"] == timing])
+        for timing in TIMINGS
+    }
+    sealed_annual_counts = {
+        comparison_id: annual_counts([row for row in sealed_annual
+                                      if row["comparison_id"] == comparison_id])
+        for comparison_id in ("FINAL_SIGNAL_CLOSE_20BPS", "FINAL_NEXT_SESSION_OPEN_20BPS",
+                              *benchmark_ids)
+    }
+
+    def annual_cells(counts: tuple[int, int, int]) -> list[int]:
+        return [counts[0], counts[1], counts[2]]
+
+    comparison_labels = {
+        "FINAL_SIGNAL_CLOSE_20BPS": "封存 v1.7－訊號當日收盤成交",
+        "FINAL_NEXT_SESSION_OPEN_20BPS": "封存 v1.7－次一交易日開盤成交",
+        "BUY_HOLD_CASH": "0050 買進持有－股息保留現金",
+        "BUY_HOLD_REINVEST": "0050 買進持有－股息再投入",
+        "TAIEX_TOTAL_RETURN_EQUIVALENT_500K": "臺灣加權股價報酬指數換算",
+    }
+    execution_labels = {
+        "FINAL_SIGNAL_CLOSE_20BPS": "訊號當日收盤成交",
+        "FINAL_NEXT_SESSION_OPEN_20BPS": "次一交易日開盤成交",
+        "BUY_HOLD_CASH": "首日開盤買進後全程持有",
+        "BUY_HOLD_REINVEST": "首日開盤買進；股息於付款日收盤再投入",
+        "TAIEX_TOTAL_RETURN_EQUIVALENT_500K": "指數收盤換算（不可直接交易）",
+    }
+
+    def sealed_table_row(comparison_id: str) -> list[Any]:
+        row = sealed_by[comparison_id]
+        trade_counts = "—" if comparison_id == "TAIEX_TOTAL_RETURN_EQUIVALENT_500K" else (
+            f"{row['rounds']}/{row['closed_rounds']}/{row['open_rounds']}"
+        )
+        return [comparison_labels[comparison_id], execution_labels[comparison_id],
+                _money(row["ending_equity"]), _pct(row["total_return"]), _pct(row["cagr"]),
+                _pct(row["max_drawdown"]), *annual_cells(sealed_annual_counts[comparison_id]),
+                trade_counts, _money(row.get("peak_concurrent_investment"))]
 
     lines = [
         "# 0050 2006～2026/09 HIGH／LOW 市場狀態進出場策略分組比較｜QA 修正版", "",
@@ -1317,20 +1461,32 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                       "### 對最終決策的影響", "", impact, ""])
 
     first_table = _md_table(
-        ["策略／基準", "成交", "期末資產", "總報酬", "CAGR", "MDD", "交易筆數", "最大投入"],
+        ["策略／比較基準", "成交方式", "期末資產", "總報酬", "年化報酬率", "最大回落",
+         "獲利年度", "虧損年度", "平盤年度", "進場／出場／未平倉", "最大投入"],
         [
-            ["組合候選", "次日開盤", _money(both_next["ending_equity"]), _pct(both_next["total_return"]), _pct(both_next["cagr"]), _pct(both_next["max_drawdown"]), both_next["closed_trades"], _money(both_next["peak_concurrent_investment"])],
-            ["組合候選", "訊號收盤", _money(both_close["ending_equity"]), _pct(both_close["total_return"]), _pct(both_close["cagr"]), _pct(both_close["max_drawdown"]), both_close["closed_trades"], _money(both_close["peak_concurrent_investment"])],
-            ["封存 v1.7", "次日開盤", _money(v17_next["ending_equity"]), _pct(v17_next["total_return"]), _pct(v17_next["cagr"]), _pct(v17_next["max_drawdown"]), v17_next["closed_rounds"], _money(v17_next["peak_concurrent_investment"])],
-            *[[sealed_by[key]["label"], sealed_by[key]["execution_timing"], _money(sealed_by[key]["ending_equity"]), _pct(sealed_by[key]["total_return"]), _pct(sealed_by[key]["cagr"]), _pct(sealed_by[key]["max_drawdown"]), sealed_by[key].get("closed_rounds", "—"), _money(sealed_by[key].get("peak_concurrent_investment"))] for key in benchmark_ids],
+            ["組合候選－訊號當日收盤成交", "訊號當日收盤成交",
+             _money(both_close["ending_equity"]), _pct(both_close["total_return"]),
+             _pct(both_close["cagr"]), _pct(both_close["max_drawdown"]),
+             *annual_cells(candidate_annual["SIGNAL_CLOSE"]),
+             f"{both_close['fills']}/{both_close['closed_trades']}/{both_close['open_positions']}",
+             _money(both_close["peak_concurrent_investment"])],
+            ["組合候選－次一交易日開盤成交", "次一交易日開盤成交",
+             _money(both_next["ending_equity"]), _pct(both_next["total_return"]),
+             _pct(both_next["cagr"]), _pct(both_next["max_drawdown"]),
+             *annual_cells(candidate_annual["NEXT_SESSION_OPEN"]),
+             f"{both_next['fills']}/{both_next['closed_trades']}/{both_next['open_positions']}",
+             _money(both_next["peak_concurrent_investment"])],
+            sealed_table_row("FINAL_SIGNAL_CLOSE_20BPS"),
+            sealed_table_row("FINAL_NEXT_SESSION_OPEN_20BPS"),
+            *(sealed_table_row(key) for key in benchmark_ids),
         ],
     )
     section(1, titles[0],
             "先回答這套新矩陣在相同資料、成本與資金限制下是否有樣本內正報酬，以及是否值得取代 v1.7。",
             "候選只從 NEXT_SESSION_OPEN、20bps、HIGH 與 LOW 各自 Pareto 母體選出；SIGNAL_CLOSE 只作同規則敏感度對照。",
-            [*first_table, "", "![同本金主策略與基準權益比較](main-comparison-equity.svg)", "",
+            [*first_table, "", "![同本金組合候選與基準權益比較](main-comparison-equity.svg)", "",
              "分組候選曲線另見：[HIGH／LOW 分組候選](regime-candidates-equity.svg)。"],
-            f"新候選次日開盤期末 {_money(both_next['ending_equity'])} 元、CAGR {_pct(both_next['cagr'])}、MDD {_pct(both_next['max_drawdown'])}；這是樣本內正報酬，不是已處理選擇偏差後的期望值證明。",
+            f"新候選次日開盤期末 {_money(both_next['ending_equity'])} 元、年化報酬率 {_pct(both_next['cagr'])}、最大回落 {_pct(both_next['max_drawdown'])}；這是樣本內正報酬，不是已處理選擇偏差後的期望值證明。",
             "維持研究候選；是否採用必須先看它相對封存 v1.7、持有線與大盤是否提供足夠增量。")
 
     section(2, titles[1],
@@ -1400,6 +1556,9 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "", "- [完整繁體中文逐筆交易明細](trade-details.md)",
                 "- [組合候選原始逐筆交易 CSV](replacement-attribution-trades.csv)",
                 "- [組合候選逐日帳 CSV](replacement-attribution-daily.csv)",
+                "- [P3 已結束逐筆摘要 CSV](p3-trades-closed.csv)",
+                "- [P3 未平倉摘要 CSV](p3-positions-open.csv)",
+                "- [P3 逐筆摘要與驗算 JSON](p3-trade-summary.json)",
                 "- [原始逐筆交易 CSV](trade-ledger.csv)",
                 "- [逐日正式／經濟權益 CSV](daily-equity.csv)",
                 "- [完整事件帳 CSV](event-ledger.csv)",
@@ -1524,6 +1683,7 @@ def _report_text(*, summaries: Sequence[Mapping[str, Any]],
                 "- [獨立交易品質表](matrix-trade-metrics.csv)",
                 "- [完整繁體中文逐筆交易](trade-details.md)",
                 "- [組合候選逐筆交易](replacement-attribution-trades.csv)／[逐日帳](replacement-attribution-daily.csv)",
+                "- P3 摘要：[已結束逐筆](p3-trades-closed.csv)／[未平倉](p3-positions-open.csv)／[定義與獨立驗算](p3-trade-summary.json)",
                 "- [原始逐筆交易](trade-ledger.csv)",
                 "- [逐日正式／經濟權益](daily-equity.csv)",
                 "- [事件帳](event-ledger.csv)",
@@ -1645,6 +1805,7 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         raise ETF0050Error("36/108 account reconciliation failed")
     pareto = practical_pareto(summaries)
     sealed_summary = _read_csv(SEALED_RUN / "main-comparison-summary.csv")
+    sealed_annual = _read_csv(SEALED_RUN / "main-comparison-calendar-year.csv")
     selectable = [row for row in pareto if row["eligible_for_automatic_selection"]]
     best_high = max((row for row in selectable if row["regime"] == "HIGH"),
                     key=lambda x: _d(x["calmar"] or "-999"))
@@ -1763,6 +1924,9 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
         and _d(named_dividend_case["receivable_at_exit"]) == Decimal("23792.5")
     ):
         raise ETF0050Error(f"named 2007 dividend bridge mismatch: {named_dividend_case}")
+    p3_closed, p3_open, p3_audit = p3_trade_summary_rows(summaries, primary_results)
+    if p3_audit["status"] != "PASS":
+        raise ETF0050Error(f"P3 trade summary reconciliation failed: {p3_audit}")
     _write_csv(run_root / "matrix-summary.csv", summaries)
     _write_csv(run_root / "matrix-trade-metrics.csv", trade_quality)
     _write_csv(run_root / "cost-sensitivity.csv", costs)
@@ -1785,7 +1949,15 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     _write_json(run_root / "named-dividend-case-2007.json", named_dividend_case)
     _write_csv(run_root / "regime-daily.csv", regime_days)
     _write_csv(run_root / "kd-cycle-audit.csv", kd_audit)
+    _write_csv_with_fields(run_root / "p3-trades-closed.csv", p3_closed,
+                           P3_TRADE_SUMMARY_FIELDS)
+    _write_csv_with_fields(run_root / "p3-positions-open.csv", p3_open,
+                           P3_TRADE_SUMMARY_FIELDS)
+    _write_json(run_root / "p3-trade-summary.json", {
+        "audit": p3_audit, "closed_trades": p3_closed, "open_positions": p3_open,
+    })
     _write_csv(run_root / "sealed-v1-7-main-comparison-summary.csv", sealed_summary)
+    _write_csv(run_root / "sealed-v1-7-main-comparison-calendar-year.csv", sealed_annual)
     shutil.copy2(SEALED_RUN / "benchmark.csv", run_root / "sealed-v1-7-benchmark.csv")
     shutil.copy2(SEALED_RUN / "main-comparison-daily.csv",
                  run_root / "sealed-v1-7-main-comparison-daily.csv")
@@ -1828,11 +2000,10 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
          ("0050 持有－股利留現金", sealed_daily_by_id["BUY_HOLD_CASH"]),
          ("0050 持有－股利再投入", sealed_daily_by_id["BUY_HOLD_REINVEST"]),
          ("加權報酬指數等值", sealed_daily_by_id["TAIEX_TOTAL_RETURN_EQUIVALENT_500K"])],
-        "同本金主策略與基準權益比較（2006～2026/09）",
+        "同本金組合候選與基準權益比較（2006～2026/09）",
         source="replacement-attribution-daily.csv + sealed-v1-7-main-comparison-daily.csv",
     )
     (run_root / "main-comparison-equity.svg").write_text(main_svg, encoding="utf-8")
-    (run_root / "matrix-equity.svg").write_text(main_svg, encoding="utf-8")
     practical_rows = sorted(
         (row for row in summaries if row["timing"] == "NEXT_SESSION_OPEN"),
         key=lambda row: (row["regime"], row["entry_rule"], row["exit_rule"]),
@@ -1872,7 +2043,8 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     ), encoding="utf-8")
     report = _report_text(
         summaries=summaries, pareto=pareto, parity=parity,
-        sealed_summary=sealed_summary, trade_quality=trade_quality,
+        sealed_summary=sealed_summary, sealed_annual=sealed_annual,
+        trade_quality=trade_quality,
         costs=costs, periods=periods, annual=annual, attribution=attribution,
         attribution_annual=attribution_annual, attribution_periods=attribution_periods,
         attribution_design=attribution_design, best_high=best_high, best_low=best_low,
@@ -1903,7 +2075,10 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
     readback = {"status": "PASS", "artifact_count": len(artifact_rows),
                 "mismatches": _verify_artifacts(run_root, artifact_rows),
                 "manifest_sha256": _sha(run_root / "artifact-manifest.json"),
-                "matrix_lines": len(summaries), "cost_lines": len(costs)}
+                "matrix_lines": len(summaries), "cost_lines": len(costs),
+                "p3_summary_status": p3_audit["status"],
+                "p3_closed_trade_lines": len(p3_closed),
+                "p3_open_position_lines": len(p3_open)}
     _write_json(run_root / "readback.json", readback)
     if readback["mismatches"]:
         raise ETF0050Error(f"run readback mismatch: {readback['mismatches']}")
@@ -1916,10 +2091,13 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
                     "replacement-attribution-design.json", "trade-ledger.csv",
                     "daily-equity.csv", "event-ledger.csv", "transaction-ledger.csv",
                     "signal-ledger.csv", "dividend-ledger-reconciliation.csv",
+                    "p3-trades-closed.csv", "p3-positions-open.csv",
+                    "p3-trade-summary.json",
                     "named-dividend-case-2007.json", "periods.csv", "annual.csv",
                     "cost-sensitivity.csv", "account-reconciliation-108.csv",
                     "sealed-v1-7-main-comparison-summary.csv",
-                    "sealed-v1-7-main-comparison-daily.csv", "matrix-equity.svg",
+                    "sealed-v1-7-main-comparison-calendar-year.csv",
+                    "sealed-v1-7-main-comparison-daily.csv",
                     "main-comparison-equity.svg", "regime-candidates-equity.svg",
                     "next-open-cagr.svg", "cost-sensitivity.svg", "yearly-returns.svg",
                     "exit-reasons.svg",
@@ -1942,7 +2120,7 @@ def _write_run(*, run_root: Path, report_root: Path) -> dict[str, Any]:
                  "manifest_sha256": _sha(report_root / "artifact-manifest.json")})
     gate = {
         "status": STOP_CODE, "candidate_only": True, "adopted": False,
-        "branch": "codex/0050-regime-entry-exit-qa2",
+        "branch": "codex/0050-regime-entry-exit-qa3",
         "run_root": str(run_root), "report_root": str(report_root),
         "run_manifest_sha256": readback["manifest_sha256"],
         "report_manifest_sha256": _sha(report_root / "artifact-manifest.json"),
@@ -1965,6 +2143,32 @@ def validate(run_root: Path, report_root: Path | None = None) -> dict[str, Any]:
     account_audits = _read_csv(run_root / "account-reconciliation-108.csv")
     dividend_audits = _read_csv(run_root / "dividend-ledger-reconciliation.csv")
     pareto = _read_csv(run_root / "pareto-candidates.csv")
+    p3_closed = _read_csv(run_root / "p3-trades-closed.csv")
+    p3_open = _read_csv(run_root / "p3-positions-open.csv")
+    p3_json = json.loads((run_root / "p3-trade-summary.json").read_text(encoding="utf-8-sig"))
+    expected_p3_coverage = {
+        (regime, exit_rule, timing)
+        for regime in REGIMES for exit_rule in EXITS for timing in TIMINGS
+    }
+    p3_closed_coverage = {
+        (row["regime"], row["exit_rule"], row["timing"]) for row in p3_closed
+    }
+    p3_summary_pass = (
+        p3_json["audit"]["status"] == "PASS"
+        and p3_closed_coverage == expected_p3_coverage
+        and all(row["status"] == "CLOSED" and row["entry_rule"] == "P3"
+                and row["entry_date"] and row["exit_date"]
+                and _d(row["net_pnl"]) == (_d(row["exit_cash"])
+                                             + _d(row["dividend_economic_rights"])
+                                             - _d(row["buy_total"]))
+                and _d(row["net_return_pct"]) == (
+                    _d(row["net_pnl"]) / _d(row["buy_total"]) * Decimal("100"))
+                and _d(row["pnl_reconstruction_difference"]) == 0
+                and _d(row["return_recalculation_difference"]) == 0
+                and row["audit_status"] == "PASS" for row in p3_closed)
+        and all(row["status"] == "OPEN" and not row["exit_date"]
+                and not row["net_pnl"] and not row["net_return_pct"] for row in p3_open)
+    )
     matrix_metrics_independent = (
         _sha(run_root / "matrix-summary.csv") != _sha(run_root / "matrix-trade-metrics.csv")
         and "r_p10" in trade_metrics[0] and "trades_exited_with_receivable" in trade_metrics[0]
@@ -1977,6 +2181,7 @@ def validate(run_root: Path, report_root: Path | None = None) -> dict[str, Any]:
         and all(row["status"] == "PASS" for row in dividend_audits)
         and {row["regime"] for row in pareto} == {"HIGH", "LOW"}
         and all(row["timing"] == "NEXT_SESSION_OPEN" for row in pareto)
+        and p3_summary_pass
     )
     result = {"status": "PASS" if pass_state else "FAIL",
               "mismatches": mismatches, "matrix_lines": len(summary), "cost_lines": len(costs),
@@ -1984,6 +2189,9 @@ def validate(run_root: Path, report_root: Path | None = None) -> dict[str, Any]:
               "matrix_metrics_independent": matrix_metrics_independent,
               "account_reconciliation_lines": len(account_audits),
               "dividend_reconciliation_lines": len(dividend_audits),
+              "p3_closed_trade_lines": len(p3_closed),
+              "p3_open_position_lines": len(p3_open),
+              "p3_summary_status": "PASS" if p3_summary_pass else "FAIL",
               "manifest_sha256": _sha(run_root / "artifact-manifest.json"),
               "sealed_v1_7": validate_sealed_v17()["status"],
               "old_v5_byte_parity": validate_old_v5()["status"]}

@@ -34,6 +34,43 @@ def _row(*, ma21="10", ma144="10", close="10", low="9", k="20", d="20"):
     }
 
 
+def _entry_row(day, histogram, *, low="9"):
+    return {
+        "date": day,
+        "histogram": Decimal(histogram),
+        "technical_close": Decimal("10"),
+        "technical_low": Decimal(low),
+        "technical_high": Decimal("11"),
+        "sma21": Decimal("10"),
+        "entry_k": Decimal("20"),
+        "entry_d": Decimal("20"),
+        "price_rebase_factor": Decimal("1"),
+    }
+
+
+def test_p2_zero_to_positive_without_negative_segment_fails_closed():
+    rows = [
+        _entry_row(date(2024, 1, 2), "0"),
+        _entry_row(date(2024, 1, 3), "1"),
+    ]
+    candidates, _ = subject.entry_candidates(rows)
+    assert candidates["P2"] == {}
+
+
+def test_p2_true_negative_segment_emits_with_segment_low():
+    rows = [
+        _entry_row(date(2024, 1, 2), "-1", low="9"),
+        _entry_row(date(2024, 1, 3), "-0.5", low="8"),
+        _entry_row(date(2024, 1, 4), "1", low="9.5"),
+    ]
+    candidates, _ = subject.entry_candidates(rows)
+    signal = candidates["P2"][date(2024, 1, 4)]
+    assert signal["structure_start"] == date(2024, 1, 2)
+    assert signal["structure_end"] == date(2024, 1, 3)
+    assert signal["pivot_low"] == Decimal("8")
+    assert signal["pivot_low_date"] == date(2024, 1, 3)
+
+
 def test_regime_equality_is_high_and_strict_low_is_low():
     assert subject._regime(_row(ma21="10", ma144="10")) == "HIGH"
     assert subject._regime(_row(ma21="9.999", ma144="10")) == "LOW"
@@ -228,6 +265,38 @@ def test_e2_and_e3_real_event_order_is_causal(formal_output):
                and row["breakout_date"] <= row["date"] for row in dow)
 
 
+def test_p3_machine_readable_trade_summary_covers_12_accounts_and_reconciles(formal_output):
+    run_root, report_root = formal_output
+    closed = _csv(run_root / "p3-trades-closed.csv")
+    opened = _csv(run_root / "p3-positions-open.csv")
+    payload = json.loads((run_root / "p3-trade-summary.json").read_text(encoding="utf-8-sig"))
+    expected = {(regime, exit_rule, timing)
+                for regime in ("HIGH", "LOW")
+                for exit_rule in ("E1", "E2", "E3")
+                for timing in ("SIGNAL_CLOSE", "NEXT_SESSION_OPEN")}
+    assert {(row["regime"], row["exit_rule"], row["timing"]) for row in closed} == expected
+    assert payload["audit"]["status"] == "PASS"
+    assert payload["audit"]["expected_account_coverage"] == 12
+    assert payload["audit"]["observed_account_coverage"] == 12
+    assert len(closed) == payload["audit"]["closed_trade_count"]
+    for row in closed:
+        assert row["entry_rule"] == "P3" and row["status"] == "CLOSED"
+        expected_pnl = (Decimal(row["exit_cash"])
+                        + Decimal(row["dividend_economic_rights"])
+                        - Decimal(row["buy_total"]))
+        assert Decimal(row["net_pnl"]) == expected_pnl
+        assert Decimal(row["net_return_pct"]) == (
+            expected_pnl / Decimal(row["buy_total"]) * Decimal("100"))
+        assert Decimal(row["pnl_reconstruction_difference"]) == 0
+        assert Decimal(row["return_recalculation_difference"]) == 0
+        assert row["audit_status"] == "PASS"
+    assert all(row["status"] == "OPEN" and not row["exit_date"]
+               and not row["net_pnl"] and not row["net_return_pct"] for row in opened)
+    assert (report_root / "p3-trades-closed.csv").is_file()
+    assert (report_root / "p3-positions-open.csv").is_file()
+    assert (report_root / "p3-trade-summary.json").is_file()
+
+
 def test_pareto_is_practical_and_grouped_with_sparse_candidates_not_auto_selected(formal_output):
     run_root, _ = formal_output
     pareto = _csv(run_root / "pareto-candidates.csv")
@@ -275,6 +344,11 @@ def test_report_is_full_14_section_single_entry_with_trade_details(formal_output
     assert "規則替換效果不可估" in readme
     assert "2026（截至09月）" in readme
     assert "未滿整個視窗" in readme
+    table = "|策略／比較基準|" + readme.split("|策略／比較基準|", 1)[1].split("\n\n", 1)[0]
+    assert "|成交方式|期末資產|總報酬|年化報酬率|最大回落|" in table
+    assert "|獲利年度|虧損年度|平盤年度|進場／出場／未平倉|最大投入|" in table
+    assert "CAGR" not in table and "MDD" not in table
+    assert "INITIAL_OPEN_THEN_HOLD" not in table and "INDEX_CLOSE" not in table
     details = (report_root / "trade-details.md").read_text(encoding="utf-8")
     assert "<a id=" not in details
     assert "HIGH-P1-E1-0007" in details
@@ -310,9 +384,11 @@ def test_main_equity_chart_is_five_line_same_capital_reader_comparison(formal_ou
         assert label in svg
     assert "元</text>" in svg
     assert "2006-01" in svg and "2026-09" in svg
-    assert (run_root / "matrix-equity.svg").read_bytes() == (
-        run_root / "main-comparison-equity.svg").read_bytes()
-    assert (report_root / "regime-candidates-equity.svg").is_file()
+    assert "組合候選與基準" in svg and "主策略" not in svg
+    assert not (run_root / "matrix-equity.svg").exists()
+    regime_svg = (report_root / "regime-candidates-equity.svg").read_text(encoding="utf-8")
+    assert "2006-01" in regime_svg and "2026-09" in regime_svg
+    assert "元</text>" in regime_svg
 
 
 def test_old_v5_tree_is_byte_exact_after_qa_fix_run(formal_output):

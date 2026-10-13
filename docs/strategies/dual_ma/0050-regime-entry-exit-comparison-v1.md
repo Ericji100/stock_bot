@@ -35,6 +35,20 @@
 - HIGH/LOW 各有 P1/P2/P3 × E1/E2/E3 × 兩種時點，共 36 條 20bps 主線；40/60bps 各完整重播同一矩陣。
 - 每格是獨立連續帳戶；不得把格與格的資產相加當成一個可交易策略。
 
+## 股息、正式估值與交易歸因
+
+- 除息日持股即成立股息經濟權利，並永久歸屬當時的 episode；即使付款日前賣出，該權利仍計入該筆交易的 PnL、R、MFE/MAE 與 E2 費後 2R 判斷。
+- 付款日前的股息是應收款，不是可用現金，不得拿來 sizing 或下單；付款日才增加帳戶 cash。
+- 為與 v1.7 直接可比，正式 daily `equity`＝可用 cash＋未還原價費後清算值，不提前加入應收股息；正式 CAGR、MDD、逐年與 rolling 都使用此現金制口徑。
+- `dividend_receivable` 與 `economic_equity` 另列為診斷欄位；不得拿其 CAGR/MDD 和 v1.7 現金制數字直接比較。
+- 2007-10-24／2007-11-08／2007-12-03 跨出場案例及全 36 格 ledger reconstruction 必須零差異。
+
+## 候選與歸因
+
+- 候選只從 `NEXT_SESSION_OPEN_20BPS` 中選；HIGH、LOW 分別建立自己的 CAGR／MDD Pareto。`SIGNAL_CLOSE` 只能作同一 P/E 規則的配對敏感度。
+- 少於 20 筆已平倉交易，或前五大獲利占總獲利超過 80% 的 Pareto 格，只列示限制，不得自動推薦。
+- v1.7 每日動態 regime 僅作封存外部基準。新引擎內以 `DAILY_HIGH_ONLY`、`ENTRY_HIGH_ONLY`、`ALL_STOPS` 三個控制拆出狀態／防守政策，再相對 `ALL_STOPS_CONTROL` 單獨換 HIGH、單獨換 LOW及兩者皆換；不得把同時變更多個因素的案例命名為「只換高」或「只換低」。
+
 ## 邊界例
 
 - `MA21 == MA144`：HIGH。

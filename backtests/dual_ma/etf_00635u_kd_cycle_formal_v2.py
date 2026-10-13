@@ -38,6 +38,7 @@ GRID_PARAMETERS = tuple(product(GRID_MA_VALUES, GRID_K_VALUES, GRID_D_VALUES))
 
 DEPRECATION_CODE = "DEPRECATED_WRONG_ENTRY_KD_PARAMETERS"
 SUPERSEDED_REPORT = "formal-run-kd-cycle-v2"
+SUPERSEDED_PUBLISHED_ALIAS = "2015-2026-kd-cycle-ma21-breakout-v1-0"
 
 
 def _line_id(policy: cycle.KDCyclePolicy, timing: ExecutionTiming) -> str:
@@ -580,7 +581,7 @@ def run_formal_pack(
             "copied_contract_sha256": prep.sha256_file(output_root / "strategy-rule-contract.md"),
             "semantic_rewrite": False,
             "entry_kd": "9/9/55",
-            "supersedes": SUPERSEDED_REPORT,
+            "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
             "superseded_reason": DEPRECATION_CODE,
         }) + b"\n"
     )
@@ -589,6 +590,7 @@ def run_formal_pack(
             "status": DEPRECATION_CODE,
             "valid_for_decision": False,
             "superseded_report": SUPERSEDED_REPORT,
+            "superseded_published_alias": SUPERSEDED_PUBLISHED_ALIAS,
             "superseded_entry_kd": "9/55/55",
             "replacement_entry_kd": "9/9/55",
             "preserved_hashes": {
@@ -835,7 +837,7 @@ def run_formal_pack(
         ("attachments", "14｜完整附件目錄"),
     )
     observations = {
-        "conclusion": f"本版以 KD(9,9,55) 取代錯誤參數舊版 `{SUPERSEDED_REPORT}`（`{DEPRECATION_CODE}`）。策略 C 次開期末資產 {_money(metrics[practical_ids[0]]['ending_equity'])}；策略 D 次開期末資產 {_money(metrics[practical_ids[1]]['ending_equity'])}。{insufficiency_text}",
+        "conclusion": f"本版以 KD(9,9,55) 取代錯誤參數舊版 `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}`（`{DEPRECATION_CODE}`）。策略 C 次開期末資產 {_money(metrics[practical_ids[0]]['ending_equity'])}；策略 D 次開期末資產 {_money(metrics[practical_ids[1]]['ending_equity'])}。{insufficiency_text}",
         "performance": f"共同期間保留原策略、純 MACD、新策略 C／D 與兩條買進持有，共 {len(lines)} 條比較線。",
         "relative": "策略 C／D 均逐一比較 00635U 現金保留與分配再投入；官方 Gold ER 未取得，因此不以代理替代。",
         "rules": f"契約原文 SHA-256 為 `{cycle.CONTRACT_SHA256}`，複製檔與來源位元組一致；本輪唯一參數修正為進場 KD(9,9,55)。2022-10-05 正式值 K={screen_row['entry_k']:.2f}、D={screen_row['entry_d']:.2f}，確認 K>D。",
@@ -869,7 +871,7 @@ def run_formal_pack(
     extras = {
         "performance": "\n| 主線 | 成交方式 | 期末資產 | 總報酬 | 年化報酬率 | 最大回落 | 獲利／虧損／平盤年度 | 進場／出場／未平倉 | 最大投入 |\n|---|---|---:|---:|---:|---:|---:|---:|---:|\n" + perf_table + "\n\n![正式資產曲線](equity-chart.svg)\n\n![正式回撤路徑](drawdown-chart.svg)\n",
         "relative": "\n| 策略 | 比較基準 | 期末資產差 | 年化報酬率差 | 最大回落差 |\n|---|---|---:|---:|---:|\n" + relative_table + "\n",
-        "rules": f"\n- **修正版新進場：** 使用進場 KD(9,9,55) 的 K<D／K>D 循環、嚴格 K2_so_far > K1 與 MA21 收盤向上突破；策略 C 以 MA21／MA144 嚴格分流，等號不進，策略 D 的 MA144 只作診斷。\n- **棄用舊版：** `{SUPERSEDED_REPORT}` 使用錯誤進場 KD(9,55,55)，標記 `{DEPRECATION_CODE}`，只保留稽核，不具決策效力。\n- **未改動規則：** 原策略仍保留 MACD(21,55,55) 比較線；新策略沿用固定初始防守、淨成本 2R 永久啟動、出場 KD(9,9,55) 新死叉，固定防守優先。訊號日收盤成交與次一個可成交交易日開盤成交各自進出同口徑。\n\n#### 2022-10-05／2022-11-07 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，差異來自券商畫面未公開的初始化／平滑口徑與正式全歷史遞迴口徑不同，但方向一致為 K>D。2022-11-07 的合法性與成交結果以上表重新計算，不沿用 v1 結論。\n\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
+        "rules": f"\n- **修正版新進場：** 使用進場 KD(9,9,55) 的 K<D／K>D 循環、嚴格 K2_so_far > K1 與 MA21 收盤向上突破；策略 C 以 MA21／MA144 嚴格分流，等號不進，策略 D 的 MA144 只作診斷。\n- **棄用舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 使用錯誤進場 KD(9,55,55)，標記 `{DEPRECATION_CODE}`，只保留稽核，不具決策效力。\n- **未改動規則：** 原策略仍保留 MACD(21,55,55) 比較線；新策略沿用固定初始防守、淨成本 2R 永久啟動、出場 KD(9,9,55) 新死叉，固定防守優先。訊號日收盤成交與次一個可成交交易日開盤成交各自進出同口徑。\n\n#### 2022-10-05／2022-11-07 具名正式回歸\n\n| 日期 | 成交版本 | K | D | K/D 方向 | cycle phase | K1 | K2_so_far | K2>K1 | MA21 突破 | signal window | 合法訊號 | 成交結果 |\n|---|---|---:|---:|---|---|---:|---:|---|---|---|---|---|\n{named_table}\n\n2022-10-05 使用正式鎖定 FinMind raw OHLC 與遞迴公式 `K=RSV/9+前K×8/9`、`D=K/55+前D×54/55`；正式值與使用者畫面約 K=47.39、D=45.32 的差異分別為 {screen_row['reference_k_difference']:+.2f}、{screen_row['reference_d_difference']:+.2f}，差異來自券商畫面未公開的初始化／平滑口徑與正式全歷史遞迴口徑不同，但方向一致為 K>D。2022-11-07 的合法性與成交結果以上表重新計算，不沿用 v1 結論。\n\n- [具名日期回歸 CSV](named-date-regression.csv)\n- [舊版棄用與保留 hash](superseded-artifact-registry.json)\n- [唯一規則契約原文](strategy-rule-contract.md)\n- [契約 SHA 驗證](contract-verification.json)\n- [策略 D MA144 隔離回讀](ma144-invariance-readback.json)\n- [逐循環因果稽核](kd-cycle-audit.csv)\n",
         "annual": "\n#### 完整逐年績效表\n\n| 策略／基準 | 年度 | 年初資產 | 年末資產 | 年度報酬 | 年度最大回落 |\n|---|---:|---:|---:|---:|---:|\n" + annual_table + "\n\n- [完整逐年績效 CSV](annual-performance.csv)\n\n![逐年報酬](annual-chart.svg)\n",
         "trades": f"\n| 新策略 | 進場 | 已完成 | 未平倉 | 最大投入 |\n|---|---:|---:|---:|---:|\n{new_trade_summary}\n\n- [繁體中文逐筆交易明細]({TRADE_REPORT_NAME})\n- [逐筆交易明細 CSV](trade-details.csv)\n- [每日主帳](strategy-account-daily.csv)\n- [事件帳](event-ledger.csv)\n- [公司行動帳](corporate-action-ledger.csv)\n- [逐循環稽核](kd-cycle-audit.csv)\n\n![新策略逐筆損益](trade-pnl-chart.svg)\n",
         "execution": "\n#### 完整成交與成本壓力表\n\n| 策略 | 成交方式 | 單邊滑價（基點） | 期末資產 | 年化報酬率 | 最大回落 | 完成交易 |\n|---|---|---:|---:|---:|---:|---:|\n" + cost_table + "\n\n- [完整成本壓力 CSV](cost-sensitivity.csv)\n\n![成本壓力](cost-pressure-chart.svg)\n",
@@ -891,7 +893,7 @@ def run_formal_pack(
     report = (
         "# 00635U 黃金期貨 ETF｜KD(9,9,55) 循環低點墊高＋MA21 突破修正版研究\n\n"
         "> **狀態：隔離研究候選，尚未採納。** 凍結資料與唯一契約均已通過 SHA gate；仍須 00 嚴格 QA。\n"
-        f"> **取代舊版：** `{SUPERSEDED_REPORT}` 因進場 KD 誤用 9/55/55，標記 `{DEPRECATION_CODE}`，只保留稽核且不得用於決策。\n"
+        f"> **取代舊版：** `{SUPERSEDED_REPORT}` 與發布別名 `{SUPERSEDED_PUBLISHED_ALIAS}` 因進場 KD 誤用 9/55/55，標記 `{DEPRECATION_CODE}`，只保留稽核且不得用於決策。\n"
         f"> 資料快照：`{cycle.SNAPSHOT_ID}`；輸入 manifest SHA-256：`{accepted_manifest_sha256}`。\n"
         f"> 唯一規則契約 SHA-256：`{cycle.CONTRACT_SHA256}`；契約原文已原樣收入附件。\n\n"
         "## 閱讀順序\n\n" + toc + "\n\n" + "\n\n".join(sections)
@@ -910,7 +912,7 @@ def run_formal_pack(
         "snapshot_id": input_manifest.get("snapshot_id"),
         "input_manifest_sha256": accepted_manifest_sha256,
         "contract_sha256": cycle.CONTRACT_SHA256,
-        "supersedes": SUPERSEDED_REPORT,
+        "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
         "superseded_reason": DEPRECATION_CODE,
         "entry_kd": "9/9/55",
         "exit_kd": "9/9/55",
@@ -930,7 +932,7 @@ def run_formal_pack(
         "files_verified": len(artifact_names),
         "account_invariants": "PASS",
         "contract_sha256": cycle.CONTRACT_SHA256,
-        "supersedes": SUPERSEDED_REPORT,
+        "supersedes": [SUPERSEDED_REPORT, SUPERSEDED_PUBLISHED_ALIAS],
         "superseded_reason": DEPRECATION_CODE,
         "entry_kd": "9/9/55",
     }

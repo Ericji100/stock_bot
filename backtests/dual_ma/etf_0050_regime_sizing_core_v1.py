@@ -44,7 +44,7 @@ from .models import InstrumentType
 from .paths import dev_run, report_path
 
 
-VERSION = "dual-ma-0050-regime-sizing-core-v1.2-qa3"
+VERSION = "dual-ma-0050-regime-sizing-core-v1.4-qa5"
 START = accepted.FORMAL_START
 END = accepted.CUTOFF
 CAPITAL = CONTINUOUS_CAPITAL
@@ -55,9 +55,9 @@ TIMING_NEXT_OPEN = analysis.TIMING_NEXT_OPEN
 TIMING_SIGNAL_CLOSE = analysis.TIMING_SIGNAL_CLOSE
 STOP_CODE = "STOP_WAIT_00_0050_REGIME_SIZING_CORE_QA"
 
-RUN_ROOT_DEFAULT = dev_run("02-etf-0050-regime-sizing-core-v1-qa3")
+RUN_ROOT_DEFAULT = dev_run("02-etf-0050-regime-sizing-core-v1-qa5")
 REPORT_ROOT_DEFAULT = report_path(
-    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa3"
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa5"
 )
 SEALED_RUN = dev_run("02-etf-0050-final-strategy-v1-7")
 SEALED_REPORT = report_path("etf", "0050", "final", "2006-2026-final-strategy-v1-7")
@@ -88,6 +88,22 @@ QA2_RUN_MANIFEST = "daadbf6da9521f6a09f2b78c0c9e1ac25e08b0b61989dc1552d8a134691e
 QA2_RUN_READBACK = "824126b0dde9ba7a382502fc5fcff2e2514e5345097b9f3fd2c367577912e452"
 QA2_REPORT_MANIFEST = "a1f8b786217eb05026ecdb05b3e93519cf8f52536f33ff6b32c3cd94621139a0"
 QA2_REPORT_READBACK = "4d043d0adfacf4e421289a4e50dac31908c3b40e34502f092ef7a44e2459fc0a"
+QA3_RUN = dev_run("02-etf-0050-regime-sizing-core-v1-qa3")
+QA3_REPORT = report_path(
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa3"
+)
+QA3_RUN_MANIFEST = "d6bf0ccfcc1a1ebe66077d9eb2dc411702c0f5fdb795c8e468474472c2107482"
+QA3_RUN_READBACK = "9568c1a9b08fea1510297ef24458d1b0db19e90d0106be7aa7bee6c3f724bd77"
+QA3_REPORT_MANIFEST = "889251b57bdfee594a4bec3db1084869f72edbdc41d41456c2cfa7e1e936674b"
+QA3_REPORT_READBACK = "dea048a77f011466342ea5272da557fc66156f7a01aadfa7c828aa30ea9a5fa8"
+QA4_RUN = dev_run("02-etf-0050-regime-sizing-core-v1-qa4")
+QA4_REPORT = report_path(
+    "etf", "0050", "experiments", "2006-2026-regime-sizing-core-v1-qa4"
+)
+QA4_RUN_MANIFEST = "2995790aaa87dac0037bf43669ac7e3334d5aa4aeeb0b625a9b3e3f040e9fdfd"
+QA4_RUN_READBACK = "0cca615a23409c8fecd3ff8817ce7c8b1bb97c221636d622e721585cdb9fb120"
+QA4_REPORT_MANIFEST = "480f0f86b33ba720486931b0372ff663bec2186ec6b64fc216c4158aaaaa068a"
+QA4_REPORT_READBACK = "8cfe56ace6287006407b068b03708f2c7d22cf3fa14094fb70fa750586b422cf"
 
 
 def _d(value: Any) -> Decimal:
@@ -123,6 +139,62 @@ def _canonical_digest(value: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def csv_change_contract(reference_root: Path, candidate_root: Path) -> dict[str, Any]:
+    """Allow only the named 12-row core split schema repair versus qa4."""
+    reference_names = {path.name for path in reference_root.glob("*.csv")}
+    candidate_names = {path.name for path in candidate_root.glob("*.csv")}
+    exact_files = []
+    exact_failures = []
+    for name in sorted(reference_names - {"corporate-actions.csv"}):
+        old, new = reference_root / name, candidate_root / name
+        equal = new.is_file() and old.read_bytes() == new.read_bytes()
+        row = {"path": name, "byte_equal": equal,
+               "qa4_sha256": _sha(old), "qa5_sha256": _sha(new) if new.is_file() else None}
+        exact_files.append(row)
+        if not equal:
+            exact_failures.append(row)
+
+    old_actions = _read_csv(reference_root / "corporate-actions.csv")
+    new_actions = _read_csv(candidate_root / "corporate-actions.csv")
+    action_differences = []
+    structural_failure = len(old_actions) != len(new_actions)
+    for index, (old, new) in enumerate(zip(old_actions, new_actions)):
+        fields = sorted(key for key in set(old) | set(new) if old.get(key, "") != new.get(key, ""))
+        if not fields:
+            continue
+        allowed = (
+            fields == ["pnl", "ratio", "transaction", "type"]
+            and old.get("date") == new.get("date") == "2025-06-18"
+            and old.get("sleeve") == new.get("sleeve") == "CORE"
+            and old.get("role") == new.get("role") == "SPLIT_REBASE_ONLY"
+            and all(old.get(field, "") == "" for field in fields)
+            and new.get("type") == "SPLIT_REBASE_ONLY"
+            and _d(new.get("ratio")) == Decimal("4")
+            and new.get("transaction") == "False"
+            and _d(new.get("pnl")) == 0
+        )
+        action_differences.append({"row_index": index, "scenario_id": new.get("scenario_id"),
+                                   "changed_fields": fields, "allowed": allowed,
+                                   "qa4": {field: old.get(field, "") for field in fields},
+                                   "qa5": {field: new.get(field, "") for field in fields}})
+    status = (
+        reference_names == candidate_names
+        and not exact_failures and not structural_failure
+        and len(action_differences) == 12
+        and all(row["allowed"] for row in action_differences)
+    )
+    return {
+        "status": "PASS_NAMED_SCHEMA_REPAIR_ONLY" if status else "FAIL",
+        "qa4_root": str(reference_root), "qa5_root": str(candidate_root),
+        "csv_name_sets_equal": reference_names == candidate_names,
+        "csv_count": len(reference_names), "exact_files": exact_files,
+        "exact_failures": exact_failures,
+        "corporate_action_row_counts": {"qa4": len(old_actions), "qa5": len(new_actions)},
+        "allowed_core_split_row_differences": len(action_differences),
+        "corporate_action_differences": action_differences,
+    }
+
+
 def validate_source_pins() -> dict[str, Any]:
     pins = {
         "v1_7_run_manifest": (SEALED_RUN / "manifest.json", SEALED_RUN_MANIFEST),
@@ -141,6 +213,14 @@ def validate_source_pins() -> dict[str, Any]:
         "qa2_run_readback": (QA2_RUN / "readback.json", QA2_RUN_READBACK),
         "qa2_report_manifest": (QA2_REPORT / "artifact-manifest.json", QA2_REPORT_MANIFEST),
         "qa2_report_readback": (QA2_REPORT / "readback.json", QA2_REPORT_READBACK),
+        "qa3_run_manifest": (QA3_RUN / "artifact-manifest.json", QA3_RUN_MANIFEST),
+        "qa3_run_readback": (QA3_RUN / "readback.json", QA3_RUN_READBACK),
+        "qa3_report_manifest": (QA3_REPORT / "artifact-manifest.json", QA3_REPORT_MANIFEST),
+        "qa3_report_readback": (QA3_REPORT / "readback.json", QA3_REPORT_READBACK),
+        "qa4_run_manifest": (QA4_RUN / "artifact-manifest.json", QA4_RUN_MANIFEST),
+        "qa4_run_readback": (QA4_RUN / "readback.json", QA4_RUN_READBACK),
+        "qa4_report_manifest": (QA4_REPORT / "artifact-manifest.json", QA4_REPORT_MANIFEST),
+        "qa4_report_readback": (QA4_REPORT / "readback.json", QA4_REPORT_READBACK),
     }
     checks = {
         name: {"path": str(path), "expected": expected, "actual": _sha(path)}
@@ -157,6 +237,10 @@ def validate_source_pins() -> dict[str, Any]:
         (V1_REPORT, "artifact-manifest.json"),
         (QA2_RUN, "artifact-manifest.json"),
         (QA2_REPORT, "artifact-manifest.json"),
+        (QA3_RUN, "artifact-manifest.json"),
+        (QA3_REPORT, "artifact-manifest.json"),
+        (QA4_RUN, "artifact-manifest.json"),
+        (QA4_REPORT, "artifact-manifest.json"),
     )
     artifact_checks = []
     for root, name in manifests:
@@ -777,6 +861,11 @@ def _fmt_pct(value: Any) -> str:
     return f"{_d(value) * 100:.2f}%"
 
 
+def _fmt_pct3(value: Any) -> str:
+    """Three decimals prevent a small negative return from displaying as -0.00%."""
+    return f"{_d(value) * 100:.3f}%"
+
+
 def _fmt_price(value: Any) -> str:
     """Keep the source Decimal's effective precision for trade-level auditing."""
     return format(_d(value), "f")
@@ -879,7 +968,8 @@ def report_text(*, tables: Mapping[str, Sequence[Mapping[str, Any]]],
 
     first_entry_rows = []
     for row in tables["first_entries"]:
-        first_entry_rows.append([row["scenario_name_zh"], row["signal_regime"],
+        first_entry_rows.append([row["scenario_name_zh"],
+                                 "高檔" if row["signal_regime"] == "HIGH" else "低檔",
                                  _fmt_money(row["available_cash_before_entry"]),
                                  _fmt_money(row["target_budget"]), _fmt_money(row["buy_total"]),
                                  _fmt_money(_d(row["available_cash_before_entry"])-_d(row["buy_total"]))])
@@ -896,7 +986,7 @@ def report_text(*, tables: Mapping[str, Sequence[Mapping[str, Any]]],
         method="訊號日收盤後才計算 MA21／MA144 並鎖定高檔／低檔；主口徑映射到次一正式交易日開盤。逐筆核對訊號日、成交日與持倉回合。",
         observations=[
             f"- v1.7 精確同值閘門：{parity['status']}；逐日 5,093 列、交易 181 筆、回合 91 筆均逐欄相同。",
-            "- 每次只有 MOTHER 或 EXIT；沒有 RESIZE、ADD、REDUCE 或第二個同時持倉。",
+            "- 每次只有買進或賣出；沒有調倉、加碼、減碼，也沒有第二個同時持倉。",
             "- 訊號收盤 20 基點只作配對敏感度，不納入主排名。",
         ],
         plain="今天收盤看到訊號，最早明天開盤成交；持有後市場變高檔或低檔都不會偷偷調倉。",
@@ -925,9 +1015,9 @@ def report_text(*, tables: Mapping[str, Sequence[Mapping[str, Any]]],
         impact="目前沒有證據支持把高檔壓到 50% 或 75%；兩者報酬下降且最大回落幾乎未改善。")
 
     rolling_rows = [[row["scenario_name_zh"],
-                     f"{_fmt_pct(row['worst_complete_3y_cagr'])}（{row['worst_complete_3y_start']}～{row['worst_complete_3y_end']}）",
-                     f"{_fmt_pct(row['worst_complete_5y_cagr'])}（{row['worst_complete_5y_start']}～{row['worst_complete_5y_end']}）",
-                     f"{_fmt_pct(row['worst_complete_10y_cagr'])}（{row['worst_complete_10y_start']}～{row['worst_complete_10y_end']}）"]
+                     f"{_fmt_pct3(row['worst_complete_3y_cagr'])}（{row['worst_complete_3y_start']}～{row['worst_complete_3y_end']}）",
+                     f"{_fmt_pct3(row['worst_complete_5y_cagr'])}（{row['worst_complete_5y_start']}～{row['worst_complete_5y_end']}）",
+                     f"{_fmt_pct3(row['worst_complete_10y_cagr'])}（{row['worst_complete_10y_start']}～{row['worst_complete_10y_end']}）"]
                     for row in ordered_main]
     add_section(section_titles[7],
         purpose="避免長樣本的漂亮年化報酬掩蓋投資人可能實際遇到的差勁三年、五年或十年。",
@@ -1032,11 +1122,12 @@ def report_text(*, tables: Mapping[str, Sequence[Mapping[str, Any]]],
         method="完整研究在記憶體獨立跑兩次後比正規化 SHA-256；輸出再建立 artifact manifest、逐檔 readback、Markdown 連結與圖表中文標籤稽核。",
         observations=[
             f"- 雙重重播 SHA-256：`{replay_digest}`，兩次完全相同。",
-            f"- v1.7、上一研究與本研究 v1 來源釘選：{sources['status']}。",
+            f"- v1.7、上一研究與本研究 v1／qa2／qa3／qa4 來源釘選：{sources['status']}。",
             "- 資料套件 SHA-256、完整規格與重跑命令見 [research-contract.json](research-contract.json)。",
+            "- qa4 與 qa5 的 CSV 變更契約見 [qa4-qa5-csv-change-contract.json](qa4-qa5-csv-change-contract.json)：只有 12 個核心分割列的四個 schema 欄位可變，其餘 CSV 逐位元一致。",
             "- 圖表中文標籤稽核見 [chart-label-audit.json](chart-label-audit.json)，報告連結稽核見 [link-validation.json](link-validation.json)。",
         ],
-        plain="相同輸入會得到相同結果；這次只新增 qa2 目錄，不會把舊正式檔案悄悄換掉。",
+        plain="相同輸入會得到相同結果；這次只新增 qa5 目錄，v1、qa2、qa3、qa4 均維持唯讀且未覆寫。",
         impact="可重現性通過，但仍需 00 對計算與程式作獨立 QA 才能進下一步。")
 
     add_section(section_titles[13],
@@ -1242,8 +1333,8 @@ def _replay_payload(matrix: Mapping[str, Any]) -> dict[str, Any]:
 
 def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
               report_root: Path = REPORT_ROOT_DEFAULT) -> dict[str, Any]:
-    if run_root.resolve() in {SEALED_RUN.resolve(), PRIOR_RUN.resolve(), V1_RUN.resolve(), QA2_RUN.resolve()} or report_root.resolve() in {
-        SEALED_REPORT.resolve(), PRIOR_REPORT.resolve(), V1_REPORT.resolve(), QA2_REPORT.resolve()
+    if run_root.resolve() in {SEALED_RUN.resolve(), PRIOR_RUN.resolve(), V1_RUN.resolve(), QA2_RUN.resolve(), QA3_RUN.resolve(), QA4_RUN.resolve()} or report_root.resolve() in {
+        SEALED_REPORT.resolve(), PRIOR_REPORT.resolve(), V1_REPORT.resolve(), QA2_REPORT.resolve(), QA3_REPORT.resolve(), QA4_REPORT.resolve()
     }:
         raise ETF0050Error("output root overlaps a protected source")
     sources_before = validate_source_pins()
@@ -1281,7 +1372,10 @@ def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
         )}
         corporate_actions.extend({**meta, "sleeve": "TACTICAL", **row}
                                  for row in item["tactical"]["splits"])
-        corporate_actions.extend({**meta, "sleeve": "CORE", **row}
+        corporate_actions.extend({**meta, "sleeve": "CORE", **row,
+                                  "type": "SPLIT_REBASE_ONLY",
+                                  "ratio": package.split.ratio,
+                                  "transaction": False, "pnl": Decimal("0")}
                                  for row in item["core"]["transactions"]
                                  if row.get("role") == "SPLIT_REBASE_ONLY")
     run_root.mkdir(parents=True, exist_ok=False)
@@ -1305,6 +1399,10 @@ def run_study(*, run_root: Path = RUN_ROOT_DEFAULT,
         {"comparison": "上一組合候選", **prior_row},
         *({"comparison": row["label"], **row} for row in benchmark_rows),
     ])
+    csv_parity = csv_change_contract(QA4_RUN, run_root)
+    _write_json(run_root / "qa4-qa5-csv-change-contract.json", csv_parity)
+    if csv_parity["status"] != "PASS_NAMED_SCHEMA_REPAIR_ONLY":
+        raise ETF0050Error(f"qa4/qa5 CSV change contract failed: {csv_parity}")
     _write_json(run_root / "v1-7-exact-parity.json", parity)
     _write_json(run_root / "source-pins.json", sources_before)
     contract = {
@@ -1461,6 +1559,14 @@ def validate(*, run_root: Path = RUN_ROOT_DEFAULT,
         and "固定初始防守" in trade_text_value
     )
     chart_audit = json.loads((run_root / "chart-label-audit.json").read_text(encoding="utf-8-sig"))
+    csv_parity = json.loads((run_root / "qa4-qa5-csv-change-contract.json").read_text(encoding="utf-8-sig"))
+    human_markdown = report_text_value + "\n" + trade_text_value
+    forbidden_human_codes = ("HIGH", "LOW", "MOTHER", "EXIT", "RESIZE", "ADD", "REDUCE")
+    human_readability_contract = (
+        not any(re.search(rf"\b{code}\b", human_markdown) for code in forbidden_human_codes)
+        and "這次只新增 qa5 目錄，v1、qa2、qa3、qa4 均維持唯讀且未覆寫" in report_text_value
+        and "-0.00%" not in report_text_value
+    )
     entries = [row for row in tx if row.get("sleeve") == "TACTICAL" and row.get("role") == "MOTHER"]
     sizing_ok = all(
         (row["signal_regime"] == "LOW" and _d(row["entry_budget_fraction"]) == 1)
@@ -1475,6 +1581,8 @@ def validate(*, run_root: Path = RUN_ROOT_DEFAULT,
               and len(summaries) == 24 and len(main) == 6 and len(concentration) == 24
               and sizing_ok and no_negative_cash and section_contract and navigation_contract
               and readable_trade_contract and chart_audit["status"] == "PASS"
+              and csv_parity["status"] == "PASS_NAMED_SCHEMA_REPAIR_ONLY"
+              and human_readability_contract
               and validate_source_pins()["status"] == "PASS_EXACT"
               else "FAIL",
               "run_mismatches": run_bad, "report_mismatches": report_bad,
@@ -1486,6 +1594,8 @@ def validate(*, run_root: Path = RUN_ROOT_DEFAULT,
               "navigation_and_trade_details": navigation_contract,
               "trade_price_precision_and_exit_labels": readable_trade_contract,
               "chart_labels": chart_audit["status"], "network_used": False,
+              "qa4_qa5_csv_change_contract": csv_parity["status"],
+              "human_readability_no_internal_codes_or_negative_zero": human_readability_contract,
               "writes_performed": False}
     return result
 

@@ -47,6 +47,12 @@ def test_matrix_contract_is_exactly_six_main_combinations():
     }
 
 
+def test_reader_facing_formatters_avoid_negative_zero_and_internal_exit_codes():
+    assert study._fmt_pct3(Decimal("-0.00003799936020942862")) == "-0.004%"
+    assert study._exit_reason_zh("MACD_RED_TO_GREEN") == "MACD 翻綠"
+    assert study._exit_reason_zh("INITIAL_PROTECTIVE_STOP") == "固定初始防守"
+
+
 def test_core_zero_high_100_is_exact_v17_parity(main_scenarios, monkeypatch, tmp_path):
     # The paths are environment-owned formal artifacts; skip only when a developer
     # intentionally runs this unit file without the shared workdata root.

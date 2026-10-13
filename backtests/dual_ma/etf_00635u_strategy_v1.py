@@ -45,12 +45,15 @@ class EntryPolicy(str, Enum):
     ORIGINAL = "ORIGINAL_HIGH_AND_LOW"
     STRICT_HIGH_ONLY = "STRICT_MA21_GT_MA144_ONLY"
     MACD_ONLY = "MACD_ONLY_NO_MA_DECISIONS"
+    KD_CYCLE_C = "KD_CYCLE_LOW_AND_ORIGINAL_HIGH"
+    KD_CYCLE_D = "KD_CYCLE_ALL_MARKET_NO_MA144_DECISIONS"
 
 
 class EntryType(str, Enum):
     HIGH_MA21 = "HIGH_REGIME_MA21_BREAKOUT"
     LOW_MACD = "LOW_REGIME_MACD_GREEN_TO_RED"
     MACD_ONLY = "MACD_ONLY_GREEN_TO_RED"
+    KD_CYCLE = "KD_9_55_55_HIGHER_LOW_MA21_BREAKOUT"
 
 
 class ExitReason(str, Enum):
@@ -400,8 +403,10 @@ def _ready(
     entry_policy: EntryPolicy = EntryPolicy.ORIGINAL,
 ) -> bool:
     common = row.macd_histogram is not None
-    if entry_policy != EntryPolicy.MACD_ONLY:
+    if entry_policy not in (EntryPolicy.MACD_ONLY, EntryPolicy.KD_CYCLE_D):
         common = common and row.sma21 is not None and row.sma144 is not None
+    elif entry_policy == EntryPolicy.KD_CYCLE_D:
+        common = common and row.sma21 is not None
     if strategy == StrategyVersion.B:
         return common and row.k is not None and row.d is not None
     return common
@@ -824,6 +829,7 @@ def _exit_signal(
 
     if config.strategy == StrategyVersion.B and (
         position.entry_type == EntryType.HIGH_MA21
+        or position.entry_type == EntryType.KD_CYCLE
         or config.entry_policy == EntryPolicy.MACD_ONLY
     ):
         if stop_hit:

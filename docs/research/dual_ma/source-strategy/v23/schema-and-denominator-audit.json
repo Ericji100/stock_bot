@@ -1,0 +1,1 @@
+{"annual_rows":980,"execution_does_not_inflate_group_denominator":true,"execution_versions":["v4 NEXT_SESSION_OPEN/20bps","v1 SIGNAL_CLOSE/20bps"],"expected_annual_rows":980,"group_count":98,"group_identity_count":98,"methods":["BASELINE","KD","NATIVE"],"required_zh_fields":true,"status":"PASS"}

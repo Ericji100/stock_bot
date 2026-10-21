@@ -1,0 +1,14 @@
+{
+  "reference_annual": {
+    "bytes": 408605,
+    "sha256": "9843e36f62b315b98e3cc304ef0dacd5fa8322f82b0458fb11252e7b95f89b15"
+  },
+  "reference_five_year": {
+    "bytes": 126093,
+    "sha256": "1d7456f4463e6450a580e1770d3b5e3861e5c53ab9d24bd9e72e44dd483af64c"
+  },
+  "trades": {
+    "bytes": 36350949,
+    "sha256": "8dc9bae863815f4f2133d9c63e0d2cb0b9e3d3fd4d2e51aa5fc0d6fb980cf958"
+  }
+}

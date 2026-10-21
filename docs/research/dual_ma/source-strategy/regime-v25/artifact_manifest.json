@@ -1,0 +1,61 @@
+{
+  "file_count": 11,
+  "files": [
+    {
+      "bytes": 45885,
+      "path": "entry-regime-causality-audit.json",
+      "sha256": "37ce4ce4339eeb25d71f5e1b041a3c5b2b742ce71ba1a331f907c4d8ec8c9646"
+    },
+    {
+      "bytes": 379,
+      "path": "high-low-all-parity-audit.json",
+      "sha256": "f11185f0b31a2a11c4368d60f11e2d0b7846a3b020822ebb8216675e5be6aa98"
+    },
+    {
+      "bytes": 405,
+      "path": "input_manifest.json",
+      "sha256": "d2fb10bd9fcaf005c597b745ae0d34e29ad026afbd56f180eccbba486d848b28"
+    },
+    {
+      "bytes": 288,
+      "path": "report-contract-audit.json",
+      "sha256": "a323f9869c62ed4fd1a13a164261d8104e7450e0dbd4fe7c34f43a5e36d54b58"
+    },
+    {
+      "bytes": 387,
+      "path": "REPORT_zh.md",
+      "sha256": "bf3566439c845f9a98540a4bf9038c558db6b0cf0fdd098a60101b4de1919bc4"
+    },
+    {
+      "bytes": 247797,
+      "path": "v1-new9-regime-annual.csv",
+      "sha256": "8afc27562e9006c4e3a66bfab5fa76dafe9b598c7cdf6e31b32671246fead8a0"
+    },
+    {
+      "bytes": 102092,
+      "path": "v1-new9-regime-five-year.csv",
+      "sha256": "e7c882eeb3300ff0a659ad1ab67b85e1357a9936f3261635d5c549a85416c9f7"
+    },
+    {
+      "bytes": 3920,
+      "path": "v1-new9-regime-warmup-hold.csv",
+      "sha256": "f457b7d5317bd2dab2b583d7b3e609158bc075164cd1bfdea2e0388b12080f7f"
+    },
+    {
+      "bytes": 18494,
+      "path": "V1_新九策略_多頭結構報告.md",
+      "sha256": "4c858f589fa2aaf1b566ac674b7151b1ec49fb2c9cb0616a34b80d79915a8f17"
+    },
+    {
+      "bytes": 17387,
+      "path": "V1_新九策略_非多頭結構報告.md",
+      "sha256": "72581e76a271868dcfbfbd6dd3f6bf224bf958f9d311b92861cd9d5a0ddb9069"
+    },
+    {
+      "bytes": 12476,
+      "path": "V1_新九策略_高低結構總覽.md",
+      "sha256": "9ab1543b078bcab36788b09660465230cd6f69728f459ca018405258bc825469"
+    }
+  ],
+  "tree_fingerprint": "5139f28fa58ec9f922959bcbbf7882721d23788384172cfd2add6bb9e3db17ae"
+}

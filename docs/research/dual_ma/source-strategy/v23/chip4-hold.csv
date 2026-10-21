@@ -1,0 +1,15 @@
+﻿source,source_zh,strategy_id,strategy_zh,status,included_in_98_group_ranking
+chip_4,第八來源 chip_4,A_MEDIUM,基本進場；5/21 中期均線結構出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,A_LONG,基本進場；21/144 長期均線結構出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,B_MEDIUM,距近期低點不超過 7% 進場；5/21 中期均線結構出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,B_LONG,距近期低點不超過 7% 進場；21/144 長期均線結構出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,C_LONG,收盤高於 21 日線至少 5% 進場；21/144 長期均線結構出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P1_E1,MA21 結構突破進場；固定結構防守；MACD 轉弱備援出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P1_E2,MA21 結構突破進場；固定結構防守；費後達 2R 後 KD 死叉出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P1_E3,MA21 結構突破進場；只升不降的道氏防線；MACD 轉弱備援出場,NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P2_E1,"MACD(21,55,55) 綠翻紅進場；固定結構防守；MACD 轉弱備援出場",NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P2_E2,"MACD(21,55,55) 綠翻紅進場；固定結構防守；費後達 2R 後 KD 死叉出場",NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P2_E3,"MACD(21,55,55) 綠翻紅進場；只升不降的道氏防線；MACD 轉弱備援出場",NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P3_E1,"KD(9,9,55) 二次回檔後突破 MA21進場；固定結構防守；MACD 轉弱備援出場",NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P3_E2,"KD(9,9,55) 二次回檔後突破 MA21進場；固定結構防守；費後達 2R 後 KD 死叉出場",NO_COMPARABLE_DATA/HOLD,False
+chip_4,第八來源 chip_4,P3_E3,"KD(9,9,55) 二次回檔後突破 MA21進場；只升不降的道氏防線；MACD 轉弱備援出場",NO_COMPARABLE_DATA/HOLD,False

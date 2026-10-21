@@ -1,0 +1,129 @@
+{
+  "annual_cell_count_each_year": 35,
+  "artifacts": [
+    {
+      "bytes": 19439,
+      "path": "2022-2026-source-strategy-overview.md",
+      "sha256": "94BD01D88DFA01E990C44E5ECD5C1D35A3D24578859C9BBA78F61E6D39510615"
+    },
+    {
+      "bytes": 20554,
+      "path": "2022-source-strategy-report.md",
+      "sha256": "6A5E6C892AE9D395766EEC7A413EFCE1B2D39B8DD9E56824FF7025A5ED36C649"
+    },
+    {
+      "bytes": 20494,
+      "path": "2023-source-strategy-report.md",
+      "sha256": "550B7F799CC632A044B94ABE4ABFB564B68254310C128071CE6241036086D585"
+    },
+    {
+      "bytes": 20946,
+      "path": "2024-source-strategy-report.md",
+      "sha256": "8DD5B613E0C3F1B1A5D53C939967A001530CCA97EF9955EF5F2D5E7200CC7FC0"
+    },
+    {
+      "bytes": 21146,
+      "path": "2025-source-strategy-report.md",
+      "sha256": "099350D524B9AA621E352FD6CFE34DA04E0A79F7E2C5F4D7A64A970C621E02C7"
+    },
+    {
+      "bytes": 21525,
+      "path": "2026-source-strategy-report.md",
+      "sha256": "9C7FED2F12D84ABB95AABC1858803B85A7A2B81730E8E8AE1422868A60D5ADB4"
+    },
+    {
+      "bytes": 1403710,
+      "path": "details/2022-source-strategy-complete-detail.csv",
+      "sha256": "BE873A710BF596C29A79893D41F7BCBC3FD06B0AA6A6AAB947C727F2C789718A"
+    },
+    {
+      "bytes": 11151,
+      "path": "details/2022-source-strategy-complete-detail.md",
+      "sha256": "86ADA01E4B5173F9A8551C29E93D3A09A131FBFA82DE52722235A4298E8647D6"
+    },
+    {
+      "bytes": 9794270,
+      "path": "details/2023-source-strategy-complete-detail.csv",
+      "sha256": "CDE8F68A6640E8C58EDA8157A543C5BDFA5FE5041386CFA398156CB5B9541E39"
+    },
+    {
+      "bytes": 12288,
+      "path": "details/2023-source-strategy-complete-detail.md",
+      "sha256": "4FF14B99C4701E2274E3131A0F415B06A4AF28BAEBBEBC25AB93C081789A9B58"
+    },
+    {
+      "bytes": 9714375,
+      "path": "details/2024-source-strategy-complete-detail.csv",
+      "sha256": "DDEE114B6C2D4A4685D0F7B4F9A1FA8C9D57AADB91BF86FF4CEFF5A99E6A2B88"
+    },
+    {
+      "bytes": 12465,
+      "path": "details/2024-source-strategy-complete-detail.md",
+      "sha256": "E488B402AD2934F45CDAE7B9693E6AF6A23382C0862B0144CD55DFA196A73437"
+    },
+    {
+      "bytes": 6780337,
+      "path": "details/2025-source-strategy-complete-detail.csv",
+      "sha256": "4EEDBC7F9B828CBECDB2592B167CEE61525A6CBBCCA466FCF97A410F83BCED77"
+    },
+    {
+      "bytes": 15240,
+      "path": "details/2025-source-strategy-complete-detail.md",
+      "sha256": "689B4FFB2F741E6CDDC280C6E0083BC3DA5730674F5E136290342C039CAADB88"
+    },
+    {
+      "bytes": 6685720,
+      "path": "details/2026-source-strategy-complete-detail.csv",
+      "sha256": "27D0F297E3DD097EAB3D8ED4FEACFF4F06B496CFEEBDC128026D129CE9679409"
+    },
+    {
+      "bytes": 17779,
+      "path": "details/2026-source-strategy-complete-detail.md",
+      "sha256": "C073A9E9144E0C889AD1C044C0C94F883F39AF798893B04BE68AAB32D8343574"
+    },
+    {
+      "bytes": 613450,
+      "path": "external_inputs_unchanged.json",
+      "sha256": "1B8B3DC956ECBFE4D61E889FF5E0ED511A7E165412DED56DE5B640D424BC8743"
+    },
+    {
+      "bytes": 426758,
+      "path": "input_manifest.json",
+      "sha256": "7C6922E72C95EF4335CADD4A0797B4BDF6FF838D997ED7C9B52671262A604CE4"
+    },
+    {
+      "bytes": 165351,
+      "path": "old_artifacts_unchanged.json",
+      "sha256": "8BBF593440DBDB184625BC22495E9FBC49F6E563B69F7887CC96B8D82642DBB1"
+    },
+    {
+      "bytes": 116297,
+      "path": "source-strategy-annual.csv",
+      "sha256": "369AE4F50753A2EC79138EBE2E4A193B8780010F3BEEB9082D302FFBBC95494A"
+    },
+    {
+      "bytes": 27228,
+      "path": "source-strategy-five-year.csv",
+      "sha256": "04F3F9094CF1E8698F93FDCB06C518D1454BC182E3696C4EDBB132420664255B"
+    },
+    {
+      "bytes": 619,
+      "path": "validation/metric-validation.json",
+      "sha256": "3BE2DF18FB167E0D687B7F42A2F21C807D0E9FFB3B11B87793E0A92BDAAEAD20"
+    },
+    {
+      "bytes": 47880,
+      "path": "validation/rate-sample-checks.json",
+      "sha256": "3D1182032293DA35300AF28096D6BE8FCCED9BD68254E5BFF321D065DB44A59A"
+    }
+  ],
+  "contract_sha256": "BE3AA7A31276AF751CF467ABDD118E0CC9C9AB40A3D1BFD71985E893E6BA9455",
+  "five_year_cell_count": 35,
+  "git_commit": "5d60714237ce98f7ce3dec6adfbcaa4a0a688240",
+  "human_report_count": 11,
+  "human_report_machine_term_hits": 0,
+  "protected_old_artifacts_all_unchanged": true,
+  "report_only": true,
+  "report_version": "v2",
+  "status": "STOP_WAIT_00_QA"
+}

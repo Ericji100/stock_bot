@@ -1,0 +1,16 @@
+{
+  "schema": "stock-data-current-v1",
+  "status": "ACTIVE",
+  "release_id": "2026-09-30-v3",
+  "release_path": "versions/2026-09-30-v3",
+  "release_manifest_sha256": "D50A2F8435A6C8E9288FE1EF6711646CE5E997AAD0199FDFE976B3D62724BC32",
+  "tree_fingerprint": "AD9EA37774C63F65CF9663692556EB6E3568F076E55EBF3FF6C6543CBA3AA856",
+  "integration_dataset_snapshot_id": "56488E12A5C3A8787FBC4847071665DBC15D40FB0E4C6B40574FEA77884097D2",
+  "cutoff_date": "2026-09-30",
+  "selection_date_count": 5098,
+  "etf_status": {
+    "0050": "ACCEPTED_CANONICAL",
+    "00635U": "ACCEPTED_CANONICAL"
+  },
+  "deletion_authorized": false
+}

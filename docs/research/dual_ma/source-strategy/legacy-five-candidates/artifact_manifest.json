@@ -1,0 +1,54 @@
+{
+  "annual_row_count": 25,
+  "artifacts": [
+    {
+      "bytes": 5924,
+      "path": "candidate-annual.csv",
+      "sha256": "3E4BF7F1A512F5C84DF4F3CB46895B0EA9893933B043503975ED8A5D88151E5A"
+    },
+    {
+      "bytes": 37130,
+      "path": "candidate-monthly.csv",
+      "sha256": "24F2CE01B7A9D09B7DFE7F1F5B7E70029B4DB499225666DC9AA18C77A635D40E"
+    },
+    {
+      "bytes": 2801,
+      "path": "candidate-overlap.csv",
+      "sha256": "2FA01F2521E66E0C557BD896AD37D5BEAA2F7960824F1BD8CA0275EAEEF5BF99"
+    },
+    {
+      "bytes": 13428,
+      "path": "candidate-quarterly.csv",
+      "sha256": "A8BECC90D2231392D0C901D8181DAD854D9974DC1F5BB1DE5E9FE1507429614D"
+    },
+    {
+      "bytes": 173045,
+      "path": "candidate-stock-contribution.csv",
+      "sha256": "DF69F792FF2789D3EF45BAB0595F20ADC86A824D1613F0F2141BD1BBF7032837"
+    },
+    {
+      "bytes": 4827,
+      "path": "candidate-summary.csv",
+      "sha256": "DE13C01ECC8B99ED8459338A6912435E1B2983A84FC7347E3B66FB5C22234DAB"
+    },
+    {
+      "bytes": 1963,
+      "path": "candidate-version-comparison.csv",
+      "sha256": "B3E731D2C41D2910F3AF050CC607E8175EA223DE88F07E70C31FB27A8B304E79"
+    },
+    {
+      "bytes": 4000,
+      "path": "input_manifest.json",
+      "sha256": "2A7E156BC5EF923630D857D2B01EE2C3E9A02353518A75C183822B3D64F8CB18"
+    },
+    {
+      "bytes": 10004,
+      "path": "report.md",
+      "sha256": "390E2AF7C0D68D50C7792F22CB08CA9503F2ED947905DD10FDDD16938112324A"
+    }
+  ],
+  "candidate_count": 5,
+  "overlap_pair_count": 10,
+  "report_only": true,
+  "status": "STOP_WAIT_00_QA"
+}

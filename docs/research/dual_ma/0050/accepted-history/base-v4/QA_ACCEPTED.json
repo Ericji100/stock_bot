@@ -1,0 +1,32 @@
+{
+  "status": "QA_ACCEPTED",
+  "accepted_at": "2026-10-07",
+  "report_format": "standard-backtest-report-v2",
+  "lifecycle": "dual-ma-0050-continuous-regime-cycles-v1",
+  "source_run": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-etf-0050-long-term-monitor-v1",
+  "runner_commit": "6bb749c",
+  "artifact_manifest_sha256": "16370eb9b245c9c1d3ce075ddfcbae5de8e9139a3839f02a85488001d7ce557d",
+  "readback_sha256": "366fdcc7bb4c554f467c0942e9b85c652f7c37b82a070e1c3878634586751c94",
+  "checks": {
+    "targeted_tests": "29/29 PASS",
+    "artifact_hash_readback": "15/15 PASS",
+    "scenario_rows": 7,
+    "calendar_year_rows": 35,
+    "daily_rows": 9157,
+    "trade_rows": 49,
+    "transaction_rows": 103,
+    "annual_opening_equals_prior_ending": "35/35 PASS",
+    "annual_returns_reconcile_to_final_equity": "7/7 PASS",
+    "trade_details_reconcile_to_final_equity": "7/7 PASS",
+    "raw_price_and_cost_reproduction": "103/103 PASS",
+    "minimum_cash_nonnegative": "PASS",
+    "signal_opportunity_audit": "30 rows PASS",
+    "a_medium_post_2022_reentry": "PASS; 27 entries across multiple years",
+    "old_regime_lock_rejections": "0",
+    "zero_trade_explanations": "B_MEDIUM and C_LONG explicit",
+    "split_handling": "2025-06-18 state action only; zero transactions",
+    "svg_xml": "2/2 PASS",
+    "source_and_old_runs_overwritten": false
+  },
+  "calendar_note": "0050 was suspended for its split on 2025-06-11 through 2025-06-17, so the ETF curve has no price rows on those five market-index dates."
+}

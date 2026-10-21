@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="680" viewBox="0 0 1240 680">
+<rect width="100%" height="100%" fill="white"/>
+<text x="70" y="34" font-size="22" font-weight="bold">逐年報酬比較</text>
+<style>text{font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;fill:#111827}.grid{stroke:#e5e7eb;stroke-width:1}.axis{stroke:#6b7280;stroke-width:1.2}</style>
+<line class="grid" x1="82" y1="58.0" x2="1206" y2="58.0"/>
+<text x="72" y="63.0" text-anchor="end" font-size="12">93%</text>
+<line class="grid" x1="82" y1="161.4" x2="1206" y2="161.4"/>
+<text x="72" y="166.4" text-anchor="end" font-size="12">64%</text>
+<line class="grid" x1="82" y1="264.8" x2="1206" y2="264.8"/>
+<text x="72" y="269.8" text-anchor="end" font-size="12">35%</text>
+<line class="grid" x1="82" y1="368.2" x2="1206" y2="368.2"/>
+<text x="72" y="373.2" text-anchor="end" font-size="12">5%</text>
+<line class="grid" x1="82" y1="471.6" x2="1206" y2="471.6"/>
+<text x="72" y="476.6" text-anchor="end" font-size="12">-24%</text>
+<line class="grid" x1="82" y1="575.0" x2="1206" y2="575.0"/>
+<text x="72" y="580.0" text-anchor="end" font-size="12">-53%</text>
+<rect x="87.2" y="337.3" width="7.5" height="50.2" fill="#2563eb"/>
+<rect x="96.1" y="343.3" width="7.5" height="44.2" fill="#dc2626"/>
+<rect x="105.0" y="311.8" width="7.5" height="75.7" fill="#16a34a"/>
+<rect x="113.9" y="311.4" width="7.5" height="76.1" fill="#7c3aed"/>
+<rect x="122.9" y="295.5" width="7.5" height="92.0" fill="#d97706"/>
+<text x="108.8" y="598" text-anchor="middle" font-size="11">2006</text>
+<rect x="140.7" y="340.9" width="7.5" height="46.6" fill="#2563eb"/>
+<rect x="149.6" y="334.5" width="7.5" height="53.0" fill="#dc2626"/>
+<rect x="158.5" y="352.1" width="7.5" height="35.4" fill="#16a34a"/>
+<rect x="167.5" y="349.8" width="7.5" height="37.7" fill="#7c3aed"/>
+<rect x="176.4" y="343.4" width="7.5" height="44.1" fill="#d97706"/>
+<text x="162.3" y="598" text-anchor="middle" font-size="11">2007</text>
+<rect x="194.2" y="387.5" width="7.5" height="25.0" fill="#2563eb"/>
+<rect x="203.1" y="387.5" width="7.5" height="32.3" fill="#dc2626"/>
+<rect x="212.1" y="387.5" width="7.5" height="137.8" fill="#16a34a"/>
+<rect x="221.0" y="387.5" width="7.5" height="151.6" fill="#7c3aed"/>
+<rect x="229.9" y="387.5" width="7.5" height="151.8" fill="#d97706"/>
+<text x="215.8" y="598" text-anchor="middle" font-size="11">2008</text>
+<rect x="247.7" y="184.5" width="7.5" height="203.0" fill="#2563eb"/>
+<rect x="256.7" y="195.4" width="7.5" height="192.1" fill="#dc2626"/>
+<rect x="265.6" y="178.2" width="7.5" height="209.3" fill="#16a34a"/>
+<rect x="274.5" y="123.4" width="7.5" height="264.1" fill="#7c3aed"/>
+<rect x="283.4" y="93.7" width="7.5" height="293.8" fill="#d97706"/>
+<text x="269.3" y="598" text-anchor="middle" font-size="11">2009</text>
+<rect x="301.3" y="347.8" width="7.5" height="39.7" fill="#2563eb"/>
+<rect x="310.2" y="356.6" width="7.5" height="30.9" fill="#dc2626"/>
+<rect x="319.1" y="349.3" width="7.5" height="38.2" fill="#16a34a"/>
+<rect x="328.0" y="341.8" width="7.5" height="45.7" fill="#7c3aed"/>
+<rect x="337.0" y="339.6" width="7.5" height="47.9" fill="#d97706"/>
+<text x="322.9" y="598" text-anchor="middle" font-size="11">2010</text>
+<rect x="354.8" y="387.5" width="7.5" height="44.7" fill="#2563eb"/>
+<rect x="363.7" y="387.5" width="7.5" height="40.6" fill="#dc2626"/>
+<rect x="372.6" y="387.5" width="7.5" height="46.4" fill="#16a34a"/>
+<rect x="381.6" y="387.5" width="7.5" height="55.1" fill="#7c3aed"/>
+<rect x="390.5" y="387.5" width="7.5" height="63.4" fill="#d97706"/>
+<text x="376.4" y="598" text-anchor="middle" font-size="11">2011</text>
+<rect x="408.3" y="346.8" width="7.5" height="40.7" fill="#2563eb"/>
+<rect x="417.2" y="340.0" width="7.5" height="47.5" fill="#dc2626"/>
+<rect x="426.2" y="355.0" width="7.5" height="32.5" fill="#16a34a"/>
+<rect x="435.1" y="345.8" width="7.5" height="41.7" fill="#7c3aed"/>
+<rect x="444.0" y="341.9" width="7.5" height="45.6" fill="#d97706"/>
+<text x="429.9" y="598" text-anchor="middle" font-size="11">2012</text>
+<rect x="461.8" y="387.5" width="7.5" height="10.1" fill="#2563eb"/>
+<rect x="470.8" y="387.5" width="7.5" height="4.6" fill="#dc2626"/>
+<rect x="479.7" y="355.7" width="7.5" height="31.8" fill="#16a34a"/>
+<rect x="488.6" y="346.3" width="7.5" height="41.2" fill="#7c3aed"/>
+<rect x="497.5" y="334.1" width="7.5" height="53.4" fill="#d97706"/>
+<text x="483.4" y="598" text-anchor="middle" font-size="11">2013</text>
+<rect x="515.4" y="334.2" width="7.5" height="53.3" fill="#2563eb"/>
+<rect x="524.3" y="337.1" width="7.5" height="50.4" fill="#dc2626"/>
+<rect x="533.2" y="342.2" width="7.5" height="45.3" fill="#16a34a"/>
+<rect x="542.1" y="329.4" width="7.5" height="58.1" fill="#7c3aed"/>
+<rect x="551.0" y="347.3" width="7.5" height="40.2" fill="#d97706"/>
+<text x="537.0" y="598" text-anchor="middle" font-size="11">2014</text>
+<rect x="568.9" y="387.5" width="7.5" height="41.6" fill="#2563eb"/>
+<rect x="577.8" y="387.5" width="7.5" height="41.1" fill="#dc2626"/>
+<rect x="586.7" y="387.5" width="7.5" height="16.9" fill="#16a34a"/>
+<rect x="595.7" y="387.5" width="7.5" height="22.0" fill="#7c3aed"/>
+<rect x="604.6" y="387.5" width="7.5" height="24.2" fill="#d97706"/>
+<text x="590.5" y="598" text-anchor="middle" font-size="11">2015</text>
+<rect x="622.4" y="345.5" width="7.5" height="42.0" fill="#2563eb"/>
+<rect x="631.3" y="341.3" width="7.5" height="46.2" fill="#dc2626"/>
+<rect x="640.3" y="335.8" width="7.5" height="51.7" fill="#16a34a"/>
+<rect x="649.2" y="318.3" width="7.5" height="69.2" fill="#7c3aed"/>
+<rect x="658.1" y="332.5" width="7.5" height="55.0" fill="#d97706"/>
+<text x="644.0" y="598" text-anchor="middle" font-size="11">2016</text>
+<rect x="675.9" y="364.4" width="7.5" height="23.1" fill="#2563eb"/>
+<rect x="684.9" y="363.0" width="7.5" height="24.5" fill="#dc2626"/>
+<rect x="693.8" y="339.2" width="7.5" height="48.3" fill="#16a34a"/>
+<rect x="702.7" y="323.8" width="7.5" height="63.7" fill="#7c3aed"/>
+<rect x="711.6" y="318.7" width="7.5" height="68.8" fill="#d97706"/>
+<text x="697.5" y="598" text-anchor="middle" font-size="11">2017</text>
+<rect x="729.5" y="387.5" width="7.5" height="18.9" fill="#2563eb"/>
+<rect x="738.4" y="387.5" width="7.5" height="2.0" fill="#dc2626"/>
+<rect x="747.3" y="387.5" width="7.5" height="12.5" fill="#16a34a"/>
+<rect x="756.2" y="387.5" width="7.5" height="17.5" fill="#7c3aed"/>
+<rect x="765.1" y="387.5" width="7.5" height="17.0" fill="#d97706"/>
+<text x="751.0" y="598" text-anchor="middle" font-size="11">2018</text>
+<rect x="783.0" y="290.3" width="7.5" height="97.2" fill="#2563eb"/>
+<rect x="791.9" y="286.1" width="7.5" height="101.4" fill="#dc2626"/>
+<rect x="800.8" y="303.1" width="7.5" height="84.4" fill="#16a34a"/>
+<rect x="809.7" y="269.6" width="7.5" height="117.9" fill="#7c3aed"/>
+<rect x="818.7" y="285.5" width="7.5" height="102.0" fill="#d97706"/>
+<text x="804.6" y="598" text-anchor="middle" font-size="11">2019</text>
+<rect x="836.5" y="304.4" width="7.5" height="83.1" fill="#2563eb"/>
+<rect x="845.4" y="294.4" width="7.5" height="93.1" fill="#dc2626"/>
+<rect x="854.3" y="307.0" width="7.5" height="80.5" fill="#16a34a"/>
+<rect x="863.3" y="277.8" width="7.5" height="109.7" fill="#7c3aed"/>
+<rect x="872.2" y="291.9" width="7.5" height="95.6" fill="#d97706"/>
+<text x="858.1" y="598" text-anchor="middle" font-size="11">2020</text>
+<rect x="890.0" y="386.9" width="7.5" height="0.8" fill="#2563eb"/>
+<rect x="899.0" y="383.9" width="7.5" height="3.6" fill="#dc2626"/>
+<rect x="907.9" y="327.1" width="7.5" height="60.4" fill="#16a34a"/>
+<rect x="916.8" y="309.6" width="7.5" height="77.9" fill="#7c3aed"/>
+<rect x="925.7" y="292.1" width="7.5" height="95.4" fill="#d97706"/>
+<text x="911.6" y="598" text-anchor="middle" font-size="11">2021</text>
+<rect x="943.6" y="387.5" width="7.5" height="23.9" fill="#2563eb"/>
+<rect x="952.5" y="387.5" width="7.5" height="29.2" fill="#dc2626"/>
+<rect x="961.4" y="387.5" width="7.5" height="58.6" fill="#16a34a"/>
+<rect x="970.3" y="387.5" width="7.5" height="75.3" fill="#7c3aed"/>
+<rect x="979.2" y="387.5" width="7.5" height="65.8" fill="#d97706"/>
+<text x="965.1" y="598" text-anchor="middle" font-size="11">2022</text>
+<rect x="997.1" y="351.5" width="7.5" height="36.0" fill="#2563eb"/>
+<rect x="1006.0" y="340.0" width="7.5" height="47.5" fill="#dc2626"/>
+<rect x="1014.9" y="318.4" width="7.5" height="69.1" fill="#16a34a"/>
+<rect x="1023.8" y="290.8" width="7.5" height="96.7" fill="#7c3aed"/>
+<rect x="1032.8" y="276.5" width="7.5" height="111.0" fill="#d97706"/>
+<text x="1018.7" y="598" text-anchor="middle" font-size="11">2023</text>
+<rect x="1050.6" y="279.7" width="7.5" height="107.8" fill="#2563eb"/>
+<rect x="1059.5" y="265.4" width="7.5" height="122.1" fill="#dc2626"/>
+<rect x="1068.4" y="262.7" width="7.5" height="124.8" fill="#16a34a"/>
+<rect x="1077.4" y="216.8" width="7.5" height="170.7" fill="#7c3aed"/>
+<rect x="1086.3" y="275.6" width="7.5" height="111.9" fill="#d97706"/>
+<text x="1072.2" y="598" text-anchor="middle" font-size="11">2024</text>
+<rect x="1104.1" y="261.4" width="7.5" height="126.1" fill="#2563eb"/>
+<rect x="1113.0" y="284.5" width="7.5" height="103.0" fill="#dc2626"/>
+<rect x="1122.0" y="286.0" width="7.5" height="101.5" fill="#16a34a"/>
+<rect x="1130.9" y="257.7" width="7.5" height="129.8" fill="#7c3aed"/>
+<rect x="1139.8" y="283.6" width="7.5" height="103.9" fill="#d97706"/>
+<text x="1125.7" y="598" text-anchor="middle" font-size="11">2025</text>
+<rect x="1157.7" y="142.5" width="7.5" height="245.0" fill="#2563eb"/>
+<rect x="1166.6" y="135.5" width="7.5" height="252.0" fill="#dc2626"/>
+<rect x="1175.5" y="173.6" width="7.5" height="213.9" fill="#16a34a"/>
+<rect x="1184.4" y="126.6" width="7.5" height="260.9" fill="#7c3aed"/>
+<rect x="1193.3" y="147.0" width="7.5" height="240.5" fill="#d97706"/>
+<text x="1179.2" y="598" text-anchor="middle" font-size="11">2026</text>
+<line class="axis" x1="82" y1="387.5" x2="1206" y2="387.5"/>
+<line class="axis" x1="82" y1="58" x2="82" y2="575"/>
+<line x1="80" y1="638" x2="104" y2="638" stroke="#2563eb" stroke-width="4"/>
+<text x="112" y="643" font-size="13">最終策略－訊號當日收盤成交</text>
+<line x1="450" y1="638" x2="474" y2="638" stroke="#dc2626" stroke-width="4"/>
+<text x="482" y="643" font-size="13">最終策略－次一交易日開盤成交</text>
+<line x1="820" y1="638" x2="844" y2="638" stroke="#16a34a" stroke-width="4"/>
+<text x="852" y="643" font-size="13">0050 買進持有－股息保留現金</text>
+<line x1="80" y1="658" x2="104" y2="658" stroke="#7c3aed" stroke-width="4"/>
+<text x="112" y="663" font-size="13">0050 買進持有－股息再投入</text>
+<line x1="450" y1="658" x2="474" y2="658" stroke="#d97706" stroke-width="4"/>
+<text x="482" y="663" font-size="13">臺灣加權股價報酬指數換算</text>
+<text x="1206" y="52" text-anchor="end" font-size="13" fill="#4b5563">橫軸：年度｜縱軸：年度報酬率</text>
+</svg>

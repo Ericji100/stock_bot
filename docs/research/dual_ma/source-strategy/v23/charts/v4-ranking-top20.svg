@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="960">
+<rect width="100%" height="100%" fill="white"/>
+<g font-family="Microsoft JhengHei, Noto Sans CJK TC, sans-serif">
+<text x="24" y="36" font-size="24" font-weight="700">v4 次一交易日開盤：來源 × 策略前 20 名</text>
+<text x="24" y="66" font-size="16">名次先按 2022–2025 正數年度數，再按每累計買入 100 元已實現淨損益；柱長不是排序唯一依據（買賣各 20 bps）</text>
+<text x="24" y="112" font-size="14">1. 法人持股比例增加｜P3_E1｜NATIVE</text>
+<rect x="700" y="92" width="9" height="25" fill="#b42318"/>
+<text x="719" y="111" font-size="14">-0.1642</text>
+<text x="24" y="154" font-size="14">2. 老蕭選股｜P2_E2｜NATIVE</text>
+<rect x="700" y="134" width="650" height="25" fill="#16803c"/>
+<text x="1360" y="153" font-size="14">11.4284</text>
+<text x="24" y="196" font-size="14">3. 投信認養股｜C_LONG｜KD</text>
+<rect x="700" y="176" width="519" height="25" fill="#16803c"/>
+<text x="1229" y="195" font-size="14">9.1273</text>
+<text x="24" y="238" font-size="14">4. 財報營收選股｜P2_E2｜NATIVE</text>
+<rect x="700" y="218" width="354" height="25" fill="#16803c"/>
+<text x="1064" y="237" font-size="14">6.2294</text>
+<text x="24" y="280" font-size="14">5. 技術面選股｜P2_E2｜NATIVE</text>
+<rect x="700" y="260" width="329" height="25" fill="#16803c"/>
+<text x="1039" y="279" font-size="14">5.7941</text>
+<text x="24" y="322" font-size="14">6. 老蕭選股｜P1_E1｜NATIVE</text>
+<rect x="700" y="302" width="272" height="25" fill="#16803c"/>
+<text x="982" y="321" font-size="14">4.7940</text>
+<text x="24" y="364" font-size="14">7. 技術面選股｜P3_E2｜NATIVE</text>
+<rect x="700" y="344" width="255" height="25" fill="#16803c"/>
+<text x="965" y="363" font-size="14">4.4980</text>
+<text x="24" y="406" font-size="14">8. 法人持股比例增加｜P2_E2｜NATIVE</text>
+<rect x="700" y="386" width="249" height="25" fill="#16803c"/>
+<text x="959" y="405" font-size="14">4.3875</text>
+<text x="24" y="448" font-size="14">9. 60 日法人動態選股｜P2_E2｜NATIVE</text>
+<rect x="700" y="428" width="247" height="25" fill="#16803c"/>
+<text x="957" y="447" font-size="14">4.3593</text>
+<text x="24" y="490" font-size="14">10. 老蕭選股｜P1_E2｜NATIVE</text>
+<rect x="700" y="470" width="232" height="25" fill="#16803c"/>
+<text x="942" y="489" font-size="14">4.0952</text>
+<text x="24" y="532" font-size="14">11. 技術面選股｜P1_E2｜NATIVE</text>
+<rect x="700" y="512" width="215" height="25" fill="#16803c"/>
+<text x="925" y="531" font-size="14">3.7939</text>
+<text x="24" y="574" font-size="14">12. 法人持股比例增加｜P1_E2｜NATIVE</text>
+<rect x="700" y="554" width="164" height="25" fill="#16803c"/>
+<text x="874" y="573" font-size="14">2.8992</text>
+<text x="24" y="616" font-size="14">13. 法人持股比例增加｜C_LONG｜KD</text>
+<rect x="700" y="596" width="162" height="25" fill="#16803c"/>
+<text x="872" y="615" font-size="14">2.8498</text>
+<text x="24" y="658" font-size="14">14. 老蕭選股｜P1_E3｜NATIVE</text>
+<rect x="700" y="638" width="161" height="25" fill="#16803c"/>
+<text x="871" y="657" font-size="14">2.8436</text>
+<text x="24" y="700" font-size="14">15. 財報營收選股｜B_LONG｜KD</text>
+<rect x="700" y="680" width="158" height="25" fill="#16803c"/>
+<text x="868" y="699" font-size="14">2.7947</text>
+<text x="24" y="742" font-size="14">16. 60 日法人動態選股｜P3_E2｜NATIVE</text>
+<rect x="700" y="722" width="132" height="25" fill="#16803c"/>
+<text x="842" y="741" font-size="14">2.3257</text>
+<text x="24" y="784" font-size="14">17. 技術面選股｜B_LONG｜KD</text>
+<rect x="700" y="764" width="122" height="25" fill="#16803c"/>
+<text x="832" y="783" font-size="14">2.1577</text>
+<text x="24" y="826" font-size="14">18. 財報營收選股｜B_MEDIUM｜BASELINE</text>
+<rect x="700" y="806" width="122" height="25" fill="#16803c"/>
+<text x="832" y="825" font-size="14">2.1541</text>
+<text x="24" y="868" font-size="14">19. 技術面選股｜C_LONG｜KD</text>
+<rect x="700" y="848" width="112" height="25" fill="#16803c"/>
+<text x="822" y="867" font-size="14">1.9746</text>
+<text x="24" y="910" font-size="14">20. 法人持股比例增加｜P3_E2｜NATIVE</text>
+<rect x="700" y="890" width="110" height="25" fill="#16803c"/>
+<text x="820" y="909" font-size="14">1.9448</text>
+</g>
+</svg>

@@ -19,7 +19,7 @@
 
 - 舊資料包 READY：`D:\code\stock_ai_bot\.workdata\dev\dual-ma\03-etf-research-package-v3\READY_FOR_02.json`
   - SHA-256：`8339B3322E7D51EE9906ECF4CB04A09D4AA76735D1F390555894733805683CD5`
-- 舊報告 QA：`D:\code\stock_ai_bot\.workdata\reports\dual-ma\etf\0050\base-v4\QA_ACCEPTED.json`
+- 舊報告 QA：[Git 保存副本](../../research/dual_ma/0050/accepted-history/base-v4/QA_ACCEPTED.json)（原執行位置：`.workdata/reports/dual-ma/etf/0050/base-v4/QA_ACCEPTED.json`）
   - SHA-256：`D130EBF069E98C5204A7F572BD1119BC6A3DE852CACA9C873E551575B2E46827`
 - 固定報告模板：`docs/strategies/dual_ma/standard-backtest-report-v2.md`
   - SHA-256：`9576B92D4CE5BE8C46ED08173DA1416F744EE8A1D73AA25277C943600FAE4B3A`
@@ -82,7 +82,7 @@
 - worktree：`D:\code\_codex_worktrees\dual-ma-backtest\stock_ai_bot`
 - branch：`codex/dual-ma-backtest-2022h1`
 - 新 run：`D:\code\stock_ai_bot\.workdata\dev\dual-ma\02-etf-0050-2017-2026-same-method-v1`
-- 正式報告：`D:\code\stock_ai_bot\.workdata\reports\dual-ma\etf\0050\2017-2026-base-v1`
+- 正式報告：[Git 保存副本](../../research/dual_ma/0050/accepted-history/2017-2026-base-v1/report.md)（原執行位置：`.workdata/reports/dual-ma/etf/0050/2017-2026-base-v1`）
 - 舊 run 與 `base-v4` 必須 byte 不變。
 
 ### 4.2 固定方法

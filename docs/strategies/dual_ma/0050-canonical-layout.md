@@ -2,9 +2,10 @@
 
 ## 保留政策
 
-- `.workdata/reports/dual-ma/etf/0050` 下所有歷史報告、附件、manifest、readback 與 QA 重播結果均原位保留。
-- 報告清冊工具只讀取並計算 SHA，不移動、覆寫或刪除報告。
-- 正式閱讀入口仍由 `.workdata/reports/dual-ma/README.md` 指定。
+- 已採納、會影響決策或需要長期查閱的報告、附件、manifest 與 readback，保存於 [Git 精選研究索引](../../research/dual_ma/README.md)。
+- `.workdata/reports/dual-ma/etf/0050` 是可重建的執行輸出區，不再作唯一正式保存位置；清理前必須確認正式版本已進 Git 且 manifest 驗證通過。
+- 大型 raw、run 與重複 QA 重播仍留在本機正式備份或 ZIP，不加入一般 Git commit。
+- 報告清冊工具只讀取並計算 SHA，不覆寫或刪除報告。
 
 ## 共用資料位置
 
@@ -58,4 +59,4 @@ python scripts/etf_report_inventory.py `
 
 ## Git 邊界
 
-Git 保存程式、測試、資料契約、文件與小型 fixture。完整行情、來源回執、日帳與歷史報告繼續由 `.workdata` 管理，不加入一般 Git commit。
+Git 保存程式、測試、資料契約、文件、小型 fixture，以及經精選的正式報告／必要日帳／逐筆證據。完整行情、來源回執、重複隔離重播與未採納歷史版本仍由 `stock_data`、本機正式備份或清理 ZIP 管理。完整分層規則見 [研究產物保存政策](../../research/dual_ma/PRESERVATION_POLICY.md)。

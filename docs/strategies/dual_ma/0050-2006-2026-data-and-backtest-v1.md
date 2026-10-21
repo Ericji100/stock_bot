@@ -9,7 +9,7 @@
 ## 唯一已採納基準
 
 - 已採納 2016 暖機／2017～2026 資料包：`D:\code\stock_ai_bot\.workdata\dev\dual-ma\04-etf-0050-research-package-2016-2026-v1`；`READY_FOR_02.json` SHA-256 `D55FD56FFC01F3F130A83FCDC26E4D5A02ACCC617E815528C3364AAF27E5F9DC`；`artifact_manifest.json` SHA-256 `71D10A719A60F4D03D6D4CCBF3CC54FDCECC251037A61EF319D895B82DB1AD57`。
-- 已採納 2017～2026 固定初始防守＋MACD 比較報告：`D:\code\stock_ai_bot\.workdata\reports\dual-ma\etf\0050\experiments\2017-2026-ma21-fixed-stop-macd-v1-1`；`artifact-manifest.json` SHA-256 `CA2F0CA9EB287E00B4B33840BD5D3CAE543D40ED59378B57A8846AAF2331BBCE`；程式基準 commit `f8a69f5de2917bac7d02bbadb1a1694d24e7e74a`。
+- 已採納 2017～2026 固定初始防守＋MACD 比較報告：[Git 保存副本](../../research/dual_ma/0050/accepted-history/2017-2026-ma21-fixed-stop-macd-v1-1/README.md)（原執行位置：`.workdata/reports/dual-ma/etf/0050/experiments/2017-2026-ma21-fixed-stop-macd-v1-1`）；`artifact-manifest.json` SHA-256 `CA2F0CA9EB287E00B4B33840BD5D3CAE543D40ED59378B57A8846AAF2331BBCE`；程式基準 commit `f8a69f5de2917bac7d02bbadb1a1694d24e7e74a`。
 - 固定格式：`D:\code\_codex_worktrees\dual-ma-backtest\stock_ai_bot\docs\strategies\dual_ma\standard-backtest-report-v2.md`；SHA-256 `9576B92D4CE5BE8C46ED08173DA1416F744EE8A1D73AA25277C943600FAE4B3A`。
 - 2017～2026 的原資料包、run、報告、README、正式 main 及現有 dirty/untracked 檔一律唯讀。不得修改舊產物以求 parity。
 
@@ -19,7 +19,7 @@
 - 本輪使用者特別授權 02 建立 0050 ETF 專用資料延伸；不得順便改 01 的股票選股來源、名單或資料包。
 - 新資料包：`D:\code\stock_ai_bot\.workdata\dev\dual-ma\02-etf-0050-research-package-2005-2026-v1`。
 - 新回測 run：`D:\code\stock_ai_bot\.workdata\dev\dual-ma\02-etf-0050-2006-2026-fixed-methods-v1`。
-- 新報告單一主目錄：`D:\code\stock_ai_bot\.workdata\reports\dual-ma\etf\0050\experiments\2006-2026-fixed-methods-v1`；以 `README.md` 為入口，使用可開啟的相對連結連到全部報告與附件。
+- 新報告單一主目錄：原執行位置為 `.workdata/reports/dual-ma/etf/0050/experiments/2006-2026-fixed-methods-v1`；長期保存入口為 [Git 保存副本](../../research/dual_ma/0050/accepted-history/2006-2026-fixed-methods-v1/README.md)，使用相對連結連到全部報告與附件。
 - 只改 `backtests/dual_ma/**`、必要的 0050 專用 runner／tests／小型 fixtures 和上述新隔離輸出。跨越所有權、修改共用掃描器或交易規則文件前先回報 00。禁止 main/live/Telegram/部署/正式監控。
 
 ## Phase 1：資料包

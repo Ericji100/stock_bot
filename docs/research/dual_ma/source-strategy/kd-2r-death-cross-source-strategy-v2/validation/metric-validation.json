@@ -1,0 +1,33 @@
+{
+  "annual_cell_count_each_year": 35,
+  "annual_machine_rows": 175,
+  "detail_rows": {
+    "2022": 4970,
+    "2023": 33782,
+    "2024": 34342,
+    "2025": 23996,
+    "2026": 23834
+  },
+  "five_year_additive_fields_checked": [
+    "completed",
+    "net",
+    "buy",
+    "open_valued",
+    "open_mark_buy",
+    "open_mark_net",
+    "combined_net",
+    "transaction_count",
+    "reentry_count",
+    "excluded"
+  ],
+  "five_year_cell_count": 35,
+  "five_year_selection_sessions": 1149,
+  "selection_sessions": {
+    "2022": 246,
+    "2023": 239,
+    "2024": 242,
+    "2025": 243,
+    "2026": 179
+  },
+  "status": "PASS"
+}

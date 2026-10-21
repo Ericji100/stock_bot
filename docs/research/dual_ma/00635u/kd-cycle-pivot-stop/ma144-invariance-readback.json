@@ -1,0 +1,1 @@
+{"checks":[{"accounts_equal":true,"events_equal":true,"orders_equal_ignoring_diagnostic_field":true,"timing":"SIGNAL_CLOSE"},{"accounts_equal":true,"events_equal":true,"orders_equal_ignoring_diagnostic_field":true,"timing":"NEXT_SESSION_OPEN"}],"ma144_role":"DIAGNOSTIC_ONLY","policy":"D_ALL_MARKET_KD_CYCLE","status":"PASS"}

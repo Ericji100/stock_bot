@@ -1,0 +1,9 @@
+{
+  "annual_group_checks": 3780,
+  "five_year_canonical_checks": 486,
+  "five_year_pooled_checks": 756,
+  "mismatch_count": 0,
+  "mismatches": [],
+  "note": "HIGH + LOW + named MA warmup HOLD reconstruct frozen ALL. Peaks are non-additive; separate HIGH/LOW peaks are computed independently and union canonical peak is checked against frozen ALL.",
+  "status": "PASS"
+}

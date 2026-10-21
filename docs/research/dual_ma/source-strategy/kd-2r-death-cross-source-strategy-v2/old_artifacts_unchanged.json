@@ -1,0 +1,2894 @@
+{
+  "mismatches": [],
+  "roots": [
+    {
+      "after_digest": "1F4DE9E598568A54C93051D277CBB8B2D6B18571DC5FCE1F711F48640BD22C9C",
+      "all_files_byte_unchanged": true,
+      "before_digest": "1F4DE9E598568A54C93051D277CBB8B2D6B18571DC5FCE1F711F48640BD22C9C",
+      "file_count": 19,
+      "files": [
+        {
+          "after_bytes": 6697,
+          "after_sha256": "A34D3766FF348E0C018CDB675D0C5658E41CA8AA1330B07BE0A73814D6E3C9AF",
+          "before_bytes": 6697,
+          "before_sha256": "A34D3766FF348E0C018CDB675D0C5658E41CA8AA1330B07BE0A73814D6E3C9AF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2022-2026-overview.md"
+        },
+        {
+          "after_bytes": 8045,
+          "after_sha256": "07D2661C6F36D2D2DB234EB1AAAF77229A71F29E5136AEF89E051B581B56A8B4",
+          "before_bytes": 8045,
+          "before_sha256": "07D2661C6F36D2D2DB234EB1AAAF77229A71F29E5136AEF89E051B581B56A8B4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2022-report.md"
+        },
+        {
+          "after_bytes": 8012,
+          "after_sha256": "BA867E53707A05385DCBA3A784C602D8290C333954BD1DA3C9ABFE765B974293",
+          "before_bytes": 8012,
+          "before_sha256": "BA867E53707A05385DCBA3A784C602D8290C333954BD1DA3C9ABFE765B974293",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2023-report.md"
+        },
+        {
+          "after_bytes": 8137,
+          "after_sha256": "99A75F6A795B10D810085331F5D123B39D6FC7038B4352EA459D37B2A5965181",
+          "before_bytes": 8137,
+          "before_sha256": "99A75F6A795B10D810085331F5D123B39D6FC7038B4352EA459D37B2A5965181",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2024-report.md"
+        },
+        {
+          "after_bytes": 8139,
+          "after_sha256": "CA6C9B37D9B71F7E70A8EFD1591F1191D5CC0E551C9B1A84504178DEDA2079EC",
+          "before_bytes": 8139,
+          "before_sha256": "CA6C9B37D9B71F7E70A8EFD1591F1191D5CC0E551C9B1A84504178DEDA2079EC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2025-report.md"
+        },
+        {
+          "after_bytes": 8207,
+          "after_sha256": "BD1444AC0EBACDE03CFEE2C4CF4F979E639BC8673AD0648B7B059712960AC5DE",
+          "before_bytes": 8207,
+          "before_sha256": "BD1444AC0EBACDE03CFEE2C4CF4F979E639BC8673AD0648B7B059712960AC5DE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\2026-report.md"
+        },
+        {
+          "after_bytes": 6867,
+          "after_sha256": "A9B584A89A5CAAB2B2B79D992B0098ACA347B4ECD3532FFDF4D874F7D7DBEC83",
+          "before_bytes": 6867,
+          "before_sha256": "A9B584A89A5CAAB2B2B79D992B0098ACA347B4ECD3532FFDF4D874F7D7DBEC83",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 360,
+          "after_sha256": "E28AE6E9DC14F9C843F4199D4A23F2C954913747983D693115BC3AD8CB6EBEBE",
+          "before_bytes": 360,
+          "before_sha256": "E28AE6E9DC14F9C843F4199D4A23F2C954913747983D693115BC3AD8CB6EBEBE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 438461,
+          "after_sha256": "4F1615E19BC6D6CFCC3B6129904481960CB734BF4150D834337F275F522C57B8",
+          "before_bytes": 438461,
+          "before_sha256": "4F1615E19BC6D6CFCC3B6129904481960CB734BF4150D834337F275F522C57B8",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2022-complete-detail.md"
+        },
+        {
+          "after_bytes": 366601,
+          "after_sha256": "FC830AF9D0678035B300372DBCC648CA5E44199CC3E39645B86CE2EF72AC67AB",
+          "before_bytes": 366601,
+          "before_sha256": "FC830AF9D0678035B300372DBCC648CA5E44199CC3E39645B86CE2EF72AC67AB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2022-kd-arm-cross-reentry-ledger.csv"
+        },
+        {
+          "after_bytes": 2921105,
+          "after_sha256": "02133732ADE27CE74D6677C70A04DEA4D3DC6781A57018F88863A0F7A189F691",
+          "before_bytes": 2921105,
+          "before_sha256": "02133732ADE27CE74D6677C70A04DEA4D3DC6781A57018F88863A0F7A189F691",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2023-complete-detail.md"
+        },
+        {
+          "after_bytes": 3651477,
+          "after_sha256": "16EB0949750643DA4DF0B3E8DAEDE20F771690C3011EADA0F953409B24EBAD65",
+          "before_bytes": 3651477,
+          "before_sha256": "16EB0949750643DA4DF0B3E8DAEDE20F771690C3011EADA0F953409B24EBAD65",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2023-kd-arm-cross-reentry-ledger.csv"
+        },
+        {
+          "after_bytes": 3022530,
+          "after_sha256": "2727C54ECC1C9DBC992375C03D315BC84B73D4605E0981A804D5CFEE46BF20EA",
+          "before_bytes": 3022530,
+          "before_sha256": "2727C54ECC1C9DBC992375C03D315BC84B73D4605E0981A804D5CFEE46BF20EA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2024-complete-detail.md"
+        },
+        {
+          "after_bytes": 2801413,
+          "after_sha256": "A53B03C8C6935ED169755408796957E59FDC809B0658EE8F6DA962EDBCBE5AEF",
+          "before_bytes": 2801413,
+          "before_sha256": "A53B03C8C6935ED169755408796957E59FDC809B0658EE8F6DA962EDBCBE5AEF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2024-kd-arm-cross-reentry-ledger.csv"
+        },
+        {
+          "after_bytes": 2538064,
+          "after_sha256": "8EB24F95FBFE8D0A753E396F667507F986A8FBD8E2BD2A7D6790A7EFF400DC5A",
+          "before_bytes": 2538064,
+          "before_sha256": "8EB24F95FBFE8D0A753E396F667507F986A8FBD8E2BD2A7D6790A7EFF400DC5A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2025-complete-detail.md"
+        },
+        {
+          "after_bytes": 2938955,
+          "after_sha256": "B2A06DF92A9F0353B549266E916B572E2A2FB07435FAFC7F9C229032754A7BD9",
+          "before_bytes": 2938955,
+          "before_sha256": "B2A06DF92A9F0353B549266E916B572E2A2FB07435FAFC7F9C229032754A7BD9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2025-kd-arm-cross-reentry-ledger.csv"
+        },
+        {
+          "after_bytes": 3169137,
+          "after_sha256": "CD9C34438C8460369C9AB7D28064AD3B22EBCB1E7E66378669418EC1924BFE32",
+          "before_bytes": 3169137,
+          "before_sha256": "CD9C34438C8460369C9AB7D28064AD3B22EBCB1E7E66378669418EC1924BFE32",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2026-complete-detail.md"
+        },
+        {
+          "after_bytes": 3417231,
+          "after_sha256": "3F428DEFDE1A8993ABF5CDA132C5B97839A91F027F05372A4DAACF954A8D4665",
+          "before_bytes": 3417231,
+          "before_sha256": "3F428DEFDE1A8993ABF5CDA132C5B97839A91F027F05372A4DAACF954A8D4665",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\details\\2026-kd-arm-cross-reentry-ledger.csv"
+        },
+        {
+          "after_bytes": 2841,
+          "after_sha256": "B0AEF28DD15448ECB664126E148C232DA4BDAE8293216DBFB52A07932C745C69",
+          "before_bytes": 2841,
+          "before_sha256": "B0AEF28DD15448ECB664126E148C232DA4BDAE8293216DBFB52A07932C745C69",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1\\readback.json"
+        }
+      ],
+      "label": "accepted_report",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-v1"
+    },
+    {
+      "after_digest": "D02D45716B1C7CF0DC71AAEF765CC29AE719F9178F6AD71591C72F04E21CD83C",
+      "all_files_byte_unchanged": true,
+      "before_digest": "D02D45716B1C7CF0DC71AAEF765CC29AE719F9178F6AD71591C72F04E21CD83C",
+      "file_count": 16,
+      "files": [
+        {
+          "after_bytes": 117,
+          "after_sha256": "B01F2B72BD714930C728C3408BA8C4E0D4F82ACC674C9391489D6EB255662299",
+          "before_bytes": 117,
+          "before_sha256": "B01F2B72BD714930C728C3408BA8C4E0D4F82ACC674C9391489D6EB255662299",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\all_row_open_gate.json"
+        },
+        {
+          "after_bytes": 78322400,
+          "after_sha256": "231513F552AADCBC04A74C1174E18EEC24F3BC0EDD646F718E997DFE4FCE9683",
+          "before_bytes": 78322400,
+          "before_sha256": "231513F552AADCBC04A74C1174E18EEC24F3BC0EDD646F718E997DFE4FCE9683",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\causal_plan_registry.json"
+        },
+        {
+          "after_bytes": 366,
+          "after_sha256": "F34990F647F621FA1934D1F96B5F9AED56F6C5701129C13F226B88C1706B665C",
+          "before_bytes": 366,
+          "before_sha256": "F34990F647F621FA1934D1F96B5F9AED56F6C5701129C13F226B88C1706B665C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 990444,
+          "after_sha256": "DE37DD2D59827C76B6D6E31B29B0C012AC53946452E2773E0A62F40DF8729896",
+          "before_bytes": 990444,
+          "before_sha256": "DE37DD2D59827C76B6D6E31B29B0C012AC53946452E2773E0A62F40DF8729896",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\event_factors.csv"
+        },
+        {
+          "after_bytes": 15610,
+          "after_sha256": "0E8AC79F127F5799A7F75DD726D3F04235568888244951DC0B6F099E3F882E16",
+          "before_bytes": 15610,
+          "before_sha256": "0E8AC79F127F5799A7F75DD726D3F04235568888244951DC0B6F099E3F882E16",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 1144128,
+          "after_sha256": "48D44B40857C2BE85AE22AF90C479B5E3C01DC35E2D9F905FD90C6827C2DA6E4",
+          "before_bytes": 1144128,
+          "before_sha256": "48D44B40857C2BE85AE22AF90C479B5E3C01DC35E2D9F905FD90C6827C2DA6E4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\input_pins.json"
+        },
+        {
+          "after_bytes": 2059,
+          "after_sha256": "970828E12E3EC4FDCC08B6E3511FE0926979853E4F073D42E8EDB134648E80E4",
+          "before_bytes": 2059,
+          "before_sha256": "970828E12E3EC4FDCC08B6E3511FE0926979853E4F073D42E8EDB134648E80E4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\manifest.json"
+        },
+        {
+          "after_bytes": 129,
+          "after_sha256": "8C3F59E27F29976EEDD21CE679111FFA9F69D69AFF4A350DAFC49E70FC01121E",
+          "before_bytes": 129,
+          "before_sha256": "8C3F59E27F29976EEDD21CE679111FFA9F69D69AFF4A350DAFC49E70FC01121E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\medium_bc_parity.json"
+        },
+        {
+          "after_bytes": 1373,
+          "after_sha256": "C12DC8C33BA599D1A035229FA2EB7FB74ABD212EA3516DD4C876920F26A6A7B2",
+          "before_bytes": 1373,
+          "before_sha256": "C12DC8C33BA599D1A035229FA2EB7FB74ABD212EA3516DD4C876920F26A6A7B2",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\readback.json"
+        },
+        {
+          "after_bytes": 254158,
+          "after_sha256": "BCAB62DB49582C399297C3D114720D443489283D1BF0FCE1013AC0928A16AA7C",
+          "before_bytes": 254158,
+          "before_sha256": "BCAB62DB49582C399297C3D114720D443489283D1BF0FCE1013AC0928A16AA7C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\report_zh.md"
+        },
+        {
+          "after_bytes": 27306806,
+          "after_sha256": "7BE8CE3130D4104C0DD074B51C10D013A5CFB43A54938B2281CD6FFAC25BA5BA",
+          "before_bytes": 27306806,
+          "before_sha256": "7BE8CE3130D4104C0DD074B51C10D013A5CFB43A54938B2281CD6FFAC25BA5BA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\selection_records.csv"
+        },
+        {
+          "after_bytes": 39604,
+          "after_sha256": "BCB1A232DB8EF726C6526CB9C849E6999EE4769C93A2AD5CD2AFB379238F5F16",
+          "before_bytes": 39604,
+          "before_sha256": "BCB1A232DB8EF726C6526CB9C849E6999EE4769C93A2AD5CD2AFB379238F5F16",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\summary.json"
+        },
+        {
+          "after_bytes": 152,
+          "after_sha256": "1AF73E370177579BB2CC0B8625B6FFDC679188862D032144EE0263FEFEDEEF63",
+          "before_bytes": 152,
+          "before_sha256": "1AF73E370177579BB2CC0B8625B6FFDC679188862D032144EE0263FEFEDEEF63",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\test_results.json"
+        },
+        {
+          "after_bytes": 2208918,
+          "after_sha256": "BE0CB9A1424CA9F1556BE37518115B6B7C5DCB4AB985ADAACDEBD0468397E645",
+          "before_bytes": 2208918,
+          "before_sha256": "BE0CB9A1424CA9F1556BE37518115B6B7C5DCB4AB985ADAACDEBD0468397E645",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 1158311,
+          "after_sha256": "01D1B9944220384C0BE7402DB21306C532F7DF9485E7EF2965CA9DDD4E38B74B",
+          "before_bytes": 1158311,
+          "before_sha256": "01D1B9944220384C0BE7402DB21306C532F7DF9485E7EF2965CA9DDD4E38B74B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 595652,
+          "after_sha256": "2824D91C799A3B997D0743C7BE4A7C93938A8FDD9184C9471C8396AD508993CA",
+          "before_bytes": 595652,
+          "before_sha256": "2824D91C799A3B997D0743C7BE4A7C93938A8FDD9184C9471C8396AD508993CA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_c.csv"
+        }
+      ],
+      "label": "baseline_2022",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1"
+    },
+    {
+      "after_digest": "D32B6C409C208A864E29E27C86AB1FD8270B864548EDFC80166214BE9E7A213E",
+      "all_files_byte_unchanged": true,
+      "before_digest": "D32B6C409C208A864E29E27C86AB1FD8270B864548EDFC80166214BE9E7A213E",
+      "file_count": 167,
+      "files": [
+        {
+          "after_bytes": 120,
+          "after_sha256": "88056D3974EC73641AAC65E72B0F7BB456135BE81EE65AC49760156B19ACC58F",
+          "before_bytes": 120,
+          "before_sha256": "88056D3974EC73641AAC65E72B0F7BB456135BE81EE65AC49760156B19ACC58F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\all_row_open_gate.json"
+        },
+        {
+          "after_bytes": 106074234,
+          "after_sha256": "5F35FBA36ACEE313802C3BF11A375B69C9AA9663DA7578A17DAD21D149335AC2",
+          "before_bytes": 106074234,
+          "before_sha256": "5F35FBA36ACEE313802C3BF11A375B69C9AA9663DA7578A17DAD21D149335AC2",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\causal_plan_registry.json"
+        },
+        {
+          "after_bytes": 14492,
+          "after_sha256": "E790BE295D13D3234A693CAD317441BE380171D94AA1DF2A96D300B757D37DC5",
+          "before_bytes": 14492,
+          "before_sha256": "E790BE295D13D3234A693CAD317441BE380171D94AA1DF2A96D300B757D37DC5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\checkpoint.json"
+        },
+        {
+          "after_bytes": 391781,
+          "after_sha256": "94C533D51EDB83BD5246DAF7BF297E5B8ACDD5E187463943C3F0EA030F1C3CB1",
+          "before_bytes": 391781,
+          "before_sha256": "94C533D51EDB83BD5246DAF7BF297E5B8ACDD5E187463943C3F0EA030F1C3CB1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00050.json"
+        },
+        {
+          "after_bytes": 246232,
+          "after_sha256": "44AEB9833332E766BAECDA42B2F1D2A9C85DA26D9D036BCABF814492257A0E09",
+          "before_bytes": 246232,
+          "before_sha256": "44AEB9833332E766BAECDA42B2F1D2A9C85DA26D9D036BCABF814492257A0E09",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00100.json"
+        },
+        {
+          "after_bytes": 319609,
+          "after_sha256": "C09736154C01AD637E06961D2840A9D0AC22DA9D38740973286DF30ECEC8452E",
+          "before_bytes": 319609,
+          "before_sha256": "C09736154C01AD637E06961D2840A9D0AC22DA9D38740973286DF30ECEC8452E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00150.json"
+        },
+        {
+          "after_bytes": 330270,
+          "after_sha256": "F3A2316B016134DD95159BE4E60A1E615F508A896A45E828B0481C7B7737D2AB",
+          "before_bytes": 330270,
+          "before_sha256": "F3A2316B016134DD95159BE4E60A1E615F508A896A45E828B0481C7B7737D2AB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00200.json"
+        },
+        {
+          "after_bytes": 416391,
+          "after_sha256": "C8B8C361FCCD0A26A359F59DC89AEE657CAB89ED005C2C906B29E6DB3FF42AC9",
+          "before_bytes": 416391,
+          "before_sha256": "C8B8C361FCCD0A26A359F59DC89AEE657CAB89ED005C2C906B29E6DB3FF42AC9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00250.json"
+        },
+        {
+          "after_bytes": 397312,
+          "after_sha256": "106031A79E372FCD616DB7BC3C549551D5588C9D3CD82FACDBD9CD828445CF15",
+          "before_bytes": 397312,
+          "before_sha256": "106031A79E372FCD616DB7BC3C549551D5588C9D3CD82FACDBD9CD828445CF15",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00300.json"
+        },
+        {
+          "after_bytes": 375158,
+          "after_sha256": "D086DEED6774AFE17D53FAA8AA7BA98DA8CC849E338FF8586C604D390E6F95A9",
+          "before_bytes": 375158,
+          "before_sha256": "D086DEED6774AFE17D53FAA8AA7BA98DA8CC849E338FF8586C604D390E6F95A9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00350.json"
+        },
+        {
+          "after_bytes": 715757,
+          "after_sha256": "25923C63175EA5886E462ADC63464262D3564AD0B5F5EFFA31D8582D89001522",
+          "before_bytes": 715757,
+          "before_sha256": "25923C63175EA5886E462ADC63464262D3564AD0B5F5EFFA31D8582D89001522",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00400.json"
+        },
+        {
+          "after_bytes": 723206,
+          "after_sha256": "DF912379FD115F42FEC1DAF0120C4730A59D069D644AF880C14B642A77770C7E",
+          "before_bytes": 723206,
+          "before_sha256": "DF912379FD115F42FEC1DAF0120C4730A59D069D644AF880C14B642A77770C7E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00450.json"
+        },
+        {
+          "after_bytes": 434157,
+          "after_sha256": "B840BDA106C4CE88D9B3C79F2640874DB83098E84414BB96F3A54816DDA85017",
+          "before_bytes": 434157,
+          "before_sha256": "B840BDA106C4CE88D9B3C79F2640874DB83098E84414BB96F3A54816DDA85017",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00500.json"
+        },
+        {
+          "after_bytes": 696361,
+          "after_sha256": "E4BEBF98F16AEFBFD1D10434608424B0A10CADD113EE4523AFFF96E28C9872BD",
+          "before_bytes": 696361,
+          "before_sha256": "E4BEBF98F16AEFBFD1D10434608424B0A10CADD113EE4523AFFF96E28C9872BD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00550.json"
+        },
+        {
+          "after_bytes": 586653,
+          "after_sha256": "032073F6F4C338BC320939D15A772AEF96621E2C926AFB254C2C44C582ECA965",
+          "before_bytes": 586653,
+          "before_sha256": "032073F6F4C338BC320939D15A772AEF96621E2C926AFB254C2C44C582ECA965",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00600.json"
+        },
+        {
+          "after_bytes": 483057,
+          "after_sha256": "ECCDBC8EB4051928861F39110537A56D3E81FE43E30FD3BBC1EF2C1A0D1AA81D",
+          "before_bytes": 483057,
+          "before_sha256": "ECCDBC8EB4051928861F39110537A56D3E81FE43E30FD3BBC1EF2C1A0D1AA81D",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00650.json"
+        },
+        {
+          "after_bytes": 291263,
+          "after_sha256": "652AF4F46E4398DA8B9841A627B7473133ED6EBC7324A5ECA0005109A7E62BCD",
+          "before_bytes": 291263,
+          "before_sha256": "652AF4F46E4398DA8B9841A627B7473133ED6EBC7324A5ECA0005109A7E62BCD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00700.json"
+        },
+        {
+          "after_bytes": 554030,
+          "after_sha256": "6BAC50F052CE29C5FC4AF23491744EB5943C7E6E73079BAA981A1309C04529E5",
+          "before_bytes": 554030,
+          "before_sha256": "6BAC50F052CE29C5FC4AF23491744EB5943C7E6E73079BAA981A1309C04529E5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00750.json"
+        },
+        {
+          "after_bytes": 696647,
+          "after_sha256": "D0E512612EB25FE2C5A03A4E1E3BA5D548C5FA15D7666EBC3599A51EE965B750",
+          "before_bytes": 696647,
+          "before_sha256": "D0E512612EB25FE2C5A03A4E1E3BA5D548C5FA15D7666EBC3599A51EE965B750",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00800.json"
+        },
+        {
+          "after_bytes": 374858,
+          "after_sha256": "51AFC5C72444493E0EE196C17934017450B6CDE721209EBF7FB2FF8ADD001894",
+          "before_bytes": 374858,
+          "before_sha256": "51AFC5C72444493E0EE196C17934017450B6CDE721209EBF7FB2FF8ADD001894",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00850.json"
+        },
+        {
+          "after_bytes": 433009,
+          "after_sha256": "8B3A39FFA5CC329308D01E6B668DB0BF145C9A21C623B9AF46805F7FE7A9EF04",
+          "before_bytes": 433009,
+          "before_sha256": "8B3A39FFA5CC329308D01E6B668DB0BF145C9A21C623B9AF46805F7FE7A9EF04",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00900.json"
+        },
+        {
+          "after_bytes": 466434,
+          "after_sha256": "1C391FAA6C38B9A7D30D3E9B96B53B5C42F1B7AE684A598E4A3F05B3D5A1B3E6",
+          "before_bytes": 466434,
+          "before_sha256": "1C391FAA6C38B9A7D30D3E9B96B53B5C42F1B7AE684A598E4A3F05B3D5A1B3E6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_00950.json"
+        },
+        {
+          "after_bytes": 439985,
+          "after_sha256": "358F7D16C5A5CE0BF35BD4607B1C05B3A4BA6E54DF00B3343C4FB31AD9497EA7",
+          "before_bytes": 439985,
+          "before_sha256": "358F7D16C5A5CE0BF35BD4607B1C05B3A4BA6E54DF00B3343C4FB31AD9497EA7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01000.json"
+        },
+        {
+          "after_bytes": 404615,
+          "after_sha256": "A6ED4F72CF823E65FD90C8DF1BDC116EA815E84F72DF8E3FD9597190B8EEB2BC",
+          "before_bytes": 404615,
+          "before_sha256": "A6ED4F72CF823E65FD90C8DF1BDC116EA815E84F72DF8E3FD9597190B8EEB2BC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01050.json"
+        },
+        {
+          "after_bytes": 557099,
+          "after_sha256": "DA20DBCCD40355E96AF37DE424D3661BFFA41AB0BE1514B4376339B879CC9134",
+          "before_bytes": 557099,
+          "before_sha256": "DA20DBCCD40355E96AF37DE424D3661BFFA41AB0BE1514B4376339B879CC9134",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01100.json"
+        },
+        {
+          "after_bytes": 427817,
+          "after_sha256": "5D8BAA4E88F65435F29DA808776707F9A18F6E3C07D55D6DE22FF06F368BCDCC",
+          "before_bytes": 427817,
+          "before_sha256": "5D8BAA4E88F65435F29DA808776707F9A18F6E3C07D55D6DE22FF06F368BCDCC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01150.json"
+        },
+        {
+          "after_bytes": 443048,
+          "after_sha256": "C96825B096178707D3DB67BDB7A12615D55C79628B5A94407CB20C14E0358180",
+          "before_bytes": 443048,
+          "before_sha256": "C96825B096178707D3DB67BDB7A12615D55C79628B5A94407CB20C14E0358180",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01200.json"
+        },
+        {
+          "after_bytes": 696555,
+          "after_sha256": "03E87B7597EA4C4A7FB770D40D45B6E81282D66B781E3C9B581E57C04074D773",
+          "before_bytes": 696555,
+          "before_sha256": "03E87B7597EA4C4A7FB770D40D45B6E81282D66B781E3C9B581E57C04074D773",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01250.json"
+        },
+        {
+          "after_bytes": 517673,
+          "after_sha256": "4D0697B0FD183D3487AFA693E3F015BD908469E5FB3DB5F91CEF2B389870027C",
+          "before_bytes": 517673,
+          "before_sha256": "4D0697B0FD183D3487AFA693E3F015BD908469E5FB3DB5F91CEF2B389870027C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01300.json"
+        },
+        {
+          "after_bytes": 519160,
+          "after_sha256": "86AF945EFD21649BF47A8B2CB64DD391D42CC18EC762E2B920DF39786DE2336E",
+          "before_bytes": 519160,
+          "before_sha256": "86AF945EFD21649BF47A8B2CB64DD391D42CC18EC762E2B920DF39786DE2336E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01350.json"
+        },
+        {
+          "after_bytes": 472903,
+          "after_sha256": "081987EF596E3C6A4577618D7E7C1EAFD40296576D033ACAFE26EECF6C8FB2C3",
+          "before_bytes": 472903,
+          "before_sha256": "081987EF596E3C6A4577618D7E7C1EAFD40296576D033ACAFE26EECF6C8FB2C3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01400.json"
+        },
+        {
+          "after_bytes": 550792,
+          "after_sha256": "6B2DA9E8B2B58F737BAD61FDA7234637ED9253C3CDD05E821B772C9799A63485",
+          "before_bytes": 550792,
+          "before_sha256": "6B2DA9E8B2B58F737BAD61FDA7234637ED9253C3CDD05E821B772C9799A63485",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01450.json"
+        },
+        {
+          "after_bytes": 535823,
+          "after_sha256": "080DD583C919E36A8B3F8CC5107B10E1E1178966B49E30D4A083B9809D6943BD",
+          "before_bytes": 535823,
+          "before_sha256": "080DD583C919E36A8B3F8CC5107B10E1E1178966B49E30D4A083B9809D6943BD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01500.json"
+        },
+        {
+          "after_bytes": 736019,
+          "after_sha256": "C5E7FE42639674B59A7953B966DEF632B56081F0F370890C5044FC604DACDDF9",
+          "before_bytes": 736019,
+          "before_sha256": "C5E7FE42639674B59A7953B966DEF632B56081F0F370890C5044FC604DACDDF9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01550.json"
+        },
+        {
+          "after_bytes": 813449,
+          "after_sha256": "3048F63CE67A91DD6BE78D2276127D1DFCD37DC8422A50C7F3A66CC53373E2D1",
+          "before_bytes": 813449,
+          "before_sha256": "3048F63CE67A91DD6BE78D2276127D1DFCD37DC8422A50C7F3A66CC53373E2D1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01600.json"
+        },
+        {
+          "after_bytes": 543509,
+          "after_sha256": "BB3E6A15473145452148B4D2FF1A41882B0E0C2CBCCCF7669154B8C2801E8FFB",
+          "before_bytes": 543509,
+          "before_sha256": "BB3E6A15473145452148B4D2FF1A41882B0E0C2CBCCCF7669154B8C2801E8FFB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01650.json"
+        },
+        {
+          "after_bytes": 532798,
+          "after_sha256": "217CAD08235C94AF910BD8CD1B673748CC8E1991CEECD5B18C2D95FA0645721F",
+          "before_bytes": 532798,
+          "before_sha256": "217CAD08235C94AF910BD8CD1B673748CC8E1991CEECD5B18C2D95FA0645721F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01700.json"
+        },
+        {
+          "after_bytes": 467976,
+          "after_sha256": "C441BE90FB72524C669F2C9781B67028AADD2D41C05703191FF9D95B0725332E",
+          "before_bytes": 467976,
+          "before_sha256": "C441BE90FB72524C669F2C9781B67028AADD2D41C05703191FF9D95B0725332E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01750.json"
+        },
+        {
+          "after_bytes": 452947,
+          "after_sha256": "94D2460C42FBB9A70C8B94D9B34ADEF44752CCBC5D123C358DDE93F3D5613C84",
+          "before_bytes": 452947,
+          "before_sha256": "94D2460C42FBB9A70C8B94D9B34ADEF44752CCBC5D123C358DDE93F3D5613C84",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01800.json"
+        },
+        {
+          "after_bytes": 731657,
+          "after_sha256": "E9305169C30FC91843D56ED419908AE322C66D9F4016B62C35BFE5CD5C7E1EA4",
+          "before_bytes": 731657,
+          "before_sha256": "E9305169C30FC91843D56ED419908AE322C66D9F4016B62C35BFE5CD5C7E1EA4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01850.json"
+        },
+        {
+          "after_bytes": 611573,
+          "after_sha256": "4EEC8B8EE39346FE8B67AF4974D8D81E46EDA287D68F879A2AFF8E9938488772",
+          "before_bytes": 611573,
+          "before_sha256": "4EEC8B8EE39346FE8B67AF4974D8D81E46EDA287D68F879A2AFF8E9938488772",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01900.json"
+        },
+        {
+          "after_bytes": 626217,
+          "after_sha256": "43CBDB0F00E62E3BC8334F2EE441EA0E3A572B726B7B59ABABC2A1C23E2EF967",
+          "before_bytes": 626217,
+          "before_sha256": "43CBDB0F00E62E3BC8334F2EE441EA0E3A572B726B7B59ABABC2A1C23E2EF967",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_01950.json"
+        },
+        {
+          "after_bytes": 762051,
+          "after_sha256": "2CD5358CD6D409A7CD6E3E361CC21D16E2253BF03593C099B8445E4F15A1400B",
+          "before_bytes": 762051,
+          "before_sha256": "2CD5358CD6D409A7CD6E3E361CC21D16E2253BF03593C099B8445E4F15A1400B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02000.json"
+        },
+        {
+          "after_bytes": 514290,
+          "after_sha256": "31074F471F80750A0D2E9953F3C53BA54426732DE263453096DDD188F9B15F0F",
+          "before_bytes": 514290,
+          "before_sha256": "31074F471F80750A0D2E9953F3C53BA54426732DE263453096DDD188F9B15F0F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02050.json"
+        },
+        {
+          "after_bytes": 446112,
+          "after_sha256": "429F710EB0C6B42766EACB43A22859FDEBA20DDFC1FA0876FC15E155A7480689",
+          "before_bytes": 446112,
+          "before_sha256": "429F710EB0C6B42766EACB43A22859FDEBA20DDFC1FA0876FC15E155A7480689",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02100.json"
+        },
+        {
+          "after_bytes": 447261,
+          "after_sha256": "B1D965F333BCE505CF4B7BFDF348FA6A70575DF61D17ACA9D088EB863E95FC8F",
+          "before_bytes": 447261,
+          "before_sha256": "B1D965F333BCE505CF4B7BFDF348FA6A70575DF61D17ACA9D088EB863E95FC8F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02150.json"
+        },
+        {
+          "after_bytes": 465521,
+          "after_sha256": "6CE70D7E9B1913635970E2E13CE08461568B47D18CE963449A274DA9F18B6B4F",
+          "before_bytes": 465521,
+          "before_sha256": "6CE70D7E9B1913635970E2E13CE08461568B47D18CE963449A274DA9F18B6B4F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02200.json"
+        },
+        {
+          "after_bytes": 589063,
+          "after_sha256": "E4B51F770FACDACE86CCDAAA6B234A789C779033FFDDB16AACBDFA4D587A2A7A",
+          "before_bytes": 589063,
+          "before_sha256": "E4B51F770FACDACE86CCDAAA6B234A789C779033FFDDB16AACBDFA4D587A2A7A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02250.json"
+        },
+        {
+          "after_bytes": 376114,
+          "after_sha256": "597CA4766D945B95C6E78E4152098781F5297D553202321E23E7F30AA4D1F4D6",
+          "before_bytes": 376114,
+          "before_sha256": "597CA4766D945B95C6E78E4152098781F5297D553202321E23E7F30AA4D1F4D6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02300.json"
+        },
+        {
+          "after_bytes": 323544,
+          "after_sha256": "EE0A7476FF5BCFBCBD13F85AF1CB1446BD3BD69DAE25381581B16AEB4D486768",
+          "before_bytes": 323544,
+          "before_sha256": "EE0A7476FF5BCFBCBD13F85AF1CB1446BD3BD69DAE25381581B16AEB4D486768",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02350.json"
+        },
+        {
+          "after_bytes": 298509,
+          "after_sha256": "54953B9D758A8ABD66FB62ACB5C2691DB6D3DCBDC4C7552BC89780ABEFC83220",
+          "before_bytes": 298509,
+          "before_sha256": "54953B9D758A8ABD66FB62ACB5C2691DB6D3DCBDC4C7552BC89780ABEFC83220",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02400.json"
+        },
+        {
+          "after_bytes": 559706,
+          "after_sha256": "C64927A31C9779DE2721F64511E09048B948A5220E4E185D23A28AB442334E1C",
+          "before_bytes": 559706,
+          "before_sha256": "C64927A31C9779DE2721F64511E09048B948A5220E4E185D23A28AB442334E1C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02450.json"
+        },
+        {
+          "after_bytes": 576555,
+          "after_sha256": "D08A7E003735EB870CCA137439D6DAA058B95FFDB4B2897A8204742DFBEBF4DC",
+          "before_bytes": 576555,
+          "before_sha256": "D08A7E003735EB870CCA137439D6DAA058B95FFDB4B2897A8204742DFBEBF4DC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02500.json"
+        },
+        {
+          "after_bytes": 376738,
+          "after_sha256": "BA62BA36B7C9EFB95DD643FC983B3578662955EF7D04988C97311C309FCCE23F",
+          "before_bytes": 376738,
+          "before_sha256": "BA62BA36B7C9EFB95DD643FC983B3578662955EF7D04988C97311C309FCCE23F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02550.json"
+        },
+        {
+          "after_bytes": 283698,
+          "after_sha256": "CD1AC78A3E1B2443069C7354959BB5007F989827DDD45151FCDB8D3AD183217F",
+          "before_bytes": 283698,
+          "before_sha256": "CD1AC78A3E1B2443069C7354959BB5007F989827DDD45151FCDB8D3AD183217F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02600.json"
+        },
+        {
+          "after_bytes": 404627,
+          "after_sha256": "3BA580AEE73AC878A08220EFC505AD7DD260D083828841BEF70BA0B8060183C7",
+          "before_bytes": 404627,
+          "before_sha256": "3BA580AEE73AC878A08220EFC505AD7DD260D083828841BEF70BA0B8060183C7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02650.json"
+        },
+        {
+          "after_bytes": 441377,
+          "after_sha256": "B222DD7AA8A45929B5DD2A595F9519FA0B5B0FA4215093CB800E8FBBBCCEA985",
+          "before_bytes": 441377,
+          "before_sha256": "B222DD7AA8A45929B5DD2A595F9519FA0B5B0FA4215093CB800E8FBBBCCEA985",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02700.json"
+        },
+        {
+          "after_bytes": 471338,
+          "after_sha256": "51962B5AA8E97BFB9D441EC2CBC82DC5091077AF1A107120D6F41B7CF853A7CA",
+          "before_bytes": 471338,
+          "before_sha256": "51962B5AA8E97BFB9D441EC2CBC82DC5091077AF1A107120D6F41B7CF853A7CA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02750.json"
+        },
+        {
+          "after_bytes": 480694,
+          "after_sha256": "29F284A5DD34852245AF63217AC6D5E7E41364EBAD636E6BF4DB7B7DA2F1ABF3",
+          "before_bytes": 480694,
+          "before_sha256": "29F284A5DD34852245AF63217AC6D5E7E41364EBAD636E6BF4DB7B7DA2F1ABF3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02800.json"
+        },
+        {
+          "after_bytes": 669154,
+          "after_sha256": "397920FA10BBA79AFD617B7CBF7BFFF055B6BA63F0C3A8A731EE31963B3B6F4B",
+          "before_bytes": 669154,
+          "before_sha256": "397920FA10BBA79AFD617B7CBF7BFFF055B6BA63F0C3A8A731EE31963B3B6F4B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02850.json"
+        },
+        {
+          "after_bytes": 582230,
+          "after_sha256": "30A365189DBC6907505AEBF0B9B39CB93B8A0B8B1E58D782680997DA4D4D73AA",
+          "before_bytes": 582230,
+          "before_sha256": "30A365189DBC6907505AEBF0B9B39CB93B8A0B8B1E58D782680997DA4D4D73AA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02900.json"
+        },
+        {
+          "after_bytes": 623667,
+          "after_sha256": "F2B25F34756A11AD7CD308CC8B0B1E3C5A2B6CD1B65B6B08ECF7027CD86662C7",
+          "before_bytes": 623667,
+          "before_sha256": "F2B25F34756A11AD7CD308CC8B0B1E3C5A2B6CD1B65B6B08ECF7027CD86662C7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_02950.json"
+        },
+        {
+          "after_bytes": 721418,
+          "after_sha256": "2DDDC94397E91FF050A4DD731DFC5FE1327C63C49BEA1855FF7B31FA86642899",
+          "before_bytes": 721418,
+          "before_sha256": "2DDDC94397E91FF050A4DD731DFC5FE1327C63C49BEA1855FF7B31FA86642899",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03000.json"
+        },
+        {
+          "after_bytes": 592008,
+          "after_sha256": "ECE70F331E03857560446F40BD1A7C566AD49E9D1990B67188C6FC2468D6FFDC",
+          "before_bytes": 592008,
+          "before_sha256": "ECE70F331E03857560446F40BD1A7C566AD49E9D1990B67188C6FC2468D6FFDC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03050.json"
+        },
+        {
+          "after_bytes": 498545,
+          "after_sha256": "E306B78AE44EEF2DF1A1393C799D8E270B2863AEDBCCE9ACAE80CC4950AA6BB9",
+          "before_bytes": 498545,
+          "before_sha256": "E306B78AE44EEF2DF1A1393C799D8E270B2863AEDBCCE9ACAE80CC4950AA6BB9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03100.json"
+        },
+        {
+          "after_bytes": 688167,
+          "after_sha256": "9C321B80C4809A6BF8EFFA66A13F300CD492EA9EB8691B40FEB606B5DD9D217C",
+          "before_bytes": 688167,
+          "before_sha256": "9C321B80C4809A6BF8EFFA66A13F300CD492EA9EB8691B40FEB606B5DD9D217C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03150.json"
+        },
+        {
+          "after_bytes": 582129,
+          "after_sha256": "1BB71395785509E558953B0101B5565C4121FCD0881A76596FC56109C8E806F5",
+          "before_bytes": 582129,
+          "before_sha256": "1BB71395785509E558953B0101B5565C4121FCD0881A76596FC56109C8E806F5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03200.json"
+        },
+        {
+          "after_bytes": 688528,
+          "after_sha256": "D1922227F25C4B0945032D736D6785F42D922A3E21C0B342B6F55BFFA181A190",
+          "before_bytes": 688528,
+          "before_sha256": "D1922227F25C4B0945032D736D6785F42D922A3E21C0B342B6F55BFFA181A190",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03250.json"
+        },
+        {
+          "after_bytes": 673550,
+          "after_sha256": "AAC8C70F64379FFE214B5FFA938EAEA5E99146428B3F2057693323B17023E8FF",
+          "before_bytes": 673550,
+          "before_sha256": "AAC8C70F64379FFE214B5FFA938EAEA5E99146428B3F2057693323B17023E8FF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03300.json"
+        },
+        {
+          "after_bytes": 540904,
+          "after_sha256": "1824F1E2EC83B673EEF22E4F708E538F0CD6725A765D0E680A8624C4C66FA0B9",
+          "before_bytes": 540904,
+          "before_sha256": "1824F1E2EC83B673EEF22E4F708E538F0CD6725A765D0E680A8624C4C66FA0B9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03350.json"
+        },
+        {
+          "after_bytes": 625608,
+          "after_sha256": "25C638503BC1AC86EC417C13453BCFC0F5F12E3321E36C6CB223B6459D0E402C",
+          "before_bytes": 625608,
+          "before_sha256": "25C638503BC1AC86EC417C13453BCFC0F5F12E3321E36C6CB223B6459D0E402C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03400.json"
+        },
+        {
+          "after_bytes": 935999,
+          "after_sha256": "EC9AF3E068A1D0EC226AE0E28861549A07FAEA6285950E398FE0779899E0A49E",
+          "before_bytes": 935999,
+          "before_sha256": "EC9AF3E068A1D0EC226AE0E28861549A07FAEA6285950E398FE0779899E0A49E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03450.json"
+        },
+        {
+          "after_bytes": 586288,
+          "after_sha256": "F8B493C4E052BD2785B50BDBB3409CC11F0042EF1B338E82F63CC1E0B160CCE3",
+          "before_bytes": 586288,
+          "before_sha256": "F8B493C4E052BD2785B50BDBB3409CC11F0042EF1B338E82F63CC1E0B160CCE3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03500.json"
+        },
+        {
+          "after_bytes": 682403,
+          "after_sha256": "5ACF0766B4313342D7415B61A6F51444902F3F2FA280549F2FD1D0A9EE1A1D6F",
+          "before_bytes": 682403,
+          "before_sha256": "5ACF0766B4313342D7415B61A6F51444902F3F2FA280549F2FD1D0A9EE1A1D6F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03550.json"
+        },
+        {
+          "after_bytes": 510486,
+          "after_sha256": "E9CD0700D793EC9399AA65B34FC1F35C94AAB70395012F6FC51F0A543B3A8E1E",
+          "before_bytes": 510486,
+          "before_sha256": "E9CD0700D793EC9399AA65B34FC1F35C94AAB70395012F6FC51F0A543B3A8E1E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03600.json"
+        },
+        {
+          "after_bytes": 800202,
+          "after_sha256": "83EC00B5B6109912F282124B73C71A31C754DCF1F4CFBB9CBE86F572253EDB82",
+          "before_bytes": 800202,
+          "before_sha256": "83EC00B5B6109912F282124B73C71A31C754DCF1F4CFBB9CBE86F572253EDB82",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03650.json"
+        },
+        {
+          "after_bytes": 720490,
+          "after_sha256": "1B14BC1BDBC746320296252247D862C723C3692560CB5A5CC68DA74E47D19F47",
+          "before_bytes": 720490,
+          "before_sha256": "1B14BC1BDBC746320296252247D862C723C3692560CB5A5CC68DA74E47D19F47",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03700.json"
+        },
+        {
+          "after_bytes": 483615,
+          "after_sha256": "4E2BCF67B95DB740915DCCE8FB46A832C8B8E0E60B70246CC15B21E9A4F54729",
+          "before_bytes": 483615,
+          "before_sha256": "4E2BCF67B95DB740915DCCE8FB46A832C8B8E0E60B70246CC15B21E9A4F54729",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03750.json"
+        },
+        {
+          "after_bytes": 440574,
+          "after_sha256": "43108852DD06FFF9D616FC02D60552FD4950C4F6A84D853D576254F517FB27CF",
+          "before_bytes": 440574,
+          "before_sha256": "43108852DD06FFF9D616FC02D60552FD4950C4F6A84D853D576254F517FB27CF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03800.json"
+        },
+        {
+          "after_bytes": 752727,
+          "after_sha256": "3EF12A1FC7D6C56AF9742C60C300C3D69B7D87DA20BF07B85BBA6069C55EB7E1",
+          "before_bytes": 752727,
+          "before_sha256": "3EF12A1FC7D6C56AF9742C60C300C3D69B7D87DA20BF07B85BBA6069C55EB7E1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03850.json"
+        },
+        {
+          "after_bytes": 629091,
+          "after_sha256": "47AF5486103EB297A0B8664FCE3AE3BAE609CB3F8B9DBFB6583C8AF9E460C24C",
+          "before_bytes": 629091,
+          "before_sha256": "47AF5486103EB297A0B8664FCE3AE3BAE609CB3F8B9DBFB6583C8AF9E460C24C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03900.json"
+        },
+        {
+          "after_bytes": 599111,
+          "after_sha256": "ED67F5B60F3FB5E2C07E867434941FA22A972E909134556E4C8ADADA761CCD45",
+          "before_bytes": 599111,
+          "before_sha256": "ED67F5B60F3FB5E2C07E867434941FA22A972E909134556E4C8ADADA761CCD45",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_03950.json"
+        },
+        {
+          "after_bytes": 734412,
+          "after_sha256": "AF798AF2A584782F7907DF0C93092B4F152D3127D63824C00E21BE8A212E7AA5",
+          "before_bytes": 734412,
+          "before_sha256": "AF798AF2A584782F7907DF0C93092B4F152D3127D63824C00E21BE8A212E7AA5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04000.json"
+        },
+        {
+          "after_bytes": 689912,
+          "after_sha256": "25BA133B143C60D9DA0CF31215FE7FA797D02E9EDC16867D3EAD9FEFE84CD50F",
+          "before_bytes": 689912,
+          "before_sha256": "25BA133B143C60D9DA0CF31215FE7FA797D02E9EDC16867D3EAD9FEFE84CD50F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04050.json"
+        },
+        {
+          "after_bytes": 736139,
+          "after_sha256": "57912B19078F8E9A13C65A376211FBC77AF46A297A7EE1E1866B830882364962",
+          "before_bytes": 736139,
+          "before_sha256": "57912B19078F8E9A13C65A376211FBC77AF46A297A7EE1E1866B830882364962",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04100.json"
+        },
+        {
+          "after_bytes": 527476,
+          "after_sha256": "06A18B7440F303E026ADED1BEC05A72E1F6547F7EAAB2B5E1C92BA38EA7C83CE",
+          "before_bytes": 527476,
+          "before_sha256": "06A18B7440F303E026ADED1BEC05A72E1F6547F7EAAB2B5E1C92BA38EA7C83CE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04150.json"
+        },
+        {
+          "after_bytes": 479428,
+          "after_sha256": "705558D565287AC8134A8531918075848FC1887A9A6EC4CC6D2778092EDB6398",
+          "before_bytes": 479428,
+          "before_sha256": "705558D565287AC8134A8531918075848FC1887A9A6EC4CC6D2778092EDB6398",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04200.json"
+        },
+        {
+          "after_bytes": 471364,
+          "after_sha256": "9D82E3F3C096D7B0846826EC08387DD9818414C4FF6DF8A5A37AB06BE939126A",
+          "before_bytes": 471364,
+          "before_sha256": "9D82E3F3C096D7B0846826EC08387DD9818414C4FF6DF8A5A37AB06BE939126A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04250.json"
+        },
+        {
+          "after_bytes": 458255,
+          "after_sha256": "70714B74C7510AFB0DFC74B347949209C657570F34312724B89028E0ACEFE569",
+          "before_bytes": 458255,
+          "before_sha256": "70714B74C7510AFB0DFC74B347949209C657570F34312724B89028E0ACEFE569",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04300.json"
+        },
+        {
+          "after_bytes": 610606,
+          "after_sha256": "FB93D4C725233453E2DC519EDDF9BA5B7F49B4D99DAEEDA34EF00D85335432DB",
+          "before_bytes": 610606,
+          "before_sha256": "FB93D4C725233453E2DC519EDDF9BA5B7F49B4D99DAEEDA34EF00D85335432DB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04350.json"
+        },
+        {
+          "after_bytes": 505828,
+          "after_sha256": "F0B4415D6A7CA2FC51B17FA7A2D8705485244892F4962DAE19ECD1A8FBD4A886",
+          "before_bytes": 505828,
+          "before_sha256": "F0B4415D6A7CA2FC51B17FA7A2D8705485244892F4962DAE19ECD1A8FBD4A886",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04400.json"
+        },
+        {
+          "after_bytes": 450587,
+          "after_sha256": "DC834F568D1EE38E26D5F700A913EF1CE1CB3F188C004AA7A37B9C045E5F334F",
+          "before_bytes": 450587,
+          "before_sha256": "DC834F568D1EE38E26D5F700A913EF1CE1CB3F188C004AA7A37B9C045E5F334F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04450.json"
+        },
+        {
+          "after_bytes": 542603,
+          "after_sha256": "E75BF31A64A3AC0B367B30AEE6F2F571593F1BA03DCECF2E8DABDECF074D1BD9",
+          "before_bytes": 542603,
+          "before_sha256": "E75BF31A64A3AC0B367B30AEE6F2F571593F1BA03DCECF2E8DABDECF074D1BD9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04500.json"
+        },
+        {
+          "after_bytes": 720202,
+          "after_sha256": "64DABCBAEBBB2FABDDBD1521A7D4D3169A04EDCDB620C3D89020B7E3E53AF55F",
+          "before_bytes": 720202,
+          "before_sha256": "64DABCBAEBBB2FABDDBD1521A7D4D3169A04EDCDB620C3D89020B7E3E53AF55F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04550.json"
+        },
+        {
+          "after_bytes": 473815,
+          "after_sha256": "D434D4122EF4534F7E9B47509508E2A61FBEA186FBB0BC7752D041A49EF2A8C6",
+          "before_bytes": 473815,
+          "before_sha256": "D434D4122EF4534F7E9B47509508E2A61FBEA186FBB0BC7752D041A49EF2A8C6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04600.json"
+        },
+        {
+          "after_bytes": 787285,
+          "after_sha256": "A9C6F5EEEE8841989838E214EA6A1EBB91AB6FEBAD124B7E43E79332F286282F",
+          "before_bytes": 787285,
+          "before_sha256": "A9C6F5EEEE8841989838E214EA6A1EBB91AB6FEBAD124B7E43E79332F286282F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04650.json"
+        },
+        {
+          "after_bytes": 539031,
+          "after_sha256": "4749871AC194B87540BAF9D9D9BB2597C45B64D0C5142DCFA888DA85285139B5",
+          "before_bytes": 539031,
+          "before_sha256": "4749871AC194B87540BAF9D9D9BB2597C45B64D0C5142DCFA888DA85285139B5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04700.json"
+        },
+        {
+          "after_bytes": 643371,
+          "after_sha256": "824C010185DE9E30C02770E6495FBDCF12E213D59247105CC661BAFE1F382839",
+          "before_bytes": 643371,
+          "before_sha256": "824C010185DE9E30C02770E6495FBDCF12E213D59247105CC661BAFE1F382839",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04750.json"
+        },
+        {
+          "after_bytes": 533384,
+          "after_sha256": "6D0AA79330F66F73F56E4CE45DEB33C027AC4D9132FF9ADC2B23F154CD4F2654",
+          "before_bytes": 533384,
+          "before_sha256": "6D0AA79330F66F73F56E4CE45DEB33C027AC4D9132FF9ADC2B23F154CD4F2654",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04800.json"
+        },
+        {
+          "after_bytes": 952735,
+          "after_sha256": "E5DEF351B42859024E201C9C633BC28817D9C3E415DF0EE735A850EB2E2DF83A",
+          "before_bytes": 952735,
+          "before_sha256": "E5DEF351B42859024E201C9C633BC28817D9C3E415DF0EE735A850EB2E2DF83A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04850.json"
+        },
+        {
+          "after_bytes": 799979,
+          "after_sha256": "0E053C6949A9B9E2354DC50B4F45B340DF99EAFE423B4EC91BABF4BEFC6F6F49",
+          "before_bytes": 799979,
+          "before_sha256": "0E053C6949A9B9E2354DC50B4F45B340DF99EAFE423B4EC91BABF4BEFC6F6F49",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04900.json"
+        },
+        {
+          "after_bytes": 504172,
+          "after_sha256": "8FEC31DF7E7D351FA59B0F7F5DCB329862E158D36CFDB09E80038C502BD2B3DF",
+          "before_bytes": 504172,
+          "before_sha256": "8FEC31DF7E7D351FA59B0F7F5DCB329862E158D36CFDB09E80038C502BD2B3DF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_04950.json"
+        },
+        {
+          "after_bytes": 824246,
+          "after_sha256": "410A6D8968544DD97CD2E4A8921B1D4326DCEB121EE87D591D375AA3254C4285",
+          "before_bytes": 824246,
+          "before_sha256": "410A6D8968544DD97CD2E4A8921B1D4326DCEB121EE87D591D375AA3254C4285",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05000.json"
+        },
+        {
+          "after_bytes": 625959,
+          "after_sha256": "2F708E6E83AB0383F73B3B323421FDE5EB0A298C0AE3E4779FEFE2ECB72D8994",
+          "before_bytes": 625959,
+          "before_sha256": "2F708E6E83AB0383F73B3B323421FDE5EB0A298C0AE3E4779FEFE2ECB72D8994",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05050.json"
+        },
+        {
+          "after_bytes": 675440,
+          "after_sha256": "AE05112E151BDAC956421E37CB0CAE2B2CB58459C23F96FD48005B51BBDB70B3",
+          "before_bytes": 675440,
+          "before_sha256": "AE05112E151BDAC956421E37CB0CAE2B2CB58459C23F96FD48005B51BBDB70B3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05100.json"
+        },
+        {
+          "after_bytes": 757213,
+          "after_sha256": "5FD47204A1B20665E248ED9F291C5AC8A2F0014583513B220A01C44B24790A26",
+          "before_bytes": 757213,
+          "before_sha256": "5FD47204A1B20665E248ED9F291C5AC8A2F0014583513B220A01C44B24790A26",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05150.json"
+        },
+        {
+          "after_bytes": 665596,
+          "after_sha256": "6BA95FEBF02AD0D247CFED40A728C6F9EB3BA435FC90541D19A520E16A0DE17F",
+          "before_bytes": 665596,
+          "before_sha256": "6BA95FEBF02AD0D247CFED40A728C6F9EB3BA435FC90541D19A520E16A0DE17F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05200.json"
+        },
+        {
+          "after_bytes": 395171,
+          "after_sha256": "A73CAABD23CB38376AA3DA9547F27A8AA7969D4D1CC02C274255914EB0F6471E",
+          "before_bytes": 395171,
+          "before_sha256": "A73CAABD23CB38376AA3DA9547F27A8AA7969D4D1CC02C274255914EB0F6471E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05250.json"
+        },
+        {
+          "after_bytes": 395577,
+          "after_sha256": "D4A9D548843F2387E07FDECBA6C7D204F996DFC11CD4A5081CA31B93EDDDA8B5",
+          "before_bytes": 395577,
+          "before_sha256": "D4A9D548843F2387E07FDECBA6C7D204F996DFC11CD4A5081CA31B93EDDDA8B5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05300.json"
+        },
+        {
+          "after_bytes": 520331,
+          "after_sha256": "98FEB7626701372684F2554F7480F9C534893FCE9327AFD9A84DC4EB86826853",
+          "before_bytes": 520331,
+          "before_sha256": "98FEB7626701372684F2554F7480F9C534893FCE9327AFD9A84DC4EB86826853",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05350.json"
+        },
+        {
+          "after_bytes": 727699,
+          "after_sha256": "8A8F4576B02EE950C19ECF77C6CA24783ECEC3EF7BE76CAA4BC86A3FFF44CF1E",
+          "before_bytes": 727699,
+          "before_sha256": "8A8F4576B02EE950C19ECF77C6CA24783ECEC3EF7BE76CAA4BC86A3FFF44CF1E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05400.json"
+        },
+        {
+          "after_bytes": 735813,
+          "after_sha256": "BD3EA6D6A974B4E84368F96FAF3FB5C5A7A27A1673BB3563FB6B014B58481951",
+          "before_bytes": 735813,
+          "before_sha256": "BD3EA6D6A974B4E84368F96FAF3FB5C5A7A27A1673BB3563FB6B014B58481951",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05450.json"
+        },
+        {
+          "after_bytes": 515174,
+          "after_sha256": "FC15FDB728518A021B134FE2930E8FD1E0319B2FE88A5252F83F0BF044972504",
+          "before_bytes": 515174,
+          "before_sha256": "FC15FDB728518A021B134FE2930E8FD1E0319B2FE88A5252F83F0BF044972504",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05500.json"
+        },
+        {
+          "after_bytes": 598200,
+          "after_sha256": "1636EC392329CEBE9BB76170B3778289B3A0798AC6F30C37333D53DC0CD1AF4F",
+          "before_bytes": 598200,
+          "before_sha256": "1636EC392329CEBE9BB76170B3778289B3A0798AC6F30C37333D53DC0CD1AF4F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05550.json"
+        },
+        {
+          "after_bytes": 557182,
+          "after_sha256": "CFBF8C3587832A522E420D848612F8190E3AB2100EA202214463934A1D5100CC",
+          "before_bytes": 557182,
+          "before_sha256": "CFBF8C3587832A522E420D848612F8190E3AB2100EA202214463934A1D5100CC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05600.json"
+        },
+        {
+          "after_bytes": 546291,
+          "after_sha256": "87838945B0A9A1024DF1A698D8E7592DB48F45390DBC1D5E78F9CB81D731772C",
+          "before_bytes": 546291,
+          "before_sha256": "87838945B0A9A1024DF1A698D8E7592DB48F45390DBC1D5E78F9CB81D731772C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05650.json"
+        },
+        {
+          "after_bytes": 343452,
+          "after_sha256": "07666C4B92BEB01CB3CB0ED70606AFFD5DAFBD8B34328BD948E1E5A00FC80F74",
+          "before_bytes": 343452,
+          "before_sha256": "07666C4B92BEB01CB3CB0ED70606AFFD5DAFBD8B34328BD948E1E5A00FC80F74",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05700.json"
+        },
+        {
+          "after_bytes": 779198,
+          "after_sha256": "1A47C1AA9E040439E9F43D5F2EC3251316D623C45394284673193C7D14BA8168",
+          "before_bytes": 779198,
+          "before_sha256": "1A47C1AA9E040439E9F43D5F2EC3251316D623C45394284673193C7D14BA8168",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05750.json"
+        },
+        {
+          "after_bytes": 727823,
+          "after_sha256": "9D4D04A2B7A0816A678547B705B0A30F6B94A0165087971C5E2B15E041F821C8",
+          "before_bytes": 727823,
+          "before_sha256": "9D4D04A2B7A0816A678547B705B0A30F6B94A0165087971C5E2B15E041F821C8",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05800.json"
+        },
+        {
+          "after_bytes": 574761,
+          "after_sha256": "13807F7332962F85B2061E0B18DAC1555CB8F5170389C32B566236A4D40F0106",
+          "before_bytes": 574761,
+          "before_sha256": "13807F7332962F85B2061E0B18DAC1555CB8F5170389C32B566236A4D40F0106",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05850.json"
+        },
+        {
+          "after_bytes": 563129,
+          "after_sha256": "E9171998F7D88F1086CCFC150BA9FE9019D5C7D5D31E15C1860F4172562CDAF5",
+          "before_bytes": 563129,
+          "before_sha256": "E9171998F7D88F1086CCFC150BA9FE9019D5C7D5D31E15C1860F4172562CDAF5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05900.json"
+        },
+        {
+          "after_bytes": 737406,
+          "after_sha256": "33516C9D0B0198725674F30C3EFA80F886C8DB8270961AE0F928EBDF3F0E1A3F",
+          "before_bytes": 737406,
+          "before_sha256": "33516C9D0B0198725674F30C3EFA80F886C8DB8270961AE0F928EBDF3F0E1A3F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_05950.json"
+        },
+        {
+          "after_bytes": 443121,
+          "after_sha256": "25CC7F44B2AD88DB06C4F8898EB640BF979C206394A132EE8DE83E9FB1E17645",
+          "before_bytes": 443121,
+          "before_sha256": "25CC7F44B2AD88DB06C4F8898EB640BF979C206394A132EE8DE83E9FB1E17645",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06000.json"
+        },
+        {
+          "after_bytes": 710364,
+          "after_sha256": "D7E088DDE7ADFF2E563DEF8883DF530E8607DE314953C7CD13E3E9021E42A4FE",
+          "before_bytes": 710364,
+          "before_sha256": "D7E088DDE7ADFF2E563DEF8883DF530E8607DE314953C7CD13E3E9021E42A4FE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06050.json"
+        },
+        {
+          "after_bytes": 828241,
+          "after_sha256": "C673BE7A180007F2429F94686532C725B157E18E46A9ECE80DCADC17BC7C9DEF",
+          "before_bytes": 828241,
+          "before_sha256": "C673BE7A180007F2429F94686532C725B157E18E46A9ECE80DCADC17BC7C9DEF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06100.json"
+        },
+        {
+          "after_bytes": 702106,
+          "after_sha256": "E1C18BC802FD3CBEF268A18D3A4EF93BB2780BCDE7FD7C764990DEEFF8C8BCCD",
+          "before_bytes": 702106,
+          "before_sha256": "E1C18BC802FD3CBEF268A18D3A4EF93BB2780BCDE7FD7C764990DEEFF8C8BCCD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06150.json"
+        },
+        {
+          "after_bytes": 497843,
+          "after_sha256": "456F522334A4FD9FE6CAA93CC0F746EA448ED4F57BEC80F3402CA23E20977BEF",
+          "before_bytes": 497843,
+          "before_sha256": "456F522334A4FD9FE6CAA93CC0F746EA448ED4F57BEC80F3402CA23E20977BEF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06200.json"
+        },
+        {
+          "after_bytes": 533875,
+          "after_sha256": "D2811AE3D8CF1884C39804751C99ECF7723BF744F975C2DDB0A70DF8DB8E202C",
+          "before_bytes": 533875,
+          "before_sha256": "D2811AE3D8CF1884C39804751C99ECF7723BF744F975C2DDB0A70DF8DB8E202C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06250.json"
+        },
+        {
+          "after_bytes": 961190,
+          "after_sha256": "0D8A3F235C9CD9ABA233009EEB70F8195493A09D98418985079E9E5E5F91FDBA",
+          "before_bytes": 961190,
+          "before_sha256": "0D8A3F235C9CD9ABA233009EEB70F8195493A09D98418985079E9E5E5F91FDBA",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06300.json"
+        },
+        {
+          "after_bytes": 707919,
+          "after_sha256": "0741EB5124E9EF596E679A5153AB6038EBA38DBF37884078777EBA2E46FE8213",
+          "before_bytes": 707919,
+          "before_sha256": "0741EB5124E9EF596E679A5153AB6038EBA38DBF37884078777EBA2E46FE8213",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06350.json"
+        },
+        {
+          "after_bytes": 1052017,
+          "after_sha256": "545B040341BAA95F51678510E11B437DDCE5CC10DB3DCC38A72D30466B391AE2",
+          "before_bytes": 1052017,
+          "before_sha256": "545B040341BAA95F51678510E11B437DDCE5CC10DB3DCC38A72D30466B391AE2",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06400.json"
+        },
+        {
+          "after_bytes": 946727,
+          "after_sha256": "2BA3ED77BC608CA11A18D71D4FC6C7216537A8142E36BD5CA50492F9C5547127",
+          "before_bytes": 946727,
+          "before_sha256": "2BA3ED77BC608CA11A18D71D4FC6C7216537A8142E36BD5CA50492F9C5547127",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06450.json"
+        },
+        {
+          "after_bytes": 579655,
+          "after_sha256": "769073D603D8A4B3B5E4F23847450BEDC5B593C029EC645F5EA50A65057B6E39",
+          "before_bytes": 579655,
+          "before_sha256": "769073D603D8A4B3B5E4F23847450BEDC5B593C029EC645F5EA50A65057B6E39",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06500.json"
+        },
+        {
+          "after_bytes": 615501,
+          "after_sha256": "1F10C79DF98C663AB65A6032AA1F1275DF1787FF48743E0F6315303C9C71B35C",
+          "before_bytes": 615501,
+          "before_sha256": "1F10C79DF98C663AB65A6032AA1F1275DF1787FF48743E0F6315303C9C71B35C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06550.json"
+        },
+        {
+          "after_bytes": 747550,
+          "after_sha256": "B08333C1C1DC6B413A1B86DB88D951DD4EB9E9CFEA226110F16322234DAA3E0C",
+          "before_bytes": 747550,
+          "before_sha256": "B08333C1C1DC6B413A1B86DB88D951DD4EB9E9CFEA226110F16322234DAA3E0C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06600.json"
+        },
+        {
+          "after_bytes": 623066,
+          "after_sha256": "B30315734DDE511C32C5BB127CE241FF0E9E8FB13FFC460870B104E188DB0447",
+          "before_bytes": 623066,
+          "before_sha256": "B30315734DDE511C32C5BB127CE241FF0E9E8FB13FFC460870B104E188DB0447",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06650.json"
+        },
+        {
+          "after_bytes": 520311,
+          "after_sha256": "75E4E0A11212D09371B106B0A54A3BC1E112D712CD27E8BF34CDCB5B7B29C43F",
+          "before_bytes": 520311,
+          "before_sha256": "75E4E0A11212D09371B106B0A54A3BC1E112D712CD27E8BF34CDCB5B7B29C43F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06700.json"
+        },
+        {
+          "after_bytes": 575750,
+          "after_sha256": "8EA47FFE4CC1510D802E2A4B8B894745612746D0C7C510BD3C00634EE2EA930D",
+          "before_bytes": 575750,
+          "before_sha256": "8EA47FFE4CC1510D802E2A4B8B894745612746D0C7C510BD3C00634EE2EA930D",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06750.json"
+        },
+        {
+          "after_bytes": 662342,
+          "after_sha256": "D092DFF745B3D5D0C7BA17760DF91FC323AD7B3A222B9F615E42E7F9158F1B69",
+          "before_bytes": 662342,
+          "before_sha256": "D092DFF745B3D5D0C7BA17760DF91FC323AD7B3A222B9F615E42E7F9158F1B69",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06800.json"
+        },
+        {
+          "after_bytes": 742636,
+          "after_sha256": "AD75898DE903575E91D0E314FE1311137F22BD780060973B7D8976338EEC9C9A",
+          "before_bytes": 742636,
+          "before_sha256": "AD75898DE903575E91D0E314FE1311137F22BD780060973B7D8976338EEC9C9A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06850.json"
+        },
+        {
+          "after_bytes": 544747,
+          "after_sha256": "D2C202A9C0C0E0D090AA36E1821D7A95C93A4F7AC740175DC7DD227DC2E5F971",
+          "before_bytes": 544747,
+          "before_sha256": "D2C202A9C0C0E0D090AA36E1821D7A95C93A4F7AC740175DC7DD227DC2E5F971",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06900.json"
+        },
+        {
+          "after_bytes": 587867,
+          "after_sha256": "F654C575C121C0792912E40406B145101AE37DF65CD1B3A8BCBC71FF47652E1E",
+          "before_bytes": 587867,
+          "before_sha256": "F654C575C121C0792912E40406B145101AE37DF65CD1B3A8BCBC71FF47652E1E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_06950.json"
+        },
+        {
+          "after_bytes": 521745,
+          "after_sha256": "4F00AE889D080729E35154D281FDF5CF134350683A94BF9322A3ED1E8DFB8A55",
+          "before_bytes": 521745,
+          "before_sha256": "4F00AE889D080729E35154D281FDF5CF134350683A94BF9322A3ED1E8DFB8A55",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07000.json"
+        },
+        {
+          "after_bytes": 645566,
+          "after_sha256": "06DB5D71D1DAF9474ADD97ADAC82BE71E279E34AAB0DC75A1BA5ACCE62E4B783",
+          "before_bytes": 645566,
+          "before_sha256": "06DB5D71D1DAF9474ADD97ADAC82BE71E279E34AAB0DC75A1BA5ACCE62E4B783",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07050.json"
+        },
+        {
+          "after_bytes": 456147,
+          "after_sha256": "93E9B43CCE5C771A920FCC7E364252C405251A0AD9B8C4F71CAD7658D617752E",
+          "before_bytes": 456147,
+          "before_sha256": "93E9B43CCE5C771A920FCC7E364252C405251A0AD9B8C4F71CAD7658D617752E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07100.json"
+        },
+        {
+          "after_bytes": 395747,
+          "after_sha256": "1FD85FF57E19905375A4C81CC034EF52538B83EEFABB68058E95CA686EA6498C",
+          "before_bytes": 395747,
+          "before_sha256": "1FD85FF57E19905375A4C81CC034EF52538B83EEFABB68058E95CA686EA6498C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07150.json"
+        },
+        {
+          "after_bytes": 522080,
+          "after_sha256": "ED9BBA3D1377A85DF46D8A5CE0494E018638036D05783EBE11D8804BE3F3F19F",
+          "before_bytes": 522080,
+          "before_sha256": "ED9BBA3D1377A85DF46D8A5CE0494E018638036D05783EBE11D8804BE3F3F19F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07200.json"
+        },
+        {
+          "after_bytes": 768191,
+          "after_sha256": "8B3EAAD4021AF7E1F31D282DE53D97DA736E068D9AC8A3E9CDC3BE4FC63BD3E0",
+          "before_bytes": 768191,
+          "before_sha256": "8B3EAAD4021AF7E1F31D282DE53D97DA736E068D9AC8A3E9CDC3BE4FC63BD3E0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07250.json"
+        },
+        {
+          "after_bytes": 506487,
+          "after_sha256": "6B3A1BF6FE4E2D1F92EF99E91BA3039FD4CDB5BAE548362934F6177979400464",
+          "before_bytes": 506487,
+          "before_sha256": "6B3A1BF6FE4E2D1F92EF99E91BA3039FD4CDB5BAE548362934F6177979400464",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07300.json"
+        },
+        {
+          "after_bytes": 531911,
+          "after_sha256": "FEFA0275A26283EA7B7013C28D70C6089ECF81AAA9B7742D85E9D3D3FCFB7CC6",
+          "before_bytes": 531911,
+          "before_sha256": "FEFA0275A26283EA7B7013C28D70C6089ECF81AAA9B7742D85E9D3D3FCFB7CC6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07350.json"
+        },
+        {
+          "after_bytes": 533128,
+          "after_sha256": "3069D0175B0CF908B8DDFC0765E33097878A54EFEF3DA48005AA8DB79617FB4B",
+          "before_bytes": 533128,
+          "before_sha256": "3069D0175B0CF908B8DDFC0765E33097878A54EFEF3DA48005AA8DB79617FB4B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07400.json"
+        },
+        {
+          "after_bytes": 9927,
+          "after_sha256": "5C555D09548519CC66710E9930ECBE2FE09C0052BEDCB59B865D688C5A7DBF49",
+          "before_bytes": 9927,
+          "before_sha256": "5C555D09548519CC66710E9930ECBE2FE09C0052BEDCB59B865D688C5A7DBF49",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\chunks\\episodes_07402.json"
+        },
+        {
+          "after_bytes": 401300,
+          "after_sha256": "8DA24F1D4C26485130EC391F1DFA3314B4CCD2A13E249E1D5EB6DBC499931DDF",
+          "before_bytes": 401300,
+          "before_sha256": "8DA24F1D4C26485130EC391F1DFA3314B4CCD2A13E249E1D5EB6DBC499931DDF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\dividend_entitlements.csv"
+        },
+        {
+          "after_bytes": 908864,
+          "after_sha256": "94930D08F2379BF38AE4E447BC5E5B04189B18E283BF19F2B715E7FCCC5955ED",
+          "before_bytes": 908864,
+          "before_sha256": "94930D08F2379BF38AE4E447BC5E5B04189B18E283BF19F2B715E7FCCC5955ED",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\event_factors.csv"
+        },
+        {
+          "after_bytes": 1313,
+          "after_sha256": "83E7E14B671F617F5F4AA706E99A5FB561EAB4184D9156594017EFCA5D45F261",
+          "before_bytes": 1313,
+          "before_sha256": "83E7E14B671F617F5F4AA706E99A5FB561EAB4184D9156594017EFCA5D45F261",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\hand_checks.json"
+        },
+        {
+          "after_bytes": 73780,
+          "after_sha256": "F3FC09C6621420A85545D605A9F06AD5F32054266F3069433326CF342D873130",
+          "before_bytes": 73780,
+          "before_sha256": "F3FC09C6621420A85545D605A9F06AD5F32054266F3069433326CF342D873130",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\holds.csv"
+        },
+        {
+          "after_bytes": 94924,
+          "after_sha256": "FD3D683BA38893E1A870423CC0D14525EF26DEAB91A02353DA0B8884782B12BF",
+          "before_bytes": 94924,
+          "before_sha256": "FD3D683BA38893E1A870423CC0D14525EF26DEAB91A02353DA0B8884782B12BF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\input_pins.json"
+        },
+        {
+          "after_bytes": 43855,
+          "after_sha256": "52C5D2E851D60244F05D5C709FC65E4A66167DEAADCD03979C79CB37BBD63037",
+          "before_bytes": 43855,
+          "before_sha256": "52C5D2E851D60244F05D5C709FC65E4A66167DEAADCD03979C79CB37BBD63037",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\manifest.json"
+        },
+        {
+          "after_bytes": 850,
+          "after_sha256": "6B0BED2E7E73574D615713E74B119D7A7DE288DCA5E1F5CAB012EADD5BEC6B34",
+          "before_bytes": 850,
+          "before_sha256": "6B0BED2E7E73574D615713E74B119D7A7DE288DCA5E1F5CAB012EADD5BEC6B34",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\preflight_repair_record.json"
+        },
+        {
+          "after_bytes": 15549,
+          "after_sha256": "4210DCE4C794ACE79B5F8EE779AB6BBE77152D89FE46431D3354D77D289B9AAC",
+          "before_bytes": 15549,
+          "before_sha256": "4210DCE4C794ACE79B5F8EE779AB6BBE77152D89FE46431D3354D77D289B9AAC",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\readback.json"
+        },
+        {
+          "after_bytes": 4364617,
+          "after_sha256": "88B0642A6A92A5FB7426692DB4CA4CEC9F87387C7C3A87848C2664D1AD24B924",
+          "before_bytes": 4364617,
+          "before_sha256": "88B0642A6A92A5FB7426692DB4CA4CEC9F87387C7C3A87848C2664D1AD24B924",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\report_zh.md"
+        },
+        {
+          "after_bytes": 48298865,
+          "after_sha256": "9969ABD9A9E1743545C920ABFC02BB35CBCA5CCB76914FE9FFCE34B2FB692B7B",
+          "before_bytes": 48298865,
+          "before_sha256": "9969ABD9A9E1743545C920ABFC02BB35CBCA5CCB76914FE9FFCE34B2FB692B7B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\selection_records.csv"
+        },
+        {
+          "after_bytes": 49280,
+          "after_sha256": "32DF02CBAF89DD1A637C7A1CDEEA3E30B2B3688FA88257B3BA4894758BF2F0B0",
+          "before_bytes": 49280,
+          "before_sha256": "32DF02CBAF89DD1A637C7A1CDEEA3E30B2B3688FA88257B3BA4894758BF2F0B0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\summary.json"
+        },
+        {
+          "after_bytes": 152,
+          "after_sha256": "C853BFA7BF07CC611AADF071C9495CD48CB560A0BA0CD7E88F439FFA0293D426",
+          "before_bytes": 152,
+          "before_sha256": "C853BFA7BF07CC611AADF071C9495CD48CB560A0BA0CD7E88F439FFA0293D426",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\test_results.json"
+        },
+        {
+          "after_bytes": 16487723,
+          "after_sha256": "CA2136515BFDA530561E954693432AA76967F7A2C30095EFF6519D22080821B7",
+          "before_bytes": 16487723,
+          "before_sha256": "CA2136515BFDA530561E954693432AA76967F7A2C30095EFF6519D22080821B7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_a.csv"
+        },
+        {
+          "after_bytes": 5680600,
+          "after_sha256": "D6C5CF6BFE5E3EF4BDB9CD2F4E8D1B7F2F53696E9F3A84C51A151843EDCABD16",
+          "before_bytes": 5680600,
+          "before_sha256": "D6C5CF6BFE5E3EF4BDB9CD2F4E8D1B7F2F53696E9F3A84C51A151843EDCABD16",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_b.csv"
+        },
+        {
+          "after_bytes": 3095815,
+          "after_sha256": "8945E590ECC0D8EC48B93EA491F0EBCF2EBA3B7ACFA2649EDAF7BAFEAC7960D8",
+          "before_bytes": 3095815,
+          "before_sha256": "8945E590ECC0D8EC48B93EA491F0EBCF2EBA3B7ACFA2649EDAF7BAFEAC7960D8",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_c.csv"
+        }
+      ],
+      "label": "baseline_2023",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed"
+    },
+    {
+      "after_digest": "F3297A11B8F2B4BF1DFF48EAB2C6540182BBCEEBE9E425006FF0E8F7028938A2",
+      "all_files_byte_unchanged": true,
+      "before_digest": "F3297A11B8F2B4BF1DFF48EAB2C6540182BBCEEBE9E425006FF0E8F7028938A2",
+      "file_count": 24,
+      "files": [
+        {
+          "after_bytes": 120,
+          "after_sha256": "18473B440E0FCB4DA456DB7212C3666FCAE477FE168B185985D6C88019697D0F",
+          "before_bytes": 120,
+          "before_sha256": "18473B440E0FCB4DA456DB7212C3666FCAE477FE168B185985D6C88019697D0F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\all_row_open_gate.json"
+        },
+        {
+          "after_bytes": 3734,
+          "after_sha256": "C34836423AF3F19892A2FE546922E2A0AE819A56711B0928CAD5643B6BAA744C",
+          "before_bytes": 3734,
+          "before_sha256": "C34836423AF3F19892A2FE546922E2A0AE819A56711B0928CAD5643B6BAA744C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 118843045,
+          "after_sha256": "EA89299241BEFED7B2CA80A5E234ABD8F17193E9C5C7896D4BA6330F5E5C92A5",
+          "before_bytes": 118843045,
+          "before_sha256": "EA89299241BEFED7B2CA80A5E234ABD8F17193E9C5C7896D4BA6330F5E5C92A5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\causal_plan_registry.json"
+        },
+        {
+          "after_bytes": 624,
+          "after_sha256": "0805CA91B789AA493CFE8C10C9FD20E182B4DED02621D07635A66326AD240547",
+          "before_bytes": 624,
+          "before_sha256": "0805CA91B789AA493CFE8C10C9FD20E182B4DED02621D07635A66326AD240547",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\checkpoint.json"
+        },
+        {
+          "after_bytes": 2,
+          "after_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "before_bytes": 2,
+          "before_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\continuation_decisions.csv"
+        },
+        {
+          "after_bytes": 7752,
+          "after_sha256": "9A853B93715D135796ABABD6DB0F46B48196B2125019BD6CEDE1A23B21886231",
+          "before_bytes": 7752,
+          "before_sha256": "9A853B93715D135796ABABD6DB0F46B48196B2125019BD6CEDE1A23B21886231",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\continuation_episode_registry.json"
+        },
+        {
+          "after_bytes": 39219,
+          "after_sha256": "7C4BCD04A36310BBA10D1E83DAF40AD1502659BCFDC30BB3B72D0B5AAB30006F",
+          "before_bytes": 39219,
+          "before_sha256": "7C4BCD04A36310BBA10D1E83DAF40AD1502659BCFDC30BB3B72D0B5AAB30006F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\continuation_episode_states.csv"
+        },
+        {
+          "after_bytes": 9978,
+          "after_sha256": "2450530C97F0B25D7943CE4668F15AA88575C7208DAEE897F9E1B08ADCCA148B",
+          "before_bytes": 9978,
+          "before_sha256": "2450530C97F0B25D7943CE4668F15AA88575C7208DAEE897F9E1B08ADCCA148B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\continuation_prefix_audit.json"
+        },
+        {
+          "after_bytes": 8713,
+          "after_sha256": "56C7226C0C55186CB9564A3A84FC92B93EAAF864585718FC6DAB8E635E0F59AE",
+          "before_bytes": 8713,
+          "before_sha256": "56C7226C0C55186CB9564A3A84FC92B93EAAF864585718FC6DAB8E635E0F59AE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\continuation_remaining.json"
+        },
+        {
+          "after_bytes": 295,
+          "after_sha256": "A731FB6495F0C5A8FD6CF25091A197F1CBB418D2E27B8B1EBD2E25E65765D4FE",
+          "before_bytes": 295,
+          "before_sha256": "A731FB6495F0C5A8FD6CF25091A197F1CBB418D2E27B8B1EBD2E25E65765D4FE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\core_determinism.json"
+        },
+        {
+          "after_bytes": 2,
+          "after_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "before_bytes": 2,
+          "before_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\equity_receivables.csv"
+        },
+        {
+          "after_bytes": 2,
+          "after_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "before_bytes": 2,
+          "before_sha256": "7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\equity_settlements.csv"
+        },
+        {
+          "after_bytes": 462011,
+          "after_sha256": "7D0C37C9CB8817386F12B964A2CDD46472C74C28470E5D402D21ECFA8ED92B47",
+          "before_bytes": 462011,
+          "before_sha256": "7D0C37C9CB8817386F12B964A2CDD46472C74C28470E5D402D21ECFA8ED92B47",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\event_factors.csv"
+        },
+        {
+          "after_bytes": 8274,
+          "after_sha256": "969DE523203999E5647B33342E17CF93ECCDB2CE750FA72E56B86E215DA86FAB",
+          "before_bytes": 8274,
+          "before_sha256": "969DE523203999E5647B33342E17CF93ECCDB2CE750FA72E56B86E215DA86FAB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\fixed_seed_trade_audit.json"
+        },
+        {
+          "after_bytes": 286360,
+          "after_sha256": "F83A8714B32AA79D63DD2E8351DE597EA29621ADCFC8898ECB8D41296780FC86",
+          "before_bytes": 286360,
+          "before_sha256": "F83A8714B32AA79D63DD2E8351DE597EA29621ADCFC8898ECB8D41296780FC86",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\holds.csv"
+        },
+        {
+          "after_bytes": 1047,
+          "after_sha256": "8056CE344220604B4230E0EB6B5538C07573A576D4EC618ECB84AC11105ECAD8",
+          "before_bytes": 1047,
+          "before_sha256": "8056CE344220604B4230E0EB6B5538C07573A576D4EC618ECB84AC11105ECAD8",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\input_pins.json"
+        },
+        {
+          "after_bytes": 130,
+          "after_sha256": "24BDF555E40073108C660AC3C8410897D6AB6C370A7C7A21C4D06708CE3ECCE1",
+          "before_bytes": 130,
+          "before_sha256": "24BDF555E40073108C660AC3C8410897D6AB6C370A7C7A21C4D06708CE3ECCE1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\medium_bc_parity.json"
+        },
+        {
+          "after_bytes": 254,
+          "after_sha256": "BF7204475BD99AD9AD1B66AE81A995530735A7BBD6588B1FC0EC9363636A2219",
+          "before_bytes": 254,
+          "before_sha256": "BF7204475BD99AD9AD1B66AE81A995530735A7BBD6588B1FC0EC9363636A2219",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 3552,
+          "after_sha256": "2955B7DC107A68F7C218BA4C36C1B5A68FED06765FA672AEE6012F286A6DD5A9",
+          "before_bytes": 3552,
+          "before_sha256": "2955B7DC107A68F7C218BA4C36C1B5A68FED06765FA672AEE6012F286A6DD5A9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\readback.json"
+        },
+        {
+          "after_bytes": 1432,
+          "after_sha256": "A7A4D980EA5BC085726B3F9F27E7B52241D401FEC7BEC2CF9B083DD8319C4599",
+          "before_bytes": 1432,
+          "before_sha256": "A7A4D980EA5BC085726B3F9F27E7B52241D401FEC7BEC2CF9B083DD8319C4599",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\report_zh.md"
+        },
+        {
+          "after_bytes": 52303322,
+          "after_sha256": "553D9925DC5C9E712811C65D093275D1D00C8A1EAAF2AD6FA581A1CEA6E16A8E",
+          "before_bytes": 52303322,
+          "before_sha256": "553D9925DC5C9E712811C65D093275D1D00C8A1EAAF2AD6FA581A1CEA6E16A8E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\selection_records.csv"
+        },
+        {
+          "after_bytes": 15559555,
+          "after_sha256": "99F997C2B8C3AA0EB648271DEDA364FFC60B9579A00384EAEDA5B508752B6B40",
+          "before_bytes": 15559555,
+          "before_sha256": "99F997C2B8C3AA0EB648271DEDA364FFC60B9579A00384EAEDA5B508752B6B40",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_a.csv"
+        },
+        {
+          "after_bytes": 6997178,
+          "after_sha256": "84EBA7E183A9123C5B6825D9C119D99C26251BE4C3CE0A57A6CAD1A39C89E863",
+          "before_bytes": 6997178,
+          "before_sha256": "84EBA7E183A9123C5B6825D9C119D99C26251BE4C3CE0A57A6CAD1A39C89E863",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_b.csv"
+        },
+        {
+          "after_bytes": 4124349,
+          "after_sha256": "AF5F8DEC8296C71A714AFBFFFF07CDFB3B75B8323B5A51B15C6CB7305818A19E",
+          "before_bytes": 4124349,
+          "before_sha256": "AF5F8DEC8296C71A714AFBFFFF07CDFB3B75B8323B5A51B15C6CB7305818A19E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_c.csv"
+        }
+      ],
+      "label": "baseline_2024",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026"
+    },
+    {
+      "after_digest": "DFC9DB682D780F0F48A5DE52739B823C306B0AB596F2847EDF30EAA5CAEB5562",
+      "all_files_byte_unchanged": true,
+      "before_digest": "DFC9DB682D780F0F48A5DE52739B823C306B0AB596F2847EDF30EAA5CAEB5562",
+      "file_count": 15,
+      "files": [
+        {
+          "after_bytes": 1663,
+          "after_sha256": "BA68D95791D67EFCC9287D4C336E5A8A9612D576B0080E55ED8D340A63C03DE7",
+          "before_bytes": 1663,
+          "before_sha256": "BA68D95791D67EFCC9287D4C336E5A8A9612D576B0080E55ED8D340A63C03DE7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 390,
+          "after_sha256": "68FE6AEF058EFF5C2434E1984E6F55E952A1EF5B21E3C4F4B5898799569C4A9D",
+          "before_bytes": 390,
+          "before_sha256": "68FE6AEF058EFF5C2434E1984E6F55E952A1EF5B21E3C4F4B5898799569C4A9D",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\checkpoint.json"
+        },
+        {
+          "after_bytes": 18,
+          "after_sha256": "8F9FB1701DE3B9812F82E44AE6E8B5A7876A8ADBC84B3D5EC27B3EDA2EA03C8C",
+          "before_bytes": 18,
+          "before_sha256": "8F9FB1701DE3B9812F82E44AE6E8B5A7876A8ADBC84B3D5EC27B3EDA2EA03C8C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\corporate_action_cashflows.csv"
+        },
+        {
+          "after_bytes": 13,
+          "after_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "before_bytes": 13,
+          "before_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\coverage_hold_matrix.csv"
+        },
+        {
+          "after_bytes": 452387,
+          "after_sha256": "0FA32A3F7C41A403677E0EFF601D3BDD99ABA391EC75E42CADE11B76785A9BF6",
+          "before_bytes": 452387,
+          "before_sha256": "0FA32A3F7C41A403677E0EFF601D3BDD99ABA391EC75E42CADE11B76785A9BF6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\episodes.csv"
+        },
+        {
+          "after_bytes": 8405160,
+          "after_sha256": "004F0ED3BCB4DB563342EBC4BD80DA365861704DCC69404CBAD8C8FC6BC2328B",
+          "before_bytes": 8405160,
+          "before_sha256": "004F0ED3BCB4DB563342EBC4BD80DA365861704DCC69404CBAD8C8FC6BC2328B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\event_gates.csv"
+        },
+        {
+          "after_bytes": 7066563,
+          "after_sha256": "012F94675D67AC8DA941A17E2E6271646103E5CAB0C1B4CE825294C4CB68607E",
+          "before_bytes": 7066563,
+          "before_sha256": "012F94675D67AC8DA941A17E2E6271646103E5CAB0C1B4CE825294C4CB68607E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\input_manifest.json"
+        },
+        {
+          "after_bytes": 4259148,
+          "after_sha256": "1E59B970BE67B297CD4C2E830652268A8A6F21B8604EDE398E4007AB90A16750",
+          "before_bytes": 4259148,
+          "before_sha256": "1E59B970BE67B297CD4C2E830652268A8A6F21B8604EDE398E4007AB90A16750",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\old_runs_unchanged.json"
+        },
+        {
+          "after_bytes": 241,
+          "after_sha256": "7DEE38007D4F69F5E4BE4CFC0605D069C18B5668045BC985CA900344AB36C1FD",
+          "before_bytes": 241,
+          "before_sha256": "7DEE38007D4F69F5E4BE4CFC0605D069C18B5668045BC985CA900344AB36C1FD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\readback.json"
+        },
+        {
+          "after_bytes": 7695,
+          "after_sha256": "1B67EBAE27BC1E81A57497811E2A2999335CE7D2B47BB2D32F69638A44985D50",
+          "before_bytes": 7695,
+          "before_sha256": "1B67EBAE27BC1E81A57497811E2A2999335CE7D2B47BB2D32F69638A44985D50",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\report_zh.md"
+        },
+        {
+          "after_bytes": 50681554,
+          "after_sha256": "A27C2B944F90D742EDC6F5F1F0E3A998B4DF7EBF573E4BAACEE2F6C3024649F5",
+          "before_bytes": 50681554,
+          "before_sha256": "A27C2B944F90D742EDC6F5F1F0E3A998B4DF7EBF573E4BAACEE2F6C3024649F5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\selection_records.csv"
+        },
+        {
+          "after_bytes": 47404,
+          "after_sha256": "13549F89C30739250E0483BA07BDCC8BA6CB70E0281ABA8757DFA1468B0050F1",
+          "before_bytes": 47404,
+          "before_sha256": "13549F89C30739250E0483BA07BDCC8BA6CB70E0281ABA8757DFA1468B0050F1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\source_groups.json"
+        },
+        {
+          "after_bytes": 67201,
+          "after_sha256": "4B227852725AFAAE5CD1462146A7748D381CD7596D5B6D3168A37732C98FBA57",
+          "before_bytes": 67201,
+          "before_sha256": "4B227852725AFAAE5CD1462146A7748D381CD7596D5B6D3168A37732C98FBA57",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\summary.json"
+        },
+        {
+          "after_bytes": 25592296,
+          "after_sha256": "C699FDBF5B60C74E35AD541610039FA496D6DA153005AD969772D9A4BB61DCF6",
+          "before_bytes": 25592296,
+          "before_sha256": "C699FDBF5B60C74E35AD541610039FA496D6DA153005AD969772D9A4BB61DCF6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\trades.csv"
+        },
+        {
+          "after_bytes": 8908277,
+          "after_sha256": "95BAA8B4C93A29F7B542516EC2D25D2305AF77D03486F9B02A1067AD9003CFD7",
+          "before_bytes": 8908277,
+          "before_sha256": "95BAA8B4C93A29F7B542516EC2D25D2305AF77D03486F9B02A1067AD9003CFD7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\trades_20bps.csv"
+        }
+      ],
+      "label": "baseline_2025",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2"
+    },
+    {
+      "after_digest": "46FDDFFB421B9169DBDD18413D6EE7AB6CA8262112222351F8B71D66FCDF3602",
+      "all_files_byte_unchanged": true,
+      "before_digest": "46FDDFFB421B9169DBDD18413D6EE7AB6CA8262112222351F8B71D66FCDF3602",
+      "file_count": 15,
+      "files": [
+        {
+          "after_bytes": 1661,
+          "after_sha256": "0D9E4691C80AB21FC7D5F72712D1B05C9E4115719E3E6DACBE13051A98E8D633",
+          "before_bytes": 1661,
+          "before_sha256": "0D9E4691C80AB21FC7D5F72712D1B05C9E4115719E3E6DACBE13051A98E8D633",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 388,
+          "after_sha256": "155B7CFE64CDFF1992251991BF5D84B5F7FB618B58F2C25FF9E2FC8E1CC6D4D8",
+          "before_bytes": 388,
+          "before_sha256": "155B7CFE64CDFF1992251991BF5D84B5F7FB618B58F2C25FF9E2FC8E1CC6D4D8",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\checkpoint.json"
+        },
+        {
+          "after_bytes": 18,
+          "after_sha256": "8F9FB1701DE3B9812F82E44AE6E8B5A7876A8ADBC84B3D5EC27B3EDA2EA03C8C",
+          "before_bytes": 18,
+          "before_sha256": "8F9FB1701DE3B9812F82E44AE6E8B5A7876A8ADBC84B3D5EC27B3EDA2EA03C8C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\corporate_action_cashflows.csv"
+        },
+        {
+          "after_bytes": 13,
+          "after_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "before_bytes": 13,
+          "before_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\coverage_hold_matrix.csv"
+        },
+        {
+          "after_bytes": 509235,
+          "after_sha256": "BD85582AA90D7F82809FEEE5DD53BB2E51C3562DF67A3B6EAF56D6BEF22C44A4",
+          "before_bytes": 509235,
+          "before_sha256": "BD85582AA90D7F82809FEEE5DD53BB2E51C3562DF67A3B6EAF56D6BEF22C44A4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\episodes.csv"
+        },
+        {
+          "after_bytes": 10703049,
+          "after_sha256": "AD60E2B76769CBFDCC7E96B057700D41B80E95ED72ACB386D04DBFB96341A41F",
+          "before_bytes": 10703049,
+          "before_sha256": "AD60E2B76769CBFDCC7E96B057700D41B80E95ED72ACB386D04DBFB96341A41F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\event_gates.csv"
+        },
+        {
+          "after_bytes": 7372649,
+          "after_sha256": "B48227E7AD1D8F48A9286F84E0F48A2C475CE27F2FB5FACABBE1F2F8D0B1F564",
+          "before_bytes": 7372649,
+          "before_sha256": "B48227E7AD1D8F48A9286F84E0F48A2C475CE27F2FB5FACABBE1F2F8D0B1F564",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\input_manifest.json"
+        },
+        {
+          "after_bytes": 4259148,
+          "after_sha256": "1E59B970BE67B297CD4C2E830652268A8A6F21B8604EDE398E4007AB90A16750",
+          "before_bytes": 4259148,
+          "before_sha256": "1E59B970BE67B297CD4C2E830652268A8A6F21B8604EDE398E4007AB90A16750",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\old_runs_unchanged.json"
+        },
+        {
+          "after_bytes": 239,
+          "after_sha256": "51B007926199048E5E4A58653D6827FBA655ABCEF452E32465452D8411B20078",
+          "before_bytes": 239,
+          "before_sha256": "51B007926199048E5E4A58653D6827FBA655ABCEF452E32465452D8411B20078",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\readback.json"
+        },
+        {
+          "after_bytes": 7675,
+          "after_sha256": "6132EA9A5A43FD5F45F03025E6437849922BE67F6D43654AEB76CB7CEB84CFC1",
+          "before_bytes": 7675,
+          "before_sha256": "6132EA9A5A43FD5F45F03025E6437849922BE67F6D43654AEB76CB7CEB84CFC1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\report_zh.md"
+        },
+        {
+          "after_bytes": 52919704,
+          "after_sha256": "9FD379FD60DBAD53A1AB61176BB771885E6C6052FB2282C4CED331ED10B9905E",
+          "before_bytes": 52919704,
+          "before_sha256": "9FD379FD60DBAD53A1AB61176BB771885E6C6052FB2282C4CED331ED10B9905E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\selection_records.csv"
+        },
+        {
+          "after_bytes": 46467,
+          "after_sha256": "3AB867634B76211E36996B90655C0EE824B09D3616C07D4F7591EC4B5DDC17A4",
+          "before_bytes": 46467,
+          "before_sha256": "3AB867634B76211E36996B90655C0EE824B09D3616C07D4F7591EC4B5DDC17A4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\source_groups.json"
+        },
+        {
+          "after_bytes": 66271,
+          "after_sha256": "BBA2D906053C4697888045610F9EF11776BFB1565EC7706727C54996998119B6",
+          "before_bytes": 66271,
+          "before_sha256": "BBA2D906053C4697888045610F9EF11776BFB1565EC7706727C54996998119B6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\summary.json"
+        },
+        {
+          "after_bytes": 31686331,
+          "after_sha256": "BAC2C0053A012AC4838535BD9A9476AD327399DE915C35C5EEC825A75E0A29F1",
+          "before_bytes": 31686331,
+          "before_sha256": "BAC2C0053A012AC4838535BD9A9476AD327399DE915C35C5EEC825A75E0A29F1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\trades.csv"
+        },
+        {
+          "after_bytes": 10977612,
+          "after_sha256": "038294A9A967F667BF75A34624780936AF759E98E02C21978A588C5DC2A84D41",
+          "before_bytes": 10977612,
+          "before_sha256": "038294A9A967F667BF75A34624780936AF759E98E02C21978A588C5DC2A84D41",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\trades_20bps.csv"
+        }
+      ],
+      "label": "baseline_2026",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2"
+    },
+    {
+      "after_digest": "6ECC6E1E7FD1E7613A221CD8CEDD54431EAB74DC817CE91BE4DFC4F28E50D02A",
+      "all_files_byte_unchanged": true,
+      "before_digest": "6ECC6E1E7FD1E7613A221CD8CEDD54431EAB74DC817CE91BE4DFC4F28E50D02A",
+      "file_count": 13,
+      "files": [
+        {
+          "after_bytes": 1984,
+          "after_sha256": "54C7960D7169C6480C81A26B51D7CECD624A2C0302292EDBA3E2A2640C2A5AA0",
+          "before_bytes": 1984,
+          "before_sha256": "54C7960D7169C6480C81A26B51D7CECD624A2C0302292EDBA3E2A2640C2A5AA0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 410,
+          "after_sha256": "5C944AA86E01EAA1EC138BC660CFACD705F02693890ED9029554C6F54D57766C",
+          "before_bytes": 410,
+          "before_sha256": "5C944AA86E01EAA1EC138BC660CFACD705F02693890ED9029554C6F54D57766C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 15610,
+          "after_sha256": "49D9FAC3BB885768D01A4DD9DF858D7231E9E0B5B6DBBB4419EC2E20B97975BF",
+          "before_bytes": 15610,
+          "before_sha256": "49D9FAC3BB885768D01A4DD9DF858D7231E9E0B5B6DBBB4419EC2E20B97975BF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 1215886,
+          "after_sha256": "269B542C072F0253068E56998125A21E4E0B5EF4521BB9E5A6ED8ABA79C7BEF3",
+          "before_bytes": 1215886,
+          "before_sha256": "269B542C072F0253068E56998125A21E4E0B5EF4521BB9E5A6ED8ABA79C7BEF3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 366601,
+          "after_sha256": "FC830AF9D0678035B300372DBCC648CA5E44199CC3E39645B86CE2EF72AC67AB",
+          "before_bytes": 366601,
+          "before_sha256": "FC830AF9D0678035B300372DBCC648CA5E44199CC3E39645B86CE2EF72AC67AB",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\kd_arm_cross_reentry_ledger.csv"
+        },
+        {
+          "after_bytes": 3348,
+          "after_sha256": "266D284B8DB9CA4B6ECDEDBB75AB9727C2C1D90B5B96F19CE57B0D2A25908368",
+          "before_bytes": 3348,
+          "before_sha256": "266D284B8DB9CA4B6ECDEDBB75AB9727C2C1D90B5B96F19CE57B0D2A25908368",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\ledger_report_repair_evidence.json"
+        },
+        {
+          "after_bytes": 247,
+          "after_sha256": "AEF0A71C838A732FC6593793D8712D555BC737895415A71BC8BB3859A4AD91E0",
+          "before_bytes": 247,
+          "before_sha256": "AEF0A71C838A732FC6593793D8712D555BC737895415A71BC8BB3859A4AD91E0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 211,
+          "after_sha256": "C391408A32D10A03A095EECB4AE0F907F91896ADCC950C1517476918A57B1C64",
+          "before_bytes": 211,
+          "before_sha256": "C391408A32D10A03A095EECB4AE0F907F91896ADCC950C1517476918A57B1C64",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\readback.json"
+        },
+        {
+          "after_bytes": 16569,
+          "after_sha256": "F0E2A76BBDF9AC893803824C420426135ABF03639663B7BB9FADBB367903CBEE",
+          "before_bytes": 16569,
+          "before_sha256": "F0E2A76BBDF9AC893803824C420426135ABF03639663B7BB9FADBB367903CBEE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\summary.json"
+        },
+        {
+          "after_bytes": 1428754,
+          "after_sha256": "95FA948C8431641B931AC66D50C525AA1A1EF6A8D273A65A490F9EBC63FA4633",
+          "before_bytes": 1428754,
+          "before_sha256": "95FA948C8431641B931AC66D50C525AA1A1EF6A8D273A65A490F9EBC63FA4633",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\trades_20bps.csv"
+        },
+        {
+          "after_bytes": 2237337,
+          "after_sha256": "D7A31FC3ECDB7B434A8B66195918883F46FC5CCE316804B76804D0233B0B492C",
+          "before_bytes": 2237337,
+          "before_sha256": "D7A31FC3ECDB7B434A8B66195918883F46FC5CCE316804B76804D0233B0B492C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 1171840,
+          "after_sha256": "EC64D11C898C7CB2159BC5F87C7A720BB122B12086908A6CE9CB615552446501",
+          "before_bytes": 1171840,
+          "before_sha256": "EC64D11C898C7CB2159BC5F87C7A720BB122B12086908A6CE9CB615552446501",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 594608,
+          "after_sha256": "6B123CBFDB1D47071E37B6B7761061F222FA0DC08BC647B26B0FA130AEAE586C",
+          "before_bytes": 594608,
+          "before_sha256": "6B123CBFDB1D47071E37B6B7761061F222FA0DC08BC647B26B0FA130AEAE586C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\trades_c.csv"
+        }
+      ],
+      "label": "kd_2022",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1"
+    },
+    {
+      "after_digest": "7F4F1EAF71B18A6890970DEC064CB72D6A15B91A50B253B1AB72A10295AC9008",
+      "all_files_byte_unchanged": true,
+      "before_digest": "7F4F1EAF71B18A6890970DEC064CB72D6A15B91A50B253B1AB72A10295AC9008",
+      "file_count": 13,
+      "files": [
+        {
+          "after_bytes": 1987,
+          "after_sha256": "D3995111302376D67088DDA3124ECC4477E6CD3FE06332565606F44E47FA5512",
+          "before_bytes": 1987,
+          "before_sha256": "D3995111302376D67088DDA3124ECC4477E6CD3FE06332565606F44E47FA5512",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 410,
+          "after_sha256": "0EF3FD75D0C8E36665570B4A8BFAED94DBC754FFEC67946DFB5E09E150F8F7F1",
+          "before_bytes": 410,
+          "before_sha256": "0EF3FD75D0C8E36665570B4A8BFAED94DBC754FFEC67946DFB5E09E150F8F7F1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 73780,
+          "after_sha256": "956B293E3E14173AC4EB63B7C3386E96807007A0A1336C207BF21AEC9ABBE1EE",
+          "before_bytes": 73780,
+          "before_sha256": "956B293E3E14173AC4EB63B7C3386E96807007A0A1336C207BF21AEC9ABBE1EE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 18872,
+          "after_sha256": "9553307D6569D9EEF2D3131F67761C266BA7BFF42213F959697058D7FB156BB3",
+          "before_bytes": 18872,
+          "before_sha256": "9553307D6569D9EEF2D3131F67761C266BA7BFF42213F959697058D7FB156BB3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 3651477,
+          "after_sha256": "16EB0949750643DA4DF0B3E8DAEDE20F771690C3011EADA0F953409B24EBAD65",
+          "before_bytes": 3651477,
+          "before_sha256": "16EB0949750643DA4DF0B3E8DAEDE20F771690C3011EADA0F953409B24EBAD65",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\kd_arm_cross_reentry_ledger.csv"
+        },
+        {
+          "after_bytes": 3348,
+          "after_sha256": "0C0161F93C3F8500D9A3D4C397A41F2932960355E59E09DA4F573D6B52B3C366",
+          "before_bytes": 3348,
+          "before_sha256": "0C0161F93C3F8500D9A3D4C397A41F2932960355E59E09DA4F573D6B52B3C366",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\ledger_report_repair_evidence.json"
+        },
+        {
+          "after_bytes": 248,
+          "after_sha256": "C917E3CE7392451726B32968E251F93A4D5E24F8713B59850C6C9035AFB6F9DE",
+          "before_bytes": 248,
+          "before_sha256": "C917E3CE7392451726B32968E251F93A4D5E24F8713B59850C6C9035AFB6F9DE",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 211,
+          "after_sha256": "699684974EB748A26A24407AF2A5C854CF4313E174118001BF16947D60CFF6F7",
+          "before_bytes": 211,
+          "before_sha256": "699684974EB748A26A24407AF2A5C854CF4313E174118001BF16947D60CFF6F7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\readback.json"
+        },
+        {
+          "after_bytes": 16155,
+          "after_sha256": "4E04B194CB110F5359F42D5880894A2F912057863184A35FA72AE3BA74825D32",
+          "before_bytes": 16155,
+          "before_sha256": "4E04B194CB110F5359F42D5880894A2F912057863184A35FA72AE3BA74825D32",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\summary.json"
+        },
+        {
+          "after_bytes": 8887667,
+          "after_sha256": "FF035ECED019BD71463B5D0285723AF5A9075B41F8C4FF87DF954B2A01EE6F57",
+          "before_bytes": 8887667,
+          "before_sha256": "FF035ECED019BD71463B5D0285723AF5A9075B41F8C4FF87DF954B2A01EE6F57",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\trades_20bps.csv"
+        },
+        {
+          "after_bytes": 17485558,
+          "after_sha256": "D4FAEF1F243CC84453C39E52B94C56BFAB0CBE076F9104A626101C049F1A5DE5",
+          "before_bytes": 17485558,
+          "before_sha256": "D4FAEF1F243CC84453C39E52B94C56BFAB0CBE076F9104A626101C049F1A5DE5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 5819873,
+          "after_sha256": "205DE45368B0DE8CE1909AA2692DB65BCF4E7E568DCF2DA023301A5D0CFCC55B",
+          "before_bytes": 5819873,
+          "before_sha256": "205DE45368B0DE8CE1909AA2692DB65BCF4E7E568DCF2DA023301A5D0CFCC55B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 3101498,
+          "after_sha256": "A4AC761833668050F1D3284B69C58CBD6A3372E45F9D7571FB9735F770B0889B",
+          "before_bytes": 3101498,
+          "before_sha256": "A4AC761833668050F1D3284B69C58CBD6A3372E45F9D7571FB9735F770B0889B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\trades_c.csv"
+        }
+      ],
+      "label": "kd_2023",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1"
+    },
+    {
+      "after_digest": "2B5B3093D341F359FF446675A615DE26A8846D03D03F8823578EBE36F22397AE",
+      "all_files_byte_unchanged": true,
+      "before_digest": "2B5B3093D341F359FF446675A615DE26A8846D03D03F8823578EBE36F22397AE",
+      "file_count": 13,
+      "files": [
+        {
+          "after_bytes": 1990,
+          "after_sha256": "DA9FA64343092C0EAAFA4E2858B416DD4B563D564D4CC090D247EDE23E835224",
+          "before_bytes": 1990,
+          "before_sha256": "DA9FA64343092C0EAAFA4E2858B416DD4B563D564D4CC090D247EDE23E835224",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 410,
+          "after_sha256": "C3C7B2B41DEF09749EAE7AEFDB93F58564BD40977A6295727B71AC0A567E98E2",
+          "before_bytes": 410,
+          "before_sha256": "C3C7B2B41DEF09749EAE7AEFDB93F58564BD40977A6295727B71AC0A567E98E2",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 286360,
+          "after_sha256": "CF6C448FFC786F88A2FBB548C0C6D8855D46F91189ACDAC5173888EF70768A56",
+          "before_bytes": 286360,
+          "before_sha256": "CF6C448FFC786F88A2FBB548C0C6D8855D46F91189ACDAC5173888EF70768A56",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 1143065,
+          "after_sha256": "66DBBF83BBA634E253E5978661CA794809F3FCB7789073F523FBD8600B71905C",
+          "before_bytes": 1143065,
+          "before_sha256": "66DBBF83BBA634E253E5978661CA794809F3FCB7789073F523FBD8600B71905C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 2801413,
+          "after_sha256": "A53B03C8C6935ED169755408796957E59FDC809B0658EE8F6DA962EDBCBE5AEF",
+          "before_bytes": 2801413,
+          "before_sha256": "A53B03C8C6935ED169755408796957E59FDC809B0658EE8F6DA962EDBCBE5AEF",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\kd_arm_cross_reentry_ledger.csv"
+        },
+        {
+          "after_bytes": 5615,
+          "after_sha256": "667B23491DF0EEE7D87A77041B7E11E19FB80DB2C5FDF372D4CE55F0A24B7360",
+          "before_bytes": 5615,
+          "before_sha256": "667B23491DF0EEE7D87A77041B7E11E19FB80DB2C5FDF372D4CE55F0A24B7360",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\ledger_report_repair_evidence.json"
+        },
+        {
+          "after_bytes": 247,
+          "after_sha256": "17ACAA9E8A4A7C0448B157FB5D3242614B4C6467F897AD2174B8D75521A6EC47",
+          "before_bytes": 247,
+          "before_sha256": "17ACAA9E8A4A7C0448B157FB5D3242614B4C6467F897AD2174B8D75521A6EC47",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 211,
+          "after_sha256": "4B0B72A438188FE569D7584CD9F4862C18DD1C274AC58D8C1110687B84D1B5C2",
+          "before_bytes": 211,
+          "before_sha256": "4B0B72A438188FE569D7584CD9F4862C18DD1C274AC58D8C1110687B84D1B5C2",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\readback.json"
+        },
+        {
+          "after_bytes": 16673,
+          "after_sha256": "C75107FCB5BAA376C9052962DA152CB407AB8E98C34F81F785C87F9F0E189A19",
+          "before_bytes": 16673,
+          "before_sha256": "C75107FCB5BAA376C9052962DA152CB407AB8E98C34F81F785C87F9F0E189A19",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\summary.json"
+        },
+        {
+          "after_bytes": 9726004,
+          "after_sha256": "C40718603DC7CD6C86E864F3ACCE26D741860DC1BD8A46216C66377573ACAEA0",
+          "before_bytes": 9726004,
+          "before_sha256": "C40718603DC7CD6C86E864F3ACCE26D741860DC1BD8A46216C66377573ACAEA0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\trades_20bps.csv"
+        },
+        {
+          "after_bytes": 16006685,
+          "after_sha256": "67D575323C60686B914BACFF401838AD68930793D9E94EB5DBB3D65E078BCEA4",
+          "before_bytes": 16006685,
+          "before_sha256": "67D575323C60686B914BACFF401838AD68930793D9E94EB5DBB3D65E078BCEA4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 7121224,
+          "after_sha256": "A25643D5B4B8F7762F9E4CA07EBCC1D9F1565F23DA48E4079D78386F3E52CE89",
+          "before_bytes": 7121224,
+          "before_sha256": "A25643D5B4B8F7762F9E4CA07EBCC1D9F1565F23DA48E4079D78386F3E52CE89",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 4141497,
+          "after_sha256": "B718D84FB0EBACFB2169DA329BCE476E49FE973EF1E75D2639108635115B5042",
+          "before_bytes": 4141497,
+          "before_sha256": "B718D84FB0EBACFB2169DA329BCE476E49FE973EF1E75D2639108635115B5042",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\trades_c.csv"
+        }
+      ],
+      "label": "kd_2024",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1"
+    },
+    {
+      "after_digest": "16C2559E65B946CF5D0FC3E5E9ABB5C17AA162F814FF18D392399E55559EF382",
+      "all_files_byte_unchanged": true,
+      "before_digest": "16C2559E65B946CF5D0FC3E5E9ABB5C17AA162F814FF18D392399E55559EF382",
+      "file_count": 13,
+      "files": [
+        {
+          "after_bytes": 1986,
+          "after_sha256": "687C0E3E411E6B6CB42586AFE1EC2AFF6A54383AB3BBA9321885AB1D22C1EC36",
+          "before_bytes": 1986,
+          "before_sha256": "687C0E3E411E6B6CB42586AFE1EC2AFF6A54383AB3BBA9321885AB1D22C1EC36",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 410,
+          "after_sha256": "79C59A4404719B513B3C915ACD3AB84827D220762E0393330D772EDF72033880",
+          "before_bytes": 410,
+          "before_sha256": "79C59A4404719B513B3C915ACD3AB84827D220762E0393330D772EDF72033880",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 13,
+          "after_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "before_bytes": 13,
+          "before_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 5118498,
+          "after_sha256": "C6D550B9630EF8F43685D98F17498AD9DB7883A9586C65980778DD2EB877885C",
+          "before_bytes": 5118498,
+          "before_sha256": "C6D550B9630EF8F43685D98F17498AD9DB7883A9586C65980778DD2EB877885C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 2938955,
+          "after_sha256": "B2A06DF92A9F0353B549266E916B572E2A2FB07435FAFC7F9C229032754A7BD9",
+          "before_bytes": 2938955,
+          "before_sha256": "B2A06DF92A9F0353B549266E916B572E2A2FB07435FAFC7F9C229032754A7BD9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\kd_arm_cross_reentry_ledger.csv"
+        },
+        {
+          "after_bytes": 3370,
+          "after_sha256": "20007312B530D8670D4D8F8FFB8E86E1CC5F5B32916AD6EE318985EC474DA130",
+          "before_bytes": 3370,
+          "before_sha256": "20007312B530D8670D4D8F8FFB8E86E1CC5F5B32916AD6EE318985EC474DA130",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\ledger_report_repair_evidence.json"
+        },
+        {
+          "after_bytes": 247,
+          "after_sha256": "C1A52692912247872FCB3F85016655B2DED440B178BDC2AC38817E2814A1C8A7",
+          "before_bytes": 247,
+          "before_sha256": "C1A52692912247872FCB3F85016655B2DED440B178BDC2AC38817E2814A1C8A7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 211,
+          "after_sha256": "C1452045AF02FF33ECEF1C07A71E0BD7B7EDDB4F8C701810376A24B8A9A4F451",
+          "before_bytes": 211,
+          "before_sha256": "C1452045AF02FF33ECEF1C07A71E0BD7B7EDDB4F8C701810376A24B8A9A4F451",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\readback.json"
+        },
+        {
+          "after_bytes": 16652,
+          "after_sha256": "BE5417CD3FA01594EE86529764E2B80C708B70260F4D5B3949FDD88B6CD2561E",
+          "before_bytes": 16652,
+          "before_sha256": "BE5417CD3FA01594EE86529764E2B80C708B70260F4D5B3949FDD88B6CD2561E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\summary.json"
+        },
+        {
+          "after_bytes": 9322658,
+          "after_sha256": "9EBF8EFEB815F596E11FBE3428032E410791A89B928ED802835F07C4666B601B",
+          "before_bytes": 9322658,
+          "before_sha256": "9EBF8EFEB815F596E11FBE3428032E410791A89B928ED802835F07C4666B601B",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\trades_20bps.csv"
+        },
+        {
+          "after_bytes": 16139153,
+          "after_sha256": "6C303C3D67258451FF8C77ACBF8E3406E0DA67497CCB8F1066BE07013BED5689",
+          "before_bytes": 16139153,
+          "before_sha256": "6C303C3D67258451FF8C77ACBF8E3406E0DA67497CCB8F1066BE07013BED5689",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 6825581,
+          "after_sha256": "0060BDBD5DADB9F369593FDF79BD09C8AA7EAED24A9E1D9FF6AB4F7E5D9D7A3C",
+          "before_bytes": 6825581,
+          "before_sha256": "0060BDBD5DADB9F369593FDF79BD09C8AA7EAED24A9E1D9FF6AB4F7E5D9D7A3C",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 3603233,
+          "after_sha256": "EC92CC333876E142CD9F494F7F9B71AD56415A506E199D120BCA60D84D82E35F",
+          "before_bytes": 3603233,
+          "before_sha256": "EC92CC333876E142CD9F494F7F9B71AD56415A506E199D120BCA60D84D82E35F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\trades_c.csv"
+        }
+      ],
+      "label": "kd_2025",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1"
+    },
+    {
+      "after_digest": "49E5EF3E044C4467FE482A382288BC0E3C17A1BBA915BF2449CA493C0256C510",
+      "all_files_byte_unchanged": true,
+      "before_digest": "49E5EF3E044C4467FE482A382288BC0E3C17A1BBA915BF2449CA493C0256C510",
+      "file_count": 13,
+      "files": [
+        {
+          "after_bytes": 1987,
+          "after_sha256": "36676C34336CF1390E9BE0DA88FD1C6F1B95C2663886B1ECC7EE347D1E0E859F",
+          "before_bytes": 1987,
+          "before_sha256": "36676C34336CF1390E9BE0DA88FD1C6F1B95C2663886B1ECC7EE347D1E0E859F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 410,
+          "after_sha256": "F2ECF54D59A77F0678ECD7D646F6B6CF16799B4CCB2958559365F4F5E3CF29DD",
+          "before_bytes": 410,
+          "before_sha256": "F2ECF54D59A77F0678ECD7D646F6B6CF16799B4CCB2958559365F4F5E3CF29DD",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 13,
+          "after_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "before_bytes": 13,
+          "before_sha256": "892DBD2043F1EBD8706ACF7971800E6F2CD3D0AB090D2B5DCA554C17CDCF9065",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\holds.csv"
+        },
+        {
+          "after_bytes": 5435736,
+          "after_sha256": "69E1C9762980D9E840B6DF9656ACCDE57F603551A204CD0D194D06E379B2F879",
+          "before_bytes": 5435736,
+          "before_sha256": "69E1C9762980D9E840B6DF9656ACCDE57F603551A204CD0D194D06E379B2F879",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 3417231,
+          "after_sha256": "3F428DEFDE1A8993ABF5CDA132C5B97839A91F027F05372A4DAACF954A8D4665",
+          "before_bytes": 3417231,
+          "before_sha256": "3F428DEFDE1A8993ABF5CDA132C5B97839A91F027F05372A4DAACF954A8D4665",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\kd_arm_cross_reentry_ledger.csv"
+        },
+        {
+          "after_bytes": 3370,
+          "after_sha256": "6123A52031F2C4D936E6548E556894E7E3C34F18EAE8259CB6496126D75A6FA7",
+          "before_bytes": 3370,
+          "before_sha256": "6123A52031F2C4D936E6548E556894E7E3C34F18EAE8259CB6496126D75A6FA7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\ledger_report_repair_evidence.json"
+        },
+        {
+          "after_bytes": 247,
+          "after_sha256": "88F6F3845925DAA49956387EF9349FC8FF438E529E30CD43ACCE28FBFD15A4A9",
+          "before_bytes": 247,
+          "before_sha256": "88F6F3845925DAA49956387EF9349FC8FF438E529E30CD43ACCE28FBFD15A4A9",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\old_run_unchanged.json"
+        },
+        {
+          "after_bytes": 211,
+          "after_sha256": "087A92D7B5D6847771B4B75C56C9F46ABA42A42CBC0525C328D43A61884F679F",
+          "before_bytes": 211,
+          "before_sha256": "087A92D7B5D6847771B4B75C56C9F46ABA42A42CBC0525C328D43A61884F679F",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\readback.json"
+        },
+        {
+          "after_bytes": 16985,
+          "after_sha256": "0B8EE5BA7F22033D21EC59E06BC448E2785C50273F68891901BFF4E0F6E757B0",
+          "before_bytes": 16985,
+          "before_sha256": "0B8EE5BA7F22033D21EC59E06BC448E2785C50273F68891901BFF4E0F6E757B0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\summary.json"
+        },
+        {
+          "after_bytes": 11460289,
+          "after_sha256": "A228936DE255BC8CA34CE22043F92821B20651B82DC0F6CE64CC186EAEF18D14",
+          "before_bytes": 11460289,
+          "before_sha256": "A228936DE255BC8CA34CE22043F92821B20651B82DC0F6CE64CC186EAEF18D14",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\trades_20bps.csv"
+        },
+        {
+          "after_bytes": 17268797,
+          "after_sha256": "979F0B2C875FF3D247F0E00B2F476E714A41CB25AFE56C6A9D349AD6BA832871",
+          "before_bytes": 17268797,
+          "before_sha256": "979F0B2C875FF3D247F0E00B2F476E714A41CB25AFE56C6A9D349AD6BA832871",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\trades_a.csv"
+        },
+        {
+          "after_bytes": 9674489,
+          "after_sha256": "E5DC5612DEDE5DFA9D065D854EB0E2CC49C237B2229327E2A98E9266E8BBFA1A",
+          "before_bytes": 9674489,
+          "before_sha256": "E5DC5612DEDE5DFA9D065D854EB0E2CC49C237B2229327E2A98E9266E8BBFA1A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\trades_b.csv"
+        },
+        {
+          "after_bytes": 5927742,
+          "after_sha256": "94A66EC32813DCEF8252F98BD84D7467163F519DCC65498658AC61D961FAC7D3",
+          "before_bytes": 5927742,
+          "before_sha256": "94A66EC32813DCEF8252F98BD84D7467163F519DCC65498658AC61D961FAC7D3",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\trades_c.csv"
+        }
+      ],
+      "label": "kd_2026",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1"
+    },
+    {
+      "after_digest": "9023E9C3D30053CF729EBAA84C65EDE819CDEA013AF9B0DF44ECECD301C1C6C6",
+      "all_files_byte_unchanged": true,
+      "before_digest": "9023E9C3D30053CF729EBAA84C65EDE819CDEA013AF9B0DF44ECECD301C1C6C6",
+      "file_count": 25,
+      "files": [
+        {
+          "after_bytes": 19060,
+          "after_sha256": "09644B6B642C98BAD9A65B183D63B4377AABD1F45A1A977B631E8408C2E5DB42",
+          "before_bytes": 19060,
+          "before_sha256": "09644B6B642C98BAD9A65B183D63B4377AABD1F45A1A977B631E8408C2E5DB42",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2022-2026-source-strategy-overview.md"
+        },
+        {
+          "after_bytes": 20554,
+          "after_sha256": "6A5E6C892AE9D395766EEC7A413EFCE1B2D39B8DD9E56824FF7025A5ED36C649",
+          "before_bytes": 20554,
+          "before_sha256": "6A5E6C892AE9D395766EEC7A413EFCE1B2D39B8DD9E56824FF7025A5ED36C649",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2022-source-strategy-report.md"
+        },
+        {
+          "after_bytes": 20494,
+          "after_sha256": "550B7F799CC632A044B94ABE4ABFB564B68254310C128071CE6241036086D585",
+          "before_bytes": 20494,
+          "before_sha256": "550B7F799CC632A044B94ABE4ABFB564B68254310C128071CE6241036086D585",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2023-source-strategy-report.md"
+        },
+        {
+          "after_bytes": 20946,
+          "after_sha256": "8DD5B613E0C3F1B1A5D53C939967A001530CCA97EF9955EF5F2D5E7200CC7FC0",
+          "before_bytes": 20946,
+          "before_sha256": "8DD5B613E0C3F1B1A5D53C939967A001530CCA97EF9955EF5F2D5E7200CC7FC0",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2024-source-strategy-report.md"
+        },
+        {
+          "after_bytes": 21146,
+          "after_sha256": "099350D524B9AA621E352FD6CFE34DA04E0A79F7E2C5F4D7A64A970C621E02C7",
+          "before_bytes": 21146,
+          "before_sha256": "099350D524B9AA621E352FD6CFE34DA04E0A79F7E2C5F4D7A64A970C621E02C7",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2025-source-strategy-report.md"
+        },
+        {
+          "after_bytes": 21525,
+          "after_sha256": "9C7FED2F12D84ABB95AABC1858803B85A7A2B81730E8E8AE1422868A60D5ADB4",
+          "before_bytes": 21525,
+          "before_sha256": "9C7FED2F12D84ABB95AABC1858803B85A7A2B81730E8E8AE1422868A60D5ADB4",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\2026-source-strategy-report.md"
+        },
+        {
+          "after_bytes": 4243,
+          "after_sha256": "C639A123B6DB74CBEDDB3B67A30216BBC9876689706402326E055F78B5E224C6",
+          "before_bytes": 4243,
+          "before_sha256": "C639A123B6DB74CBEDDB3B67A30216BBC9876689706402326E055F78B5E224C6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\artifact_manifest.json"
+        },
+        {
+          "after_bytes": 284,
+          "after_sha256": "24CC09543C8D400F0AD42429E568ED826044D41637CDD1B8619CE5B09FA2D70E",
+          "before_bytes": 284,
+          "before_sha256": "24CC09543C8D400F0AD42429E568ED826044D41637CDD1B8619CE5B09FA2D70E",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\checkpoint.json"
+        },
+        {
+          "after_bytes": 1403710,
+          "after_sha256": "BE873A710BF596C29A79893D41F7BCBC3FD06B0AA6A6AAB947C727F2C789718A",
+          "before_bytes": 1403710,
+          "before_sha256": "BE873A710BF596C29A79893D41F7BCBC3FD06B0AA6A6AAB947C727F2C789718A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2022-source-strategy-complete-detail.csv"
+        },
+        {
+          "after_bytes": 11151,
+          "after_sha256": "86ADA01E4B5173F9A8551C29E93D3A09A131FBFA82DE52722235A4298E8647D6",
+          "before_bytes": 11151,
+          "before_sha256": "86ADA01E4B5173F9A8551C29E93D3A09A131FBFA82DE52722235A4298E8647D6",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2022-source-strategy-complete-detail.md"
+        },
+        {
+          "after_bytes": 9794270,
+          "after_sha256": "CDE8F68A6640E8C58EDA8157A543C5BDFA5FE5041386CFA398156CB5B9541E39",
+          "before_bytes": 9794270,
+          "before_sha256": "CDE8F68A6640E8C58EDA8157A543C5BDFA5FE5041386CFA398156CB5B9541E39",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2023-source-strategy-complete-detail.csv"
+        },
+        {
+          "after_bytes": 12288,
+          "after_sha256": "4FF14B99C4701E2274E3131A0F415B06A4AF28BAEBBEBC25AB93C081789A9B58",
+          "before_bytes": 12288,
+          "before_sha256": "4FF14B99C4701E2274E3131A0F415B06A4AF28BAEBBEBC25AB93C081789A9B58",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2023-source-strategy-complete-detail.md"
+        },
+        {
+          "after_bytes": 9714375,
+          "after_sha256": "DDEE114B6C2D4A4685D0F7B4F9A1FA8C9D57AADB91BF86FF4CEFF5A99E6A2B88",
+          "before_bytes": 9714375,
+          "before_sha256": "DDEE114B6C2D4A4685D0F7B4F9A1FA8C9D57AADB91BF86FF4CEFF5A99E6A2B88",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2024-source-strategy-complete-detail.csv"
+        },
+        {
+          "after_bytes": 12465,
+          "after_sha256": "E488B402AD2934F45CDAE7B9693E6AF6A23382C0862B0144CD55DFA196A73437",
+          "before_bytes": 12465,
+          "before_sha256": "E488B402AD2934F45CDAE7B9693E6AF6A23382C0862B0144CD55DFA196A73437",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2024-source-strategy-complete-detail.md"
+        },
+        {
+          "after_bytes": 6780337,
+          "after_sha256": "4EEDBC7F9B828CBECDB2592B167CEE61525A6CBBCCA466FCF97A410F83BCED77",
+          "before_bytes": 6780337,
+          "before_sha256": "4EEDBC7F9B828CBECDB2592B167CEE61525A6CBBCCA466FCF97A410F83BCED77",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2025-source-strategy-complete-detail.csv"
+        },
+        {
+          "after_bytes": 15240,
+          "after_sha256": "689B4FFB2F741E6CDDC280C6E0083BC3DA5730674F5E136290342C039CAADB88",
+          "before_bytes": 15240,
+          "before_sha256": "689B4FFB2F741E6CDDC280C6E0083BC3DA5730674F5E136290342C039CAADB88",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2025-source-strategy-complete-detail.md"
+        },
+        {
+          "after_bytes": 6685720,
+          "after_sha256": "27D0F297E3DD097EAB3D8ED4FEACFF4F06B496CFEEBDC128026D129CE9679409",
+          "before_bytes": 6685720,
+          "before_sha256": "27D0F297E3DD097EAB3D8ED4FEACFF4F06B496CFEEBDC128026D129CE9679409",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2026-source-strategy-complete-detail.csv"
+        },
+        {
+          "after_bytes": 17779,
+          "after_sha256": "C073A9E9144E0C889AD1C044C0C94F883F39AF798893B04BE68AAB32D8343574",
+          "before_bytes": 17779,
+          "before_sha256": "C073A9E9144E0C889AD1C044C0C94F883F39AF798893B04BE68AAB32D8343574",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\details\\2026-source-strategy-complete-detail.md"
+        },
+        {
+          "after_bytes": 19901,
+          "after_sha256": "FDB3167B0877CCFF62583C0823782EBC6C04767B69ACF0A9CD7A4B6072D083E5",
+          "before_bytes": 19901,
+          "before_sha256": "FDB3167B0877CCFF62583C0823782EBC6C04767B69ACF0A9CD7A4B6072D083E5",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\input_manifest.json"
+        },
+        {
+          "after_bytes": 153375,
+          "after_sha256": "EF46C70EE340FAC0C026BA58607F9E7FAE86E3F42397F29094A5A059D67559A1",
+          "before_bytes": 153375,
+          "before_sha256": "EF46C70EE340FAC0C026BA58607F9E7FAE86E3F42397F29094A5A059D67559A1",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\old_artifacts_unchanged.json"
+        },
+        {
+          "after_bytes": 2114,
+          "after_sha256": "440F28FAB7502A8AA3AF768DF2689313816A8F91B1C4F21A16A337A759E97B3D",
+          "before_bytes": 2114,
+          "before_sha256": "440F28FAB7502A8AA3AF768DF2689313816A8F91B1C4F21A16A337A759E97B3D",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\readback.json"
+        },
+        {
+          "after_bytes": 115141,
+          "after_sha256": "A3B4C32C93D335642CDAA451BCCF7E98DC969E9D16A04DEE971895E37E99FF84",
+          "before_bytes": 115141,
+          "before_sha256": "A3B4C32C93D335642CDAA451BCCF7E98DC969E9D16A04DEE971895E37E99FF84",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\source-strategy-annual.csv"
+        },
+        {
+          "after_bytes": 26982,
+          "after_sha256": "D9BF884B5AF7AE571939D13EBCF3A4744F03F15EDD16CD35EE51322472BA9470",
+          "before_bytes": 26982,
+          "before_sha256": "D9BF884B5AF7AE571939D13EBCF3A4744F03F15EDD16CD35EE51322472BA9470",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\source-strategy-five-year.csv"
+        },
+        {
+          "after_bytes": 619,
+          "after_sha256": "3BE2DF18FB167E0D687B7F42A2F21C807D0E9FFB3B11B87793E0A92BDAAEAD20",
+          "before_bytes": 619,
+          "before_sha256": "3BE2DF18FB167E0D687B7F42A2F21C807D0E9FFB3B11B87793E0A92BDAAEAD20",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\validation\\metric-validation.json"
+        },
+        {
+          "after_bytes": 47880,
+          "after_sha256": "3D1182032293DA35300AF28096D6BE8FCCED9BD68254E5BFF321D065DB44A59A",
+          "before_bytes": 47880,
+          "before_sha256": "3D1182032293DA35300AF28096D6BE8FCCED9BD68254E5BFF321D065DB44A59A",
+          "match": true,
+          "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1\\validation\\rate-sample-checks.json"
+        }
+      ],
+      "label": "source_strategy_v1_report",
+      "root": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v1"
+    }
+  ],
+  "status": "PASS"
+}

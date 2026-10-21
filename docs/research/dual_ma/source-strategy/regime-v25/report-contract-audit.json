@@ -1,0 +1,13 @@
+{
+  "annual_rows": 630,
+  "column_mismatch_count": 0,
+  "expected_annual_rows": 630,
+  "expected_five_year_rows": 126,
+  "five_year_rows": 126,
+  "hold_rows": 18,
+  "mismatches": [],
+  "rankable_rows": 108,
+  "status": "PASS",
+  "table_count": 11,
+  "table_row_count": 336
+}

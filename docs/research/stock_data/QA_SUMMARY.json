@@ -1,0 +1,32 @@
+{
+  "schema": "stock-data-qa-summary-v1",
+  "status": "PASS",
+  "release_id": "2026-09-30-v3",
+  "release_manifest_sha256": "D50A2F8435A6C8E9288FE1EF6711646CE5E997AAD0199FDFE976B3D62724BC32",
+  "isolated_rebuild": {
+    "file_count": 109175,
+    "mismatch_count": 0,
+    "tree_fingerprint": "AD9EA37774C63F65CF9663692556EB6E3568F076E55EBF3FF6C6543CBA3AA856",
+    "audit": "isolated-rebuild-exact-audit.json",
+    "audit_sha256": "42752D1E25B010D03574776E839F21EF96FC1DE34310E7510F6D0CFDB214C740"
+  },
+  "project_copy": {
+    "file_count": 109175,
+    "mismatch_count": 0,
+    "tree_fingerprint": "AD9EA37774C63F65CF9663692556EB6E3568F076E55EBF3FF6C6543CBA3AA856",
+    "audit": "e-to-d-exact-audit.json",
+    "audit_sha256": "1FF711FC0E6284D3FE6C96C7FF204BDD076495F43B7B1EF4739361FAA06FFE74"
+  },
+  "consumer_smoke": {
+    "status": "PASS",
+    "selection_date_count": 5098,
+    "selection_first_date": "2006-01-02",
+    "selection_last_date": "2026-09-30",
+    "etf_0050_artifacts_verified": 458,
+    "etf_00635u_artifacts_verified": 16,
+    "forbidden_staging_present": false,
+    "audit": "consumer-smoke.json",
+    "audit_sha256": "475705EABCBA9D39AD76BAE4389CC7983DDB7961469D994290E9A37831BEE99B"
+  },
+  "deletion_authorized": false
+}

@@ -1,0 +1,101 @@
+{
+  "branch": "codex/dual-ma-backtest-2022h1",
+  "candidate_count": 5,
+  "candidates": [
+    {
+      "id": "financial_c_long_kd",
+      "name": "財報營收＋高於 21 日線 5%＋長期（KD）",
+      "source": "financial",
+      "source_zh": "財報營收選股",
+      "strategy": "LONG_21_144",
+      "strategy_zh": "再加高於 21 日線 5%＋長期",
+      "variant": "C",
+      "version": "kd",
+      "version_zh": "KD 比較組"
+    },
+    {
+      "id": "technical_c_long_kd",
+      "name": "技術面＋高於 21 日線 5%＋長期（KD）",
+      "source": "technical",
+      "source_zh": "技術面選股",
+      "strategy": "LONG_21_144",
+      "strategy_zh": "再加高於 21 日線 5%＋長期",
+      "variant": "C",
+      "version": "kd",
+      "version_zh": "KD 比較組"
+    },
+    {
+      "id": "chip1_c_long_kd",
+      "name": "60 日法人動態＋高於 21 日線 5%＋長期（KD）",
+      "source": "chip_1",
+      "source_zh": "60 日法人動態選股",
+      "strategy": "LONG_21_144",
+      "strategy_zh": "再加高於 21 日線 5%＋長期",
+      "variant": "C",
+      "version": "kd",
+      "version_zh": "KD 比較組"
+    },
+    {
+      "id": "laoxiao_a_medium_baseline",
+      "name": "老蕭＋基本進場＋中期（原策略）",
+      "source": "laoxiao",
+      "source_zh": "老蕭選股",
+      "strategy": "MEDIUM_5_21",
+      "strategy_zh": "基本進場＋中期",
+      "variant": "A",
+      "version": "baseline",
+      "version_zh": "原策略"
+    },
+    {
+      "id": "chip3_c_long_kd",
+      "name": "法人持股比例增加＋高於 21 日線 5%＋長期（KD）",
+      "source": "chip_3",
+      "source_zh": "法人持股比例增加",
+      "strategy": "LONG_21_144",
+      "strategy_zh": "再加高於 21 日線 5%＋長期",
+      "variant": "C",
+      "version": "kd",
+      "version_zh": "KD 比較組"
+    }
+  ],
+  "inputs": [
+    {
+      "bytes": 1403710,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2022-source-strategy-complete-detail.csv",
+      "sha256": "BE873A710BF596C29A79893D41F7BCBC3FD06B0AA6A6AAB947C727F2C789718A"
+    },
+    {
+      "bytes": 9794270,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2023-source-strategy-complete-detail.csv",
+      "sha256": "CDE8F68A6640E8C58EDA8157A543C5BDFA5FE5041386CFA398156CB5B9541E39"
+    },
+    {
+      "bytes": 9714375,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2024-source-strategy-complete-detail.csv",
+      "sha256": "DDEE114B6C2D4A4685D0F7B4F9A1FA8C9D57AADB91BF86FF4CEFF5A99E6A2B88"
+    },
+    {
+      "bytes": 6780337,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2025-source-strategy-complete-detail.csv",
+      "sha256": "4EEDBC7F9B828CBECDB2592B167CEE61525A6CBBCCA466FCF97A410F83BCED77"
+    },
+    {
+      "bytes": 6685720,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2026-source-strategy-complete-detail.csv",
+      "sha256": "27D0F297E3DD097EAB3D8ED4FEACFF4F06B496CFEEBDC128026D129CE9679409"
+    },
+    {
+      "bytes": 116297,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\source-strategy-annual.csv",
+      "sha256": "369AE4F50753A2EC79138EBE2E4A193B8780010F3BEEB9082D302FFBBC95494A"
+    },
+    {
+      "bytes": 27228,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\source-strategy-five-year.csv",
+      "sha256": "04F3F9094CF1E8698F93FDCB06C518D1454BC182E3696C4EDBB132420664255B"
+    }
+  ],
+  "report_only": true,
+  "runner_git_commit": "468d374926ed9891909ea8139786aea6c949b113",
+  "status": "PASS"
+}

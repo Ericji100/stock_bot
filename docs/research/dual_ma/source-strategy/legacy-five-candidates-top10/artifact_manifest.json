@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "bytes": 13196,
+      "path": "report.md",
+      "sha256": "D76448526924BE9A2EFE3680B31BD1949E7EBC7836BEA9A9838B3E5CC2CA1AAC"
+    },
+    {
+      "bytes": 17110,
+      "path": "top10-realized-winners.csv",
+      "sha256": "5D92F2E363595A0DBE043466BED7ED11C30F3F33232F3CFB59DC690BD4F07EDE"
+    },
+    {
+      "bytes": 5212,
+      "path": "top10-open-estimated-winners.csv",
+      "sha256": "8B659C323924CB762C88D6369F74107678C057581D0061DB75EC02145FB304B1"
+    },
+    {
+      "bytes": 8145,
+      "path": "input_manifest.json",
+      "sha256": "FADE7964BD6676B68AFF09D0DF15FE627FF6954BA4AFC6CE09054C2D5FD8F084"
+    }
+  ],
+  "open_estimated_row_count": 16,
+  "realized_row_count": 50,
+  "status": "PASS",
+  "yearly_checks": {
+    "2022": {
+      "distinct_closed_trade_count": 104,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2023": {
+      "distinct_closed_trade_count": 427,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2024": {
+      "distinct_closed_trade_count": 457,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2025": {
+      "distinct_closed_trade_count": 443,
+      "distinct_open_trade_count": 6,
+      "open_estimated_top10_count": 6,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2026": {
+      "distinct_closed_trade_count": 357,
+      "distinct_open_trade_count": 32,
+      "open_estimated_top10_count": 10,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "file_count": 109175,
+  "left": "E:\\stock_data_build\\2026-09-30-v3-c",
+  "mismatch_count": 0,
+  "mismatches": [],
+  "right": "D:\\code\\stock_ai_bot\\stock_data\\versions\\2026-09-30-v3",
+  "schema": "dual-ma-exact-rebuild-audit-v1",
+  "status": "PASS",
+  "tree_fingerprint": "AD9EA37774C63F65CF9663692556EB6E3568F076E55EBF3FF6C6543CBA3AA856"
+}

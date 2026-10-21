@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="680" viewBox="0 0 1240 680">
+<rect width="100%" height="100%" fill="white"/>
+<text x="70" y="34" font-size="22" font-weight="bold">成交成本敏感度（20／40／60 基點）</text>
+<style>text{font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;fill:#111827}.grid{stroke:#e5e7eb;stroke-width:1}.axis{stroke:#6b7280;stroke-width:1.2}</style>
+<line class="grid" x1="82" y1="58.0" x2="1206" y2="58.0"/>
+<text x="72" y="63.0" text-anchor="end" font-size="12">15%</text>
+<line class="grid" x1="82" y1="161.4" x2="1206" y2="161.4"/>
+<text x="72" y="166.4" text-anchor="end" font-size="12">11%</text>
+<line class="grid" x1="82" y1="264.8" x2="1206" y2="264.8"/>
+<text x="72" y="269.8" text-anchor="end" font-size="12">8%</text>
+<line class="grid" x1="82" y1="368.2" x2="1206" y2="368.2"/>
+<text x="72" y="373.2" text-anchor="end" font-size="12">5%</text>
+<line class="grid" x1="82" y1="471.6" x2="1206" y2="471.6"/>
+<text x="72" y="476.6" text-anchor="end" font-size="12">1%</text>
+<line class="grid" x1="82" y1="575.0" x2="1206" y2="575.0"/>
+<text x="72" y="580.0" text-anchor="end" font-size="12">-2%</text>
+<rect x="260.1" y="134.0" width="8.4" height="379.3" fill="#2563eb"/>
+<rect x="270.1" y="119.6" width="8.4" height="393.7" fill="#dc2626"/>
+<text x="269.3" y="598" text-anchor="middle" font-size="11">20</text>
+<rect x="634.8" y="194.6" width="8.4" height="318.7" fill="#2563eb"/>
+<rect x="644.8" y="179.8" width="8.4" height="333.6" fill="#dc2626"/>
+<text x="644.0" y="598" text-anchor="middle" font-size="11">40</text>
+<rect x="1009.5" y="254.2" width="8.4" height="259.2" fill="#2563eb"/>
+<rect x="1019.5" y="238.9" width="8.4" height="274.4" fill="#dc2626"/>
+<text x="1018.7" y="598" text-anchor="middle" font-size="11">60</text>
+<line class="axis" x1="82" y1="513.4" x2="1206" y2="513.4"/>
+<line class="axis" x1="82" y1="58" x2="82" y2="575"/>
+<line x1="80" y1="638" x2="104" y2="638" stroke="#2563eb" stroke-width="4"/>
+<text x="112" y="643" font-size="13">訊號當日收盤</text>
+<line x1="450" y1="638" x2="474" y2="638" stroke="#dc2626" stroke-width="4"/>
+<text x="482" y="643" font-size="13">次一交易日開盤</text>
+<text x="1206" y="52" text-anchor="end" font-size="13" fill="#4b5563">橫軸：每邊滑價（基點）｜縱軸：年化報酬率</text>
+</svg>

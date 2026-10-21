@@ -1,0 +1,59 @@
+{
+  "artifact_mismatch_count": 0,
+  "open_estimated_row_count": 16,
+  "open_estimated_years": [
+    2025,
+    2026
+  ],
+  "realized_row_count": 50,
+  "realized_years": [
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "status": "PASS",
+  "yearly_checks": {
+    "2022": {
+      "distinct_closed_trade_count": 104,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2023": {
+      "distinct_closed_trade_count": 427,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2024": {
+      "distinct_closed_trade_count": 457,
+      "distinct_open_trade_count": 0,
+      "open_estimated_top10_count": 0,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2025": {
+      "distinct_closed_trade_count": 443,
+      "distinct_open_trade_count": 6,
+      "open_estimated_top10_count": 6,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    },
+    "2026": {
+      "distinct_closed_trade_count": 357,
+      "distinct_open_trade_count": 32,
+      "open_estimated_top10_count": 10,
+      "open_top10_sorted_desc": true,
+      "realized_top10_count": 10,
+      "realized_top10_sorted_desc": true
+    }
+  }
+}

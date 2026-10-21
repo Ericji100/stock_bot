@@ -1,0 +1,171 @@
+{
+  "candidate_count": 5,
+  "candidates": [
+    {
+      "id": "financial_c_long_kd",
+      "name": "財報營收＋高於 21 日線 5%＋長期（KD）",
+      "raw_strategy": "LONG_21_144",
+      "raw_variant": "C",
+      "raw_version": "kd",
+      "short": "財報營收＋5%長期（KD）",
+      "source": "財報營收選股",
+      "strategy": "再加高於 21 日線 5%＋長期",
+      "version": "KD 比較組"
+    },
+    {
+      "id": "technical_c_long_kd",
+      "name": "技術面＋高於 21 日線 5%＋長期（KD）",
+      "raw_strategy": "LONG_21_144",
+      "raw_variant": "C",
+      "raw_version": "kd",
+      "short": "技術面＋5%長期（KD）",
+      "source": "技術面選股",
+      "strategy": "再加高於 21 日線 5%＋長期",
+      "version": "KD 比較組"
+    },
+    {
+      "id": "chip1_c_long_kd",
+      "name": "60 日法人動態＋高於 21 日線 5%＋長期（KD）",
+      "raw_strategy": "LONG_21_144",
+      "raw_variant": "C",
+      "raw_version": "kd",
+      "short": "60日法人＋5%長期（KD）",
+      "source": "60 日法人動態選股",
+      "strategy": "再加高於 21 日線 5%＋長期",
+      "version": "KD 比較組"
+    },
+    {
+      "id": "laoxiao_a_medium_baseline",
+      "name": "老蕭＋基本進場＋中期（原策略）",
+      "raw_strategy": "MEDIUM_5_21",
+      "raw_variant": "A",
+      "raw_version": "baseline",
+      "short": "老蕭＋基本中期（原）",
+      "source": "老蕭選股",
+      "strategy": "基本進場＋中期",
+      "version": "原策略"
+    },
+    {
+      "id": "chip3_c_long_kd",
+      "name": "法人持股比例增加＋高於 21 日線 5%＋長期（KD）",
+      "raw_strategy": "LONG_21_144",
+      "raw_variant": "C",
+      "raw_version": "kd",
+      "short": "法人持股增加＋5%長期（KD）",
+      "source": "法人持股比例增加",
+      "strategy": "再加高於 21 日線 5%＋長期",
+      "version": "KD 比較組"
+    }
+  ],
+  "generated_at": "2026-10-07T06:11:41.346230+00:00",
+  "inputs": [
+    {
+      "bytes": 2208918,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_a.csv",
+      "sha256": "BE0CB9A1424CA9F1556BE37518115B6B7C5DCB4AB985ADAACDEBD0468397E645"
+    },
+    {
+      "bytes": 1158311,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_b.csv",
+      "sha256": "01D1B9944220384C0BE7402DB21306C532F7DF9485E7EF2965CA9DDD4E38B74B"
+    },
+    {
+      "bytes": 595652,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-full-year-same-method-causal-replay-v1\\trades_c.csv",
+      "sha256": "2824D91C799A3B997D0743C7BE4A7C93938A8FDD9184C9471C8396AD508993CA"
+    },
+    {
+      "bytes": 1428754,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2022-kd-2r-death-cross-exit-v1\\trades_20bps.csv",
+      "sha256": "95FA948C8431641B931AC66D50C525AA1A1EF6A8D273A65A490F9EBC63FA4633"
+    },
+    {
+      "bytes": 16487723,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_a.csv",
+      "sha256": "CA2136515BFDA530561E954693432AA76967F7A2C30095EFF6519D22080821B7"
+    },
+    {
+      "bytes": 5680600,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_b.csv",
+      "sha256": "D6C5CF6BFE5E3EF4BDB9CD2F4E8D1B7F2F53696E9F3A84C51A151843EDCABD16"
+    },
+    {
+      "bytes": 3095815,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-cohort-free-action-causal-replay-v3-lifecycle-fixed\\trades_c.csv",
+      "sha256": "8945E590ECC0D8EC48B93EA491F0EBCF2EBA3B7ACFA2649EDAF7BAFEAC7960D8"
+    },
+    {
+      "bytes": 8887667,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2023-kd-2r-death-cross-exit-v1\\trades_20bps.csv",
+      "sha256": "FF035ECED019BD71463B5D0285723AF5A9075B41F8C4FF87DF954B2A01EE6F57"
+    },
+    {
+      "bytes": 15559555,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_a.csv",
+      "sha256": "99F997C2B8C3AA0EB648271DEDA364FFC60B9579A00384EAEDA5B508752B6B40"
+    },
+    {
+      "bytes": 6997178,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_b.csv",
+      "sha256": "84EBA7E183A9123C5B6825D9C119D99C26251BE4C3CE0A57A6CAD1A39C89E863"
+    },
+    {
+      "bytes": 4124349,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-full-year-same-method-causal-replay-v2-through-2026\\trades_c.csv",
+      "sha256": "AF5F8DEC8296C71A714AFBFFFF07CDFB3B75B8323B5A51B15C6CB7305818A19E"
+    },
+    {
+      "bytes": 9726004,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2024-kd-2r-death-cross-exit-v1\\trades_20bps.csv",
+      "sha256": "C40718603DC7CD6C86E864F3ACCE26D741860DC1BD8A46216C66377573ACAEA0"
+    },
+    {
+      "bytes": 8908277,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-full-year-same-method-causal-replay-v1-v2-2\\trades_20bps.csv",
+      "sha256": "95BAA8B4C93A29F7B542516EC2D25D2305AF77D03486F9B02A1067AD9003CFD7"
+    },
+    {
+      "bytes": 9322658,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2025-kd-2r-death-cross-exit-v1\\trades_20bps.csv",
+      "sha256": "9EBF8EFEB815F596E11FBE3428032E410791A89B928ED802835F07C4666B601B"
+    },
+    {
+      "bytes": 10977612,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-jan-sep-same-method-causal-replay-v1-v2-2\\trades_20bps.csv",
+      "sha256": "038294A9A967F667BF75A34624780936AF759E98E02C21978A588C5DC2A84D41"
+    },
+    {
+      "bytes": 11460289,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\dev\\dual-ma\\02-causal-backtest\\2026-kd-2r-death-cross-exit-v1\\trades_20bps.csv",
+      "sha256": "A228936DE255BC8CA34CE22043F92821B20651B82DC0F6CE64CC186EAEF18D14"
+    },
+    {
+      "bytes": 1403710,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2022-source-strategy-complete-detail.csv",
+      "sha256": "BE873A710BF596C29A79893D41F7BCBC3FD06B0AA6A6AAB947C727F2C789718A"
+    },
+    {
+      "bytes": 9794270,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2023-source-strategy-complete-detail.csv",
+      "sha256": "CDE8F68A6640E8C58EDA8157A543C5BDFA5FE5041386CFA398156CB5B9541E39"
+    },
+    {
+      "bytes": 9714375,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2024-source-strategy-complete-detail.csv",
+      "sha256": "DDEE114B6C2D4A4685D0F7B4F9A1FA8C9D57AADB91BF86FF4CEFF5A99E6A2B88"
+    },
+    {
+      "bytes": 6780337,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2025-source-strategy-complete-detail.csv",
+      "sha256": "4EEDBC7F9B828CBECDB2592B167CEE61525A6CBBCCA466FCF97A410F83BCED77"
+    },
+    {
+      "bytes": 6685720,
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\details\\2026-source-strategy-complete-detail.csv",
+      "sha256": "27D0F297E3DD097EAB3D8ED4FEACFF4F06B496CFEEBDC128026D129CE9679409"
+    }
+  ],
+  "ranking_rule": "distinct trade_id, realized corrected net profit descending, primary 20bps cost scenario",
+  "ranking_scope": "five finalized independent source-strategy candidates",
+  "status": "PASS"
+}

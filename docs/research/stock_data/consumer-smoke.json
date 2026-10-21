@@ -1,0 +1,33 @@
+{
+  "entry_count": 109171,
+  "etf": [
+    {
+      "artifact_count": 458,
+      "artifacts_verified": 458,
+      "package_manifest_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB",
+      "package_root": "D:\\code\\stock_ai_bot\\stock_data\\versions\\2026-09-30-v3\\market-data\\etf\\0050\\snapshots\\2005-01-03_2026-09-30_86d91332d197\\package",
+      "snapshot_id": "2005-01-03_2026-09-30_86d91332d197",
+      "status": "PASS",
+      "symbol": "0050"
+    },
+    {
+      "artifact_count": 16,
+      "artifacts_verified": 16,
+      "package_manifest_sha256": "59887EECAFA83E95D51EA5E227E377AC845FAB8AA4493DC35B2E962180452600",
+      "package_root": "D:\\code\\stock_ai_bot\\stock_data\\versions\\2026-09-30-v3\\market-data\\etf\\00635U\\snapshots\\2015-04-15_2026-09-30_formal_v1\\package",
+      "snapshot_id": "2015-04-15_2026-09-30_formal_v1",
+      "status": "PASS",
+      "symbol": "00635U"
+    }
+  ],
+  "failures": [],
+  "forbidden_staging_present": false,
+  "release": "D:\\code\\stock_ai_bot\\stock_data\\versions\\2026-09-30-v3",
+  "release_id": "2026-09-30-v3",
+  "release_manifest_sha256": "D50A2F8435A6C8E9288FE1EF6711646CE5E997AAD0199FDFE976B3D62724BC32",
+  "schema": "stock-data-consumer-smoke-v1",
+  "selection_date_count": 5098,
+  "selection_first_date": "2006-01-02",
+  "selection_last_date": "2026-09-30",
+  "status": "PASS"
+}

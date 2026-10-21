@@ -1,0 +1,2 @@
+﻿strategy_id,strategy_role,longest_losing_streak,best_leg_id,best_trade_pnl,worst_leg_id,worst_trade_pnl,longest_underwater_days,underwater_start,recovery_date
+MA21_MA144_REGIME_FIXED_INITIAL_STOP_MACD_21_55_55,FIXED_PRIMARY,4,REGIME-FIX-L91,1390894.0826,REGIME-FIX-L88,-189155.5920,1142,2021-01-21,2024-03-08

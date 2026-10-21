@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "report_only": true,
+  "method": "Within each of 35 source-strategy cells choose the version by realized profitable-year count, then realized profit per cumulative 100 dollars bought, then lower peak concurrent capital; rank by realized profitable-year tier and realized profit per cumulative 100 dollars bought.",
+  "inputs": [
+    {
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\source-strategy-five-year.csv",
+      "sha256": "04F3F9094CF1E8698F93FDCB06C518D1454BC182E3696C4EDBB132420664255B"
+    },
+    {
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\experiments\\kd-2r-death-cross-source-strategy-v2\\source-strategy-annual.csv",
+      "sha256": "369AE4F50753A2EC79138EBE2E4A193B8780010F3BEEB9082D302FFBBC95494A"
+    }
+  ],
+  "output": {
+    "path": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\analysis\\2022-2026-candidate-ranking-v1.md",
+    "sha256": "75E271748D985EEE41556CAB122AA6E4F1C5AEE6159842BA69263FAE075FBBA3"
+  },
+  "validation": {
+    "machine_cells": 35,
+    "report_rows": 35,
+    "field_mismatches": 0
+  }
+}

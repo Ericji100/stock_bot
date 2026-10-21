@@ -1,0 +1,42 @@
+{
+  "artifact_manifest_sha256": "BDB716270EB1EB55F360041BD518E19227B969AA2790E1E19ECDA7AB6DF5C92B",
+  "status": "PASS",
+  "verified": [
+    {
+      "match": true,
+      "path": "candidate-annual.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-monthly.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-overlap.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-quarterly.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-stock-contribution.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-summary.csv"
+    },
+    {
+      "match": true,
+      "path": "candidate-version-comparison.csv"
+    },
+    {
+      "match": true,
+      "path": "input_manifest.json"
+    },
+    {
+      "match": true,
+      "path": "report.md"
+    }
+  ]
+}

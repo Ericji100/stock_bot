@@ -1,0 +1,99 @@
+{
+  "artifact_manifest_sha256": "F5426BD7A06589782A2FB7B80D10B16180E133F5190F9C6A998E73F855C18FE9",
+  "mismatches": [],
+  "status": "PASS",
+  "verified": [
+    {
+      "match": true,
+      "path": "2022-2026-source-strategy-overview.md"
+    },
+    {
+      "match": true,
+      "path": "2022-source-strategy-report.md"
+    },
+    {
+      "match": true,
+      "path": "2023-source-strategy-report.md"
+    },
+    {
+      "match": true,
+      "path": "2024-source-strategy-report.md"
+    },
+    {
+      "match": true,
+      "path": "2025-source-strategy-report.md"
+    },
+    {
+      "match": true,
+      "path": "2026-source-strategy-report.md"
+    },
+    {
+      "match": true,
+      "path": "details/2022-source-strategy-complete-detail.csv"
+    },
+    {
+      "match": true,
+      "path": "details/2022-source-strategy-complete-detail.md"
+    },
+    {
+      "match": true,
+      "path": "details/2023-source-strategy-complete-detail.csv"
+    },
+    {
+      "match": true,
+      "path": "details/2023-source-strategy-complete-detail.md"
+    },
+    {
+      "match": true,
+      "path": "details/2024-source-strategy-complete-detail.csv"
+    },
+    {
+      "match": true,
+      "path": "details/2024-source-strategy-complete-detail.md"
+    },
+    {
+      "match": true,
+      "path": "details/2025-source-strategy-complete-detail.csv"
+    },
+    {
+      "match": true,
+      "path": "details/2025-source-strategy-complete-detail.md"
+    },
+    {
+      "match": true,
+      "path": "details/2026-source-strategy-complete-detail.csv"
+    },
+    {
+      "match": true,
+      "path": "details/2026-source-strategy-complete-detail.md"
+    },
+    {
+      "match": true,
+      "path": "external_inputs_unchanged.json"
+    },
+    {
+      "match": true,
+      "path": "input_manifest.json"
+    },
+    {
+      "match": true,
+      "path": "old_artifacts_unchanged.json"
+    },
+    {
+      "match": true,
+      "path": "source-strategy-annual.csv"
+    },
+    {
+      "match": true,
+      "path": "source-strategy-five-year.csv"
+    },
+    {
+      "match": true,
+      "path": "validation/metric-validation.json"
+    },
+    {
+      "match": true,
+      "path": "validation/rate-sample-checks.json"
+    }
+  ]
+}

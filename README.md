@@ -699,6 +699,7 @@ pytest tests/test_backfill_service.py
 | [docs/topic-system.md](docs/topic-system.md) | 題材庫、新聞、代表股分類與維護流程 |
 | [docs/operations.md](docs/operations.md) | 啟動、排程、設定、報告與日常維運 |
 | [docs/testing.md](docs/testing.md) | 測試與驗收指令 |
+| [docs/research/README.md](docs/research/README.md) | 已採納／決策用研究報告、manifest 與共用資料版本指標 |
 | [CHANGELOG.md](CHANGELOG.md) | 重要變更摘要 |
 | [docs/legacy-readme-full.md](docs/legacy-readme-full.md) | 原始 README 全文備份 |
 

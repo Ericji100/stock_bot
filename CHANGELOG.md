@@ -4,6 +4,15 @@
 
 維護規則：未來任何功能、指令、資料流程、AI 行為、設定、排程或重要修正的改動，都必須同步檢查並補充 `README.md` 與本 `CHANGELOG.md`。
 
+## 2026-10-21
+
+- 新增 0050 final-v1.7 ETF 影子監控整合，沿用既有 Telegram `Application`、token、JobQueue、`main.py` 與單一 polling process。
+- 新增獨立且預設關閉的 `config/etf_monitor.json`；ETF 路由固定 `-5527055845` 並以 `getChat` fail-closed 驗證，不變更任何舊 `chat_id` 或 `trade_monitor_chat_id`。
+- 新增 12:45 預覽、13:55 `BUY_NEXT_OPEN` / `SELL_NEXT_OPEN` / `HOLD` 決策與 22:00 完整資料核對；三個工作使用獨立 timeout/lock，不進入舊定時任務序列。
+- 監控核心直接轉接 accepted final-v1.7 engine，共用 hash 驗證的 ETF snapshot registry、原始未調整執行價與企業行動技術座標，不使用 Yahoo 或舊版 long-term monitor。
+- 新增 SQLite 狀態、pending action、企業行動、事件/outbox、Telegram message ID、更正與重啟恢復；更正採 append-only，不覆寫歷史事件。
+- 新增 accepted artifact replay、核心 parity、路由、日曆/陳舊資料、狀態、冪等、重送、重啟、migration、concurrency、單一啟動鏈與功能關閉回歸測試。
+
 ## 2026-05-26
 
 - 新增專案維護規則：未來任何重要改動都必須同步更新 `README.md` 與 `CHANGELOG.md`。

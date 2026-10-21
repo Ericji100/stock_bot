@@ -81,6 +81,10 @@ from stock_ai_bot.monitoring.radar_service import (
     resolve_radar_scoring_version,
     run_radar,
 )
+from stock_ai_bot.monitoring.etf_monitor.integration import (
+    initialize_etf_monitor,
+    register_etf_monitor,
+)
 
 from stock_ai_bot.common.progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
 from stock_ai_bot.telegram.telegram_stock_formatting import prepare_telegram_chunks
@@ -2480,6 +2484,7 @@ async def event_loop_lag_tick(context: ContextTypes.DEFAULT_TYPE):
         print(format_cmd_message(f"event loop lag {lag:.3f}s", "schedule_health"), flush=True)
 async def post_init(application):
     await register_bot_commands(application)
+    await initialize_etf_monitor(application)
     try:
         write_bot_heartbeat(job_queue_available=bool(application.job_queue))
     except Exception as exc:
@@ -2517,6 +2522,7 @@ def main():
         .concurrent_updates(True)
         .build()
     )
+    register_etf_monitor(app)
 
     # 設定每天 12:30 鬧鐘
     if app.job_queue:

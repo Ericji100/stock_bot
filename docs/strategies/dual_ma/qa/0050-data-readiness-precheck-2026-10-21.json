@@ -1,0 +1,161 @@
+{
+  "schema_version": "stock-ai-bot-etf-data-readiness-precheck-v1",
+  "status": "REVIEW_ONLY_BUNDLE_CAPTURED_VALIDATED_NOT_INSTALLED",
+  "captured_at": "2026-10-22T02:51:48.333919+08:00",
+  "branch": "codex/0050-live-monitor-data-readiness",
+  "base_commit": "25fdbcefdd4cee80b98342ad647435f91f225159",
+  "range": {
+    "from": "2026-10-01",
+    "through": "2026-10-21",
+    "current_date": "2026-10-22",
+    "through_is_last_completed_session": true,
+    "calendar_days": 21,
+    "open_days": 14,
+    "closed_days": 7
+  },
+  "frozen_input": {
+    "root": "D:/code/stock_ai_bot/stock_data/versions/2026-09-30-v3/market-data",
+    "snapshot_id": "2005-01-03_2026-09-30_86d91332d197",
+    "manifest_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB",
+    "cutoff_smoke": "PASS",
+    "cutoff_rows": 5340,
+    "cutoff_corporate_actions": 33
+  },
+  "review_only_capture": {
+    "root": "D:/code/_codex_worktrees/0050-live-monitor-data-readiness/stock_ai_bot/.workdata/review-only/0050-data-readiness-20261001-20261021/official-capture",
+    "production_path": false,
+    "import_executed": false,
+    "bundle_manifest_bytes": 4842,
+    "bundle_manifest_file_sha256": "4D62944CEFE9B21A47545BE17F3E742C0ECB92EDBD8E3CC2E09795A482497622",
+    "bundle_content_sha256": "01b56245c71adfdd83445d679c31543b7badc97ada4d0e434ec9081c2248f009",
+    "delta_readback_count": 21,
+    "delta_readback_failures": 0,
+    "receipt_readback_count": 4,
+    "receipt_readback_failures": 0
+  },
+  "official_receipts": [
+    {
+      "source": "TWSE_HOLIDAY_SCHEDULE_V1",
+      "sha256": "7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117",
+      "bytes": 3774
+    },
+    {
+      "source": "TWSE_STOCK_DAY_V1",
+      "sha256": "9e39faf2035595b4c812fd214f110af26ac8a5c789dc15c13f6fd84f41a5f178",
+      "bytes": 2276
+    },
+    {
+      "source": "TWSE_TWT48U_ALL_V1",
+      "sha256": "945ef564de3f4ec273d2d9b4def09a4c96d7ce84aa14db236bd1792967603f36",
+      "bytes": 14179
+    },
+    {
+      "source": "TWSE_ETFORTUNE_DIVIDEND_LIST_V1",
+      "sha256": "a95e18c4fdb4ac761fdea6eee39df6e7afc75a6260c3866e2f86ab793970cd9e",
+      "bytes": 31762
+    }
+  ],
+  "daily_classification": {
+    "open": [
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07",
+      "2026-10-08",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21"
+    ],
+    "closed_weekend": [
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-17",
+      "2026-10-18"
+    ],
+    "closed_official_holiday": [
+      "2026-10-09"
+    ]
+  },
+  "data_blockers": {
+    "network_errors": [],
+    "missing_or_unexplained_dates": [],
+    "source_disagreements": [],
+    "corporate_action_dates": [],
+    "required_supplemental_evidence": []
+  },
+  "release_blockers": [
+    "production delta chain still starts missing at 2026-10-01",
+    "repository-wide test suite remains NOT_GREEN with 46 failed and 24 errors",
+    "operator review and explicit 00 authorization have not occurred",
+    "config/etf_monitor.json remains enabled=false"
+  ],
+  "production_read_only_after_capture": {
+    "as_of_2026_09_30": "PASS",
+    "as_of_2026_10_01": "DATA_UNAVAILABLE",
+    "reason": "daily delta chain is missing 2026-10-01",
+    "mutated": false,
+    "config_enabled": false
+  },
+  "suite_failure_classification": {
+    "affected_etf_telegram": {
+      "passed": 205,
+      "skipped": 1,
+      "failed": 0,
+      "errors": 0
+    },
+    "repository_wide": {
+      "passed": 2202,
+      "skipped": 3,
+      "failed": 46,
+      "errors": 24,
+      "zero_regression_claimed": false
+    },
+    "categories": [
+      {
+        "category": "dual_ma sealed research packages and reports",
+        "failed": 30,
+        "errors": 24,
+        "relation": "ETF domain overlap but does not directly exercise live integration startup; inconclusive in this isolated environment",
+        "isolation_limit": "non-versioned .workdata artifacts are absent and locked package/hash checks fail"
+      },
+      {
+        "category": "AI workflow and cache artifacts",
+        "failed": 5,
+        "errors": 0,
+        "relation": "no changed live ETF module is exercised",
+        "isolation_limit": "cache/output and external workflow assumptions are unavailable"
+      },
+      {
+        "category": "root config.json",
+        "failed": 1,
+        "errors": 0,
+        "relation": "original bot prerequisite, but not ETF config or fix5 registration logic",
+        "isolation_limit": "untracked config.json is absent, so this test cannot be validated here"
+      },
+      {
+        "category": "MiniMax integration",
+        "failed": 6,
+        "errors": 0,
+        "relation": "no changed live ETF module is exercised",
+        "isolation_limit": "provider/MCP discovery expectations are unavailable"
+      },
+      {
+        "category": "trade_monitor version manifests",
+        "failed": 4,
+        "errors": 0,
+        "relation": "no changed live ETF module is exercised",
+        "isolation_limit": "existing version hash expectations do not verify in this checkout"
+      }
+    ]
+  },
+  "companion_review": "0050-data-readiness-precheck-2026-10-21.md",
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "stock-ai-bot-etf-data-readiness-precheck-manifest-v1",
+  "status": "REVIEW_ONLY_ARTIFACT_READBACK_PASS",
+  "base_commit": "25fdbcefdd4cee80b98342ad647435f91f225159",
+  "production_mutated": false,
+  "config_enabled": false,
+  "artifacts": [
+    {
+      "relative_path": "0050-data-readiness-precheck-2026-10-21.json",
+      "bytes": 5339,
+      "sha256": "94312202438F5AEE2EC7C8824D2CAF0B0C357977186D580C03381B621513A113"
+    }
+  ],
+  "external_review_only_bundle": {
+    "root": "D:/code/_codex_worktrees/0050-live-monitor-data-readiness/stock_ai_bot/.workdata/review-only/0050-data-readiness-20261001-20261021/official-capture",
+    "manifest_relative_path": "bundle-manifest.json",
+    "manifest_bytes": 4842,
+    "manifest_file_sha256": "4D62944CEFE9B21A47545BE17F3E742C0ECB92EDBD8E3CC2E09795A482497622",
+    "manifest_content_sha256": "01b56245c71adfdd83445d679c31543b7badc97ada4d0e434ec9081c2248f009",
+    "delta_count": 21,
+    "receipt_count": 4,
+    "production_path": false
+  },
+  "readback": {
+    "status": "PASS",
+    "json_parse": true,
+    "artifact_bytes_match": true,
+    "artifact_sha256_match": true,
+    "bundle_manifest_sha256_match": true,
+    "all_delta_files_validated": true,
+    "all_receipts_sha256_validated": true
+  }
+}

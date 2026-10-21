@@ -1,0 +1,146 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v4",
+  "status": "FIX4_BLOCKERS_CLOSED_TARGETED_GATES_PASS_REPOSITORY_WIDE_GREEN_AND_PRODUCTION_ENABLEMENT_BLOCKED",
+  "generated_at": "2026-10-22T01:41:52.7440206+08:00",
+  "tested_code": {
+    "branch": "codex/0050-live-monitor-qa-fix4",
+    "commit": "0daa7f8b763d66fb5b01b12ed5adfd762dccec0a",
+    "base_commit": "49304ad1b6030524eabd03a1f24dd4bfc09b2d3d",
+    "config_enabled": false,
+    "isolated_worktree": "D:/code/_codex_worktrees/0050-live-monitor-qa-fix4/stock_ai_bot",
+    "old_worktrees_written_by_fix4": false,
+    "source_sha256": {
+      "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+      "stock_ai_bot/monitoring/etf_monitor/config.py": "630f6d86a8802577f217e5681416ff778e6aea35d07612b3987870abe89a7b00",
+      "stock_ai_bot/monitoring/etf_monitor/data.py": "829908779e4d8263e993710fc92261fef3cfff786d0605b3cd44977baf13185c",
+      "stock_ai_bot/monitoring/etf_monitor/integration.py": "f373292313ffce7a78f1df0a85831113426099861fad48654b194cef51b68005",
+      "tests/monitoring/test_etf_monitor_integration_data.py": "5559d7348c45752cea89f03417b5f75f1c84daf671f8c5645a44c873fabf9f23",
+      "main.py": "7191d6eb43a4ca00c003de85c705d6600736ee2bc123757d121c0b4d934bde62",
+      "啟動機器人.bat": "378424e66dcf913263eaf793aae68eb1a8f5e1a4364a7fef0b08883d2186d367",
+      "啟動機器人_runner.bat": "759e699876e43b71aed62186c4fa4d205d767dfca2fa5d41cc76fa443dd14bcd"
+    }
+  },
+  "blocking_fixes": {
+    "crash_safe_immutable_delta_install": {
+      "status": "PASS",
+      "same_directory_temporary_file": true,
+      "temporary_file_fully_written_before_publish": true,
+      "temporary_file_fsync": true,
+      "directory_fsync": "BEST_EFFORT_WHERE_SUPPORTED",
+      "atomic_publish": "SAME_FILESYSTEM_HARD_LINK_CREATE_IF_ABSENT",
+      "existing_target_overwrite": false,
+      "post_install_exact_byte_readback": true,
+      "identical_existing_target": "IDEMPOTENT_SUCCESS",
+      "different_self_consistent_existing_delta": "REFUSED_WITHOUT_OVERWRITE",
+      "interrupted_legacy_final": "QUARANTINED_THEN_REBUILT",
+      "covered_artifacts": [
+        "content-addressed raw receipts",
+        "daily delta JSON",
+        "automatic bundle manifests",
+        "official calendar-gate receipts"
+      ],
+      "fault_injection": {
+        "receipt_half_write": "FINAL_TARGET_ABSENT_THEN_RESTART_PASS",
+        "delta_half_write": "FINAL_TARGET_ABSENT_THEN_RESTART_PASS",
+        "legacy_partial_receipt_final": "QUARANTINED_AND_RECOVERED",
+        "legacy_partial_delta_final": "QUARANTINED_AND_RECOVERED",
+        "different_valid_delta": "REJECTED_AND_ORIGINAL_BYTES_UNCHANGED"
+      }
+    },
+    "startup_config_isolation": {
+      "status": "PASS",
+      "main_registration_calls": 1,
+      "application_builder_calls": 1,
+      "run_polling_calls": 1,
+      "missing_config": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES",
+      "malformed_config": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES",
+      "wrong_chat_id": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES",
+      "jobs_registered_on_error": 0,
+      "runtime_registered_on_error": false,
+      "fallback_route_created": false,
+      "legacy_group_used": false,
+      "sanitized_log": {
+        "error_class_only": true,
+        "path_exposed": false,
+        "chat_id_exposed": false,
+        "config_content_exposed": false
+      }
+    }
+  },
+  "full_history_parity": {
+    "status": "PASS_EXACT",
+    "command": "python -m pytest -q tests/monitoring/test_etf_monitor_core_replay.py::test_formal_full_history_live_replay_exact_parity",
+    "exact_commit_run_duration_seconds": 609.50,
+    "frozen_market_data_root": "D:/code/stock_ai_bot/stock_data/versions/2026-09-30-v3/market-data",
+    "daily_rows": 5093,
+    "signal_rows": 183,
+    "daily_state_sha256": "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f",
+    "service_lifecycle": {
+      "job_runs": 15279,
+      "events": 15279,
+      "pending_schedule_mismatch_count": 0,
+      "state_mismatch_count": 0,
+      "restart_mismatch_count": 0,
+      "future_rows_exposed": 0,
+      "telegram_send_attempts": 0
+    },
+    "total_mismatch_count": 0
+  },
+  "tests": {
+    "compileall": {
+      "status": "PASS"
+    },
+    "monitoring": {
+      "command": "python -m pytest -q tests/monitoring",
+      "passed": 54,
+      "skipped": 1,
+      "status": "PASS"
+    },
+    "bat_and_startup_static_safety": {
+      "selected_cases_passed": 5,
+      "status": "PASS",
+      "bot_process_started": false,
+      "telegram_called": false
+    },
+    "repository_wide": {
+      "command": "python -m pytest -q",
+      "passed": 2192,
+      "skipped": 3,
+      "failed": 46,
+      "errors": 24,
+      "subtests_passed": 201,
+      "duration_seconds": 125.70,
+      "status": "NOT_GREEN",
+      "accepted_as_pass": false,
+      "monitoring_failures": 0,
+      "observed_failure_scopes": [
+        "isolated worktree lacks non-versioned .workdata research artifacts required by multiple dual_ma suites",
+        "unrelated ai workflow and MiniMax integration expectations",
+        "unrelated trade_monitor version hash expectations",
+        "unrelated config JSON expectations"
+      ]
+    },
+    "production_read_only_smoke": {
+      "command": "python -m tools.etf_monitor_data_smoke --as-of 2026-10-21",
+      "expected_exit_code": 2,
+      "observed_exit_code": 2,
+      "status": "DATA_UNAVAILABLE_FAIL_CLOSED",
+      "reason": "daily delta chain is missing 2026-10-01"
+    }
+  },
+  "production": {
+    "mutated": false,
+    "config_enabled": false,
+    "as_of_2026_10_21_status": "DATA_UNAVAILABLE",
+    "reason": "daily delta chain is missing 2026-10-01",
+    "ready_to_enable": false
+  },
+  "delivery": {
+    "telegram_sent": false,
+    "bot_started": false,
+    "merged": false,
+    "pushed": false,
+    "documentation_index_modified": false
+  },
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

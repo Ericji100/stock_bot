@@ -1,0 +1,18 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-manifest-v2",
+  "status": "PASS",
+  "tested_code_commit": "92a74d491f3b2e8d41e373fe36e118a96ba95d57",
+  "artifacts": [
+    {
+      "relative_path": "0050-live-replay-parity-v2.json",
+      "bytes": 6201,
+      "sha256": "B82210F1CB6C9DA658FF447820B8828A9A38ED7E47C01FFE46FB9EDDAEBA0E32"
+    }
+  ],
+  "readback": {
+    "status": "PASS",
+    "json_parse": true,
+    "bytes_match": true,
+    "sha256_match": true
+  }
+}

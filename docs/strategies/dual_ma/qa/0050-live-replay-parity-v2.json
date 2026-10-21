@@ -1,0 +1,144 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v2",
+  "status": "PASS_EXACT_WITH_PRODUCTION_ENABLEMENT_BLOCKED_PENDING_REVIEW_AND_INSTALL",
+  "generated_at": "2026-10-22T00:02:46.0139277+08:00",
+  "tested_code": {
+    "branch": "codex/0050-live-monitor-qa-fix2",
+    "commit": "92a74d491f3b2e8d41e373fe36e118a96ba95d57",
+    "base_commit": "297a0271afc6a5d00c70d0b1f1e2ab167a5b2e9a",
+    "config_enabled": false,
+    "old_worktrees_modified": false,
+    "source_sha256": {
+      "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+      "config/etf_monitor_daily_delta.schema.json": "30ffc688949a3bc39895ae7d52e2e4241c7593d35e35beaafe0ba8bc001cf9e7",
+      "stock_ai_bot/monitoring/etf_monitor/core.py": "65466102df5dcad1cc5fbf5eaace9d82c24cb126839f8a95dd13943a5455a0ef",
+      "stock_ai_bot/monitoring/etf_monitor/data.py": "cd7a00b73269d30404e3d74a3f3620b0d621b7761879b0ea171dff41bd084d24",
+      "stock_ai_bot/monitoring/etf_monitor/delta_pipeline.py": "8cb5b4909120d3311fd950343ecbb649fef7cc4d35c01b3a02772f09b50677a4",
+      "stock_ai_bot/monitoring/etf_monitor/replay.py": "fd55aa9c0145634cb702c05a80da646e611e9c8f34039aca3bcf030f3aa1efb9",
+      "stock_ai_bot/monitoring/etf_monitor/store.py": "084b219b32dd11d01ae46046fc9303a9074cd195362a4b13ffe325602c873071",
+      "stock_ai_bot/monitoring/etf_monitor/service.py": "734b3e77f5af70df1f02896f471944b67702d21af7607a9d0891e02273df60ff",
+      "tools/etf_monitor_capture_daily_deltas.py": "993844239643118aa9a29ff92266621b4184e2040270d9dcd1a5d887eb18b675",
+      "tools/etf_monitor_import_daily_delta.py": "40570d6204165d19652f8f243e047e2fffbe93c78229ed12bd0c14a3c85be329"
+    }
+  },
+  "official_delta_capture": {
+    "status": "PASS_REVIEW_ONLY_NOT_INSTALLED",
+    "range": {
+      "from": "2026-10-01",
+      "through": "2026-10-21"
+    },
+    "deltas": 21,
+    "content_addressed_raw_receipts": 4,
+    "bundle_manifest_content_sha256": "0cc4b6353a01a3e40653a9abb1e830e9d19b92f9cbc81ffa1b1363e73d066c18",
+    "parsers": [
+      "TWSE_STOCK_DAY_V1",
+      "TWSE_HOLIDAY_SCHEDULE_V1",
+      "TWSE_TWT48U_ALL_V1",
+      "TWSE_ETFORTUNE_DIVIDEND_LIST_V1"
+    ],
+    "readback": {
+      "status": "PASS",
+      "latest_date": "2026-10-21",
+      "delta_count": 21,
+      "raw_rows": 5354,
+      "frozen_manifest_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB"
+    },
+    "production": {
+      "status": "DATA_UNAVAILABLE",
+      "reason": "daily delta chain is missing 2026-10-01",
+      "mutated": false
+    }
+  },
+  "full_history_parity": {
+    "status": "PASS_EXACT",
+    "duration_seconds": 682.77,
+    "period": {
+      "start": "2006-01-02",
+      "through": "2026-09-30"
+    },
+    "frozen_snapshot_id": "2005-01-03_2026-09-30_86d91332d197",
+    "frozen_manifest_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB",
+    "daily_rows": 5093,
+    "daily_state_sha256": "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f",
+    "signal_rows": 183,
+    "service_lifecycle": {
+      "causality_mode": "ONE_OFFICIAL_SESSION_AT_A_TIME_THROUGH_SERVICE_PHASES",
+      "phase_order": [
+        "preview_1245",
+        "decision_1355",
+        "restart_check",
+        "reconciliation_2200",
+        "next_session_raw_open"
+      ],
+      "job_runs": 15279,
+      "events": 15279,
+      "outbox_rows": 10369,
+      "outbox_delivery_attempts": 0,
+      "telegram_send_attempts": 0,
+      "restart_checks": 236,
+      "pending_actions": 183,
+      "filled_shadow_next_open": 183,
+      "corporate_actions_journaled": 33,
+      "corrections": 0,
+      "state_mismatch_count": 0,
+      "restart_mismatch_count": 0,
+      "pending_schedule_mismatch_count": 0,
+      "future_rows_exposed": 0
+    },
+    "frozen_artifact_comparisons": {
+      "next-session-open-transactions.csv": {"rows": 181, "mismatch_count": 0},
+      "next-session-open-daily-equity.csv": {"rows": 5093, "mismatch_count": 0},
+      "next-session-open-corporate-actions.csv": {"rows": 63, "mismatch_count": 0},
+      "next-session-open-trade-details.csv": {"rows": 91, "mismatch_count": 0}
+    },
+    "total_mismatch_count": 0
+  },
+  "tests": {
+    "focused_monitoring": {
+      "command": "python -m pytest tests/monitoring -q",
+      "status": "PASS",
+      "passed": 35,
+      "skipped": 1
+    },
+    "changed_core_and_monitoring_without_external_sealed_fixtures": {
+      "status": "PASS",
+      "passed": 57,
+      "skipped": 1,
+      "deselected_external_fixture_tests": 2
+    },
+    "formal_causal_service_replay": {
+      "status": "PASS",
+      "passed": 1,
+      "duration_seconds": 682.77
+    },
+    "compileall": {"status": "PASS"},
+    "expanded_isolated_worktree_observation": {
+      "status": "EXPECTED_EXTERNAL_FIXTURE_ERRORS",
+      "scope_note": "Tests that require ignored sealed .workdata research packages cannot run from the fresh isolated worktree; focused changed-core and monitoring tests passed, and the frozen registry formal replay was run explicitly from its read-only accepted path."
+    }
+  },
+  "quote_freshness_gate": {
+    "requires_twse_status_ok": true,
+    "requires_same_source_and_trade_date": true,
+    "max_source_age_seconds": 300,
+    "requires_normal_market_status_codes": true,
+    "requires_recent_last_trade_for_close_confirmation": true,
+    "stale_test": "PASS"
+  },
+  "readback": {
+    "status": "PASS",
+    "assertions": [
+      "daily delta values are re-derived from SHA-verified raw TWSE receipts",
+      "corporate-action absence or values require both approved raw source receipts",
+      "same-direction pending detail corrections atomically supersede the stale instruction",
+      "full-history service replay executes the real daily phase and durable-state sequence",
+      "monitor remains disabled and no Telegram send was performed",
+      "prior worktrees remain clean"
+    ]
+  },
+  "live_enablement": {
+    "ready": false,
+    "blocker": "The verified October bundle is review-only and has not been operator-approved or installed into the production immutable delta ledger; 2026-10-22 is also not yet a completed official session at this audit time."
+  },
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

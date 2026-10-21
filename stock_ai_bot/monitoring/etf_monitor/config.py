@@ -201,7 +201,7 @@ def load_etf_monitor_config(path: Path | str | None = None) -> EtfMonitorConfig:
     source = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     try:
         payload = json.loads(source.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise EtfMonitorConfigError(f"cannot load ETF monitor config: {source}") from exc
     if not isinstance(payload, Mapping):
         raise EtfMonitorConfigError("ETF monitor config root must be an object")

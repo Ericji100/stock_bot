@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import threading
+import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -44,6 +45,10 @@ TWSE_MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 RAW_EXECUTION_BASIS = "UNADJUSTED_MAINBOARD_OHLCV"
 DAILY_DELTA_SCHEMA = "stock-ai-bot-etf-daily-delta-v1"
 FROZEN_MARKET_DATA_ROOT_ENV = "STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT"
+
+_EXISTING_IDENTICAL = "IDENTICAL"
+_EXISTING_INVALID = "INVALID"
+_EXISTING_VALID_DIFFERENT = "VALID_DIFFERENT"
 
 
 def _read_json(path: Path) -> Any:
@@ -187,6 +192,162 @@ def load_daily_delta_file(
     )
 
 
+def _fsync_directory(path: Path) -> None:
+    """Best-effort durability barrier for a same-directory metadata update."""
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        # Windows does not expose a portable directory fsync. The file itself
+        # is still fsynced before it becomes visible at the immutable target.
+        pass
+    finally:
+        os.close(descriptor)
+
+
+def _write_fully_synced_temp(target: Path, raw: bytes) -> Path:
+    """Write a complete same-directory temp file without exposing the target."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=target.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = -1
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return temporary
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _classify_content_addressed_receipt(target: Path, expected: bytes) -> str:
+    if target.is_symlink():
+        return _EXISTING_VALID_DIFFERENT
+    try:
+        current = target.read_bytes()
+    except OSError as exc:
+        raise EtfMonitorDataError(
+            "cannot inspect an existing immutable receipt"
+        ) from exc
+    if current == expected:
+        return _EXISTING_IDENTICAL
+    if hashlib.sha256(current).hexdigest() == target.stem.lower():
+        return _EXISTING_VALID_DIFFERENT
+    return _EXISTING_INVALID
+
+
+def _classify_self_hashed_json(
+    target: Path,
+    expected: bytes,
+    *,
+    schema_version: str,
+) -> str:
+    if target.is_symlink():
+        return _EXISTING_VALID_DIFFERENT
+    try:
+        current = target.read_bytes()
+    except OSError as exc:
+        raise EtfMonitorDataError(
+            "cannot inspect an existing immutable JSON artifact"
+        ) from exc
+    if current == expected:
+        return _EXISTING_IDENTICAL
+    try:
+        payload = json.loads(current.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _EXISTING_INVALID
+    try:
+        expected_payload = json.loads(expected.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EtfMonitorDataError(
+            "new immutable JSON artifact is not readable"
+        ) from exc
+    if payload == expected_payload:
+        return _EXISTING_IDENTICAL
+    if not isinstance(payload, Mapping) or payload.get("schema_version") != schema_version:
+        return _EXISTING_INVALID
+    supplied_hash = str(payload.get("content_sha256") or "").lower()
+    hash_input = {key: value for key, value in payload.items() if key != "content_sha256"}
+    if supplied_hash and supplied_hash == stable_sha256(hash_input):
+        return _EXISTING_VALID_DIFFERENT
+    return _EXISTING_INVALID
+
+
+def _quarantine_invalid_artifact(target: Path) -> None:
+    quarantine = target.with_name(f".{target.name}.invalid-{uuid.uuid4().hex}")
+    try:
+        os.replace(target, quarantine)
+    except OSError as exc:
+        raise EtfMonitorDataError(
+            "cannot quarantine an interrupted immutable artifact"
+        ) from exc
+    _fsync_directory(target.parent)
+
+
+def _atomic_install_immutable_bytes(
+    target: Path,
+    raw: bytes,
+    *,
+    classify_existing: Any,
+    collision_message: str,
+) -> None:
+    """Publish fully durable bytes at a new immutable name, never overwriting it."""
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if os.path.lexists(target):
+        state = classify_existing(target, raw)
+        if state == _EXISTING_IDENTICAL:
+            return
+        if state == _EXISTING_VALID_DIFFERENT:
+            raise EtfMonitorDataError(collision_message)
+        _quarantine_invalid_artifact(target)
+
+    temporary: Path | None = None
+    try:
+        temporary = _write_fully_synced_temp(target, raw)
+        try:
+            # The temp and target share a directory/filesystem. A hard link is
+            # an atomic create-if-absent operation and cannot replace a target.
+            os.link(temporary, target)
+        except FileExistsError as exc:
+            state = classify_existing(target, raw)
+            if state == _EXISTING_IDENTICAL:
+                return
+            raise EtfMonitorDataError(collision_message) from exc
+        except OSError as exc:
+            raise EtfMonitorDataError(
+                "cannot atomically publish immutable ETF evidence"
+            ) from exc
+        _fsync_directory(target.parent)
+        try:
+            installed = target.read_bytes()
+        except OSError as exc:
+            raise EtfMonitorDataError(
+                "cannot read back installed immutable ETF evidence"
+            ) from exc
+        if installed != raw:
+            raise EtfMonitorDataError(
+                "immutable ETF evidence failed post-install readback"
+            )
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+            _fsync_directory(target.parent)
+
+
 def install_daily_delta_file(
     path: Path,
     *,
@@ -213,24 +374,26 @@ def install_daily_delta_file(
         source_receipt = path.parent / relative
         destination_receipt = destination_root / relative
         raw = source_receipt.read_bytes()
-        destination_receipt.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with destination_receipt.open("xb") as handle:
-                handle.write(raw)
-        except FileExistsError:
-            if destination_receipt.read_bytes() != raw:
-                raise EtfMonitorDataError(
-                    f"refusing to replace content-addressed receipt: {destination_receipt}"
-                )
+        _atomic_install_immutable_bytes(
+            destination_receipt,
+            raw,
+            classify_existing=_classify_content_addressed_receipt,
+            collision_message="refusing to replace content-addressed receipt",
+        )
     destination = destination_root / f"{expected_date.isoformat()}.json"
-    canonical = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    try:
-        with destination.open("x", encoding="utf-8", newline="\n") as handle:
-            handle.write(canonical)
-    except FileExistsError:
-        existing = json.loads(destination.read_text(encoding="utf-8-sig"))
-        if existing != payload:
-            raise EtfMonitorDataError(f"refusing to replace immutable delta: {destination}")
+    canonical = (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    _atomic_install_immutable_bytes(
+        destination,
+        canonical,
+        classify_existing=lambda target, raw: _classify_self_hashed_json(
+            target,
+            raw,
+            schema_version=DAILY_DELTA_SCHEMA,
+        ),
+        collision_message="refusing to replace immutable delta",
+    )
     return payload
 
 
@@ -273,12 +436,12 @@ class OfficialTwseTradingCalendar:
         if self.receipt_root is not None:
             self.receipt_root.mkdir(parents=True, exist_ok=True)
             receipt = self.receipt_root / f"{digest}.raw"
-            try:
-                with receipt.open("xb") as handle:
-                    handle.write(raw)
-            except FileExistsError:
-                if receipt.read_bytes() != raw:
-                    raise EtfMonitorDataError("official calendar receipt identity collision")
+            _atomic_install_immutable_bytes(
+                receipt,
+                raw,
+                classify_existing=_classify_content_addressed_receipt,
+                collision_message="official calendar receipt identity collision",
+            )
         evidence = {
             "source": "TWSE_HOLIDAY_SCHEDULE_OFFICIAL",
             "source_endpoint": HOLIDAY_URL,
@@ -643,14 +806,18 @@ class OfficialDailyDeltaUpdater:
                 bundle_manifest = bundle_root / "bundle-manifest.json"
                 raw_manifest = bundle_manifest.read_bytes()
                 destination = manifests / f"{manifest['content_sha256']}.json"
-                try:
-                    with destination.open("xb") as handle:
-                        handle.write(raw_manifest)
-                except FileExistsError:
-                    if destination.read_bytes() != raw_manifest:
-                        raise EtfMonitorDataError(
-                            "automatic delta bundle manifest identity collision"
-                        )
+                _atomic_install_immutable_bytes(
+                    destination,
+                    raw_manifest,
+                    classify_existing=lambda target, raw: _classify_self_hashed_json(
+                        target,
+                        raw,
+                        schema_version="stock-ai-bot-etf-daily-delta-bundle-v1",
+                    ),
+                    collision_message=(
+                        "automatic delta bundle manifest identity collision"
+                    ),
+                )
 
             remaining = self._verify_installed_range(
                 start=chain_start,

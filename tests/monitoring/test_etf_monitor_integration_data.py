@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -14,6 +15,7 @@ from zoneinfo import ZoneInfo
 import pytest
 import requests
 
+from stock_ai_bot.monitoring.etf_monitor import data as etf_data
 from stock_ai_bot.monitoring.etf_monitor import integration
 from stock_ai_bot.monitoring.etf_monitor.config import (
     EtfMonitorConfigError,
@@ -24,6 +26,8 @@ from stock_ai_bot.monitoring.etf_monitor.data import (
     OfficialTwseTradingCalendar,
     OfficialTwseQuoteProvider,
     RegistrySnapshotProvider,
+    install_daily_delta_file,
+    load_daily_delta_file,
     resolve_frozen_market_data_root,
 )
 from stock_ai_bot.monitoring.etf_monitor.errors import EtfMonitorDataError
@@ -58,6 +62,32 @@ def _enabled_config(tmp_path: Path) -> Path:
 def test_disabled_feature_is_strict_startup_noop() -> None:
     app = _App()
     assert integration.register_etf_monitor(app) is None
+    assert app.job_queue.calls == []
+    assert app.bot_data == {}
+
+
+@pytest.mark.parametrize("failure", ["missing", "malformed", "wrong_chat_id"])
+def test_invalid_config_disables_only_etf_without_leaking_details(
+    tmp_path, capsys, failure
+) -> None:
+    path = tmp_path / "private-etf-config.json"
+    secret = "never-log-this-config-value"
+    if failure == "malformed":
+        path.write_text('{"api_token": "' + secret, encoding="utf-8")
+    elif failure == "wrong_chat_id":
+        payload = json.loads(
+            Path("config/etf_monitor.json").read_text(encoding="utf-8-sig")
+        )
+        payload["chat_id"] = "-9988776655"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    app = _App()
+    assert integration.register_etf_monitor(app, config_path=path) is None
+    output = capsys.readouterr().out
+    assert "disabled by invalid configuration: EtfMonitorConfigError" in output
+    assert str(path) not in output
+    assert "-9988776655" not in output
+    assert secret not in output
     assert app.job_queue.calls == []
     assert app.bot_data == {}
 
@@ -189,6 +219,7 @@ def test_main_and_bat_keep_single_existing_start_chain() -> None:
     runner = Path("啟動機器人_runner.bat").read_text(encoding="utf-8-sig")
     assert main.count("ApplicationBuilder()") == 1
     assert main.count("run_polling(") == 1
+    assert main.count("register_etf_monitor(app)") == 1
     assert "啟動機器人_runner.bat" in launcher
     assert "main.py" in runner
     assert "etf_monitor" not in launcher + runner
@@ -373,6 +404,176 @@ def _write_delta(
     payload["content_sha256"] = stable_sha256(payload)
     root.mkdir(parents=True, exist_ok=True)
     (root / f"{day.isoformat()}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _registry_identity(market_root: Path) -> tuple[str, str]:
+    registry = json.loads(
+        (market_root / "etf/registry.json").read_text(encoding="utf-8")
+    )
+    snapshot = registry["symbols"]["0050"]["snapshots"]["test"]
+    return "test", snapshot["package_manifest_sha256"]
+
+
+def _install_test_delta(source: Path, destination: Path, market_root: Path) -> None:
+    snapshot_id, manifest_sha256 = _registry_identity(market_root)
+    install_daily_delta_file(
+        source / "2026-10-22.json",
+        destination_root=destination,
+        expected_date=date(2026, 10, 22),
+        snapshot_id=snapshot_id,
+        manifest_sha256=manifest_sha256,
+    )
+
+
+def _assert_installed_test_delta(destination: Path, market_root: Path) -> None:
+    snapshot_id, manifest_sha256 = _registry_identity(market_root)
+    payload = load_daily_delta_file(
+        destination / "2026-10-22.json",
+        expected_date=date(2026, 10, 22),
+        snapshot_id=snapshot_id,
+        manifest_sha256=manifest_sha256,
+    )
+    assert payload["bar"]["close"] == "52"
+
+
+def test_receipt_half_write_interruption_recovers_on_restart(
+    tmp_path, monkeypatch
+) -> None:
+    market_root = tmp_path / "market"
+    source = tmp_path / "source"
+    destination = tmp_path / "installed"
+    _write_registry(market_root)
+    _write_delta(source, market_root, date(2026, 10, 22), status="OPEN")
+    original = etf_data._write_fully_synced_temp
+    interrupted: list[tuple[Path, Path, bytes]] = []
+
+    def interrupt_receipt(target: Path, raw: bytes) -> Path:
+        if target.suffix == ".raw" and not interrupted:
+            temporary = target.parent / f".{target.name}.fault.tmp"
+            half = raw[: max(1, len(raw) // 2)]
+            with temporary.open("wb") as handle:
+                handle.write(half)
+                handle.flush()
+                os.fsync(handle.fileno())
+            interrupted.append((target, temporary, half))
+            raise RuntimeError("simulated receipt power loss")
+        return original(target, raw)
+
+    monkeypatch.setattr(etf_data, "_write_fully_synced_temp", interrupt_receipt)
+    with pytest.raises(RuntimeError, match="receipt power loss"):
+        _install_test_delta(source, destination, market_root)
+    target, temporary, half = interrupted[0]
+    assert not target.exists()
+    assert temporary.parent == target.parent
+    assert temporary.read_bytes() == half
+
+    monkeypatch.setattr(etf_data, "_write_fully_synced_temp", original)
+    _install_test_delta(source, destination, market_root)
+    _assert_installed_test_delta(destination, market_root)
+
+
+def test_delta_half_write_interruption_recovers_on_restart(
+    tmp_path, monkeypatch
+) -> None:
+    market_root = tmp_path / "market"
+    source = tmp_path / "source"
+    destination = tmp_path / "installed"
+    _write_registry(market_root)
+    _write_delta(source, market_root, date(2026, 10, 22), status="OPEN")
+    original = etf_data._write_fully_synced_temp
+    interrupted: list[tuple[Path, Path, bytes]] = []
+
+    def interrupt_delta(target: Path, raw: bytes) -> Path:
+        if target.suffix == ".json" and not interrupted:
+            temporary = target.parent / f".{target.name}.fault.tmp"
+            half = raw[: len(raw) // 2]
+            with temporary.open("wb") as handle:
+                handle.write(half)
+                handle.flush()
+                os.fsync(handle.fileno())
+            interrupted.append((target, temporary, half))
+            raise RuntimeError("simulated delta power loss")
+        return original(target, raw)
+
+    monkeypatch.setattr(etf_data, "_write_fully_synced_temp", interrupt_delta)
+    with pytest.raises(RuntimeError, match="delta power loss"):
+        _install_test_delta(source, destination, market_root)
+    target, temporary, half = interrupted[0]
+    assert not target.exists()
+    assert temporary.parent == target.parent
+    assert temporary.read_bytes() == half
+
+    monkeypatch.setattr(etf_data, "_write_fully_synced_temp", original)
+    _install_test_delta(source, destination, market_root)
+    _assert_installed_test_delta(destination, market_root)
+
+
+def test_interrupted_legacy_final_is_quarantined_then_recovered(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    source = tmp_path / "source"
+    destination = tmp_path / "installed"
+    _write_registry(market_root)
+    _write_delta(source, market_root, date(2026, 10, 22), status="OPEN")
+    destination.mkdir()
+    final = destination / "2026-10-22.json"
+    final.write_bytes(b'{"schema_version": "stock-ai-bot-etf-daily-delta-v1"')
+
+    _install_test_delta(source, destination, market_root)
+
+    _assert_installed_test_delta(destination, market_root)
+    quarantined = list(destination.glob(".2026-10-22.json.invalid-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes().startswith(b'{"schema_version"')
+
+
+def test_interrupted_legacy_receipt_is_quarantined_then_recovered(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    source = tmp_path / "source"
+    destination = tmp_path / "installed"
+    _write_registry(market_root)
+    _write_delta(source, market_root, date(2026, 10, 22), status="OPEN")
+    payload = json.loads(
+        (source / "2026-10-22.json").read_text(encoding="utf-8")
+    )
+    relative = Path(payload["calendar_evidence"]["receipt_relative_path"])
+    source_receipt = source / relative
+    final = destination / relative
+    final.parent.mkdir(parents=True)
+    partial = source_receipt.read_bytes()[:5]
+    final.write_bytes(partial)
+
+    _install_test_delta(source, destination, market_root)
+
+    _assert_installed_test_delta(destination, market_root)
+    assert final.read_bytes() == source_receipt.read_bytes()
+    quarantined = list(final.parent.glob(f".{final.name}.invalid-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == partial
+
+
+def test_different_valid_delta_is_never_overwritten(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    destination = tmp_path / "installed"
+    _write_registry(market_root)
+    _write_delta(first, market_root, date(2026, 10, 22), status="OPEN")
+    _write_delta(
+        second,
+        market_root,
+        date(2026, 10, 22),
+        status="OPEN",
+        close="52.5",
+    )
+    _install_test_delta(first, destination, market_root)
+    final = destination / "2026-10-22.json"
+    original = final.read_bytes()
+
+    with pytest.raises(EtfMonitorDataError, match="refusing to replace immutable delta"):
+        _install_test_delta(second, destination, market_root)
+
+    assert final.read_bytes() == original
+    _assert_installed_test_delta(destination, market_root)
 
 
 def test_daily_delta_requires_every_calendar_day_and_accepts_verified_closed_day(tmp_path) -> None:

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from stock_ai_bot.workdata import get_workdata_path
 
 from .config import EtfMonitorConfig, load_etf_monitor_config
+from .errors import EtfMonitorConfigError
 from .models import MonitorPhase
 
 
@@ -81,7 +82,15 @@ def register_etf_monitor(application: Any, *, config_path: Any = None) -> EtfMon
     handler, bot, polling process, or schedule is created.
     """
 
-    config = load_etf_monitor_config(config_path)
+    try:
+        config = load_etf_monitor_config(config_path)
+    except EtfMonitorConfigError as exc:
+        print(
+            "[ETF 0050 final-v1.7] disabled by invalid configuration: "
+            f"{type(exc).__name__}",
+            flush=True,
+        )
+        return None
     if not config.enabled:
         return None
     if application.job_queue is None:

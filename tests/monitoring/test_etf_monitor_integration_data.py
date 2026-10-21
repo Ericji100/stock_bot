@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import threading
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -17,6 +18,7 @@ import requests
 
 from stock_ai_bot.monitoring.etf_monitor import data as etf_data
 from stock_ai_bot.monitoring.etf_monitor import integration
+from stock_ai_bot.monitoring.etf_monitor import store as store_module
 from stock_ai_bot.monitoring.etf_monitor.config import (
     EtfMonitorConfigError,
     load_etf_monitor_config,
@@ -35,19 +37,46 @@ from stock_ai_bot.monitoring.etf_monitor.models import IntradayQuote, MonitorPha
 from stock_ai_bot.monitoring.etf_monitor.models import stable_sha256
 
 
+class _Job:
+    def __init__(self, callback, kwargs):
+        self.callback = callback
+        self.name = kwargs["name"]
+        self.data = kwargs["data"]
+        self.removed = False
+
+    def schedule_removal(self):
+        self.removed = True
+
+
 class _Jobs:
-    def __init__(self):
+    def __init__(self, *, fail_on: int | None = None):
         self.calls = []
+        self.jobs = []
+        self.fail_on = fail_on
 
     def run_daily(self, callback, **kwargs):
         self.calls.append((callback, kwargs))
+        job = _Job(callback, kwargs)
+        self.jobs.append(job)
+        if self.fail_on == len(self.calls):
+            raise OSError("private scheduler detail")
+        return job
+
+    def get_jobs_by_name(self, name):
+        return tuple(job for job in self.jobs if job.name == name)
 
 
 class _App:
-    def __init__(self):
-        self.job_queue = _Jobs()
+    def __init__(self, *, job_queue=None):
+        self.job_queue = job_queue if job_queue is not None else _Jobs()
         self.bot_data = {}
         self.bot = object()
+        self.tasks = []
+
+    def create_task(self, coroutine, *, name=None):
+        task = asyncio.create_task(coroutine, name=name)
+        self.tasks.append(task)
+        return task
 
 
 def _enabled_config(tmp_path: Path) -> Path:
@@ -98,6 +127,8 @@ def test_enabled_feature_registers_three_jobs_on_existing_queue(tmp_path, monkey
     runtime = integration.register_etf_monitor(app, config_path=_enabled_config(tmp_path))
     assert runtime is not None
     assert runtime.router.bot is app.bot
+    assert runtime.startup_status == "PENDING"
+    assert runtime.jobs == tuple(app.job_queue.jobs)
     assert len(app.job_queue.calls) == 3
     assert [call[1]["name"] for call in app.job_queue.calls] == [
         "etf-0050-final-v1.7-preview-1245",
@@ -114,6 +145,70 @@ def test_enabled_feature_registers_three_jobs_on_existing_queue(tmp_path, monkey
         == 8 * 3600
         for call in app.job_queue.calls
     )
+
+
+def test_store_construction_failure_disables_only_etf(tmp_path, monkeypatch, capsys) -> None:
+    class _FailedStore:
+        def __init__(self, path):
+            raise OSError("private database path and schema detail")
+
+    app = _App()
+    monkeypatch.setattr(store_module, "EtfMonitorStore", _FailedStore)
+    assert integration.register_etf_monitor(
+        app,
+        config_path=_enabled_config(tmp_path),
+    ) is None
+    output = capsys.readouterr().out
+    assert "registration disabled ETF runtime: OSError" in output
+    assert "private database" not in output
+    assert app.job_queue.calls == []
+    assert app.bot_data == {}
+
+
+def test_missing_job_queue_disables_only_etf(tmp_path, capsys) -> None:
+    app = _App()
+    app.job_queue = None
+
+    assert integration.register_etf_monitor(
+        app,
+        config_path=_enabled_config(tmp_path),
+    ) is None
+
+    assert app.bot_data == {}
+    assert "registration disabled ETF runtime: RuntimeError" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("fail_on", [2, 3])
+def test_partial_job_registration_is_removed_or_noop(
+    tmp_path, monkeypatch, capsys, fail_on
+) -> None:
+    queue = _Jobs(fail_on=fail_on)
+    app = _App(job_queue=queue)
+    monkeypatch.setattr(
+        integration,
+        "get_workdata_path",
+        lambda _: tmp_path / "monitor.sqlite3",
+    )
+
+    assert integration.register_etf_monitor(
+        app,
+        config_path=_enabled_config(tmp_path),
+    ) is None
+
+    assert len(queue.jobs) == fail_on
+    assert all(job.removed for job in queue.jobs)
+    assert app.bot_data == {}
+    output = capsys.readouterr().out
+    assert "registration disabled ETF runtime: OSError" in output
+    assert "private scheduler" not in output
+
+    async def invoke_residual_callbacks() -> None:
+        for job in queue.jobs:
+            context = SimpleNamespace(application=app, job=job)
+            await job.callback(context)
+
+    asyncio.run(invoke_residual_callbacks())
+    assert app.tasks == []
 
 
 def test_runtime_retries_data_unavailable_without_duplicate_scheduler_job(monkeypatch) -> None:
@@ -135,6 +230,7 @@ def test_runtime_retries_data_unavailable_without_duplicate_scheduler_job(monkey
         router=object(),
         service=service,
         locks={phase: asyncio.Lock() for phase in integration.JOB_NAMES},
+        startup_status="READY",
     )
     monkeypatch.setitem(
         integration.RETRY_DELAYS_SECONDS,
@@ -186,12 +282,204 @@ def test_startup_runs_official_delta_update_inside_existing_process() -> None:
         service=service,
         locks={phase: asyncio.Lock() for phase in integration.JOB_NAMES},
     )
-    asyncio.run(integration.initialize_etf_monitor(app))
+
+    async def initialize_and_wait() -> None:
+        await integration.initialize_etf_monitor(app)
+        runtime = app.bot_data[integration.RUNTIME_KEY]
+        assert runtime.startup_status == "PENDING"
+        assert runtime.startup_task is not None
+        await runtime.startup_task
+        assert runtime.startup_status == "READY"
+
+    asyncio.run(initialize_and_wait())
     assert store.recovered is True
     assert len(updater.days) == 1
     assert updater.days[0] == date.today() - timedelta(days=1)
     assert router.verified is True
     assert router.drained is True
+
+
+def _startup_runtime(*, store, updater, router, jobs=()):
+    class _Service:
+        def __init__(self):
+            self.calls = 0
+            self.data_provider = SimpleNamespace(delta_updater=updater)
+
+        async def run(self, phase):
+            self.calls += 1
+            return SimpleNamespace(status="COMPLETED")
+
+    return integration.EtfMonitorRuntime(
+        config=replace(load_etf_monitor_config(), enabled=True),
+        store=store,
+        router=router,
+        service=_Service(),
+        locks={phase: asyncio.Lock() for phase in integration.JOB_NAMES},
+        jobs=tuple(jobs),
+    )
+
+
+class _StartupRouter:
+    def __init__(self):
+        self.verified = False
+        self.drained = False
+
+    async def verify_route(self):
+        self.verified = True
+
+    async def drain(self, limit):
+        self.drained = limit == 20
+
+
+def test_recovery_failure_disables_etf_without_blocking_original_startup(capsys) -> None:
+    class _Store:
+        def recover_after_restart(self):
+            raise OSError("private sqlite recovery detail")
+
+    class _Updater:
+        def ensure_through(self, day):
+            raise AssertionError("updater must not run")
+
+    app = _App()
+    job = _Job(lambda _: None, {"name": "startup", "data": {}})
+    runtime = _startup_runtime(
+        store=_Store(),
+        updater=_Updater(),
+        router=_StartupRouter(),
+        jobs=(job,),
+    )
+    app.bot_data[integration.RUNTIME_KEY] = runtime
+
+    async def scenario() -> None:
+        await integration.initialize_etf_monitor(app)
+        assert runtime.startup_status == "PENDING"
+        await runtime.startup_task
+
+    asyncio.run(scenario())
+    assert runtime.startup_status == "DISABLED"
+    assert integration.RUNTIME_KEY not in app.bot_data
+    assert job.removed is True
+    output = capsys.readouterr().out
+    assert "startup disabled ETF runtime: OSError" in output
+    assert "private sqlite" not in output
+
+
+def test_startup_updater_network_failure_disables_etf_and_keeps_bot_alive(capsys) -> None:
+    class _Store:
+        def recover_after_restart(self):
+            return None
+
+    class _Updater:
+        def ensure_through(self, day):
+            raise requests.ConnectionError("private network endpoint")
+
+    app = _App()
+    job = _Job(lambda _: None, {"name": "startup", "data": {}})
+    runtime = _startup_runtime(
+        store=_Store(),
+        updater=_Updater(),
+        router=_StartupRouter(),
+        jobs=(job,),
+    )
+    app.bot_data[integration.RUNTIME_KEY] = runtime
+
+    async def scenario() -> None:
+        await integration.initialize_etf_monitor(app)
+        await runtime.startup_task
+
+    asyncio.run(scenario())
+    assert runtime.startup_status == "DISABLED"
+    assert integration.RUNTIME_KEY not in app.bot_data
+    assert job.removed is True
+    output = capsys.readouterr().out
+    assert "startup disabled ETF runtime: ConnectionError" in output
+    assert "private network" not in output
+
+
+def test_hung_startup_updater_is_bounded_and_jobs_stay_noop(
+    monkeypatch, capsys
+) -> None:
+    release = threading.Event()
+    entered = threading.Event()
+
+    class _Store:
+        def recover_after_restart(self):
+            return None
+
+    class _Updater:
+        def ensure_through(self, day):
+            entered.set()
+            release.wait(timeout=5)
+
+    app = _App()
+    job = _Job(
+        integration._scheduled_job,
+        {
+            "name": integration.JOB_NAMES[MonitorPhase.DECISION],
+            "data": {"phase": MonitorPhase.DECISION.value},
+        },
+    )
+    runtime = _startup_runtime(
+        store=_Store(),
+        updater=_Updater(),
+        router=_StartupRouter(),
+        jobs=(job,),
+    )
+    app.bot_data[integration.RUNTIME_KEY] = runtime
+    monkeypatch.setattr(integration, "STARTUP_BACKFILL_TIMEOUT_SECONDS", 0.05)
+
+    async def scenario() -> None:
+        await integration.initialize_etf_monitor(app)
+        assert runtime.startup_status == "PENDING"
+        await asyncio.to_thread(entered.wait, 1)
+        tasks_before_callback = len(app.tasks)
+        await job.callback(SimpleNamespace(application=app, job=job))
+        assert len(app.tasks) == tasks_before_callback
+        await runtime.dispatch(MonitorPhase.DECISION)
+        assert runtime.service.calls == 0
+        await runtime.startup_task
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+    assert runtime.startup_status == "DISABLED"
+    assert integration.RUNTIME_KEY not in app.bot_data
+    assert job.removed is True
+    assert "startup disabled ETF runtime: TimeoutError" in capsys.readouterr().out
+
+
+def test_startup_task_scheduling_failure_disables_etf(tmp_path, capsys) -> None:
+    class _AppWithFailedTask(_App):
+        def create_task(self, coroutine, *, name=None):
+            raise RuntimeError("private task scheduler detail")
+
+    class _Store:
+        def recover_after_restart(self):
+            raise AssertionError("must not run")
+
+    class _Updater:
+        def ensure_through(self, day):
+            raise AssertionError("must not run")
+
+    app = _AppWithFailedTask()
+    job = _Job(lambda _: None, {"name": "startup", "data": {}})
+    runtime = _startup_runtime(
+        store=_Store(),
+        updater=_Updater(),
+        router=_StartupRouter(),
+        jobs=(job,),
+    )
+    app.bot_data[integration.RUNTIME_KEY] = runtime
+
+    asyncio.run(integration.initialize_etf_monitor(app))
+
+    assert runtime.startup_status == "DISABLED"
+    assert integration.RUNTIME_KEY not in app.bot_data
+    assert job.removed is True
+    output = capsys.readouterr().out
+    assert "startup scheduling disabled ETF runtime: RuntimeError" in output
+    assert "private task scheduler" not in output
 
 
 def test_config_rejects_route_bypass_and_legacy_route_key(tmp_path) -> None:
@@ -434,6 +722,47 @@ def _assert_installed_test_delta(destination: Path, market_root: Path) -> None:
         manifest_sha256=manifest_sha256,
     )
     assert payload["bar"]["close"] == "52"
+
+
+def _bundle_builder(market_root: Path):
+    def build(**kwargs):
+        output = kwargs["output"]
+        start = kwargs["start"]
+        through = kwargs["through"]
+        assert start == through == date(2026, 10, 22)
+        _write_delta(output, market_root, start, status="OPEN")
+        delta = json.loads(
+            (output / f"{start.isoformat()}.json").read_text(encoding="utf-8")
+        )
+        receipts = []
+        for receipt in sorted((output / "receipts").glob("*.raw")):
+            raw = receipt.read_bytes()
+            receipts.append({
+                "path": f"receipts/{receipt.name}",
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            })
+        manifest = {
+            "schema_version": "stock-ai-bot-etf-daily-delta-bundle-v1",
+            "created_at": "2026-10-22T22:10:00+08:00",
+            "frozen_snapshot_id": kwargs["frozen_snapshot_id"],
+            "frozen_manifest_sha256": kwargs["frozen_manifest_sha256"],
+            "deltas": [{
+                "trade_date": start.isoformat(),
+                "path": f"{start.isoformat()}.json",
+                "content_sha256": delta["content_sha256"],
+            }],
+            "receipts": receipts,
+        }
+        manifest["content_sha256"] = stable_sha256(manifest)
+        (output / "bundle-manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        return manifest
+
+    return build
 
 
 def test_receipt_half_write_interruption_recovers_on_restart(
@@ -723,6 +1052,74 @@ def test_automatic_daily_delta_update_captures_validates_and_immutably_installs(
     assert snapshot.raw_row_for(date(2026, 10, 22))["close"] == "53"
     assert list((delta_root / "receipts").glob("*.raw"))
     assert list((delta_root / "manifests").glob("*.json"))
+
+
+def test_automatic_updater_recovers_legacy_partial_delta_before_verify(
+    tmp_path, monkeypatch
+) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    delta_root.mkdir()
+    final = delta_root / "2026-10-22.json"
+    partial = b'{"schema_version":"stock-ai-bot-etf-daily-delta-v1"'
+    final.write_bytes(partial)
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    monkeypatch.setattr(
+        etf_data,
+        "build_daily_delta_bundle",
+        _bundle_builder(market_root),
+    )
+
+    result = OfficialDailyDeltaUpdater(provider).ensure_through(date(2026, 10, 22))
+
+    assert result["status"] == "CAPTURED_VALIDATED_IMMUTABLY_INSTALLED"
+    assert result["installed"] == 1
+    assert provider.load_complete(date(2026, 10, 22)).latest_date == date(2026, 10, 22)
+    quarantined = list(delta_root.glob(".2026-10-22.json.invalid-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == partial
+    repeated = OfficialDailyDeltaUpdater(provider).ensure_through(date(2026, 10, 22))
+    assert repeated["status"] == "VERIFIED_ALREADY_COMPLETE"
+
+
+def test_automatic_updater_recovers_legacy_partial_receipt_before_verify(
+    tmp_path, monkeypatch
+) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    _write_delta(delta_root, market_root, date(2026, 10, 22), status="OPEN")
+    payload = json.loads(
+        (delta_root / "2026-10-22.json").read_text(encoding="utf-8")
+    )
+    receipt = delta_root / payload["bar_evidence"]["receipt_relative_path"]
+    expected = receipt.read_bytes()
+    partial = expected[:5]
+    receipt.write_bytes(partial)
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    monkeypatch.setattr(
+        etf_data,
+        "build_daily_delta_bundle",
+        _bundle_builder(market_root),
+    )
+
+    result = OfficialDailyDeltaUpdater(provider).ensure_through(date(2026, 10, 22))
+
+    assert result["status"] == "CAPTURED_VALIDATED_IMMUTABLY_INSTALLED"
+    assert receipt.read_bytes() == expected
+    quarantined = list(receipt.parent.glob(f".{receipt.name}.invalid-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == partial
+    assert provider.load_complete(date(2026, 10, 22)).latest_date == date(2026, 10, 22)
 
 
 def test_automatic_delta_update_keeps_production_empty_when_capture_requires_review(

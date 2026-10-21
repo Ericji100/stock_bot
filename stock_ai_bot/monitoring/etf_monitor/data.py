@@ -735,12 +735,20 @@ class OfficialDailyDeltaUpdater:
             path = self.registry.delta_root / f"{cursor.isoformat()}.json"
             if not path.is_file():
                 return cursor
-            load_daily_delta_file(
-                path,
-                expected_date=cursor,
-                snapshot_id=snapshot.snapshot_id,
-                manifest_sha256=snapshot.package_manifest_sha256,
-            )
+            try:
+                load_daily_delta_file(
+                    path,
+                    expected_date=cursor,
+                    snapshot_id=snapshot.snapshot_id,
+                    manifest_sha256=snapshot.package_manifest_sha256,
+                )
+            except EtfMonitorDataError:
+                # A prior process may have exposed a partial final with the
+                # legacy direct writer, or a valid delta may reference a
+                # partial receipt. Treat it as needing recapture so the
+                # immutable installer can quarantine invalid bytes, repair
+                # receipts, or refuse a different valid delta without overwrite.
+                return cursor
             cursor += timedelta(days=1)
         return None
 

@@ -1,16 +1,20 @@
 {
   "schema_version": "stock-ai-bot-etf-live-monitor-qa-manifest-v5",
-  "status": "PASS",
+  "status": "AUDIT_ARTIFACT_INTEGRITY_PASS",
+  "audit_status": "FIX5_BLOCKERS_CLOSED_AFFECTED_TESTS_PASS_REPOSITORY_WIDE_NOT_GREEN_PRODUCTION_ENABLEMENT_BLOCKED",
+  "affected_tests_status": "PASS",
+  "repository_wide_status": "NOT_GREEN",
+  "production_ready_to_enable": false,
   "tested_code_commit": "40728c3ec0f800143bca1323be17ccf5d776fb2a",
   "artifacts": [
     {
       "relative_path": "0050-live-replay-parity-v5.json",
-      "bytes": 6768,
-      "sha256": "055E161276F7AF4445DC63BA495E98CF2E75E74C65DCC8F665E0D8A2137B8598"
+      "bytes": 7575,
+      "sha256": "3ABB686B673177B23CFAC44C4BEA4E1EEE1893F0B96D687789556F244EAE0237"
     }
   ],
   "readback": {
-    "status": "PASS",
+    "status": "ARTIFACT_INTEGRITY_PASS",
     "json_parse": true,
     "bytes_match": true,
     "sha256_match": true

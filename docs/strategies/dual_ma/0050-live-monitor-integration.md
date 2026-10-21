@@ -4,6 +4,8 @@
 
 本模組是影子監控與建議系統，不連接券商、不送單、不推估未知成交價。`config/etf_monitor.json` 預設 `enabled: false`，合併程式不等於啟用正式排程；只有 00 在資料、群組與 QA 完成後才可改為 `true`。
 
+目前狀態必須分開閱讀：fix5 的 ETF/Telegram 受影響測試與 full-history causal parity 已通過，但完整 repository test suite 仍為 `NOT_GREEN`（46 failed、24 errors）；production frozen cutoff `2026-09-30` 可讀，第一個 delta 日 `2026-10-01` 仍缺漏，且 `enabled=false`。因此本文件不宣稱全庫綠燈、production 資料已補齊或可啟用。
+
 它沿用既有啟動鏈：
 
 ```text
@@ -36,7 +38,7 @@
 | `next-session-open-corporate-actions.csv` | 63 |
 | `next-session-open-trade-details.csv` | 91 |
 
-同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；最新 service-level 稽核附件與 SHA/readback manifest 見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v3.json`、`0050-live-replay-parity-v3.manifest.json`。
+同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；fix5 service-level 稽核附件與 SHA/readback manifest 見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v5.json`、`0050-live-replay-parity-v5.manifest.json`。其中 affected gates 與 full-history parity 通過，不代表完整 repository suite 已綠。
 
 ## 正式資料更新與 freshness gate
 
@@ -54,7 +56,9 @@ python -m tools.etf_monitor_capture_daily_deltas `
 python -m tools.etf_monitor_import_daily_delta --input D:\staging\0050\bundle-20261001-20261021\2026-10-21.json
 ```
 
-啟用 monitor 後，同一個 BAT/Bot process 會在 startup 先補到前一日，並在 12:45/13:55 再確認前一日鏈、22:00 補當日完整資料。runtime 先把缺少的完整日期區間擷取到暫存 bundle，全部重讀驗證成功後，才把 raw receipts、每日 delta 與 bundle manifest 唯新增安裝到 production delta root；目的檔已存在且內容不同時拒絕覆寫，process 中斷後可冪等續跑。此自動路徑只接受無公司行動歧義的普通 OPEN/CLOSED 日；weekday 無 bar 且不在官方休市表、兩個公司行動來源不一致，或任何公司行動日都停止並要求 operator-reviewed evidence，絕不改用其他來源。
+啟用 monitor 後，同一個 BAT/Bot process 先以 `PENDING` 註冊 ETF runtime；既有 post-init 只建立背景 startup task 就返回，原 bot 開始 polling 不等待 backfill。背景 task 依序做 restart recovery、補到前一日的官方 daily delta、專用群組 route verification 與 outbox drain；四者全部成功後才切為 `READY`。`PENDING` 期間三個 ETF jobs 一律 no-op，不會把未完成 backfill 的狀態假裝成正常決策。recovery、backfill 或 route 任一步例外／逾時，runtime 會切為 `DISABLED`、從 `bot_data` 移除並撤銷可取得的 ETF jobs；即使有無法撤銷的 callback，也因找不到同一個 `READY` runtime 而 no-op。這些 ETF 故障不阻止原 bot 啟動，也不回退到舊群組。
+
+背景 backfill 會把缺少的完整日期區間擷取到暫存 bundle，全部重讀驗證成功後，才把 raw receipts、每日 delta 與 bundle manifest 唯新增安裝到 production delta root；目的檔已存在且內容不同時拒絕覆寫，process 中斷後可冪等續跑。舊版留下的 partial delta 或 receipt 會先視為需要 recapture，再由 immutable installer quarantine、重建及全鏈 readback；不同的有效 immutable delta 仍拒絕覆寫。此自動路徑只接受無公司行動歧義的普通 OPEN/CLOSED 日；weekday 無 bar 且不在官方休市表、兩個公司行動來源不一致，或任何公司行動日都停止並要求 operator-reviewed evidence，絕不改用其他來源。
 
 import 工具與 runtime 都會重新驗證 frozen registry 全部 artifact、base identity、receipt 原文 SHA、approved endpoint/parser、解析後 OHLC/calendar/corporate action、日期鏈與 content SHA。22:00 complete load 要求從 frozen cutoff 後到當日的每個日曆日都存在且當日是 OPEN；13:55 provisional load 要求鏈完整到前一日，再只追加同日 TWSE MIS quote。MIS 必須回 `rtcode=0000`/`OK`、正常盤狀態碼、同一交易日的 source clock 與最近成交時間；source clock 超過五分鐘或未確認收盤一律 fail-closed。任何缺日、stale、hash/identity/官方原文不符都回 `DATA_UNAVAILABLE`。
 
@@ -67,7 +71,7 @@ $env:STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT='D:\code\stock_ai_bot\stock_data\v
 python -m tools.etf_monitor_data_smoke --as-of 2026-09-30
 ```
 
-隔離 QA 已分別驗證人工 bundle 與 runtime 自動安裝路徑；production 仍未執行安裝，`config/etf_monitor.json` 仍為 `enabled=false`，因此目前仍必須 fail-closed，不可宣稱正式補齊或可直接啟用。只有 00 核准啟用後，既有單一 Bot process 才會執行上述自動更新。
+隔離 QA 已分別驗證人工 bundle 與 runtime 自動安裝路徑；production `2026-09-30` frozen cutoff smoke 通過，但 `2026-10-01` delta 仍缺漏，`config/etf_monitor.json` 仍為 `enabled=false`，因此目前仍必須 fail-closed，不可宣稱正式補齊或可直接啟用。只有完整資料與剩餘 QA 阻擋解除、再由 00 核准後，既有單一 Bot process 才可執行上述自動更新。
 
 ## 排程
 
@@ -147,7 +151,7 @@ python -m tools.etf_monitor_resolve_delivery --database <sqlite-path> --event-id
 
 13:55 的 BUY/SELL 在 22:00 資料不可用時先標記 `QUARANTINED_RECONCILIATION_REQUIRED`，next-open settlement 只讀 `PENDING_NEXT_SESSION_OPEN`，所以不會把未確認訊號假裝成交。同日成功補跑後，相同指令標記 `RESTORED_AFTER_RECONCILIATION`；改為 HOLD 時取消；動作方向、`leg_id` 或 signal reference price 任一改變時，原 pending 被 supersede，並在同一 SQLite transaction 建立唯一新 pending。更正／恢復訊息具名顯示新舊狀態、動作、leg、參考價與 action ID。資料庫重啟後仍保留完整軌跡。
 
-啟動時 `SENDING → DELIVERY_UNCERTAIN`、`RUNNING → INTERRUPTED`；只有 `PENDING` / `RETRY` 可以自動 claim。stable event ID 與 payload collision check 防止同 ID 異內容，但 Telegram 的外部送達歧義由上述人工流程處理。
+背景 startup recovery 會把既有 `SENDING → DELIVERY_UNCERTAIN`、`RUNNING → INTERRUPTED`；只有 `PENDING` / `RETRY` 可以自動 claim。此 recovery 與首次 backfill 不阻塞原 bot polling，但在全部 startup gates 完成前 ETF runtime 保持 `PENDING`、所有 ETF jobs no-op。stable event ID 與 payload collision check 防止同 ID 異內容，但 Telegram 的外部送達歧義由上述人工流程處理。
 
 ## 訊息語意
 
@@ -192,6 +196,6 @@ python tools/etf_monitor_routing_smoke.py --send --confirm-chat-id -5527055845
 1. frozen ETF registry 的 current 0050 snapshot 存在，manifest 與所有 artifact hash 通過，且 full-history parity 為 `PASS_EXACT`。
 2. 首次啟用前，以 production profile 做一次 read-only/isolated dry run，確認 runtime 可從 2026-10-01 補到前一日；普通日可自動 immutable install，遇公司行動或來源不一致必須停住並由 operator 建立 reviewed evidence。production 目前尚未執行此步。
 3. Bot 已加入 `-5527055845`，且 `getChat` 回傳完全相同的 group/supergroup ID。
-4. 聚焦測試與完整測試通過；未修改兩個 BAT 與舊群組設定。
+4. 受影響測試必須通過；完整 repository suite 必須轉綠，或由 00 對每個剩餘失敗做正式 disposition。目前完整 suite 仍有 46 failed、24 errors，所以本項尚未完成。兩個 BAT 與舊群組設定不得修改。
 5. 必要時由 00 執行最多一次 smoke。
 6. 00 將 `enabled` 改為 `true` 後，才重啟既有單一 Bot process。

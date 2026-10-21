@@ -1,7 +1,21 @@
 {
   "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v5",
-  "status": "FIX5_BLOCKERS_CLOSED_TARGETED_GATES_PASS_REPOSITORY_WIDE_GREEN_AND_PRODUCTION_ENABLEMENT_BLOCKED",
+  "status": "FIX5_BLOCKERS_CLOSED_AFFECTED_TESTS_PASS_REPOSITORY_WIDE_NOT_GREEN_PRODUCTION_ENABLEMENT_BLOCKED",
   "generated_at": "2026-10-22T02:07:24.7322350+08:00",
+  "evidence_correction": {
+    "corrected_at": "2026-10-22T02:24:36.4525174+08:00",
+    "branch": "codex/0050-live-monitor-qa-fix6",
+    "reason": "remove contradictory repository-wide green wording",
+    "runtime_changed": false
+  },
+  "status_summary": {
+    "affected_tests": "PASS",
+    "full_history_parity": "PASS_EXACT",
+    "repository_wide": "NOT_GREEN",
+    "production_delta": "INCOMPLETE_FROM_2026-10-01",
+    "config_enabled": false,
+    "ready_to_enable": false
+  },
   "tested_code": {
     "branch": "codex/0050-live-monitor-qa-fix5",
     "commit": "40728c3ec0f800143bca1323be17ccf5d776fb2a",
@@ -121,6 +135,11 @@
         "automatic updater legacy partial receipt recovery"
       ]
     },
+    "independent_00_fix5_affected_qa": {
+      "passed": 205,
+      "skipped": 1,
+      "status": "PASS"
+    },
     "repository_wide": {
       "command": "python -m pytest -q --tb=short",
       "passed": 2202,
@@ -150,6 +169,11 @@
       "expected_exit_code": 2,
       "observed_exit_code": 2,
       "status": "DATA_UNAVAILABLE_FAIL_CLOSED",
+      "reason": "daily delta chain is missing 2026-10-01"
+    },
+    "independent_00_production_read_only_smoke": {
+      "frozen_cutoff_2026_09_30": "PASS",
+      "first_delta_day_2026_10_01": "DATA_UNAVAILABLE",
       "reason": "daily delta chain is missing 2026-10-01"
     }
   },

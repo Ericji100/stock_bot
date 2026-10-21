@@ -19,7 +19,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _utc_now() -> str:
@@ -91,6 +91,9 @@ class EtfMonitorStore:
                     fill_price TEXT,
                     status TEXT NOT NULL,
                     source_event_id TEXT NOT NULL,
+                    superseded_by_event_id TEXT,
+                    superseded_at TEXT,
+                    supersede_reason TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -156,6 +159,19 @@ class EtfMonitorStore:
             ).fetchone()
             if row is not None and int(row["value"]) > SCHEMA_VERSION:
                 raise EtfMonitorStateError("ETF monitor database schema is newer than this code")
+            columns = {
+                item["name"]
+                for item in connection.execute("PRAGMA table_info(pending_actions)").fetchall()
+            }
+            for name, declaration in (
+                ("superseded_by_event_id", "TEXT"),
+                ("superseded_at", "TEXT"),
+                ("supersede_reason", "TEXT"),
+            ):
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE pending_actions ADD COLUMN {name} {declaration}"
+                    )
             connection.execute(
                 "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -165,7 +181,8 @@ class EtfMonitorStore:
         now = _utc_now()
         with self.transaction() as connection:
             connection.execute(
-                "UPDATE outbox SET status='RETRY', last_error='RECOVERED_AFTER_RESTART', "
+                "UPDATE outbox SET status='DELIVERY_UNCERTAIN', "
+                "last_error='SEND_RESULT_UNKNOWN_AFTER_RESTART_MANUAL_REVIEW_REQUIRED', "
                 "updated_at=? WHERE status='SENDING'",
                 (now,),
             )
@@ -352,6 +369,106 @@ class EtfMonitorStore:
                 ),
             )
 
+    def describe_pending_transition(
+        self,
+        *,
+        original_event_id: str,
+        new_decision: Decision,
+    ) -> Mapping[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM pending_actions WHERE source_event_id=? "
+                "AND status='PENDING_NEXT_SESSION_OPEN' ORDER BY created_at DESC LIMIT 1",
+                (original_event_id,),
+            ).fetchone()
+        old_action = "HOLD" if row is None else str(row["action"])
+        new_action = new_decision.value
+        if row is None:
+            outcome = (
+                "UNCHANGED"
+                if new_decision is Decision.HOLD
+                else "CREATED_BY_RECONCILIATION"
+            )
+        elif new_action == old_action:
+            outcome = "UNCHANGED"
+        elif new_decision is Decision.HOLD:
+            outcome = "CANCELLED_BY_RECONCILIATION"
+        else:
+            outcome = "SUPERSEDED_BY_RECONCILIATION"
+        return {
+            "old_action": old_action,
+            "new_action": new_action,
+            "outcome": outcome,
+            "old_action_id": None if row is None else str(row["action_id"]),
+        }
+
+    def reconcile_pending_action(
+        self,
+        *,
+        core: AcceptedCoreState,
+        event_id: str,
+        original_event_id: str | None,
+    ) -> Mapping[str, Any]:
+        if original_event_id is None:
+            self.save_pending_action(core, event_id=event_id)
+            return {
+                "old_action": None,
+                "new_action": core.decision.value,
+                "outcome": "CREATED" if core.decision is not Decision.HOLD else "UNCHANGED",
+            }
+        transition = dict(self.describe_pending_transition(
+            original_event_id=original_event_id,
+            new_decision=core.decision,
+        ))
+        now = _utc_now()
+        with self.transaction() as connection:
+            old = connection.execute(
+                "SELECT * FROM pending_actions WHERE source_event_id=? "
+                "AND status='PENDING_NEXT_SESSION_OPEN' ORDER BY created_at DESC LIMIT 1",
+                (original_event_id,),
+            ).fetchone()
+            if old is not None and transition["outcome"] in {
+                "CANCELLED_BY_RECONCILIATION",
+                "SUPERSEDED_BY_RECONCILIATION",
+            }:
+                connection.execute(
+                    "UPDATE pending_actions SET status=?, superseded_by_event_id=?, "
+                    "superseded_at=?, supersede_reason=?, updated_at=? WHERE action_id=?",
+                    (
+                        transition["outcome"],
+                        event_id,
+                        now,
+                        "FULL_DAY_ACCEPTED_DATA_CHANGED_MATERIAL_STATE",
+                        now,
+                        old["action_id"],
+                    ),
+                )
+            if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN} and (
+                old is None or str(old["action"]) != core.decision.value
+            ):
+                action_id = f"{core.strategy}:{core.as_of.isoformat()}:{core.decision.value}"
+                connection.execute(
+                    "INSERT INTO pending_actions(action_id, signal_date, action, leg_id, "
+                    "signal_reference_price, fill_price, status, source_event_id, "
+                    "created_at, updated_at) VALUES(?,?,?,?,?,NULL,'PENDING_NEXT_SESSION_OPEN',?,?,?) "
+                    "ON CONFLICT(action_id) DO NOTHING",
+                    (
+                        action_id,
+                        core.as_of.isoformat(),
+                        core.decision.value,
+                        None if core.signal_transaction is None else str(
+                            core.signal_transaction.get("leg_id") or ""
+                        ),
+                        None if core.signal_reference_price is None else str(
+                            core.signal_reference_price
+                        ),
+                        event_id,
+                        now,
+                        now,
+                    ),
+                )
+        return transition
+
     def record_corporate_actions(self, snapshot: MarketDataSnapshot) -> int:
         count = 0
         with self.transaction() as connection:
@@ -425,6 +542,44 @@ class EtfMonitorStore:
                 "UPDATE outbox SET status='RETRY', last_error=?, updated_at=? WHERE event_id=?",
                 (error[:500], _utc_now(), event_id),
             )
+
+    def mark_outbox_uncertain(self, event_id: str, error: str) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                "UPDATE outbox SET status='DELIVERY_UNCERTAIN', last_error=?, updated_at=? "
+                "WHERE event_id=?",
+                (error[:500], _utc_now(), event_id),
+            )
+
+    def resolve_uncertain_delivery(
+        self,
+        event_id: str,
+        *,
+        delivered: bool,
+        telegram_message_id: str | None = None,
+    ) -> None:
+        """Resolve an ambiguous send only after explicit operator verification."""
+
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT status FROM outbox WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if row is None or row["status"] != "DELIVERY_UNCERTAIN":
+                raise EtfMonitorStateError("outbox event is not awaiting manual delivery review")
+            now = _utc_now()
+            if delivered:
+                connection.execute(
+                    "UPDATE outbox SET status='DELIVERED_MANUAL', telegram_message_id=?, "
+                    "last_error=NULL, delivered_at=?, updated_at=? WHERE event_id=?",
+                    (telegram_message_id, now, now, event_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE outbox SET status='RETRY', "
+                    "last_error='MANUAL_REVIEW_CONFIRMED_NOT_DELIVERED', updated_at=? "
+                    "WHERE event_id=?",
+                    (now, event_id),
+                )
 
     def append_correction(
         self,

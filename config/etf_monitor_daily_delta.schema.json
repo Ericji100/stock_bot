@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stock-ai-bot-etf-daily-delta-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "symbol", "trade_date", "previous_calendar_date",
+    "frozen_snapshot_id", "frozen_manifest_sha256", "market_status",
+    "calendar_evidence", "bar", "bar_evidence", "corporate_actions",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": "stock-ai-bot-etf-daily-delta-v1"},
+    "symbol": {"const": "0050"},
+    "trade_date": {"type": "string", "format": "date"},
+    "previous_calendar_date": {"type": "string", "format": "date"},
+    "frozen_snapshot_id": {"type": "string", "minLength": 1},
+    "frozen_manifest_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "market_status": {"enum": ["OPEN", "CLOSED"]},
+    "calendar_evidence": {"$ref": "#/$defs/evidence"},
+    "bar": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["open", "high", "low", "close", "volume"],
+          "properties": {
+            "open": {"type": ["string", "number"]},
+            "high": {"type": ["string", "number"]},
+            "low": {"type": ["string", "number"]},
+            "close": {"type": ["string", "number"]},
+            "volume": {"type": ["string", "number"]}
+          }
+        }
+      ]
+    },
+    "bar_evidence": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/evidence"}]},
+    "corporate_actions": {"type": "array", "items": {"type": "object"}},
+    "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["source_endpoint", "fetched_at", "receipt_sha256"],
+      "properties": {
+        "source_endpoint": {"type": "string", "pattern": "^https://(www|openapi)\\.twse\\.com\\.tw/"},
+        "fetched_at": {"type": "string", "format": "date-time"},
+        "receipt_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+      }
+    }
+  }
+}

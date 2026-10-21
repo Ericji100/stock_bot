@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from backtests.dual_ma import etf_0050_ma21_ma144_regime_v1 as accepted
 from backtests.dual_ma.models import Bar
@@ -81,7 +81,7 @@ class AcceptedFinalV17Core:
 
     strategy_id = STRATEGY_CORE_ID
 
-    def evaluate(self, snapshot: MarketDataSnapshot) -> AcceptedCoreState:
+    def _accepted_run(self, snapshot: MarketDataSnapshot):
         if snapshot.symbol != "0050":
             raise EtfMonitorDataError("accepted final-v1.7 core only supports 0050")
         if snapshot.latest_date != snapshot.as_of:
@@ -107,56 +107,83 @@ class AcceptedFinalV17Core:
         if not daily or daily[-1]["date"] != snapshot.as_of:
             raise EtfMonitorDataError("accepted core did not produce an as-of daily row")
 
-        transactions = tuple(dict(row) for row in run.transactions)
-        core_events = tuple(dict(row) for row in events)
-        today_transactions = [row for row in transactions if row["date"] == snapshot.as_of]
-        if len(today_transactions) > 1:
-            raise EtfMonitorDataError("accepted core produced multiple same-day transactions")
-        signal_transaction = today_transactions[0] if today_transactions else None
-        if signal_transaction is None:
-            decision = Decision.HOLD
-        elif signal_transaction["role"] == "MOTHER":
-            decision = Decision.BUY_NEXT_OPEN
-        elif signal_transaction["role"] == "EXIT":
-            decision = Decision.SELL_NEXT_OPEN
-        else:
-            raise EtfMonitorDataError("accepted core produced an unsupported transaction role")
+        return raw_by_date, run, daily, events
 
-        active, fixed_stop, armed = _active_position(transactions, core_events)
-        daily_row = dict(daily[-1])
-        raw_close = raw_by_date[snapshot.as_of].close
-        return AcceptedCoreState(
-            symbol="0050",
-            strategy=STRATEGY_CORE_ID,
-            as_of=snapshot.as_of,
-            decision=decision,
-            regime=str(daily_row["regime"]),
-            raw_close=raw_close,
-            technical_close=_decimal(daily_row["technical_close"]),
-            sma21=None if daily_row.get("sma21") is None else _decimal(daily_row["sma21"]),
-            sma144=None if daily_row.get("sma144") is None else _decimal(daily_row["sma144"]),
-            histogram=_decimal(daily_row["histogram"]),
-            previous_histogram=(
-                None
-                if daily_row.get("previous_histogram") is None
-                else _decimal(daily_row["previous_histogram"])
-            ),
-            active_position=active is not None,
-            active_leg_id=None if active is None else str(active.get("leg_id") or ""),
-            fixed_initial_stop=fixed_stop,
-            macd_armed=armed,
-            exit_reason=(
-                str(signal_transaction.get("exit_reason"))
-                if signal_transaction and signal_transaction.get("role") == "EXIT"
-                else None
-            ),
-            signal_reference_price=(
-                None
-                if signal_transaction is None
-                else _decimal(signal_transaction["reference_price"])
-            ),
-            signal_transaction=signal_transaction,
-            core_daily_row=daily_row,
-            core_events=core_events,
-            core_transactions=transactions,
-        )
+    def iter_history(self, snapshot: MarketDataSnapshot) -> Iterator[AcceptedCoreState]:
+        """Replay every official day through the same causal engine used by LIVE."""
+
+        raw_by_date, run, daily, events = self._accepted_run(snapshot)
+        all_transactions = tuple(dict(row) for row in run.transactions)
+        all_events = tuple(dict(row) for row in events)
+        transaction_cursor = 0
+        event_cursor = 0
+        transactions: list[Mapping[str, Any]] = []
+        core_events: list[Mapping[str, Any]] = []
+        for source_daily in daily:
+            day = _row_date(source_daily)
+            while (
+                transaction_cursor < len(all_transactions)
+                and _row_date(all_transactions[transaction_cursor]) <= day
+            ):
+                transactions.append(all_transactions[transaction_cursor])
+                transaction_cursor += 1
+            while event_cursor < len(all_events) and _row_date(all_events[event_cursor]) <= day:
+                core_events.append(all_events[event_cursor])
+                event_cursor += 1
+            today_transactions = [row for row in transactions if _row_date(row) == day]
+            if len(today_transactions) > 1:
+                raise EtfMonitorDataError("accepted core produced multiple same-day transactions")
+            signal_transaction = today_transactions[0] if today_transactions else None
+            if signal_transaction is None:
+                decision = Decision.HOLD
+            elif signal_transaction["role"] == "MOTHER":
+                decision = Decision.BUY_NEXT_OPEN
+            elif signal_transaction["role"] == "EXIT":
+                decision = Decision.SELL_NEXT_OPEN
+            else:
+                raise EtfMonitorDataError("accepted core produced an unsupported transaction role")
+            active, fixed_stop, armed = _active_position(transactions, core_events)
+            daily_row = dict(source_daily)
+            yield AcceptedCoreState(
+                symbol="0050",
+                strategy=STRATEGY_CORE_ID,
+                as_of=day,
+                decision=decision,
+                regime=str(daily_row["regime"]),
+                raw_close=raw_by_date[day].close,
+                technical_close=_decimal(daily_row["technical_close"]),
+                sma21=None if daily_row.get("sma21") is None else _decimal(daily_row["sma21"]),
+                sma144=None if daily_row.get("sma144") is None else _decimal(daily_row["sma144"]),
+                histogram=_decimal(daily_row["histogram"]),
+                previous_histogram=(
+                    None
+                    if daily_row.get("previous_histogram") is None
+                    else _decimal(daily_row["previous_histogram"])
+                ),
+                active_position=active is not None,
+                active_leg_id=None if active is None else str(active.get("leg_id") or ""),
+                fixed_initial_stop=fixed_stop,
+                macd_armed=armed,
+                exit_reason=(
+                    str(signal_transaction.get("exit_reason"))
+                    if signal_transaction and signal_transaction.get("role") == "EXIT"
+                    else None
+                ),
+                signal_reference_price=(
+                    None
+                    if signal_transaction is None
+                    else _decimal(signal_transaction["reference_price"])
+                ),
+                signal_transaction=signal_transaction,
+                core_daily_row=daily_row,
+                core_events=tuple(core_events),
+                core_transactions=tuple(transactions),
+            )
+
+    def evaluate(self, snapshot: MarketDataSnapshot) -> AcceptedCoreState:
+        latest: AcceptedCoreState | None = None
+        for latest in self.iter_history(snapshot):
+            pass
+        if latest is None:
+            raise EtfMonitorDataError("accepted core produced no monitor state")
+        return latest

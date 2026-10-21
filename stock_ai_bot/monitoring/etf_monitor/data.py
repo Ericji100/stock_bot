@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import date, datetime, time
+import os
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 import requests
+
+from stock_ai_bot.workdata import get_workdata_path
 
 from stock_ai_bot.data_sources.causal_price_contract import (
     ActionKind,
@@ -30,6 +33,9 @@ from .models import IntradayQuote, MarketDataSnapshot, MonitorPhase, stable_sha2
 TAIPEI = ZoneInfo("Asia/Taipei")
 TWSE_MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 RAW_EXECUTION_BASIS = "UNADJUSTED_MAINBOARD_OHLCV"
+DAILY_DELTA_SCHEMA = "stock-ai-bot-etf-daily-delta-v1"
+FROZEN_MARKET_DATA_ROOT_ENV = "STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT"
+_OFFICIAL_HOSTS = ("https://www.twse.com.tw/", "https://openapi.twse.com.tw/")
 
 
 def _read_json(path: Path) -> Any:
@@ -79,6 +85,113 @@ def _parse_event(row: Mapping[str, Any]) -> CorporateActionEvent:
         raise EtfMonitorDataError("accepted corporate-action event is invalid") from exc
 
 
+def resolve_frozen_market_data_root(config: EtfMonitorConfig) -> Path:
+    """Resolve the immutable accepted registry independently of mutable workdata."""
+
+    configured = os.environ.get(FROZEN_MARKET_DATA_ROOT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    repository_root = Path(__file__).resolve().parents[3]
+    return (repository_root / config.frozen_market_data_relative_path).resolve()
+
+
+def _official_evidence(value: Any, field: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise EtfMonitorDataError(f"daily delta {field} evidence is missing")
+    endpoint = str(value.get("source_endpoint") or "")
+    receipt = str(value.get("receipt_sha256") or "").lower()
+    if not endpoint.startswith(_OFFICIAL_HOSTS):
+        raise EtfMonitorDataError(f"daily delta {field} source is not official TWSE")
+    if len(receipt) != 64 or any(character not in "0123456789abcdef" for character in receipt):
+        raise EtfMonitorDataError(f"daily delta {field} receipt SHA-256 is invalid")
+    try:
+        fetched_at = datetime.fromisoformat(str(value.get("fetched_at") or ""))
+    except ValueError as exc:
+        raise EtfMonitorDataError(f"daily delta {field} fetched_at is invalid") from exc
+    if fetched_at.tzinfo is None:
+        raise EtfMonitorDataError(f"daily delta {field} fetched_at must be timezone-aware")
+    return dict(value)
+
+
+def validate_daily_delta_payload(
+    payload: Mapping[str, Any],
+    *,
+    expected_date: date,
+    snapshot_id: str,
+    manifest_sha256: str,
+) -> dict[str, Any]:
+    """Validate one immutable calendar-day delta before it can extend the frozen base."""
+
+    if payload.get("schema_version") != DAILY_DELTA_SCHEMA:
+        raise EtfMonitorDataError("unsupported ETF daily delta schema")
+    if str(payload.get("symbol") or "") != "0050":
+        raise EtfMonitorDataError("daily delta symbol is not 0050")
+    if str(payload.get("trade_date") or "") != expected_date.isoformat():
+        raise EtfMonitorDataError("daily delta date does not match its chain position")
+    if str(payload.get("frozen_snapshot_id") or "") != snapshot_id:
+        raise EtfMonitorDataError("daily delta frozen snapshot id mismatch")
+    if str(payload.get("frozen_manifest_sha256") or "").upper() != manifest_sha256.upper():
+        raise EtfMonitorDataError("daily delta frozen manifest SHA-256 mismatch")
+    expected_previous = (expected_date - timedelta(days=1)).isoformat()
+    if str(payload.get("previous_calendar_date") or "") != expected_previous:
+        raise EtfMonitorDataError("daily delta calendar chain is not contiguous")
+    supplied_hash = str(payload.get("content_sha256") or "").lower()
+    hash_input = {key: value for key, value in payload.items() if key != "content_sha256"}
+    if supplied_hash != stable_sha256(hash_input):
+        raise EtfMonitorDataError("daily delta content SHA-256 mismatch")
+    _official_evidence(payload.get("calendar_evidence"), "calendar")
+    status = str(payload.get("market_status") or "")
+    if status not in {"OPEN", "CLOSED"}:
+        raise EtfMonitorDataError("daily delta market_status must be OPEN or CLOSED")
+    bar = payload.get("bar")
+    if status == "CLOSED":
+        if bar is not None:
+            raise EtfMonitorDataError("closed daily delta must not contain a bar")
+    else:
+        if not isinstance(bar, Mapping):
+            raise EtfMonitorDataError("open daily delta has no complete bar")
+        _official_evidence(payload.get("bar_evidence"), "bar")
+        for field in ("open", "high", "low", "close", "volume"):
+            try:
+                value = Decimal(str(bar[field]))
+            except (KeyError, ValueError) as exc:
+                raise EtfMonitorDataError(f"daily delta bar has invalid {field}") from exc
+            if value < 0 or (field != "volume" and value == 0):
+                raise EtfMonitorDataError(f"daily delta bar has invalid {field}")
+        if Decimal(str(bar["high"])) < max(
+            Decimal(str(bar["open"])), Decimal(str(bar["close"])), Decimal(str(bar["low"]))
+        ) or Decimal(str(bar["low"])) > min(
+            Decimal(str(bar["open"])), Decimal(str(bar["close"])), Decimal(str(bar["high"]))
+        ):
+            raise EtfMonitorDataError("daily delta bar violates OHLC ordering")
+    actions = payload.get("corporate_actions", [])
+    if not isinstance(actions, list):
+        raise EtfMonitorDataError("daily delta corporate_actions must be a list")
+    for event in actions:
+        if not isinstance(event, Mapping):
+            raise EtfMonitorDataError("daily delta corporate action is malformed")
+        _parse_event(event)
+    return dict(payload)
+
+
+def load_daily_delta_file(
+    path: Path,
+    *,
+    expected_date: date,
+    snapshot_id: str,
+    manifest_sha256: str,
+) -> dict[str, Any]:
+    payload = _read_json(path)
+    if not isinstance(payload, Mapping):
+        raise EtfMonitorDataError("daily delta root is not an object")
+    return validate_daily_delta_payload(
+        payload,
+        expected_date=expected_date,
+        snapshot_id=snapshot_id,
+        manifest_sha256=manifest_sha256,
+    )
+
+
 def _normalize_rows(rows: Sequence[Mapping[str, Any]], *, through: date) -> tuple[dict[str, Any], ...]:
     normalized: list[dict[str, Any]] = []
     prior: date | None = None
@@ -104,11 +217,75 @@ def _normalize_rows(rows: Sequence[Mapping[str, Any]], *, through: date) -> tupl
 
 
 class RegistrySnapshotProvider:
-    """Loads only hash-verified snapshots from the shared ETF registry."""
+    """Loads an immutable accepted base plus a contiguous verified daily ledger."""
 
-    def __init__(self, config: EtfMonitorConfig, *, market_data_root: Path | None = None):
+    def __init__(
+        self,
+        config: EtfMonitorConfig,
+        *,
+        market_data_root: Path | None = None,
+        delta_root: Path | None = None,
+    ):
         self.config = config
-        self.market_data_root = market_data_root
+        self.market_data_root = (market_data_root or resolve_frozen_market_data_root(config)).resolve()
+        self.delta_root = (
+            delta_root
+            or get_workdata_path(config.delta_relative_path)
+        ).resolve()
+
+    def _extend_with_deltas(
+        self,
+        *,
+        snapshot: Any,
+        rows: tuple[dict[str, Any], ...],
+        events: tuple[CorporateActionEvent, ...],
+        through: date,
+    ) -> tuple[tuple[dict[str, Any], ...], tuple[CorporateActionEvent, ...], dict[str, Any]]:
+        base_last = rows[-1]["date"]
+        if through <= base_last:
+            return rows, events, {"delta_count": 0, "delta_through": None}
+        extended = list(rows)
+        events_by_id = {event.action_id: event for event in events}
+        cursor = base_last + timedelta(days=1)
+        count = 0
+        latest_hash: str | None = None
+        while cursor <= through:
+            path = self.delta_root / f"{cursor.isoformat()}.json"
+            if not path.is_file():
+                raise EtfMonitorDataError(
+                    f"daily delta chain is missing {cursor.isoformat()}: {path}"
+                )
+            payload = load_daily_delta_file(
+                path,
+                expected_date=cursor,
+                snapshot_id=snapshot.snapshot_id,
+                manifest_sha256=snapshot.package_manifest_sha256,
+            )
+            if payload["market_status"] == "OPEN":
+                bar = dict(payload["bar"])
+                bar["date"] = cursor
+                bar["source"] = "TWSE_OFFICIAL_DAILY_DELTA"
+                bar["raw_response_sha256"] = payload["bar_evidence"]["receipt_sha256"]
+                extended.append(bar)
+            for raw_event in payload.get("corporate_actions", []):
+                parsed = _parse_event(raw_event)
+                existing = events_by_id.get(parsed.action_id)
+                if existing is not None and existing != parsed:
+                    raise EtfMonitorDataError("daily delta corporate-action identity collision")
+                events_by_id[parsed.action_id] = parsed
+            latest_hash = str(payload["content_sha256"])
+            count += 1
+            cursor += timedelta(days=1)
+        return (
+            tuple(extended),
+            tuple(sorted(events_by_id.values(), key=lambda event: (event.event_date, event.action_id))),
+            {
+                "delta_count": count,
+                "delta_through": through.isoformat(),
+                "delta_latest_sha256": latest_hash,
+                "delta_root": str(self.delta_root),
+            },
+        )
 
     def _base(
         self, through: date
@@ -140,7 +317,15 @@ class RegistrySnapshotProvider:
         )
         if not isinstance(dividends_payload, Mapping):
             raise EtfMonitorDataError("accepted dividend artifact is not an object")
+        rows, events, delta_validation = self._extend_with_deltas(
+            snapshot=snapshot,
+            rows=rows,
+            events=events,
+            through=through,
+        )
         validation["dividends_artifact_validated"] = True
+        validation["frozen_market_data_root"] = str(self.market_data_root)
+        validation.update(delta_validation)
         return (snapshot, rows, events, validation)
 
     def load_complete(self, as_of: date) -> MarketDataSnapshot:
@@ -167,7 +352,8 @@ class RegistrySnapshotProvider:
     def load_provisional(self, as_of: date, quote: IntradayQuote) -> MarketDataSnapshot:
         if quote.symbol != "0050" or quote.trade_date != as_of:
             raise EtfMonitorDataError("official quote identity/date does not match 0050 run")
-        snapshot, rows, events, validation = self._base(as_of)
+        prior_day = as_of - timedelta(days=1)
+        snapshot, rows, events, validation = self._base(prior_day)
         without_today = tuple(row for row in rows if row["date"] != as_of)
         if not without_today or without_today[-1]["date"] >= as_of:
             raise EtfMonitorDataError("cannot append provisional official quote")

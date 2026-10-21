@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-21 — 0050 live monitor QA isolation rework
+
+- 將 immutable frozen ETF registry 與 mutable workdata delta 分離；新增逐日 OPEN/CLOSED evidence ledger、immutable importer、freshness/缺日 fail-closed 與 production-env data smoke。
+- 新增 5,093 日 LIVE adapter replay，逐筆/逐日 exact 比對 final-v1.7 signal、next-open execution、stop/MACD exit、公司行動與帳務 artifact。
+- 22:00 correction 現在會取消或取代 13:55 pending action，並保存/顯示舊新動作及重啟後狀態。
+- Telegram send 結果不確定時改為 `DELIVERY_UNCERTAIN` 且停止自動重送；需人工確認後才標記 delivered 或允許 retry。
+
 本檔只保留高層級變更摘要。原始 README 中的大量日期型更新、Prompt 備忘、功能補強與修正脈絡，已完整保留於 [docs/legacy-readme-full.md](docs/legacy-readme-full.md)。
 
 維護規則：未來任何功能、指令、資料流程、AI 行為、設定、排程或重要修正的改動，都必須同步檢查並補充 `README.md` 與本 `CHANGELOG.md`。

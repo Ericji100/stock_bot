@@ -39,6 +39,8 @@ class EtfMonitorConfig:
     require_get_chat: bool
     database_relative_path: str
     snapshot_id: str | None
+    frozen_market_data_relative_path: str
+    delta_relative_path: str
     raw_daily_relative_path: str
     corporate_actions_relative_path: str
     dividends_relative_path: str
@@ -126,6 +128,8 @@ def validate_etf_monitor_config(payload: Mapping[str, Any], *, source_path: Path
         raise EtfMonitorConfigError("data must be an object")
     if set(data) != {
         "snapshot_id",
+        "frozen_market_data_relative_path",
+        "delta_relative_path",
         "raw_daily_relative_path",
         "corporate_actions_relative_path",
         "dividends_relative_path",
@@ -166,6 +170,13 @@ def validate_etf_monitor_config(payload: Mapping[str, Any], *, source_path: Path
         require_get_chat=True,
         database_relative_path=database_relative_path,
         snapshot_id=(str(data.get("snapshot_id")).strip() if data.get("snapshot_id") else None),
+        frozen_market_data_relative_path=_safe_relative_path(
+            data.get("frozen_market_data_relative_path"),
+            "data.frozen_market_data_relative_path",
+        ),
+        delta_relative_path=_safe_relative_path(
+            data.get("delta_relative_path"), "data.delta_relative_path"
+        ),
         raw_daily_relative_path=_safe_relative_path(
             data.get("raw_daily_relative_path", "data/0050/daily_raw.json"),
             "data.raw_daily_relative_path",

@@ -50,7 +50,9 @@ def test_schema_idempotency_retry_and_restart_recovery(tmp_path) -> None:
     claimed = store.claim_outbox("evt-1")
     assert claimed is not None and claimed.attempts == 1
     store.recover_after_restart()
-    assert _outbox(store.path)["status"] == "RETRY"
+    assert _outbox(store.path)["status"] == "DELIVERY_UNCERTAIN"
+    assert store.claim_outbox("evt-1") is None
+    store.resolve_uncertain_delivery("evt-1", delivered=False)
     claimed_again = store.claim_outbox("evt-1")
     assert claimed_again is not None and claimed_again.attempts == 2
 
@@ -110,7 +112,7 @@ def test_route_mismatch_fails_closed_without_fallback(tmp_path) -> None:
     assert _outbox(store.path)["status"] == "RETRY"
 
 
-def test_send_failure_retries_same_dedicated_route_then_records_message_id(tmp_path) -> None:
+def test_send_failure_is_quarantined_until_manual_non_delivery_confirmation(tmp_path) -> None:
     store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
     _append(store)
     failed = _Bot(fail_send=True)
@@ -119,6 +121,11 @@ def test_send_failure_retries_same_dedicated_route_then_records_message_id(tmp_p
             config=load_etf_monitor_config(), store=store, bot=failed
         ).deliver("evt-1"))
     assert failed.sent[0]["chat_id"] == "-5527055845"
+    assert _outbox(store.path)["status"] == "DELIVERY_UNCERTAIN"
+    assert asyncio.run(FailClosedTelegramRouter(
+        config=load_etf_monitor_config(), store=store, bot=_Bot()
+    ).deliver("evt-1")) is False
+    store.resolve_uncertain_delivery("evt-1", delivered=False)
     success = _Bot()
     assert asyncio.run(FailClosedTelegramRouter(
         config=load_etf_monitor_config(), store=store, bot=success

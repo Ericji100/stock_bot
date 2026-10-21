@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,9 +19,11 @@ from stock_ai_bot.monitoring.etf_monitor.config import (
 from stock_ai_bot.monitoring.etf_monitor.data import (
     OfficialTwseQuoteProvider,
     RegistrySnapshotProvider,
+    resolve_frozen_market_data_root,
 )
 from stock_ai_bot.monitoring.etf_monitor.errors import EtfMonitorDataError
 from stock_ai_bot.monitoring.etf_monitor.models import IntradayQuote
+from stock_ai_bot.monitoring.etf_monitor.models import stable_sha256
 
 
 class _Jobs:
@@ -109,6 +111,19 @@ def test_main_and_bat_keep_single_existing_start_chain() -> None:
     assert "etf_monitor" not in launcher + runner
 
 
+def test_frozen_registry_root_is_independent_from_bat_workdata_root(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("STOCK_AI_BOT_WORKDATA_ROOT", str(tmp_path / "mutable"))
+    monkeypatch.delenv("STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT", raising=False)
+    config = load_etf_monitor_config()
+    root = resolve_frozen_market_data_root(config)
+    assert root.as_posix().endswith(
+        "stock_data/versions/2026-09-30-v3/market-data"
+    )
+    assert tmp_path not in root.parents
+
+
 def _write_registry(root: Path) -> None:
     package = root / "etf/0050/snapshots/test/package"
     daily = package / "data/0050/daily_raw.json"
@@ -192,6 +207,53 @@ def test_registry_snapshot_complete_stale_and_provisional_paths(tmp_path) -> Non
     assert provisional.is_provisional
     assert provisional.latest_date == date(2026, 10, 22)
     assert provisional.source == "HASH_VERIFIED_REGISTRY_PLUS_TWSE_MIS"
+
+
+def _write_delta(
+    root: Path, market_root: Path, day: date, *, status: str, close: str = "52"
+) -> None:
+    evidence = {
+        "source_endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+        "fetched_at": f"{day.isoformat()}T22:10:00+08:00",
+        "receipt_sha256": "d" * 64,
+    }
+    payload = {
+        "schema_version": "stock-ai-bot-etf-daily-delta-v1",
+        "symbol": "0050",
+        "trade_date": day.isoformat(),
+        "previous_calendar_date": (day - timedelta(days=1)).isoformat(),
+        "frozen_snapshot_id": "test",
+        "frozen_manifest_sha256": "PLACEHOLDER",
+        "market_status": status,
+        "calendar_evidence": evidence,
+        "bar": None if status == "CLOSED" else {
+            "open": "51", "high": "53", "low": "50", "close": close, "volume": "130"
+        },
+        "bar_evidence": None if status == "CLOSED" else evidence,
+        "corporate_actions": [],
+    }
+    registry = json.loads((market_root / "etf/registry.json").read_text(encoding="utf-8"))
+    payload["frozen_manifest_sha256"] = registry["symbols"]["0050"]["snapshots"]["test"]["package_manifest_sha256"]
+    payload["content_sha256"] = stable_sha256(payload)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"{day.isoformat()}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_daily_delta_requires_every_calendar_day_and_accepts_verified_closed_day(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    config = replace(load_etf_monitor_config(), enabled=True)
+    provider = RegistrySnapshotProvider(
+        config, market_data_root=market_root, delta_root=delta_root
+    )
+    _write_delta(delta_root, market_root, date(2026, 10, 23), status="OPEN")
+    with pytest.raises(EtfMonitorDataError, match="missing 2026-10-22"):
+        provider.load_complete(date(2026, 10, 23))
+    _write_delta(delta_root, market_root, date(2026, 10, 22), status="CLOSED")
+    complete = provider.load_complete(date(2026, 10, 23))
+    assert complete.latest_date == date(2026, 10, 23)
+    assert complete.metadata["delta_count"] == 2
 
 
 def test_official_quote_identity_and_close_gate(monkeypatch) -> None:

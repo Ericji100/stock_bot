@@ -181,11 +181,18 @@ class EtfMonitorService:
                 and core.decision is Decision.HOLD
                 and not self.config.daily_shadow_status
             )
+            pending_transition = None
+            if correction_of is not None:
+                pending_transition = self.store.describe_pending_transition(
+                    original_event_id=correction_of,
+                    new_decision=core.decision,
+                )
             body = render_core_message(
                 phase=phase,
                 core=core,
                 snapshot=snapshot,
                 correction_of=correction_of,
+                pending_transition=pending_transition,
             )
             payload = {
                 "core": accepted_core_payload(core),
@@ -201,6 +208,7 @@ class EtfMonitorService:
                 },
                 "correction_of": correction_of,
                 "correction_reason": correction_reason,
+                "pending_transition": pending_transition,
             }
             self.store.append_event_with_outbox(
                 event_id=event_id,
@@ -219,7 +227,11 @@ class EtfMonitorService:
                     self.accounting.reconcile, snapshot, self.store
                 )
                 self.store.save_core_state(core=core, snapshot=snapshot, event_id=event_id)
-                self.store.save_pending_action(core, event_id=event_id)
+                pending_transition = self.store.reconcile_pending_action(
+                    core=core,
+                    event_id=event_id,
+                    original_event_id=correction_of,
+                )
             if correction_of is not None:
                 self.store.append_correction(
                     correction_id=f"correction:{event_id}",

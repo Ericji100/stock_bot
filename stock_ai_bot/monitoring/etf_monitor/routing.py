@@ -17,7 +17,7 @@ def _safe_error(exc: BaseException) -> str:
 
 
 class FailClosedTelegramRouter:
-    """Sends ETF outbox rows to exactly one verified Telegram chat."""
+    """Sends to one verified chat and quarantines ambiguous delivery results."""
 
     def __init__(self, *, config: EtfMonitorConfig, store: EtfMonitorStore, bot: Any):
         self.config = config
@@ -44,6 +44,10 @@ class FailClosedTelegramRouter:
             raise EtfMonitorRoutingError("ETF outbox target does not match dedicated chat")
         try:
             await self.verify_route()
+        except Exception:
+            self.store.mark_outbox_retry(item.event_id, "ROUTE_VERIFICATION_FAILED_BEFORE_SEND")
+            raise
+        try:
             message = await self.bot.send_message(
                 chat_id=self.config.chat_id,
                 text=item.body,
@@ -53,10 +57,12 @@ class FailClosedTelegramRouter:
             if message_id is None:
                 raise EtfMonitorRoutingError("Telegram send returned no message id")
         except Exception as exc:
-            self.store.mark_outbox_retry(item.event_id, _safe_error(exc))
+            self.store.mark_outbox_uncertain(item.event_id, _safe_error(exc))
             if isinstance(exc, EtfMonitorRoutingError):
                 raise
-            raise EtfMonitorRoutingError(f"ETF Telegram send failed: {_safe_error(exc)}") from exc
+            raise EtfMonitorRoutingError(
+                f"ETF Telegram send result is uncertain; manual review required: {_safe_error(exc)}"
+            ) from exc
         self.store.mark_outbox_delivered(item.event_id, str(message_id))
         return True
 

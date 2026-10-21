@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import math
+import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from backtests.dual_ma import etf_0050_ma21_ma144_regime_v1 as accepted
 from backtests.dual_ma.models import Bar
@@ -16,6 +20,11 @@ from stock_ai_bot.monitoring.etf_monitor.core import (
 from stock_ai_bot.monitoring.etf_monitor.messages import render_core_message
 from stock_ai_bot.monitoring.etf_monitor.models import Decision, MarketDataSnapshot, MonitorPhase
 from stock_ai_bot.monitoring.etf_monitor.replay import verify_final_v17_artifacts
+from stock_ai_bot.monitoring.etf_monitor.replay import run_full_live_replay_parity
+
+
+_FORMAL_ROOT_TEXT = os.environ.get("STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT", "")
+FORMAL_MARKET_DATA_ROOT = Path(_FORMAL_ROOT_TEXT) if _FORMAL_ROOT_TEXT else Path("missing")
 
 
 def _synthetic_rows(count: int = 430) -> tuple[dict, ...]:
@@ -102,6 +111,21 @@ def test_accepted_final_v17_artifacts_remain_exact() -> None:
         "next-session-open-corporate-actions.csv": 63,
         "next-session-open-trade-details.csv": 91,
     }
+
+
+@pytest.mark.skipif(
+    not _FORMAL_ROOT_TEXT or not FORMAL_MARKET_DATA_ROOT.is_dir(),
+    reason="formal frozen ETF registry is not installed in this checkout",
+)
+def test_formal_full_history_live_replay_exact_parity() -> None:
+    result = run_full_live_replay_parity(market_data_root=FORMAL_MARKET_DATA_ROOT)
+    assert result["status"] == "PASS_EXACT"
+    assert result["live_adapter_daily_rows"] == 5093
+    assert result["signal_rows"] == 183
+    assert result["total_mismatch_count"] == 0
+    assert result["live_adapter_daily_state_sha256"] == (
+        "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f"
+    )
 
 
 def test_next_open_message_never_invents_unknown_fill_price() -> None:

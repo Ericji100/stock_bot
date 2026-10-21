@@ -130,6 +130,14 @@ def _count(path, table):
         return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
+def _pending(path):
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        return [dict(row) for row in connection.execute(
+            "SELECT * FROM pending_actions ORDER BY created_at, action_id"
+        )]
+
+
 def test_preview_does_not_mutate_formal_strategy_state(tmp_path) -> None:
     service, store = _service(tmp_path, [Decision.HOLD])
     outcome = asyncio.run(service.run(MonitorPhase.PREVIEW, now=NOW))
@@ -162,6 +170,52 @@ def test_reconciliation_appends_correction_without_overwriting_event(tmp_path) -
     assert _count(store.path, "events") == 2
     assert _count(store.path, "corrections") == 1
     assert store.event(decision.event_ids[0]) is not None
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "old_status", "active_action"),
+    [
+        (Decision.BUY_NEXT_OPEN, Decision.HOLD, "CANCELLED_BY_RECONCILIATION", None),
+        (
+            Decision.BUY_NEXT_OPEN,
+            Decision.SELL_NEXT_OPEN,
+            "SUPERSEDED_BY_RECONCILIATION",
+            "SELL_NEXT_OPEN",
+        ),
+        (Decision.SELL_NEXT_OPEN, Decision.HOLD, "CANCELLED_BY_RECONCILIATION", None),
+    ],
+)
+def test_reconciliation_cancels_or_supersedes_pending_action(
+    tmp_path, before, after, old_status, active_action
+) -> None:
+    service, store = _service(tmp_path, [before, after])
+    asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    asyncio.run(service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22)))
+    rows = _pending(store.path)
+    assert rows[0]["status"] == old_status
+    assert rows[0]["superseded_by_event_id"]
+    active = [row for row in rows if row["status"] == "PENDING_NEXT_SESSION_OPEN"]
+    assert (active[0]["action"] if active else None) == active_action
+    with sqlite3.connect(store.path) as connection:
+        body = connection.execute(
+            "SELECT body FROM outbox ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()[0]
+    assert f"{before.value} → {after.value}" in body
+
+
+def test_pending_supersession_survives_restart(tmp_path) -> None:
+    service, store = _service(
+        tmp_path, [Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN]
+    )
+    asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    asyncio.run(service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22)))
+    reopened = EtfMonitorStore(store.path)
+    reopened.recover_after_restart()
+    rows = _pending(reopened.path)
+    assert [row["status"] for row in rows] == [
+        "SUPERSEDED_BY_RECONCILIATION",
+        "PENDING_NEXT_SESSION_OPEN",
+    ]
 
 
 def test_data_failure_is_fail_closed_and_records_health_event(tmp_path) -> None:

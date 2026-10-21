@@ -21,12 +21,13 @@
 - 策略核心 ID：`MA21_MA144_REGIME_FIXED_INITIAL_STOP_MACD_21_55_55`。
 - live adapter 直接呼叫 `backtests/dual_ma/etf_0050_ma21_ma144_regime_v1.py` 的 `build_indicator_rows` 與 `build_regime_run`，不重寫近似 MA/MACD/stop 規則。
 - final-v1.7 的研究主情境是 `NEXT_SESSION_OPEN`、20 bps。live 端保留訊號日，將 accepted `MOTHER` / `EXIT` 轉為 `BUY_NEXT_OPEN` / `SELL_NEXT_OPEN`；在真正的下一官方交易日開盤前，成交價永遠顯示「尚未成交」。
-- 完整日資料只讀 `stock_ai_bot.data_sources.etf_snapshot_registry` 中已登錄且逐檔 hash 驗證的 package。
+- 凍結基底固定由 repository-relative `stock_data/versions/2026-09-30-v3/market-data` 解析，或由專用 `STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT` 覆寫；它不再受 `STOCK_AI_BOT_WORKDATA_ROOT` 影響。完整日資料先逐檔 hash 驗證該 registry/package，再接續可寫 workdata 中的 daily delta。
+- 凍結基底截止日是 `2026-09-30`，禁止修改。之後的正式資料存放在 production profile 的 `market-data/etf-live/0050/daily-delta-v1/YYYY-MM-DD.json`。每一個日曆日都必須有一份 immutable ledger：交易日是 `OPEN` 並附完整 OHLCV；休市日是 `CLOSED` 且不含 bar。兩者都必須附 TWSE 官方 calendar receipt，OPEN 另附官方 daily-bar receipt、base snapshot/manifest identity、前一日與 canonical content SHA-256。
 - 執行價座標固定 `UNADJUSTED_MAINBOARD_OHLCV`；技術連續座標與 fixed initial stop 的企業行動換算由 accepted core 負責。
 - 盤中或收盤 provisional bar 只讀 TWSE MIS 官方端點；不使用 Yahoo、不使用 `historical_scan`，也不回退到舊 `etf_0050_long_term_monitor_v1.py`。
 - 每份事件保存 `source`、`price_basis`、`as_of`、`snapshot_id`、`snapshot_version` 與 `snapshot_sha256`。缺少、過期、日期不符或 hash 不符時產生 `DATA_UNAVAILABLE`，不產生交易推論。
 
-凍結 final-v1.7 read-only replay gate 會驗證：
+凍結 final-v1.7 read-only replay gate 不是只查列數。它把 2005 起正式 raw package 經 LIVE adapter 逐一產出 2006-01-02 至 2026-09-30 的 5,093 個日狀態，固定 stop/MACD/regime 狀態串會被 hash 鎖定；再將同一 signal stream 排到 next official open，使用 accepted cost/accounting replayer 逐欄比對：
 
 | Artifact | Exact rows |
 |---|---:|
@@ -35,7 +36,28 @@
 | `next-session-open-corporate-actions.csv` | 63 |
 | `next-session-open-trade-details.csv` | 91 |
 
-同時要求 `core-parity.json.status == PASS_EXACT`、strategy ID、`NEXT_SESSION_OPEN`、20 bps 與每筆 `signal_date < fill date` 全部維持不變。
+同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；稽核附件見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v1.json`。
+
+## 正式資料更新與 freshness gate
+
+先由資料流程產生符合 `config/etf_monitor_daily_delta.schema.json` 的官方 evidence 文件，再以唯新增工具安裝：
+
+```powershell
+python -m tools.etf_monitor_import_daily_delta --input D:\staging\0050\2026-10-21.json
+```
+
+工具會重新驗證 frozen registry 全部 artifact、base identity、官方 host、receipt SHA、OHLC、日期鏈與 content SHA。目的檔已存在且內容不同時拒絕覆寫。22:00 complete load 要求從 frozen cutoff 後到當日的每個日曆日都存在且當日是 OPEN；13:55 provisional load 要求鏈完整到前一日，再只追加同日 TWSE MIS closed quote。任何缺日、stale、hash/identity/official-evidence 不符都回 `DATA_UNAVAILABLE`。
+
+用 production BAT 相同 workdata env 做 read-only 解析 smoke：
+
+```powershell
+$env:STOCK_AI_BOT_WORKDATA_ROOT='D:\code\stock_ai_bot\.workdata'
+$env:STOCK_AI_BOT_WORKDATA_PROFILE='prod'
+$env:STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT='D:\code\stock_ai_bot\stock_data\versions\2026-09-30-v3\market-data'
+python -m tools.etf_monitor_data_smoke --as-of 2026-09-30
+```
+
+本修正版的 smoke 結果是 `PASS`、5,340 raw rows、33 corporate actions、manifest `86D913...F6CBB`。目前沒有經驗證的 2026-10 daily delta，因此 10 月正式啟用仍必須 fail-closed，不能把 9/30 當作 10 月資料。
 
 ## 排程
 
@@ -45,7 +67,7 @@
 |---|---|---|
 | 12:45 | `preview_1245` | TWSE MIS 盤中 provisional bar；訊息明標預覽；不修改 `monitor_state` 或 pending action |
 | 13:55 | `decision_1355` | 官方收盤後 provisional bar；只產生 `BUY_NEXT_OPEN`、`SELL_NEXT_OPEN`、`HOLD` |
-| 22:00 | `reconciliation_2200` | 必須有當日 hash 驗證完整 snapshot；一致則記錄確認，差異則追加 correction 並保留原事件 |
+| 22:00 | `reconciliation_2200` | 必須有當日 hash 驗證完整 snapshot；一致則記錄確認，差異則追加 correction、保留原事件，並取消或取代 13:55 pending action |
 
 三個 callback 掛在同一個 JobQueue，但各有獨立 lock 與 timeout，並由既有 `Application.create_task` 啟動；不進入 legacy `ScheduledTaskService` 序列。因此 13:50 午報不會阻塞 13:55 ETF 決策，ETF 工作也不會阻塞舊任務。
 
@@ -57,7 +79,15 @@ ETF 唯一允許的 target 是字串 `-5527055845`。每次 outbox 發送依序�
 2. `getChat` 必須成功，回傳 ID 必須完全相同，型別必須是 group 或 supergroup。
 3. `sendMessage` 只使用同一 ID；成功後保存 Telegram message ID。
 
-任一步失敗都把同一事件標記為 `RETRY`；不嘗試舊 `chat_id`、trade monitor 群組或任何 fallback。錯誤紀錄會遮蔽 token-like 字串。
+`getChat` 或 route identity 在送出前失敗可安全標記 `RETRY`。一旦呼叫 `sendMessage`，若 exception、回覆缺 message ID，或 process 在 send 成功後、寫入 `DELIVERED` 前中斷，送達狀態一律標記 `DELIVERY_UNCERTAIN`，不自動重送。系統只提供 at-least-once 嘗試，不能宣稱 end-to-end exactly-once；operator 必須先到專用群組人工確認，再執行：
+
+```powershell
+python -m tools.etf_monitor_resolve_delivery --database <sqlite-path> --event-id <id> --mark-delivered --telegram-message-id <id>
+# 或確認群組確實沒有該訊息後，才允許 retry：
+python -m tools.etf_monitor_resolve_delivery --database <sqlite-path> --event-id <id> --confirm-not-delivered
+```
+
+不嘗試舊 `chat_id`、trade monitor 群組或任何 fallback。錯誤紀錄會遮蔽 token-like 字串。
 
 ## 獨立設定
 
@@ -78,6 +108,10 @@ ETF 唯一允許的 target 是字串 `-5527055845`。每次 outbox 發送依序�
     "decision": "13:55",
     "reconciliation": "22:00"
   },
+  "data": {
+    "frozen_market_data_relative_path": "stock_data/versions/2026-09-30-v3/market-data",
+    "delta_relative_path": "market-data/etf-live/0050/daily-delta-v1"
+  },
   "daily_shadow_status": true,
   "require_get_chat": true
 }
@@ -93,7 +127,7 @@ ETF 唯一允許的 target 是字串 `-5527055845`。每次 outbox 發送依序�
 |---|---|
 | `schema_meta` | migration version |
 | `monitor_state` | position、entry、fixed initial stop、MACD armed、data version 與最後 core state |
-| `pending_actions` | 尚未成交的 next-session-open 影子建議；`fill_price` 保持 NULL |
+| `pending_actions` | 尚未成交的 next-session-open 影子建議；`fill_price` 保持 NULL；保存 correction 的 cancel/supersede event、時間與原因 |
 | `events` | stable event ID 的 append-only ledger |
 | `outbox` | target、body hash、attempt、狀態、Telegram message ID |
 | `corrections` | 原事件與追加更正事件的關聯 |
@@ -101,7 +135,9 @@ ETF 唯一允許的 target 是字串 `-5527055845`。每次 outbox 發送依序�
 | `job_runs` | phase/date 冪等、成功、失敗與 interrupted 狀態 |
 | `routing_smoke` | 每個 work-data profile 最多一次真實路由 smoke |
 
-啟動時 `SENDING → RETRY`、`RUNNING → INTERRUPTED`，再嘗試同一 dedicated route 的 pending outbox。stable event ID 與 payload collision check 防止重複或同 ID 異內容。
+13:55 的 BUY/SELL 在 22:00 改為 HOLD 時，原 pending 標記 `CANCELLED_BY_RECONCILIATION`；改為相反動作時，原 pending 標記 `SUPERSEDED_BY_RECONCILIATION`，只留下新動作為 active pending。更正訊息具名顯示「舊動作 → 新動作」、處理結果與舊 action ID。資料庫重啟後仍保留這些狀態。
+
+啟動時 `SENDING → DELIVERY_UNCERTAIN`、`RUNNING → INTERRUPTED`；只有 `PENDING` / `RETRY` 可以自動 claim。stable event ID 與 payload collision check 防止同 ID 異內容，但 Telegram 的外部送達歧義由上述人工流程處理。
 
 ## 訊息語意
 
@@ -126,6 +162,13 @@ python -m pytest -q `
   tests/monitoring/test_etf_monitor_integration_data.py
 ```
 
+正式 full-history parity（約數十秒，只讀）：
+
+```powershell
+$env:STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT='D:\code\stock_ai_bot\stock_data\versions\2026-09-30-v3\market-data'
+python -m tools.etf_monitor_verify_replay
+```
+
 mock 測試全部通過後，如 00 判定安全且確實要做唯一一次真實路由 smoke，才可在 production work-data profile 執行：
 
 ```powershell
@@ -136,8 +179,8 @@ python tools/etf_monitor_routing_smoke.py --send --confirm-chat-id -5527055845
 
 ## 啟用前清單
 
-1. production ETF registry 的 current 0050 snapshot 存在，manifest 與所有 artifact hash 通過。
-2. 每日資料更新 SLA 能在 22:00 前提供當日完整 snapshot 與 corporate-action ledger。
+1. frozen ETF registry 的 current 0050 snapshot 存在，manifest 與所有 artifact hash 通過，且 full-history parity 為 `PASS_EXACT`。
+2. 自 2026-10-01 起的 daily delta calendar chain 無缺日，當日 OPEN bar 與 corporate-action evidence 在 22:00 前完成；目前此條尚未滿足。
 3. Bot 已加入 `-5527055845`，且 `getChat` 回傳完全相同的 group/supergroup ID。
 4. 聚焦測試與完整測試通過；未修改兩個 BAT 與舊群組設定。
 5. 必要時由 00 執行最多一次 smoke。

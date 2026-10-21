@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, Mapping
 
 from .models import AcceptedCoreState, Decision, MarketDataSnapshot, MonitorPhase
 
@@ -26,6 +27,7 @@ def render_core_message(
     core: AcceptedCoreState,
     snapshot: MarketDataSnapshot,
     correction_of: str | None = None,
+    pending_transition: Mapping[str, Any] | None = None,
 ) -> str:
     phase_text = {
         MonitorPhase.PREVIEW: "12:45 盤中預覽（不寫入正式策略狀態）",
@@ -36,7 +38,16 @@ def render_core_message(
     pending = ""
     if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN}:
         pending = "\n成交價：尚未成交，待下一官方交易日開盤；不預填未知價格。"
-    correction = "" if correction_of is None else f"\n更正：追加更正事件，取代事件 {correction_of}；原紀錄保留。"
+    correction = ""
+    if correction_of is not None:
+        transition = pending_transition or {}
+        correction = (
+            f"\n更正：追加更正事件，取代事件 {correction_of}；原紀錄保留。"
+            f"\n待執行指令：{transition.get('old_action', 'UNKNOWN')} → "
+            f"{transition.get('new_action', core.decision.value)}；"
+            f"處理={transition.get('outcome', 'UNKNOWN')}；"
+            f"舊 action_id={transition.get('old_action_id') or '無'}。"
+        )
     provisional = "是" if snapshot.is_provisional else "否"
     return (
         "0050 final-v1.7｜影子監控｜僅供策略觀察，非下單指示\n"

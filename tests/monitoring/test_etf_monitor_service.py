@@ -26,11 +26,11 @@ DAY = date(2026, 10, 21)
 NOW = datetime(2026, 10, 21, 13, 55, tzinfo=ZoneInfo("Asia/Taipei"))
 
 
-def _snapshot(*, complete=False) -> MarketDataSnapshot:
+def _snapshot(*, complete=False, day: date = DAY, raw_open: Decimal = Decimal("50")) -> MarketDataSnapshot:
     return MarketDataSnapshot(
         symbol="0050",
-        as_of=DAY,
-        raw_rows=({"date": DAY, "open": 50, "high": 52, "low": 49, "close": 51},),
+        as_of=day,
+        raw_rows=({"date": day, "open": raw_open, "high": 53, "low": 49, "close": 51},),
         corporate_actions=(),
         source="TEST",
         price_basis="UNADJUSTED_MAINBOARD_OHLCV",
@@ -102,6 +102,17 @@ class _Data:
     async def load(self, phase, as_of):
         if self.fail:
             raise EtfMonitorDataError("stale")
+        return _snapshot(complete=phase is MonitorPhase.RECONCILIATION)
+
+
+class _RecoveringData:
+    def __init__(self, failures: int):
+        self.failures = failures
+
+    async def load(self, phase, as_of):
+        if self.failures:
+            self.failures -= 1
+            raise EtfMonitorDataError("official source temporarily unavailable")
         return _snapshot(complete=phase is MonitorPhase.RECONCILIATION)
 
 
@@ -193,6 +204,37 @@ def test_reconciliation_confirmation_does_not_duplicate_same_pending_action(tmp_
         row for row in _pending(store.path)
         if row["status"] == "PENDING_NEXT_SESSION_OPEN"
     ]
+    assert len(active) == 1
+    assert active[0]["source_event_id"] == decision.event_ids[0]
+
+
+def test_reconciliation_retry_after_partial_completion_keeps_one_pending(tmp_path) -> None:
+    service, store = _service(
+        tmp_path,
+        [
+            Decision.BUY_NEXT_OPEN,
+            Decision.BUY_NEXT_OPEN,
+            Decision.BUY_NEXT_OPEN,
+        ],
+    )
+    decision = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    first = asyncio.run(
+        service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22))
+    )
+    store.finish_job(
+        MonitorPhase.RECONCILIATION,
+        DAY,
+        succeeded=False,
+        error="SIMULATED_POST_STATE_DELIVERY_FAILURE",
+    )
+    retry = asyncio.run(
+        service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22, minute=5))
+    )
+    active = [
+        row for row in _pending(store.path)
+        if row["status"] == "PENDING_NEXT_SESSION_OPEN"
+    ]
+    assert first.event_ids == retry.event_ids
     assert len(active) == 1
     assert active[0]["source_event_id"] == decision.event_ids[0]
 
@@ -298,12 +340,138 @@ def test_pending_action_settles_once_at_next_observed_raw_open_and_survives_rest
     assert row["fill_snapshot_id"] == "next-session-preview"
 
 
+def test_cross_day_service_sequence_confirms_then_fills_at_next_raw_open(tmp_path) -> None:
+    next_day = DAY.replace(day=22)
+
+    class _DayData:
+        async def load(self, phase, as_of):
+            return _snapshot(
+                complete=phase is MonitorPhase.RECONCILIATION,
+                day=as_of,
+                raw_open=Decimal("52.5") if as_of == next_day else Decimal("50"),
+            )
+
+    config = replace(load_etf_monitor_config(), enabled=True)
+    store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
+    service = EtfMonitorService(
+        config=config,
+        store=store,
+        data_provider=_DayData(),
+        router=None,
+        core=_Core([
+            _core(Decision.BUY_NEXT_OPEN, day=DAY),
+            _core(Decision.BUY_NEXT_OPEN, day=DAY),
+            _core(Decision.HOLD, day=next_day),
+        ]),
+        trading_day_predicate=lambda _: True,
+    )
+    asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    asyncio.run(service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22)))
+    preview = asyncio.run(
+        service.run(
+            MonitorPhase.PREVIEW,
+            now=NOW.replace(day=22, hour=12, minute=45),
+        )
+    )
+    row = _pending(store.path)[0]
+    assert preview.status == "COMPLETED"
+    assert row["status"] == "FILLED_SHADOW_NEXT_OPEN"
+    assert row["fill_date"] == next_day.isoformat()
+    assert Decimal(row["fill_price"]) == Decimal("52.5")
+    assert len(preview.metadata["shadow_next_open_fills"]) == 1
+
+
 def test_data_failure_is_fail_closed_and_records_health_event(tmp_path) -> None:
     service, store = _service(tmp_path, [], fail=True)
     outcome = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
     assert outcome.decision is Decision.DATA_UNAVAILABLE
     assert store.latest_state() is None
     assert _count(store.path, "events") == 1
+
+
+def test_data_unavailable_is_idempotent_and_same_phase_can_recover(tmp_path) -> None:
+    config = replace(load_etf_monitor_config(), enabled=True)
+    store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
+    service = EtfMonitorService(
+        config=config,
+        store=store,
+        data_provider=_RecoveringData(failures=2),
+        router=None,
+        core=_Core([Decision.HOLD]),
+        trading_day_predicate=lambda _: True,
+    )
+    first = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    second = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    recovered = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    duplicate = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    assert first.status == second.status == "DATA_UNAVAILABLE"
+    assert recovered.status == "COMPLETED"
+    assert duplicate.status == "ALREADY_COMPLETED"
+    assert store.latest_state()["decision"] == "HOLD"
+    assert _count(store.path, "events") == 2
+    with sqlite3.connect(store.path) as connection:
+        status, error = connection.execute(
+            "SELECT status, error FROM job_runs WHERE run_key=?",
+            (f"{MonitorPhase.DECISION.value}:{DAY.isoformat()}",),
+        ).fetchone()
+    assert status == "SUCCEEDED"
+    assert error is None
+
+
+def test_reconciliation_failure_quarantines_pending_until_successful_retry(
+    tmp_path,
+) -> None:
+    class _ReconRecovery:
+        def __init__(self):
+            self.recon_calls = 0
+
+        async def load(self, phase, as_of):
+            if phase is MonitorPhase.RECONCILIATION:
+                self.recon_calls += 1
+                if self.recon_calls == 1:
+                    raise EtfMonitorDataError("full-day delta missing")
+            return _snapshot(complete=phase is MonitorPhase.RECONCILIATION)
+
+    config = replace(load_etf_monitor_config(), enabled=True)
+    store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
+    service = EtfMonitorService(
+        config=config,
+        store=store,
+        data_provider=_ReconRecovery(),
+        router=None,
+        core=_Core([Decision.BUY_NEXT_OPEN, Decision.BUY_NEXT_OPEN]),
+        trading_day_predicate=lambda _: True,
+    )
+    decision = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    failed = asyncio.run(
+        service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22))
+    )
+    rows = _pending(store.path)
+    assert decision.status == "COMPLETED"
+    assert failed.status == "DATA_UNAVAILABLE"
+    assert len(rows) == 1
+    assert rows[0]["status"] == "QUARANTINED_RECONCILIATION_REQUIRED"
+    assert rows[0]["quarantined_by_event_id"] == failed.event_ids[0]
+    assert store.settle_pending_actions_at_open(
+        trading_date=DAY.replace(day=22),
+        raw_open=Decimal("52.5"),
+        snapshot_id="next-day-preview",
+    ) == ()
+
+    recovered = asyncio.run(
+        service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22, minute=5))
+    )
+    rows = _pending(store.path)
+    assert recovered.status == "COMPLETED"
+    assert len(rows) == 1
+    assert rows[0]["status"] == "PENDING_NEXT_SESSION_OPEN"
+    assert rows[0]["reconciled_by_event_id"] == recovered.event_ids[0]
+    assert rows[0]["fill_price"] is None
+    with sqlite3.connect(store.path) as connection:
+        body = connection.execute(
+            "SELECT body FROM outbox WHERE event_id=?", (recovered.event_ids[0],)
+        ).fetchone()[0]
+    assert "RESTORED_AFTER_RECONCILIATION" in body
 
 
 def test_hold_notification_can_be_disabled_without_disabling_state(tmp_path) -> None:
@@ -333,6 +501,34 @@ def test_non_trading_day_skips_without_data_or_state(tmp_path) -> None:
         trading_day_predicate=lambda _: False,
     )
     outcome = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
-    assert outcome.status == "SKIPPED_NON_TRADING_DAY"
+    assert outcome.status == "SKIPPED_OFFICIAL_NON_TRADING_DAY"
     assert store.latest_state() is None
-    assert _count(store.path, "job_runs") == 0
+    assert _count(store.path, "job_runs") == 1
+
+
+def test_official_trading_day_gate_outage_is_retryable_data_unavailable(tmp_path) -> None:
+    def unavailable(_day):
+        raise EtfMonitorDataError("official calendar offline")
+
+    config = replace(load_etf_monitor_config(), enabled=True)
+    store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
+    service = EtfMonitorService(
+        config=config,
+        store=store,
+        data_provider=_Data(),
+        router=None,
+        core=_Core([]),
+        trading_day_predicate=unavailable,
+    )
+    first = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    second = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    assert first.status == second.status == "DATA_UNAVAILABLE"
+    assert first.event_ids == second.event_ids
+    assert store.latest_state() is None
+    assert _count(store.path, "events") == 1
+    with sqlite3.connect(store.path) as connection:
+        status = connection.execute(
+            "SELECT status FROM job_runs WHERE run_key=?",
+            (f"{MonitorPhase.DECISION.value}:{DAY.isoformat()}",),
+        ).fetchone()[0]
+    assert status == "FAILED"

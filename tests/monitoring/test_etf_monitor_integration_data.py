@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import replace
@@ -7,9 +8,11 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import pytest
+import requests
 
 from stock_ai_bot.monitoring.etf_monitor import integration
 from stock_ai_bot.monitoring.etf_monitor.config import (
@@ -17,12 +20,14 @@ from stock_ai_bot.monitoring.etf_monitor.config import (
     load_etf_monitor_config,
 )
 from stock_ai_bot.monitoring.etf_monitor.data import (
+    OfficialDailyDeltaUpdater,
+    OfficialTwseTradingCalendar,
     OfficialTwseQuoteProvider,
     RegistrySnapshotProvider,
     resolve_frozen_market_data_root,
 )
 from stock_ai_bot.monitoring.etf_monitor.errors import EtfMonitorDataError
-from stock_ai_bot.monitoring.etf_monitor.models import IntradayQuote
+from stock_ai_bot.monitoring.etf_monitor.models import IntradayQuote, MonitorPhase
 from stock_ai_bot.monitoring.etf_monitor.models import stable_sha256
 
 
@@ -79,6 +84,84 @@ def test_enabled_feature_registers_three_jobs_on_existing_queue(tmp_path, monkey
         == 8 * 3600
         for call in app.job_queue.calls
     )
+
+
+def test_runtime_retries_data_unavailable_without_duplicate_scheduler_job(monkeypatch) -> None:
+    class _Service:
+        def __init__(self):
+            self.calls = 0
+
+        async def run(self, phase):
+            self.calls += 1
+            return SimpleNamespace(
+                status="DATA_UNAVAILABLE" if self.calls == 1 else "COMPLETED"
+            )
+
+    service = _Service()
+    config = replace(load_etf_monitor_config(), enabled=True)
+    runtime = integration.EtfMonitorRuntime(
+        config=config,
+        store=object(),
+        router=object(),
+        service=service,
+        locks={phase: asyncio.Lock() for phase in integration.JOB_NAMES},
+    )
+    monkeypatch.setitem(
+        integration.RETRY_DELAYS_SECONDS,
+        MonitorPhase.DECISION,
+        (0,),
+    )
+    asyncio.run(runtime.dispatch(MonitorPhase.DECISION))
+    assert service.calls == 2
+
+
+def test_startup_runs_official_delta_update_inside_existing_process() -> None:
+    class _Updater:
+        def __init__(self):
+            self.days = []
+
+        def ensure_through(self, day):
+            self.days.append(day)
+
+    class _Store:
+        def __init__(self):
+            self.recovered = False
+
+        def recover_after_restart(self):
+            self.recovered = True
+
+    class _Router:
+        def __init__(self):
+            self.verified = False
+            self.drained = False
+
+        async def verify_route(self):
+            self.verified = True
+
+        async def drain(self, limit):
+            self.drained = limit == 20
+
+    updater = _Updater()
+    store = _Store()
+    router = _Router()
+    service = SimpleNamespace(
+        data_provider=SimpleNamespace(delta_updater=updater)
+    )
+    config = replace(load_etf_monitor_config(), enabled=True)
+    app = _App()
+    app.bot_data[integration.RUNTIME_KEY] = integration.EtfMonitorRuntime(
+        config=config,
+        store=store,
+        router=router,
+        service=service,
+        locks={phase: asyncio.Lock() for phase in integration.JOB_NAMES},
+    )
+    asyncio.run(integration.initialize_etf_monitor(app))
+    assert store.recovered is True
+    assert len(updater.days) == 1
+    assert updater.days[0] == date.today() - timedelta(days=1)
+    assert router.verified is True
+    assert router.drained is True
 
 
 def test_config_rejects_route_bypass_and_legacy_route_key(tmp_path) -> None:
@@ -371,6 +454,104 @@ def test_daily_delta_requires_both_raw_corporate_action_sources(tmp_path) -> Non
         provider.load_complete(day)
 
 
+def test_automatic_daily_delta_update_captures_validates_and_immutably_installs(
+    tmp_path,
+) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+
+    class _Response:
+        def __init__(self, url, raw):
+            self.url = url
+            self.content = raw
+            self.headers = {"content-type": "application/json"}
+
+        def raise_for_status(self):
+            return None
+
+    class _Session:
+        def __init__(self):
+            self.calls = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, params=None, timeout=None):
+            self.calls.append((url, params))
+            final = url if not params else f"{url}?{urlencode(params)}"
+            if "holidaySchedule" in url:
+                raw = json.dumps([{"Name": "new year", "Date": "1150101"}]).encode()
+            elif "TWT48U_ALL" in url:
+                raw = b"[]"
+            elif "dividendList" in url:
+                raw = b"<table></table>"
+            elif "STOCK_DAY" in url:
+                raw = json.dumps({
+                    "stat": "OK",
+                    "data": [[
+                        "115/10/22", "200", "0", "52", "54", "51", "53", "0", "1", ""
+                    ]],
+                }).encode()
+            else:
+                raise AssertionError(url)
+            return _Response(final, raw)
+
+    session = _Session()
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    updater = OfficialDailyDeltaUpdater(
+        provider,
+        session_factory=lambda: session,
+    )
+    result = updater.ensure_through(date(2026, 10, 22))
+    calls_after_install = len(session.calls)
+    repeated = updater.ensure_through(date(2026, 10, 22))
+    snapshot = provider.load_complete(date(2026, 10, 22))
+    assert result["status"] == "CAPTURED_VALIDATED_IMMUTABLY_INSTALLED"
+    assert result["installed"] == 1
+    assert repeated["status"] == "VERIFIED_ALREADY_COMPLETE"
+    assert len(session.calls) == calls_after_install
+    assert snapshot.latest_date == date(2026, 10, 22)
+    assert snapshot.raw_row_for(date(2026, 10, 22))["close"] == "53"
+    assert list((delta_root / "receipts").glob("*.raw"))
+    assert list((delta_root / "manifests").glob("*.json"))
+
+
+def test_automatic_delta_update_keeps_production_empty_when_capture_requires_review(
+    tmp_path, monkeypatch
+) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+
+    def requires_review(**kwargs):
+        raise EtfMonitorDataError(
+            "official corporate action requires reviewed event construction"
+        )
+
+    monkeypatch.setattr(
+        "stock_ai_bot.monitoring.etf_monitor.data.build_daily_delta_bundle",
+        requires_review,
+    )
+    with pytest.raises(EtfMonitorDataError, match="requires reviewed"):
+        OfficialDailyDeltaUpdater(provider).ensure_through(date(2026, 10, 22))
+    assert not list(delta_root.glob("*.json"))
+    assert not (delta_root / "receipts").exists()
+    assert not (delta_root / "manifests").exists()
+
+
 def test_official_quote_identity_and_close_gate(monkeypatch) -> None:
     class _Response:
         content = b"official-receipt"
@@ -440,3 +621,44 @@ def test_official_quote_rejects_stale_source_clock(monkeypatch) -> None:
     observed = datetime(2026, 10, 21, 13, 55, tzinfo=ZoneInfo("Asia/Taipei"))
     with pytest.raises(EtfMonitorDataError, match="stale"):
         OfficialTwseQuoteProvider()._fetch(observed)
+
+
+def test_official_etf_calendar_verifies_holiday_and_preserves_receipt(
+    tmp_path, monkeypatch
+) -> None:
+    raw = json.dumps([
+        {"Name": "fixture holiday", "Date": "1151021"},
+        {"Name": "new year", "Date": "1150101"},
+    ]).encode()
+
+    class _Response:
+        content = raw
+        url = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "stock_ai_bot.monitoring.etf_monitor.data.requests.get",
+        lambda *args, **kwargs: _Response(),
+    )
+    calendar = OfficialTwseTradingCalendar(receipt_root=tmp_path / "calendar")
+    holiday = calendar.verify(date(2026, 10, 21))
+    open_day = calendar.verify(date(2026, 10, 22))
+    assert holiday["is_trading_day"] is False
+    assert holiday["calendar_reason"] == "OFFICIAL_HOLIDAY"
+    assert open_day["is_trading_day"] is True
+    assert open_day["receipt_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert (tmp_path / "calendar" / f"{open_day['receipt_sha256']}.raw").read_bytes() == raw
+
+
+def test_official_etf_calendar_network_outage_is_fail_closed(monkeypatch) -> None:
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr(
+        "stock_ai_bot.monitoring.etf_monitor.data.requests.get",
+        fail,
+    )
+    with pytest.raises(EtfMonitorDataError, match="holiday request failed"):
+        OfficialTwseTradingCalendar().verify(date(2026, 10, 22))

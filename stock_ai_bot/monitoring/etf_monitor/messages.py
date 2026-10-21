@@ -40,12 +40,17 @@ def render_core_message(
         pending = "\n成交價：尚未成交，待下一官方交易日開盤；不預填未知價格。"
     correction = ""
     if correction_of is not None:
-        transition = pending_transition or {}
         correction = (
             f"\n更正：追加更正事件，取代事件 {correction_of}；原紀錄保留。"
+        )
+    transition_text = ""
+    transition = pending_transition or {}
+    if transition and transition.get("outcome") != "UNCHANGED":
+        transition_text = (
             f"\n待執行指令：{transition.get('old_action', 'UNKNOWN')} → "
             f"{transition.get('new_action', core.decision.value)}；"
             f"處理={transition.get('outcome', 'UNKNOWN')}；"
+            f"舊狀態={transition.get('old_status') or '無'}；"
             f"舊 action_id={transition.get('old_action_id') or '無'}；"
             f"leg={transition.get('old_leg_id') or '無'} → "
             f"{transition.get('new_leg_id') or '無'}；"
@@ -67,7 +72,7 @@ def render_core_message(
         f"{_number(core.fixed_initial_stop)}\n"
         f"資料：{snapshot.source}｜{snapshot.price_basis}｜as_of={snapshot.as_of.isoformat()}｜"
         f"snapshot={snapshot.snapshot_id}｜provisional={provisional}"
-        f"{pending}{correction}"
+        f"{pending}{correction}{transition_text}"
     )
 
 def render_data_unavailable(*, phase: MonitorPhase, trading_date: str, reason_code: str) -> str:

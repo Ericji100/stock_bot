@@ -4,10 +4,13 @@ import asyncio
 import hashlib
 import json
 import os
+import tempfile
+import threading
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -26,7 +29,12 @@ from stock_ai_bot.data_sources.etf_snapshot_registry import (
 )
 
 from .config import EtfMonitorConfig
-from .delta_pipeline import verify_delta_receipts
+from .delta_pipeline import (
+    HOLIDAY_URL,
+    build_daily_delta_bundle,
+    parse_holidays,
+    verify_delta_receipts,
+)
 from .errors import EtfMonitorDataError
 from .models import IntradayQuote, MarketDataSnapshot, MonitorPhase, stable_sha256
 
@@ -177,6 +185,135 @@ def load_daily_delta_file(
         manifest_sha256=manifest_sha256,
         receipt_root=path.parent,
     )
+
+
+def install_daily_delta_file(
+    path: Path,
+    *,
+    destination_root: Path,
+    expected_date: date,
+    snapshot_id: str,
+    manifest_sha256: str,
+) -> dict[str, Any]:
+    """Validate and immutably install one delta and all referenced raw receipts."""
+
+    payload = load_daily_delta_file(
+        path,
+        expected_date=expected_date,
+        snapshot_id=snapshot_id,
+        manifest_sha256=manifest_sha256,
+    )
+    destination_root.mkdir(parents=True, exist_ok=True)
+    for evidence in (
+        payload["calendar_evidence"],
+        payload["bar_evidence"],
+        *payload["corporate_action_evidence"],
+    ):
+        relative = Path(str(evidence["receipt_relative_path"]))
+        source_receipt = path.parent / relative
+        destination_receipt = destination_root / relative
+        raw = source_receipt.read_bytes()
+        destination_receipt.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination_receipt.open("xb") as handle:
+                handle.write(raw)
+        except FileExistsError:
+            if destination_receipt.read_bytes() != raw:
+                raise EtfMonitorDataError(
+                    f"refusing to replace content-addressed receipt: {destination_receipt}"
+                )
+    destination = destination_root / f"{expected_date.isoformat()}.json"
+    canonical = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    try:
+        with destination.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(canonical)
+    except FileExistsError:
+        existing = json.loads(destination.read_text(encoding="utf-8-sig"))
+        if existing != payload:
+            raise EtfMonitorDataError(f"refusing to replace immutable delta: {destination}")
+    return payload
+
+
+class OfficialTwseTradingCalendar:
+    """ETF-only official calendar gate with no empty-calendar fallback."""
+
+    def __init__(
+        self,
+        *,
+        timeout_seconds: int = 15,
+        receipt_root: Path | None = None,
+    ):
+        self.timeout_seconds = timeout_seconds
+        self.receipt_root = None if receipt_root is None else receipt_root.resolve()
+        self._cache: dict[int, tuple[set[date], dict[str, Any]]] = {}
+        self._lock = threading.Lock()
+
+    def _load(self, year: int) -> tuple[set[date], dict[str, Any]]:
+        try:
+            response = requests.get(HOLIDAY_URL, timeout=self.timeout_seconds)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise EtfMonitorDataError("official TWSE holiday request failed") from exc
+        final_url = str(getattr(response, "url", HOLIDAY_URL) or HOLIDAY_URL)
+        expected = urlparse(HOLIDAY_URL)
+        actual = urlparse(final_url)
+        if (
+            actual.scheme != expected.scheme
+            or actual.netloc != expected.netloc
+            or actual.path != expected.path
+            or actual.query
+            or actual.fragment
+        ):
+            raise EtfMonitorDataError("official TWSE holiday endpoint identity changed")
+        raw = response.content
+        holidays = parse_holidays(raw)
+        if not any(day.year == year for day in holidays):
+            raise EtfMonitorDataError("official TWSE holiday receipt does not cover target year")
+        digest = hashlib.sha256(raw).hexdigest()
+        if self.receipt_root is not None:
+            self.receipt_root.mkdir(parents=True, exist_ok=True)
+            receipt = self.receipt_root / f"{digest}.raw"
+            try:
+                with receipt.open("xb") as handle:
+                    handle.write(raw)
+            except FileExistsError:
+                if receipt.read_bytes() != raw:
+                    raise EtfMonitorDataError("official calendar receipt identity collision")
+        evidence = {
+            "source": "TWSE_HOLIDAY_SCHEDULE_OFFICIAL",
+            "source_endpoint": HOLIDAY_URL,
+            "request_url": final_url,
+            "fetched_at": datetime.now(tz=TAIPEI).isoformat(),
+            "receipt_sha256": digest,
+            "target_year": year,
+        }
+        return holidays, evidence
+
+    def verify(self, trading_date: date) -> Mapping[str, Any]:
+        with self._lock:
+            cached = self._cache.get(trading_date.year)
+            today = datetime.now(tz=TAIPEI).date()
+            if (
+                cached is None
+                or datetime.fromisoformat(cached[1]["fetched_at"]).date() != today
+            ):
+                cached = self._load(trading_date.year)
+                self._cache[trading_date.year] = cached
+        holidays, evidence = cached
+        return {
+            **evidence,
+            "trading_date": trading_date.isoformat(),
+            "is_trading_day": (
+                trading_date.weekday() < 5 and trading_date not in holidays
+            ),
+            "calendar_reason": (
+                "WEEKEND"
+                if trading_date.weekday() >= 5
+                else "OFFICIAL_HOLIDAY"
+                if trading_date in holidays
+                else "OFFICIAL_WEEKDAY_SESSION"
+            ),
+        }
 
 
 def _normalize_rows(rows: Sequence[Mapping[str, Any]], *, through: date) -> tuple[dict[str, Any], ...]:
@@ -379,6 +516,160 @@ class RegistrySnapshotProvider:
         )
 
 
+class OfficialDailyDeltaUpdater:
+    """Capture, validate and immutably install ordinary TWSE daily deltas.
+
+    The capture pipeline refuses unresolved weekday gaps, source disagreement,
+    and all corporate-action days.  Those cases remain fail-closed for an
+    operator-reviewed evidence package; there is no alternate data fallback.
+    """
+
+    def __init__(
+        self,
+        registry: RegistrySnapshotProvider,
+        *,
+        session_factory: Any = requests.Session,
+    ):
+        self.registry = registry
+        self.session_factory = session_factory
+        self._lock = threading.Lock()
+
+    def _identity(self) -> tuple[Any, date]:
+        try:
+            snapshot = resolve_snapshot(
+                self.registry.config.symbol,
+                self.registry.config.snapshot_id,
+                market_data_root=self.registry.market_data_root,
+            )
+            validate_snapshot(snapshot, verify_artifacts=True)
+        except EtfSnapshotRegistryError as exc:
+            raise EtfMonitorDataError(
+                f"accepted ETF snapshot unavailable for automatic delta update: {exc}"
+            ) from exc
+        daily = _read_json(
+            _contained(
+                snapshot.package_root,
+                self.registry.config.raw_daily_relative_path,
+            )
+        )
+        if not isinstance(daily, Mapping) or not isinstance(daily.get("rows"), list):
+            raise EtfMonitorDataError("accepted raw daily artifact has no rows")
+        try:
+            base_last = max(_parse_date(row["date"]) for row in daily["rows"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EtfMonitorDataError("accepted raw daily artifact has invalid dates") from exc
+        return snapshot, base_last
+
+    def _verify_installed_range(
+        self,
+        *,
+        start: date,
+        through: date,
+        snapshot: Any,
+    ) -> date | None:
+        cursor = start
+        while cursor <= through:
+            path = self.registry.delta_root / f"{cursor.isoformat()}.json"
+            if not path.is_file():
+                return cursor
+            load_daily_delta_file(
+                path,
+                expected_date=cursor,
+                snapshot_id=snapshot.snapshot_id,
+                manifest_sha256=snapshot.package_manifest_sha256,
+            )
+            cursor += timedelta(days=1)
+        return None
+
+    def ensure_through(self, through: date) -> Mapping[str, Any]:
+        with self._lock:
+            snapshot, base_last = self._identity()
+            chain_start = base_last + timedelta(days=1)
+            if through < chain_start:
+                return {
+                    "status": "FROZEN_BASE_COVERS_TARGET",
+                    "through": through.isoformat(),
+                    "installed": 0,
+                }
+            first_missing = self._verify_installed_range(
+                start=chain_start,
+                through=through,
+                snapshot=snapshot,
+            )
+            if first_missing is None:
+                return {
+                    "status": "VERIFIED_ALREADY_COMPLETE",
+                    "through": through.isoformat(),
+                    "installed": 0,
+                }
+
+            staging_parent = self.registry.delta_root.parent / ".capture-staging"
+            staging_parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(
+                prefix="0050-official-delta-",
+                dir=staging_parent,
+            ) as temporary:
+                bundle_root = Path(temporary) / "bundle"
+                manifest = build_daily_delta_bundle(
+                    start=first_missing,
+                    through=through,
+                    output=bundle_root,
+                    frozen_snapshot_id=snapshot.snapshot_id,
+                    frozen_manifest_sha256=snapshot.package_manifest_sha256,
+                    session_factory=self.session_factory,
+                )
+                cursor = first_missing
+                validated: list[tuple[date, Path]] = []
+                while cursor <= through:
+                    path = bundle_root / f"{cursor.isoformat()}.json"
+                    load_daily_delta_file(
+                        path,
+                        expected_date=cursor,
+                        snapshot_id=snapshot.snapshot_id,
+                        manifest_sha256=snapshot.package_manifest_sha256,
+                    )
+                    validated.append((cursor, path))
+                    cursor += timedelta(days=1)
+                for day, path in validated:
+                    install_daily_delta_file(
+                        path,
+                        destination_root=self.registry.delta_root,
+                        expected_date=day,
+                        snapshot_id=snapshot.snapshot_id,
+                        manifest_sha256=snapshot.package_manifest_sha256,
+                    )
+                manifests = self.registry.delta_root / "manifests"
+                manifests.mkdir(parents=True, exist_ok=True)
+                bundle_manifest = bundle_root / "bundle-manifest.json"
+                raw_manifest = bundle_manifest.read_bytes()
+                destination = manifests / f"{manifest['content_sha256']}.json"
+                try:
+                    with destination.open("xb") as handle:
+                        handle.write(raw_manifest)
+                except FileExistsError:
+                    if destination.read_bytes() != raw_manifest:
+                        raise EtfMonitorDataError(
+                            "automatic delta bundle manifest identity collision"
+                        )
+
+            remaining = self._verify_installed_range(
+                start=chain_start,
+                through=through,
+                snapshot=snapshot,
+            )
+            if remaining is not None:
+                raise EtfMonitorDataError(
+                    f"automatic delta install did not close the chain at {remaining}"
+                )
+            return {
+                "status": "CAPTURED_VALIDATED_IMMUTABLY_INSTALLED",
+                "from": first_missing.isoformat(),
+                "through": through.isoformat(),
+                "installed": len(validated),
+                "bundle_manifest_sha256": manifest["content_sha256"],
+            }
+
+
 def _price(value: Any, field: str) -> Decimal:
     text = str(value or "").replace(",", "").strip()
     if text in {"", "-", "--"}:
@@ -477,13 +768,22 @@ class MonitorMarketDataProvider:
         self,
         registry: RegistrySnapshotProvider,
         quote_provider: OfficialTwseQuoteProvider,
+        delta_updater: OfficialDailyDeltaUpdater | None = None,
     ):
         self.registry = registry
         self.quote_provider = quote_provider
+        self.delta_updater = delta_updater
 
     async def load(self, phase: MonitorPhase, as_of: date) -> MarketDataSnapshot:
         if phase is MonitorPhase.RECONCILIATION:
+            if self.delta_updater is not None:
+                await asyncio.to_thread(self.delta_updater.ensure_through, as_of)
             return await asyncio.to_thread(self.registry.load_complete, as_of)
+        if self.delta_updater is not None:
+            await asyncio.to_thread(
+                self.delta_updater.ensure_through,
+                as_of - timedelta(days=1),
+            )
         quote = await self.quote_provider.fetch()
         if phase is MonitorPhase.DECISION and not quote.is_market_closed:
             raise EtfMonitorDataError("13:55 decision requires a closed official TWSE quote")

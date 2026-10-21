@@ -7,12 +7,10 @@ from decimal import Decimal
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-from stock_ai_bot.strategies.chip_strategies import is_possible_trading_day
-
 from .accounting import CorporateActionAccounting
 from .config import EtfMonitorConfig
 from .core import AcceptedFinalV17Core
-from .data import MonitorMarketDataProvider
+from .data import MonitorMarketDataProvider, OfficialTwseTradingCalendar
 from .errors import EtfMonitorRoutingError
 from .messages import render_core_message, render_data_unavailable, render_offline_test
 from .models import (
@@ -51,6 +49,14 @@ def _material_state(core_payload: Mapping[str, Any]) -> Mapping[str, Any]:
     }
 
 
+def _trading_day_result(value: Any) -> tuple[bool, Mapping[str, Any]]:
+    if isinstance(value, bool):
+        return value, {"is_trading_day": value, "source": "INJECTED_TEST_GATE"}
+    if isinstance(value, Mapping) and isinstance(value.get("is_trading_day"), bool):
+        return bool(value["is_trading_day"]), dict(value)
+    raise TypeError("ETF trading-day gate returned an invalid result")
+
+
 class EtfMonitorService:
     def __init__(
         self,
@@ -61,7 +67,7 @@ class EtfMonitorService:
         router: FailClosedTelegramRouter | None,
         core: AcceptedFinalV17Core | None = None,
         accounting: CorporateActionAccounting | None = None,
-        trading_day_predicate: Callable[[date], bool] = is_possible_trading_day,
+        trading_day_predicate: Callable[[date], Any] | None = None,
     ):
         self.config = config
         self.store = store
@@ -69,7 +75,9 @@ class EtfMonitorService:
         self.router = router
         self.core = core or AcceptedFinalV17Core()
         self.accounting = accounting or CorporateActionAccounting()
-        self.trading_day_predicate = trading_day_predicate
+        self.trading_day_predicate = (
+            trading_day_predicate or OfficialTwseTradingCalendar().verify
+        )
 
     async def _deliver(self, event_id: str, *, has_outbox: bool = True) -> None:
         if has_outbox and self.router is not None:
@@ -83,14 +91,31 @@ class EtfMonitorService:
         exc: BaseException,
     ) -> PhaseOutcome:
         reason_code = type(exc).__name__.upper()
+        decision_event = (
+            self.store.latest_formal_phase_event(
+                phase=MonitorPhase.DECISION,
+                trading_date=trading_date,
+            )
+            if phase is MonitorPhase.RECONCILIATION
+            else None
+        )
+        original_event_id = (
+            None if decision_event is None else str(decision_event["event_id"])
+        )
         event_id = stable_event_id(
             symbol="0050",
             strategy="final-v1.7",
             phase=phase,
             signal_date=trading_date,
             decision=Decision.DATA_UNAVAILABLE,
-            suffix=reason_code,
+            suffix=f"{reason_code}:{original_event_id or 'NO_SAME_DAY_STATE'}",
         )
+        quarantined = None
+        if original_event_id is not None:
+            quarantined = self.store.quarantine_pending_for_reconciliation(
+                original_event_id=original_event_id,
+                failure_event_id=event_id,
+            )
         body = render_data_unavailable(
             phase=phase,
             trading_date=trading_date.isoformat(),
@@ -101,7 +126,12 @@ class EtfMonitorService:
             phase=phase,
             trading_date=trading_date,
             event_type="DATA_UNAVAILABLE",
-            payload={"reason_code": reason_code, "fail_closed": True},
+            payload={
+                "reason_code": reason_code,
+                "fail_closed": True,
+                "same_day_state_event_id": original_event_id,
+                "pending_quarantined": quarantined is not None,
+            },
             target_chat_id=self.config.chat_id,
             body=body,
         )
@@ -113,6 +143,7 @@ class EtfMonitorService:
             event_ids=(event_id,),
             decision=Decision.DATA_UNAVAILABLE,
             message=reason_code,
+            metadata={"quarantined_pending_action": quarantined},
         )
 
     async def run(self, phase: MonitorPhase, *, now: datetime | None = None) -> PhaseOutcome:
@@ -124,12 +155,22 @@ class EtfMonitorService:
             raise ValueError("unsupported scheduled ETF monitor phase")
         local_now = (now or datetime.now(tz=TAIPEI)).astimezone(TAIPEI)
         trading_date = local_now.date()
-        if not self.trading_day_predicate(trading_date):
-            return PhaseOutcome(phase, trading_date, "SKIPPED_NON_TRADING_DAY")
         if not self.store.begin_job(phase, trading_date):
             return PhaseOutcome(phase, trading_date, "ALREADY_COMPLETED")
         try:
             try:
+                gate_value = await asyncio.to_thread(
+                    self.trading_day_predicate, trading_date
+                )
+                is_trading_day, trading_day_evidence = _trading_day_result(gate_value)
+                if not is_trading_day:
+                    self.store.finish_job(phase, trading_date, succeeded=True)
+                    return PhaseOutcome(
+                        phase,
+                        trading_date,
+                        "SKIPPED_OFFICIAL_NON_TRADING_DAY",
+                        metadata={"trading_day_gate": trading_day_evidence},
+                    )
                 snapshot = await self.data_provider.load(phase, trading_date)
                 core = await asyncio.to_thread(self.core.evaluate, snapshot)
                 accounting_validation: Mapping[str, Any] = {}
@@ -154,27 +195,35 @@ class EtfMonitorService:
                     trading_date=trading_date,
                     exc=exc,
                 )
-                self.store.finish_job(phase, trading_date, succeeded=True)
+                self.store.finish_job(
+                    phase,
+                    trading_date,
+                    succeeded=False,
+                    error=f"DATA_UNAVAILABLE:{outcome.message}",
+                )
                 return outcome
 
-            previous = self.store.latest_state()
             correction_of: str | None = None
             correction_reason: str | None = None
             prior_same_day_event_id: str | None = None
-            if (
-                phase is MonitorPhase.RECONCILIATION
-                and previous is not None
-                and str(previous["as_of"]) == trading_date.isoformat()
-            ):
-                prior_same_day_event_id = str(previous["event_id"])
-                prior_payload = json.loads(str(previous["core_state_json"]))
+            decision_event = (
+                self.store.latest_formal_phase_event(
+                    phase=MonitorPhase.DECISION,
+                    trading_date=trading_date,
+                )
+                if phase is MonitorPhase.RECONCILIATION
+                else None
+            )
+            if decision_event is not None:
+                prior_same_day_event_id = str(decision_event["event_id"])
+                prior_payload = json.loads(str(decision_event["payload_json"]))
                 current_payload = {
                     "core": json.loads(canonical_json(accepted_core_payload(core)))
                 }
                 if stable_sha256(_material_state(prior_payload)) != stable_sha256(
                     _material_state(current_payload)
                 ):
-                    correction_of = str(previous["event_id"])
+                    correction_of = prior_same_day_event_id
                     correction_reason = "FULL_DAY_ACCEPTED_DATA_CHANGED_MATERIAL_STATE"
 
             suffix = None
@@ -224,6 +273,7 @@ class EtfMonitorService:
                 "correction_reason": correction_reason,
                 "pending_transition": pending_transition,
                 "shadow_next_open_fills": shadow_fills,
+                "trading_day_gate": trading_day_evidence,
             }
             self.store.append_event_with_outbox(
                 event_id=event_id,
@@ -266,6 +316,7 @@ class EtfMonitorService:
                 metadata={
                     "accounting": accounting_summary,
                     "shadow_next_open_fills": shadow_fills,
+                    "trading_day_gate": trading_day_evidence,
                 },
             )
         except EtfMonitorRoutingError as exc:

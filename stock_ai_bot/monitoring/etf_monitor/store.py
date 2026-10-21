@@ -20,7 +20,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _utc_now() -> str:
@@ -97,6 +97,11 @@ class EtfMonitorStore:
                     superseded_by_event_id TEXT,
                     superseded_at TEXT,
                     supersede_reason TEXT,
+                    quarantined_by_event_id TEXT,
+                    quarantined_at TEXT,
+                    quarantine_reason TEXT,
+                    reconciled_by_event_id TEXT,
+                    reconciled_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -172,6 +177,11 @@ class EtfMonitorStore:
                 ("supersede_reason", "TEXT"),
                 ("fill_date", "TEXT"),
                 ("fill_snapshot_id", "TEXT"),
+                ("quarantined_by_event_id", "TEXT"),
+                ("quarantined_at", "TEXT"),
+                ("quarantine_reason", "TEXT"),
+                ("reconciled_by_event_id", "TEXT"),
+                ("reconciled_at", "TEXT"),
             ):
                 if name not in columns:
                     connection.execute(
@@ -383,7 +393,9 @@ class EtfMonitorStore:
         with closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT * FROM pending_actions WHERE source_event_id=? "
-                "AND status='PENDING_NEXT_SESSION_OPEN' ORDER BY created_at DESC LIMIT 1",
+                "AND status IN ('PENDING_NEXT_SESSION_OPEN',"
+                "'QUARANTINED_RECONCILIATION_REQUIRED') "
+                "ORDER BY created_at DESC LIMIT 1",
                 (original_event_id,),
             ).fetchone()
         old_action = "HOLD" if row is None else str(row["action"])
@@ -416,7 +428,12 @@ class EtfMonitorStore:
                 else "CREATED_BY_RECONCILIATION"
             )
         elif new_action == old_action:
-            outcome = "SUPERSEDED_BY_RECONCILIATION" if details_changed else "UNCHANGED"
+            if details_changed:
+                outcome = "SUPERSEDED_BY_RECONCILIATION"
+            elif row["status"] == "QUARANTINED_RECONCILIATION_REQUIRED":
+                outcome = "RESTORED_AFTER_RECONCILIATION"
+            else:
+                outcome = "UNCHANGED"
         elif new_decision is Decision.HOLD:
             outcome = "CANCELLED_BY_RECONCILIATION"
         else:
@@ -426,6 +443,7 @@ class EtfMonitorStore:
             "new_action": new_action,
             "outcome": outcome,
             "old_action_id": None if row is None else str(row["action_id"]),
+            "old_status": None if row is None else str(row["status"]),
             "old_leg_id": old_leg_id,
             "new_leg_id": new_leg_id,
             "old_signal_reference_price": old_reference,
@@ -454,9 +472,18 @@ class EtfMonitorStore:
         with self.transaction() as connection:
             old = connection.execute(
                 "SELECT * FROM pending_actions WHERE source_event_id=? "
-                "AND status='PENDING_NEXT_SESSION_OPEN' ORDER BY created_at DESC LIMIT 1",
+                "AND status IN ('PENDING_NEXT_SESSION_OPEN',"
+                "'QUARANTINED_RECONCILIATION_REQUIRED') "
+                "ORDER BY created_at DESC LIMIT 1",
                 (original_event_id,),
             ).fetchone()
+            if old is not None and transition["outcome"] == "RESTORED_AFTER_RECONCILIATION":
+                connection.execute(
+                    "UPDATE pending_actions SET status='PENDING_NEXT_SESSION_OPEN', "
+                    "reconciled_by_event_id=?, reconciled_at=?, updated_at=? "
+                    "WHERE action_id=? AND status='QUARANTINED_RECONCILIATION_REQUIRED'",
+                    (event_id, now, now, old["action_id"]),
+                )
             if old is not None and transition["outcome"] in {
                 "CANCELLED_BY_RECONCILIATION",
                 "SUPERSEDED_BY_RECONCILIATION",
@@ -474,7 +501,8 @@ class EtfMonitorStore:
                     ),
                 )
             if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN} and (
-                old is None or transition["outcome"] != "UNCHANGED"
+                old is None
+                or transition["outcome"] == "SUPERSEDED_BY_RECONCILIATION"
             ):
                 action_id = f"pending:{event_id}"
                 connection.execute(
@@ -498,6 +526,54 @@ class EtfMonitorStore:
                     ),
                 )
         return transition
+
+    def quarantine_pending_for_reconciliation(
+        self,
+        *,
+        original_event_id: str,
+        failure_event_id: str,
+    ) -> Mapping[str, Any] | None:
+        """Fail closed when full-day confirmation is unavailable.
+
+        A quarantined instruction is deliberately excluded from next-open
+        settlement until a later successful reconciliation restores or
+        supersedes it.
+        """
+
+        now = _utc_now()
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM pending_actions WHERE source_event_id=? "
+                "AND status IN ('PENDING_NEXT_SESSION_OPEN',"
+                "'QUARANTINED_RECONCILIATION_REQUIRED') "
+                "ORDER BY created_at DESC LIMIT 1",
+                (original_event_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["status"] == "PENDING_NEXT_SESSION_OPEN":
+                connection.execute(
+                    "UPDATE pending_actions SET "
+                    "status='QUARANTINED_RECONCILIATION_REQUIRED', "
+                    "quarantined_by_event_id=?, quarantined_at=?, quarantine_reason=?, "
+                    "updated_at=? WHERE action_id=? AND status='PENDING_NEXT_SESSION_OPEN'",
+                    (
+                        failure_event_id,
+                        now,
+                        "FULL_DAY_OFFICIAL_DATA_UNAVAILABLE",
+                        now,
+                        row["action_id"],
+                    ),
+                )
+            return {
+                **dict(row),
+                "status": "QUARANTINED_RECONCILIATION_REQUIRED",
+                "quarantined_by_event_id": (
+                    row["quarantined_by_event_id"] or failure_event_id
+                ),
+                "quarantined_at": row["quarantined_at"] or now,
+                "quarantine_reason": "FULL_DAY_OFFICIAL_DATA_UNAVAILABLE",
+            }
 
     def settle_pending_actions_at_open(
         self,
@@ -573,6 +649,21 @@ class EtfMonitorStore:
     def event(self, event_id: str) -> Mapping[str, Any] | None:
         with closing(self._connect()) as connection:
             row = connection.execute("SELECT * FROM events WHERE event_id=?", (event_id,)).fetchone()
+            return None if row is None else dict(row)
+
+    def latest_formal_phase_event(
+        self,
+        *,
+        phase: MonitorPhase,
+        trading_date: date,
+    ) -> Mapping[str, Any] | None:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT * FROM events WHERE phase=? AND trading_date=? "
+                "AND event_type!='DATA_UNAVAILABLE' "
+                "ORDER BY created_at DESC, event_id DESC LIMIT 1",
+                (phase.value, trading_date.isoformat()),
+            ).fetchone()
             return None if row is None else dict(row)
 
     def claim_outbox(self, event_id: str | None = None) -> OutboxItem | None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,11 @@ JOB_NAMES = {
     MonitorPhase.PREVIEW: "etf-0050-final-v1.7-preview-1245",
     MonitorPhase.DECISION: "etf-0050-final-v1.7-decision-1355",
     MonitorPhase.RECONCILIATION: "etf-0050-final-v1.7-reconciliation-2200",
+}
+RETRY_DELAYS_SECONDS = {
+    MonitorPhase.PREVIEW: (30, 90),
+    MonitorPhase.DECISION: (30, 90, 180),
+    MonitorPhase.RECONCILIATION: (60, 180, 300),
 }
 
 
@@ -39,13 +45,22 @@ class EtfMonitorRuntime:
             }[phase]
         ]
         async with lock:
-            try:
-                await asyncio.wait_for(self.service.run(phase), timeout=timeout)
-            except Exception as exc:
-                print(
-                    f"[ETF 0050 final-v1.7] {phase.value} failed: {type(exc).__name__}",
-                    flush=True,
-                )
+            delays = RETRY_DELAYS_SECONDS[phase]
+            for attempt in range(len(delays) + 1):
+                try:
+                    outcome = await asyncio.wait_for(
+                        self.service.run(phase), timeout=timeout
+                    )
+                except Exception as exc:
+                    print(
+                        f"[ETF 0050 final-v1.7] {phase.value} failed: "
+                        f"{type(exc).__name__}",
+                        flush=True,
+                    )
+                    return
+                if outcome.status != "DATA_UNAVAILABLE" or attempt == len(delays):
+                    return
+                await asyncio.sleep(delays[attempt])
 
 
 async def _scheduled_job(context: Any) -> None:
@@ -74,7 +89,9 @@ def register_etf_monitor(application: Any, *, config_path: Any = None) -> EtfMon
 
     from .data import (
         MonitorMarketDataProvider,
+        OfficialDailyDeltaUpdater,
         OfficialTwseQuoteProvider,
+        OfficialTwseTradingCalendar,
         RegistrySnapshotProvider,
     )
     from .routing import FailClosedTelegramRouter
@@ -83,13 +100,22 @@ def register_etf_monitor(application: Any, *, config_path: Any = None) -> EtfMon
 
     store = EtfMonitorStore(get_workdata_path(config.database_relative_path))
     registry = RegistrySnapshotProvider(config)
-    data_provider = MonitorMarketDataProvider(registry, OfficialTwseQuoteProvider())
+    updater = OfficialDailyDeltaUpdater(registry)
+    calendar = OfficialTwseTradingCalendar(
+        receipt_root=registry.delta_root / "calendar-gate-receipts"
+    )
+    data_provider = MonitorMarketDataProvider(
+        registry,
+        OfficialTwseQuoteProvider(),
+        delta_updater=updater,
+    )
     router = FailClosedTelegramRouter(config=config, store=store, bot=application.bot)
     service = EtfMonitorService(
         config=config,
         store=store,
         data_provider=data_provider,
         router=router,
+        trading_day_predicate=calendar.verify,
     )
     runtime = EtfMonitorRuntime(
         config=config,
@@ -120,6 +146,24 @@ async def initialize_etf_monitor(application: Any) -> None:
     if not isinstance(runtime, EtfMonitorRuntime):
         return
     runtime.store.recover_after_restart()
+    updater = getattr(
+        getattr(runtime.service, "data_provider", None),
+        "delta_updater",
+        None,
+    )
+    if updater is not None:
+        yesterday = (
+            datetime.now(tz=ZoneInfo(runtime.config.timezone)).date()
+            - timedelta(days=1)
+        )
+        try:
+            await asyncio.to_thread(updater.ensure_through, yesterday)
+        except Exception as exc:
+            print(
+                "[ETF 0050 final-v1.7] startup official delta update failed: "
+                f"{type(exc).__name__}",
+                flush=True,
+            )
     try:
         await runtime.router.verify_route()
         await runtime.router.drain(limit=20)

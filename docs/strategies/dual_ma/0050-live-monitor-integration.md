@@ -36,7 +36,7 @@
 | `next-session-open-corporate-actions.csv` | 63 |
 | `next-session-open-trade-details.csv` | 91 |
 
-同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；稽核附件見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v1.json`。
+同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；稽核附件與 SHA/readback manifest 見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v1.json`、`0050-live-replay-parity-v1.manifest.json`。
 
 ## 正式資料更新與 freshness gate
 

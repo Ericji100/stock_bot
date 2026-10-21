@@ -22,12 +22,12 @@
 - live adapter 直接呼叫 `backtests/dual_ma/etf_0050_ma21_ma144_regime_v1.py` 的 `build_indicator_rows` 與 `build_regime_run`，不重寫近似 MA/MACD/stop 規則。
 - final-v1.7 的研究主情境是 `NEXT_SESSION_OPEN`、20 bps。live 端保留訊號日，將 accepted `MOTHER` / `EXIT` 轉為 `BUY_NEXT_OPEN` / `SELL_NEXT_OPEN`；在真正的下一官方交易日開盤前，成交價永遠顯示「尚未成交」。
 - 凍結基底固定由 repository-relative `stock_data/versions/2026-09-30-v3/market-data` 解析，或由專用 `STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT` 覆寫；它不再受 `STOCK_AI_BOT_WORKDATA_ROOT` 影響。完整日資料先逐檔 hash 驗證該 registry/package，再接續可寫 workdata 中的 daily delta。
-- 凍結基底截止日是 `2026-09-30`，禁止修改。之後的正式資料存放在 production profile 的 `market-data/etf-live/0050/daily-delta-v1/YYYY-MM-DD.json`。每一個日曆日都必須有一份 immutable ledger：交易日是 `OPEN` 並附完整 OHLCV；休市日是 `CLOSED` 且不含 bar。兩者都必須附 TWSE 官方 calendar receipt，OPEN 另附官方 daily-bar receipt、base snapshot/manifest identity、前一日與 canonical content SHA-256。
+- 凍結基底截止日是 `2026-09-30`，禁止修改。之後的正式資料存放在 production profile 的 `market-data/etf-live/0050/daily-delta-v1/YYYY-MM-DD.json`。每一個日曆日都必須有一份 immutable ledger：交易日是 `OPEN` 並附完整 OHLCV；休市日是 `CLOSED` 且不含 bar。每份 ledger 都引用 content-addressed 的 TWSE 原始 response bytes：`STOCK_DAY`、官方休市表、`TWT48U_ALL` 與 ETF dividend list。載入時重算 receipt SHA、重解析來源並逐值核對 bar/calendar/corporate action；只有 URL 或任意 64 位字串不構成官方驗證。
 - 執行價座標固定 `UNADJUSTED_MAINBOARD_OHLCV`；技術連續座標與 fixed initial stop 的企業行動換算由 accepted core 負責。
 - 盤中或收盤 provisional bar 只讀 TWSE MIS 官方端點；不使用 Yahoo、不使用 `historical_scan`，也不回退到舊 `etf_0050_long_term_monitor_v1.py`。
 - 每份事件保存 `source`、`price_basis`、`as_of`、`snapshot_id`、`snapshot_version` 與 `snapshot_sha256`。缺少、過期、日期不符或 hash 不符時產生 `DATA_UNAVAILABLE`，不產生交易推論。
 
-凍結 final-v1.7 read-only replay gate 不是只查列數。它把 2005 起正式 raw package 經 LIVE adapter 逐一產出 2006-01-02 至 2026-09-30 的 5,093 個日狀態，固定 stop/MACD/regime 狀態串會被 hash 鎖定；再將同一 signal stream 排到 next official open，使用 accepted cost/accounting replayer 逐欄比對：
+凍結 final-v1.7 read-only replay gate 不是只查列數。accepted engine 每次只取得一個新 session；該日狀態產生後，立即經真實 service/store 跑 `12:45 → 13:55 → 選定重啟 → 22:00 → 次交易日 raw open shadow fill`，完成後 generator 才可揭露下一根 bar。它對 2006-01-02 至 2026-09-30 共 5,093 日執行 15,279 個 phase job，核對 durable state、event/outbox、pending replacement、restart 與 next-open schedule；固定 stop/MACD/regime 狀態串另以 hash 鎖定，再由 accepted cost/accounting replayer 逐欄比對：
 
 | Artifact | Exact rows |
 |---|---:|
@@ -36,17 +36,25 @@
 | `next-session-open-corporate-actions.csv` | 63 |
 | `next-session-open-trade-details.csv` | 91 |
 
-同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；稽核附件與 SHA/readback manifest 見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v1.json`、`0050-live-replay-parity-v1.manifest.json`。
+同時逐筆比對 183 筆 frozen signal、signal/fill dates、raw open/reference/fill、shares、commission、tax、cash、fixed stop、MACD exit reason、股息、split、每日 cash/shares/equity 與 91 筆 trade detail。任一欄差異即失敗；本次 service-level 稽核附件與 SHA/readback manifest 見 `docs/strategies/dual_ma/qa/0050-live-replay-parity-v2.json`、`0050-live-replay-parity-v2.manifest.json`。
 
 ## 正式資料更新與 freshness gate
 
-先由資料流程產生符合 `config/etf_monitor_daily_delta.schema.json` 的官方 evidence 文件，再以唯新增工具安裝：
+先把官方原文擷取到全新的 review-only staging bundle；此步不會安裝到 production：
 
 ```powershell
-python -m tools.etf_monitor_import_daily_delta --input D:\staging\0050\2026-10-21.json
+python -m tools.etf_monitor_capture_daily_deltas `
+  --from 2026-10-01 --through 2026-10-21 `
+  --output D:\staging\0050\bundle-20261001-20261021
 ```
 
-工具會重新驗證 frozen registry 全部 artifact、base identity、官方 host、receipt SHA、OHLC、日期鏈與 content SHA。目的檔已存在且內容不同時拒絕覆寫。22:00 complete load 要求從 frozen cutoff 後到當日的每個日曆日都存在且當日是 OPEN；13:55 provisional load 要求鏈完整到前一日，再只追加同日 TWSE MIS closed quote。任何缺日、stale、hash/identity/official-evidence 不符都回 `DATA_UNAVAILABLE`。
+工具保存 exact response bytes，以 SHA-256 命名 receipt，從 receipt 解析 calendar/OHLCV/corporate action，再立即重讀驗算。一般 OPEN/CLOSED 日可安全生成；若 weekday 無 bar 且不在官方休市表、兩個公司行動來源不一致，或出現非現金事件，capture 直接停止並要求另做人工審核 evidence。審核 bundle manifest、每份 delta 與原文後，再逐日用唯新增工具安裝：
+
+```powershell
+python -m tools.etf_monitor_import_daily_delta --input D:\staging\0050\bundle-20261001-20261021\2026-10-21.json
+```
+
+import 工具與 runtime 都會重新驗證 frozen registry 全部 artifact、base identity、receipt 原文 SHA、approved endpoint/parser、解析後 OHLC/calendar/corporate action、日期鏈與 content SHA，並把 receipt 唯新增複製到 production delta root。目的檔或 content-addressed receipt 已存在但內容不同時拒絕覆寫。22:00 complete load 要求從 frozen cutoff 後到當日的每個日曆日都存在且當日是 OPEN；13:55 provisional load 要求鏈完整到前一日，再只追加同日 TWSE MIS quote。MIS 必須回 `rtcode=0000`/`OK`、正常盤狀態碼、同一交易日的 source clock 與最近成交時間；source clock 超過五分鐘或未確認收盤一律 fail-closed。任何缺日、stale、hash/identity/官方原文不符都回 `DATA_UNAVAILABLE`。
 
 用 production BAT 相同 workdata env 做 read-only 解析 smoke：
 
@@ -57,7 +65,7 @@ $env:STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT='D:\code\stock_ai_bot\stock_data\v
 python -m tools.etf_monitor_data_smoke --as-of 2026-09-30
 ```
 
-本修正版的 smoke 結果是 `PASS`、5,340 raw rows、33 corporate actions、manifest `86D913...F6CBB`。目前沒有經驗證的 2026-10 daily delta，因此 10 月正式啟用仍必須 fail-closed，不能把 9/30 當作 10 月資料。
+本修正版已在隔離 staging 從 TWSE 即時擷取並重讀驗證 `2026-10-01..2026-10-21` 共 21 份 delta、4 份 content-addressed raw receipts；以該 staging 做 complete-load smoke 得到 `2026-10-21`、5,354 raw rows、manifest `86D913...F6CBB`。這只是可重現流程證據，尚未經 operator review 或安裝到 production delta root；production 仍必須 fail-closed，不能把 9/30 當作 10 月資料，也不可宣稱已正式補齊。
 
 ## 排程
 
@@ -65,7 +73,7 @@ python -m tools.etf_monitor_data_smoke --as-of 2026-09-30
 
 | 時間 | 階段 | 行為 |
 |---|---|---|
-| 12:45 | `preview_1245` | TWSE MIS 盤中 provisional bar；訊息明標預覽；不修改 `monitor_state` 或 pending action |
+| 12:45 | `preview_1245` | TWSE MIS 盤中 provisional bar；訊息明標預覽；不修改當日正式 `monitor_state`；若有前一交易日 pending，原子記錄其本日 raw-open shadow fill |
 | 13:55 | `decision_1355` | 官方收盤後 provisional bar；只產生 `BUY_NEXT_OPEN`、`SELL_NEXT_OPEN`、`HOLD` |
 | 22:00 | `reconciliation_2200` | 必須有當日 hash 驗證完整 snapshot；一致則記錄確認，差異則追加 correction、保留原事件，並取消或取代 13:55 pending action |
 
@@ -127,7 +135,7 @@ python -m tools.etf_monitor_resolve_delivery --database <sqlite-path> --event-id
 |---|---|
 | `schema_meta` | migration version |
 | `monitor_state` | position、entry、fixed initial stop、MACD armed、data version 與最後 core state |
-| `pending_actions` | 尚未成交的 next-session-open 影子建議；`fill_price` 保持 NULL；保存 correction 的 cancel/supersede event、時間與原因 |
+| `pending_actions` | next-session-open 影子建議；未成交時 `fill_price` 為 NULL，下一個實際觀測交易日以 raw open 記錄 `FILLED_SHADOW_NEXT_OPEN`、fill date/snapshot；保存 correction 的 cancel/supersede event、時間與原因 |
 | `events` | stable event ID 的 append-only ledger |
 | `outbox` | target、body hash、attempt、狀態、Telegram message ID |
 | `corrections` | 原事件與追加更正事件的關聯 |
@@ -135,7 +143,7 @@ python -m tools.etf_monitor_resolve_delivery --database <sqlite-path> --event-id
 | `job_runs` | phase/date 冪等、成功、失敗與 interrupted 狀態 |
 | `routing_smoke` | 每個 work-data profile 最多一次真實路由 smoke |
 
-13:55 的 BUY/SELL 在 22:00 改為 HOLD 時，原 pending 標記 `CANCELLED_BY_RECONCILIATION`；改為相反動作時，原 pending 標記 `SUPERSEDED_BY_RECONCILIATION`，只留下新動作為 active pending。更正訊息具名顯示「舊動作 → 新動作」、處理結果與舊 action ID。資料庫重啟後仍保留這些狀態。
+13:55 的 BUY/SELL 在 22:00 改為 HOLD 時，原 pending 標記 `CANCELLED_BY_RECONCILIATION`；動作方向、`leg_id` 或 signal reference price 任一改變時，原 pending 標記 `SUPERSEDED_BY_RECONCILIATION`，並在同一 SQLite transaction 建立唯一的新 active pending。更正訊息具名顯示新舊動作、leg、參考價、處理結果與舊 action ID。資料庫重啟後仍保留這些狀態。
 
 啟動時 `SENDING → DELIVERY_UNCERTAIN`、`RUNNING → INTERRUPTED`；只有 `PENDING` / `RETRY` 可以自動 claim。stable event ID 與 payload collision check 防止同 ID 異內容，但 Telegram 的外部送達歧義由上述人工流程處理。
 
@@ -162,7 +170,7 @@ python -m pytest -q `
   tests/monitoring/test_etf_monitor_integration_data.py
 ```
 
-正式 full-history parity（約數十秒，只讀）：
+正式 full-history parity（會執行 15,279 個 SQLite phase job，依機器可能需數分鐘；不送 Telegram）：
 
 ```powershell
 $env:STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT='D:\code\stock_ai_bot\stock_data\versions\2026-09-30-v3\market-data'
@@ -180,7 +188,7 @@ python tools/etf_monitor_routing_smoke.py --send --confirm-chat-id -5527055845
 ## 啟用前清單
 
 1. frozen ETF registry 的 current 0050 snapshot 存在，manifest 與所有 artifact hash 通過，且 full-history parity 為 `PASS_EXACT`。
-2. 自 2026-10-01 起的 daily delta calendar chain 無缺日，當日 OPEN bar 與 corporate-action evidence 在 22:00 前完成；目前此條尚未滿足。
+2. 自 2026-10-01 起的 daily delta calendar chain 無缺日，原始 receipts 已由 operator 審核且逐日唯新增安裝到 production，當日 OPEN bar 與 corporate-action evidence 在 22:00 前完成；隔離 staging 已可生成與驗證，但 production 安裝目前尚未滿足。
 3. Bot 已加入 `-5527055845`，且 `getChat` 回傳完全相同的 group/supergroup ID。
 4. 聚焦測試與完整測試通過；未修改兩個 BAT 與舊群組設定。
 5. 必要時由 00 執行最多一次 smoke。

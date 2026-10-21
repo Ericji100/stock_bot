@@ -42,6 +42,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     destination = provider.delta_root / f"{trade_date}.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
+    for evidence in (
+        payload["calendar_evidence"],
+        payload["bar_evidence"],
+        *payload["corporate_action_evidence"],
+    ):
+        relative = Path(str(evidence["receipt_relative_path"]))
+        source_receipt = args.input.parent / relative
+        destination_receipt = provider.delta_root / relative
+        raw_receipt = source_receipt.read_bytes()
+        destination_receipt.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination_receipt.open("xb") as handle:
+                handle.write(raw_receipt)
+        except FileExistsError:
+            if destination_receipt.read_bytes() != raw_receipt:
+                raise SystemExit(
+                    f"refusing to replace content-addressed receipt: {destination_receipt}"
+                )
     canonical = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     try:
         with destination.open("x", encoding="utf-8", newline="\n") as handle:

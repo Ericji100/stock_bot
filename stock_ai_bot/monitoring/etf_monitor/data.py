@@ -26,6 +26,7 @@ from stock_ai_bot.data_sources.etf_snapshot_registry import (
 )
 
 from .config import EtfMonitorConfig
+from .delta_pipeline import verify_delta_receipts
 from .errors import EtfMonitorDataError
 from .models import IntradayQuote, MarketDataSnapshot, MonitorPhase, stable_sha256
 
@@ -35,7 +36,6 @@ TWSE_MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 RAW_EXECUTION_BASIS = "UNADJUSTED_MAINBOARD_OHLCV"
 DAILY_DELTA_SCHEMA = "stock-ai-bot-etf-daily-delta-v1"
 FROZEN_MARKET_DATA_ROOT_ENV = "STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT"
-_OFFICIAL_HOSTS = ("https://www.twse.com.tw/", "https://openapi.twse.com.tw/")
 
 
 def _read_json(path: Path) -> Any:
@@ -95,30 +95,13 @@ def resolve_frozen_market_data_root(config: EtfMonitorConfig) -> Path:
     return (repository_root / config.frozen_market_data_relative_path).resolve()
 
 
-def _official_evidence(value: Any, field: str) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise EtfMonitorDataError(f"daily delta {field} evidence is missing")
-    endpoint = str(value.get("source_endpoint") or "")
-    receipt = str(value.get("receipt_sha256") or "").lower()
-    if not endpoint.startswith(_OFFICIAL_HOSTS):
-        raise EtfMonitorDataError(f"daily delta {field} source is not official TWSE")
-    if len(receipt) != 64 or any(character not in "0123456789abcdef" for character in receipt):
-        raise EtfMonitorDataError(f"daily delta {field} receipt SHA-256 is invalid")
-    try:
-        fetched_at = datetime.fromisoformat(str(value.get("fetched_at") or ""))
-    except ValueError as exc:
-        raise EtfMonitorDataError(f"daily delta {field} fetched_at is invalid") from exc
-    if fetched_at.tzinfo is None:
-        raise EtfMonitorDataError(f"daily delta {field} fetched_at must be timezone-aware")
-    return dict(value)
-
-
 def validate_daily_delta_payload(
     payload: Mapping[str, Any],
     *,
     expected_date: date,
     snapshot_id: str,
     manifest_sha256: str,
+    receipt_root: Path,
 ) -> dict[str, Any]:
     """Validate one immutable calendar-day delta before it can extend the frozen base."""
 
@@ -139,7 +122,6 @@ def validate_daily_delta_payload(
     hash_input = {key: value for key, value in payload.items() if key != "content_sha256"}
     if supplied_hash != stable_sha256(hash_input):
         raise EtfMonitorDataError("daily delta content SHA-256 mismatch")
-    _official_evidence(payload.get("calendar_evidence"), "calendar")
     status = str(payload.get("market_status") or "")
     if status not in {"OPEN", "CLOSED"}:
         raise EtfMonitorDataError("daily delta market_status must be OPEN or CLOSED")
@@ -150,7 +132,6 @@ def validate_daily_delta_payload(
     else:
         if not isinstance(bar, Mapping):
             raise EtfMonitorDataError("open daily delta has no complete bar")
-        _official_evidence(payload.get("bar_evidence"), "bar")
         for field in ("open", "high", "low", "close", "volume"):
             try:
                 value = Decimal(str(bar[field]))
@@ -171,6 +152,11 @@ def validate_daily_delta_payload(
         if not isinstance(event, Mapping):
             raise EtfMonitorDataError("daily delta corporate action is malformed")
         _parse_event(event)
+    verify_delta_receipts(
+        payload,
+        expected_date=expected_date,
+        receipt_root=receipt_root,
+    )
     return dict(payload)
 
 
@@ -189,6 +175,7 @@ def load_daily_delta_file(
         expected_date=expected_date,
         snapshot_id=snapshot_id,
         manifest_sha256=manifest_sha256,
+        receipt_root=path.parent,
     )
 
 
@@ -403,8 +390,9 @@ def _price(value: Any, field: str) -> Decimal:
 
 
 class OfficialTwseQuoteProvider:
-    def __init__(self, *, timeout_seconds: int = 15):
+    def __init__(self, *, timeout_seconds: int = 15, max_source_age_seconds: int = 300):
         self.timeout_seconds = timeout_seconds
+        self.max_source_age_seconds = max_source_age_seconds
 
     def _fetch(self, observed_at: datetime) -> IntradayQuote:
         try:
@@ -419,6 +407,8 @@ class OfficialTwseQuoteProvider:
         except (requests.RequestException, ValueError) as exc:
             raise EtfMonitorDataError("official TWSE MIS quote request failed") from exc
         rows = payload.get("msgArray") if isinstance(payload, Mapping) else None
+        if not isinstance(payload, Mapping) or payload.get("rtcode") != "0000" or payload.get("rtmessage") != "OK":
+            raise EtfMonitorDataError("official TWSE MIS status is not OK")
         if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], Mapping):
             raise EtfMonitorDataError("official TWSE MIS returned an unexpected quote set")
         row = rows[0]
@@ -430,6 +420,30 @@ class OfficialTwseQuoteProvider:
         except ValueError as exc:
             raise EtfMonitorDataError("official TWSE MIS returned an invalid trade date") from exc
         local_observed_at = observed_at.astimezone(TAIPEI)
+        query_time = payload.get("queryTime")
+        if not isinstance(query_time, Mapping):
+            raise EtfMonitorDataError("official TWSE MIS has no source query clock")
+        try:
+            source_timestamp = datetime.strptime(
+                f"{query_time['sysDate']} {query_time['sysTime']}",
+                "%Y%m%d %H:%M:%S",
+            ).replace(tzinfo=TAIPEI)
+            last_trade_at = datetime.strptime(
+                f"{raw_date} {row['t']}", "%Y%m%d %H:%M:%S"
+            ).replace(tzinfo=TAIPEI)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EtfMonitorDataError("official TWSE MIS source/trade clock is invalid") from exc
+        source_age = (local_observed_at - source_timestamp).total_seconds()
+        if source_age < -30 or source_age > self.max_source_age_seconds:
+            raise EtfMonitorDataError("official TWSE MIS response is stale")
+        if source_timestamp.date() != trade_date or trade_date != local_observed_at.date():
+            raise EtfMonitorDataError("official TWSE MIS clocks disagree on the trading date")
+        if str(row.get("ts") or "") != "0" or str(row.get("mt") or "") != "000000":
+            raise EtfMonitorDataError("official TWSE MIS market state is not the normal session state")
+        regular_close_confirmed = (
+            source_timestamp.time() >= time(13, 35)
+            and time(13, 25) <= last_trade_at.time() <= time(13, 35)
+        )
         raw = response.content
         return IntradayQuote(
             symbol="0050",
@@ -443,9 +457,13 @@ class OfficialTwseQuoteProvider:
             source="TWSE_MIS_OFFICIAL",
             source_endpoint=TWSE_MIS_URL,
             receipt_sha256=hashlib.sha256(raw).hexdigest(),
-            is_market_closed=(
-                trade_date == local_observed_at.date()
-                and local_observed_at.time() >= time(13, 30)
+            is_market_closed=regular_close_confirmed,
+            source_timestamp=source_timestamp,
+            last_trade_at=last_trade_at,
+            market_status=(
+                "REGULAR_SESSION_CLOSED_CONFIRMED"
+                if regular_close_confirmed
+                else "REGULAR_SESSION_OPEN_OR_UNCONFIRMED"
             ),
         )
 

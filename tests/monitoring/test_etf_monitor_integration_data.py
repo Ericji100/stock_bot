@@ -212,11 +212,63 @@ def test_registry_snapshot_complete_stale_and_provisional_paths(tmp_path) -> Non
 def _write_delta(
     root: Path, market_root: Path, day: date, *, status: str, close: str = "52"
 ) -> None:
-    evidence = {
-        "source_endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
-        "fetched_at": f"{day.isoformat()}T22:10:00+08:00",
-        "receipt_sha256": "d" * 64,
-    }
+    roc = f"{day.year - 1911}/{day.month:02d}/{day.day:02d}"
+    stock_raw = json.dumps({
+        "stat": "OK",
+        "data": [] if status == "CLOSED" else [[
+            roc, "130", "0", "51", "53", "50", close, "0", "1", ""
+        ]],
+    }).encode()
+    holidays = [{"Name": "new year", "Date": f"{day.year - 1911}0101"}]
+    if status == "CLOSED" and day.weekday() < 5:
+        holidays.append({
+            "Name": "closed", "Date": f"{day.year - 1911}{day.month:02d}{day.day:02d}"
+        })
+    holiday_raw = json.dumps(holidays).encode()
+    action_raw = b"[]"
+    dividend_raw = b"<table></table>"
+    receipts = root / "receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+
+    def evidence(raw, endpoint, request_url, parser):
+        digest = hashlib.sha256(raw).hexdigest()
+        (receipts / f"{digest}.raw").write_bytes(raw)
+        return {
+            "source_endpoint": endpoint,
+            "request_url": request_url,
+            "fetched_at": f"{day.isoformat()}T22:10:00+08:00",
+            "receipt_sha256": digest,
+            "receipt_relative_path": f"receipts/{digest}.raw",
+            "media_type": "application/json",
+            "parser": parser,
+        }
+
+    calendar_evidence = evidence(
+        holiday_raw,
+        "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
+        "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
+        "TWSE_HOLIDAY_SCHEDULE_V1",
+    )
+    bar_evidence = evidence(
+        stock_raw,
+        "https://www.twse.com.tw/exchangeReport/STOCK_DAY",
+        f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={day:%Y%m}01&stockNo=0050",
+        "TWSE_STOCK_DAY_V1",
+    )
+    corporate_action_evidence = [
+        evidence(
+            action_raw,
+            "https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL",
+            "https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL",
+            "TWSE_TWT48U_ALL_V1",
+        ),
+        evidence(
+            dividend_raw,
+            "https://www.twse.com.tw/zh/ETFortune/dividendList",
+            "https://www.twse.com.tw/zh/ETFortune/dividendList?startDate=2026&endDate=2026&stkNo=0050",
+            "TWSE_ETFORTUNE_DIVIDEND_LIST_V1",
+        ),
+    ]
     payload = {
         "schema_version": "stock-ai-bot-etf-daily-delta-v1",
         "symbol": "0050",
@@ -225,11 +277,12 @@ def _write_delta(
         "frozen_snapshot_id": "test",
         "frozen_manifest_sha256": "PLACEHOLDER",
         "market_status": status,
-        "calendar_evidence": evidence,
+        "calendar_evidence": calendar_evidence,
         "bar": None if status == "CLOSED" else {
             "open": "51", "high": "53", "low": "50", "close": close, "volume": "130"
         },
-        "bar_evidence": None if status == "CLOSED" else evidence,
+        "bar_evidence": bar_evidence,
+        "corporate_action_evidence": corporate_action_evidence,
         "corporate_actions": [],
     }
     registry = json.loads((market_root / "etf/registry.json").read_text(encoding="utf-8"))
@@ -256,6 +309,68 @@ def test_daily_delta_requires_every_calendar_day_and_accepts_verified_closed_day
     assert complete.metadata["delta_count"] == 2
 
 
+def test_daily_delta_rejects_forged_bar_even_with_recomputed_content_hash(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    _write_delta(delta_root, market_root, date(2026, 10, 22), status="OPEN")
+    path = delta_root / "2026-10-22.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["bar"]["close"] = "99"
+    payload["bar"]["high"] = "99"
+    payload.pop("content_sha256")
+    payload["content_sha256"] = stable_sha256(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    with pytest.raises(EtfMonitorDataError, match="differs from raw TWSE STOCK_DAY"):
+        provider.load_complete(date(2026, 10, 22))
+
+
+def test_daily_delta_rejects_tampered_raw_receipt_even_with_valid_looking_sha_field(
+    tmp_path,
+) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    day = date(2026, 10, 22)
+    _write_delta(delta_root, market_root, day, status="OPEN")
+    payload = json.loads((delta_root / f"{day}.json").read_text(encoding="utf-8"))
+    receipt = delta_root / payload["bar_evidence"]["receipt_relative_path"]
+    receipt.write_bytes(b'{"stat":"OK","data":[]}')
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    with pytest.raises(EtfMonitorDataError, match="raw receipt SHA-256 mismatch"):
+        provider.load_complete(day)
+
+
+def test_daily_delta_requires_both_raw_corporate_action_sources(tmp_path) -> None:
+    market_root = tmp_path / "market"
+    delta_root = tmp_path / "delta"
+    _write_registry(market_root)
+    day = date(2026, 10, 22)
+    _write_delta(delta_root, market_root, day, status="OPEN")
+    path = delta_root / f"{day}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["corporate_action_evidence"] = payload["corporate_action_evidence"][:1]
+    payload.pop("content_sha256")
+    payload["content_sha256"] = stable_sha256(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    provider = RegistrySnapshotProvider(
+        replace(load_etf_monitor_config(), enabled=True),
+        market_data_root=market_root,
+        delta_root=delta_root,
+    )
+    with pytest.raises(EtfMonitorDataError, match="both official corporate-action receipts"):
+        provider.load_complete(day)
+
+
 def test_official_quote_identity_and_close_gate(monkeypatch) -> None:
     class _Response:
         content = b"official-receipt"
@@ -265,6 +380,9 @@ def test_official_quote_identity_and_close_gate(monkeypatch) -> None:
 
         def json(self):
             return {
+                "rtcode": "0000",
+                "rtmessage": "OK",
+                "queryTime": {"sysDate": "20261021", "sysTime": "13:55:00"},
                 "msgArray": [
                     {
                         "c": "0050",
@@ -274,6 +392,9 @@ def test_official_quote_identity_and_close_gate(monkeypatch) -> None:
                         "l": "49.0",
                         "z": "51.0",
                         "v": "123456",
+                        "t": "13:30:00",
+                        "ts": "0",
+                        "mt": "000000",
                     }
                 ]
             }
@@ -288,4 +409,34 @@ def test_official_quote_identity_and_close_gate(monkeypatch) -> None:
     assert quote.trade_date == date(2026, 10, 21)
     assert quote.raw_last == Decimal("51.0")
     assert quote.is_market_closed is True
+    assert quote.market_status == "REGULAR_SESSION_CLOSED_CONFIRMED"
+    assert quote.source_timestamp == observed
     assert len(quote.receipt_sha256) == 64
+
+
+def test_official_quote_rejects_stale_source_clock(monkeypatch) -> None:
+    class _Response:
+        content = b"stale-official-receipt"
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "rtcode": "0000",
+                "rtmessage": "OK",
+                "queryTime": {"sysDate": "20261021", "sysTime": "13:40:00"},
+                "msgArray": [{
+                    "c": "0050", "d": "20261021", "o": "50", "h": "52",
+                    "l": "49", "z": "51", "v": "123456", "t": "13:30:00",
+                    "ts": "0", "mt": "000000",
+                }],
+            }
+
+    monkeypatch.setattr(
+        "stock_ai_bot.monitoring.etf_monitor.data.requests.get",
+        lambda *args, **kwargs: _Response(),
+    )
+    observed = datetime(2026, 10, 21, 13, 55, tzinfo=ZoneInfo("Asia/Taipei"))
+    with pytest.raises(EtfMonitorDataError, match="stale"):
+        OfficialTwseQuoteProvider()._fetch(observed)

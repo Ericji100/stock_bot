@@ -123,6 +123,15 @@ def test_formal_full_history_live_replay_exact_parity() -> None:
     assert result["live_adapter_daily_rows"] == 5093
     assert result["signal_rows"] == 183
     assert result["total_mismatch_count"] == 0
+    lifecycle = result["service_lifecycle"]
+    assert lifecycle["service_days"] == 5093
+    assert lifecycle["counts"]["events"] == 15279
+    assert lifecycle["counts"]["job_runs"] == 15279
+    assert lifecycle["pending_schedule_mismatch_count"] == 0
+    assert lifecycle["state_mismatch_count"] == 0
+    assert lifecycle["restart_mismatch_count"] == 0
+    assert lifecycle["future_rows_exposed"] == 0
+    assert lifecycle["telegram_send_attempts"] == 0
     assert result["live_adapter_daily_state_sha256"] == (
         "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f"
     )

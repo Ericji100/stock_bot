@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import json
+import sqlite3
+import tempfile
+from contextlib import closing
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -21,9 +26,12 @@ from backtests.dual_ma.models import Bar
 
 from stock_ai_bot.data_sources.etf_snapshot_registry import resolve_snapshot, validate_snapshot
 
+from .config import load_etf_monitor_config
 from .core import ACCEPTED_START_DATE, AcceptedFinalV17Core, RESEARCH_SLIPPAGE_BPS, STRATEGY_CORE_ID
 from .errors import EtfMonitorDataError
-from .models import MarketDataSnapshot, canonical_json
+from .models import AcceptedCoreState, MarketDataSnapshot, MonitorPhase, accepted_core_payload, canonical_json, stable_sha256
+from .service import EtfMonitorService
+from .store import EtfMonitorStore
 
 
 FINAL_ROOT = (
@@ -207,6 +215,193 @@ def _compare_table(
     }
 
 
+def _run_causal_service_lifecycle(
+    *,
+    raw_rows: list[dict[str, Any]],
+    events: tuple[Any, ...],
+    end: date,
+) -> tuple[list[AcceptedCoreState], dict[str, Any], list[dict[str, Any]]]:
+    """Drive the real service phases while the accepted engine reveals one day at a time."""
+
+    current: dict[str, Any] = {}
+
+    class ReplayDataProvider:
+        async def load(self, phase: MonitorPhase, as_of: date) -> MarketDataSnapshot:
+            state = current["state"]
+            prefix = current["prefix"]
+            if as_of != state.as_of or prefix[-1]["date"] != as_of:
+                raise EtfMonitorDataError("service replay attempted non-current/future data access")
+            complete = phase is MonitorPhase.RECONCILIATION
+            kind = "complete" if complete else "provisional"
+            digest = stable_sha256({"day": as_of, "kind": kind, "rows": len(prefix)})
+            return MarketDataSnapshot(
+                symbol="0050",
+                as_of=as_of,
+                raw_rows=prefix,
+                corporate_actions=tuple(
+                    event for event in events if event.event_date <= as_of
+                ),
+                source=f"FROZEN_CAUSAL_SERVICE_REPLAY_{kind.upper()}",
+                price_basis="UNADJUSTED_MAINBOARD_OHLCV",
+                snapshot_id=f"causal-{as_of.isoformat()}-{kind}",
+                snapshot_version="frozen-service-replay-v1",
+                snapshot_sha256=digest,
+                fetched_at=datetime(
+                    as_of.year,
+                    as_of.month,
+                    as_of.day,
+                    22 if complete else 13,
+                    0 if complete else 55,
+                    tzinfo=ZoneInfo("Asia/Taipei"),
+                ),
+                is_complete=complete,
+                is_provisional=not complete,
+            )
+
+    class ReplayCore:
+        def evaluate(self, snapshot: MarketDataSnapshot) -> AcceptedCoreState:
+            state = current["state"]
+            if snapshot.as_of != state.as_of or snapshot.latest_date != state.as_of:
+                raise EtfMonitorDataError("service core replay crossed its causal boundary")
+            return state
+
+    config = replace(
+        load_etf_monitor_config(),
+        enabled=True,
+        daily_shadow_status=False,
+    )
+    states: list[AcceptedCoreState] = []
+    state_mismatches = 0
+    restart_checks = 0
+    restart_mismatches = 0
+    prior_day: date | None = None
+    action_days = {event.event_date for event in events}
+
+    with tempfile.TemporaryDirectory(prefix="etf-causal-service-replay-") as temp:
+        database = Path(temp) / "monitor.sqlite3"
+        store = EtfMonitorStore(database)
+        provider = ReplayDataProvider()
+
+        def make_service(active_store: EtfMonitorStore) -> EtfMonitorService:
+            return EtfMonitorService(
+                config=config,
+                store=active_store,
+                data_provider=provider,
+                router=None,
+                core=ReplayCore(),
+                trading_day_predicate=lambda _day: True,
+            )
+
+        service = make_service(store)
+        loop = asyncio.new_event_loop()
+
+        def on_state(
+            state: AcceptedCoreState,
+            prefix: tuple[dict[str, Any], ...],
+        ) -> None:
+            nonlocal service, store, state_mismatches, restart_checks
+            nonlocal restart_mismatches, prior_day
+            current["state"] = state
+            current["prefix"] = prefix
+            states.append(state)
+            day = state.as_of
+            for phase, hour, minute in (
+                (MonitorPhase.PREVIEW, 12, 45),
+                (MonitorPhase.DECISION, 13, 55),
+            ):
+                outcome = loop.run_until_complete(service.run(
+                    phase,
+                    now=datetime(day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo("Asia/Taipei")),
+                ))
+                if outcome.status != "COMPLETED":
+                    raise EtfMonitorDataError(
+                        f"causal service replay {phase.value} failed on {day}: {outcome.status}"
+                    )
+            persisted = store.latest_state()
+            expected = json.loads(canonical_json(accepted_core_payload(state)))
+            actual = None if persisted is None else json.loads(str(persisted["core_state_json"]))["core"]
+            if actual != expected:
+                state_mismatches += 1
+
+            restart_due = (
+                state.decision.value != "HOLD"
+                or day in action_days
+                or prior_day is None
+                or day.year != prior_day.year
+            )
+            if restart_due:
+                restart_checks += 1
+                before = store.latest_state()
+                store = EtfMonitorStore(database)
+                store.recover_after_restart()
+                service = make_service(store)
+                after = store.latest_state()
+                if before != after:
+                    restart_mismatches += 1
+
+            outcome = loop.run_until_complete(service.run(
+                MonitorPhase.RECONCILIATION,
+                now=datetime(day.year, day.month, day.day, 22, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+            ))
+            if outcome.status != "COMPLETED":
+                raise EtfMonitorDataError(
+                    f"causal service replay reconciliation failed on {day}: {outcome.status}"
+                )
+            persisted = store.latest_state()
+            actual = None if persisted is None else json.loads(str(persisted["core_state_json"]))["core"]
+            if actual != expected:
+                state_mismatches += 1
+            prior_day = day
+
+        try:
+            AcceptedFinalV17Core().stream_causal_history(
+                raw_rows=raw_rows,
+                corporate_actions=events,
+                end=end,
+                on_state=on_state,
+            )
+        finally:
+            loop.close()
+
+        with closing(sqlite3.connect(database)) as connection:
+            connection.row_factory = sqlite3.Row
+            counts = {
+                table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in (
+                    "events", "outbox", "job_runs", "corrections",
+                    "corporate_actions", "pending_actions",
+                )
+            }
+            non_succeeded_jobs = connection.execute(
+                "SELECT COUNT(*) FROM job_runs WHERE status != 'SUCCEEDED'"
+            ).fetchone()[0]
+            non_pending_outbox = connection.execute(
+                "SELECT COUNT(*) FROM outbox WHERE status != 'PENDING' OR attempts != 0"
+            ).fetchone()[0]
+            pending_rows = [
+                dict(row) for row in connection.execute(
+                    "SELECT * FROM pending_actions ORDER BY signal_date, action_id"
+                )
+            ]
+        audit = {
+            "service_days": len(states),
+            "phase_sequence": [
+                MonitorPhase.PREVIEW.value,
+                MonitorPhase.DECISION.value,
+                MonitorPhase.RECONCILIATION.value,
+            ],
+            "counts": counts,
+            "non_succeeded_job_runs": non_succeeded_jobs,
+            "outbox_delivery_attempts_or_non_pending": non_pending_outbox,
+            "state_mismatch_count": state_mismatches,
+            "restart_checks": restart_checks,
+            "restart_mismatch_count": restart_mismatches,
+            "future_rows_exposed": 0,
+            "telegram_send_attempts": 0,
+        }
+    return states, audit, pending_rows
+
+
 def run_full_live_replay_parity(
     *,
     market_data_root: Path,
@@ -232,7 +427,11 @@ def run_full_live_replay_parity(
         fetched_at=datetime(2026, 9, 30, 23, 59, tzinfo=ZoneInfo("Asia/Taipei")),
         is_complete=True,
     )
-    states = list(AcceptedFinalV17Core().iter_history(monitor_snapshot))
+    states, service_lifecycle, pending_rows = _run_causal_service_lifecycle(
+        raw_rows=raw_rows,
+        events=events,
+        end=as_of,
+    )
     if not states or states[0].as_of != ACCEPTED_START_DATE or states[-1].as_of != as_of:
         raise EtfMonitorDataError("LIVE adapter full-history coverage is incomplete")
     if any(
@@ -266,6 +465,65 @@ def run_full_live_replay_parity(
         indicator_by_date={row["date"]: row for row in indicators},
         timing=execution.TIMING_NEXT_OPEN,
     )
+    pending_by_key = {
+        (
+            date.fromisoformat(str(row["signal_date"])),
+            str(row["leg_id"] or ""),
+            str(row["action"]),
+        ): row
+        for row in pending_rows
+    }
+    pending_mismatches: list[dict[str, Any]] = []
+    for expected in scheduling_audit:
+        action = "BUY_NEXT_OPEN" if expected.get("role") == "MOTHER" else "SELL_NEXT_OPEN"
+        key = (expected["signal_date"], str(expected.get("leg_id") or ""), action)
+        actual = pending_by_key.get(key)
+        matches = actual is not None
+        if matches and expected["status"] == "SCHEDULED":
+            matches = (
+                actual["status"] == "FILLED_SHADOW_NEXT_OPEN"
+                and actual["fill_date"] == expected["fill_date"].isoformat()
+                and Decimal(str(actual["fill_price"])) == Decimal(str(expected["fill_reference_price"]))
+            )
+        elif matches:
+            matches = (
+                actual["status"] == "PENDING_NEXT_SESSION_OPEN"
+                and actual["fill_date"] is None
+                and actual["fill_price"] is None
+            )
+        if not matches:
+            pending_mismatches.append({
+                "signal_date": expected["signal_date"],
+                "leg_id": expected.get("leg_id"),
+                "role": expected.get("role"),
+                "expected_status": expected["status"],
+                "actual": actual,
+            })
+    expected_service_counts = {
+        "events": len(states) * 3,
+        "job_runs": len(states) * 3,
+        "corrections": 0,
+        "corporate_actions": len(events),
+        "pending_actions": len(scheduling_audit),
+        "outbox": len(states) * 2 + len(scheduling_audit),
+    }
+    service_count_mismatches = {
+        key: {"actual": service_lifecycle["counts"].get(key), "expected": value}
+        for key, value in expected_service_counts.items()
+        if service_lifecycle["counts"].get(key) != value
+    }
+    service_lifecycle.update({
+        "expected_counts": expected_service_counts,
+        "count_mismatches": service_count_mismatches,
+        "pending_schedule_mismatch_count": len(pending_mismatches),
+        "first_pending_schedule_mismatches": pending_mismatches[:5],
+        "filled_shadow_next_open": sum(
+            row["status"] == "FILLED_SHADOW_NEXT_OPEN" for row in pending_rows
+        ),
+        "still_pending_at_cutoff": sum(
+            row["status"] == "PENDING_NEXT_SESSION_OPEN" for row in pending_rows
+        ),
+    })
     replay = replay_cash_safe_strategy(
         package=package,
         run=delayed,
@@ -352,9 +610,23 @@ def run_full_live_replay_parity(
         }
         for state in states
     ]
-    mismatch_count = signal_mismatch_count + sum(row["mismatch_count"] for row in comparisons)
+    lifecycle_mismatch_count = (
+        len(service_count_mismatches)
+        + len(pending_mismatches)
+        + int(service_lifecycle["non_succeeded_job_runs"])
+        + int(service_lifecycle["outbox_delivery_attempts_or_non_pending"])
+        + int(service_lifecycle["state_mismatch_count"])
+        + int(service_lifecycle["restart_mismatch_count"])
+        + int(service_lifecycle["future_rows_exposed"])
+        + int(service_lifecycle["telegram_send_attempts"])
+    )
+    mismatch_count = (
+        signal_mismatch_count
+        + sum(row["mismatch_count"] for row in comparisons)
+        + lifecycle_mismatch_count
+    )
     result = {
-        "schema_version": "stock-ai-bot-etf-live-replay-parity-v1",
+        "schema_version": "stock-ai-bot-etf-live-replay-parity-v2",
         "status": "PASS_EXACT" if mismatch_count == 0 else "FAIL",
         "frozen_snapshot_id": registry_snapshot.snapshot_id,
         "frozen_manifest_sha256": registry_snapshot.package_manifest_sha256,
@@ -370,10 +642,12 @@ def run_full_live_replay_parity(
             row.get("status") == "NO_NEXT_SESSION_BEFORE_CUTOFF"
             for row in scheduling_audit
         ),
+        "service_lifecycle": service_lifecycle,
         "comparisons": comparisons,
         "total_mismatch_count": mismatch_count,
         "causality": {
-            "mode": "ONE_OFFICIAL_SESSION_AT_A_TIME_THROUGH_LIVE_ADAPTER",
+            "mode": "ONE_OFFICIAL_SESSION_AT_A_TIME_THROUGH_SERVICE_PHASES",
+            "service_phase_order": "12:45_PREVIEW_TO_13:55_DECISION_TO_RESTART_CHECK_TO_22:00_RECONCILIATION_TO_NEXT_OPEN",
             "strictly_increasing_dates": True,
             "future_rows_exposed_to_daily_output": False,
         },

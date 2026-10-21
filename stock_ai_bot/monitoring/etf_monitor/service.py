@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
@@ -136,6 +137,17 @@ class EtfMonitorService:
                     accounting_validation = await asyncio.to_thread(
                         self.accounting.validate, snapshot
                     )
+                shadow_fills: tuple[Mapping[str, Any], ...] = ()
+                if phase in {MonitorPhase.PREVIEW, MonitorPhase.DECISION}:
+                    current_row = snapshot.raw_row_for(trading_date)
+                    if current_row is None:
+                        raise ValueError("current trading-day raw open is unavailable")
+                    shadow_fills = await asyncio.to_thread(
+                        self.store.settle_pending_actions_at_open,
+                        trading_date=trading_date,
+                        raw_open=Decimal(str(current_row["open"])),
+                        snapshot_id=snapshot.snapshot_id,
+                    )
             except Exception as exc:
                 outcome = await self._data_unavailable(
                     phase=phase,
@@ -148,11 +160,13 @@ class EtfMonitorService:
             previous = self.store.latest_state()
             correction_of: str | None = None
             correction_reason: str | None = None
+            prior_same_day_event_id: str | None = None
             if (
                 phase is MonitorPhase.RECONCILIATION
                 and previous is not None
                 and str(previous["as_of"]) == trading_date.isoformat()
             ):
+                prior_same_day_event_id = str(previous["event_id"])
                 prior_payload = json.loads(str(previous["core_state_json"]))
                 current_payload = {
                     "core": json.loads(canonical_json(accepted_core_payload(core)))
@@ -182,10 +196,10 @@ class EtfMonitorService:
                 and not self.config.daily_shadow_status
             )
             pending_transition = None
-            if correction_of is not None:
+            if prior_same_day_event_id is not None:
                 pending_transition = self.store.describe_pending_transition(
-                    original_event_id=correction_of,
-                    new_decision=core.decision,
+                    original_event_id=prior_same_day_event_id,
+                    core=core,
                 )
             body = render_core_message(
                 phase=phase,
@@ -209,6 +223,7 @@ class EtfMonitorService:
                 "correction_of": correction_of,
                 "correction_reason": correction_reason,
                 "pending_transition": pending_transition,
+                "shadow_next_open_fills": shadow_fills,
             }
             self.store.append_event_with_outbox(
                 event_id=event_id,
@@ -230,7 +245,7 @@ class EtfMonitorService:
                 pending_transition = self.store.reconcile_pending_action(
                     core=core,
                     event_id=event_id,
-                    original_event_id=correction_of,
+                    original_event_id=prior_same_day_event_id,
                 )
             if correction_of is not None:
                 self.store.append_correction(
@@ -248,7 +263,10 @@ class EtfMonitorService:
                 status="CORRECTED" if correction_of else "COMPLETED",
                 event_ids=(event_id,),
                 decision=core.decision,
-                metadata={"accounting": accounting_summary},
+                metadata={
+                    "accounting": accounting_summary,
+                    "shadow_next_open_fills": shadow_fills,
+                },
             )
         except EtfMonitorRoutingError as exc:
             self.store.finish_job(

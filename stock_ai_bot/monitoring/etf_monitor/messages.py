@@ -46,7 +46,11 @@ def render_core_message(
             f"\n待執行指令：{transition.get('old_action', 'UNKNOWN')} → "
             f"{transition.get('new_action', core.decision.value)}；"
             f"處理={transition.get('outcome', 'UNKNOWN')}；"
-            f"舊 action_id={transition.get('old_action_id') or '無'}。"
+            f"舊 action_id={transition.get('old_action_id') or '無'}；"
+            f"leg={transition.get('old_leg_id') or '無'} → "
+            f"{transition.get('new_leg_id') or '無'}；"
+            f"參考價={transition.get('old_signal_reference_price') or '無'} → "
+            f"{transition.get('new_signal_reference_price') or '無'}。"
         )
     provisional = "是" if snapshot.is_provisional else "否"
     return (

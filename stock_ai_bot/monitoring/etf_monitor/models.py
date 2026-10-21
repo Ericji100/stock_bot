@@ -81,6 +81,9 @@ class IntradayQuote:
     source_endpoint: str
     receipt_sha256: str
     is_market_closed: bool = False
+    source_timestamp: datetime | None = None
+    last_trade_at: datetime | None = None
+    market_status: str = "UNKNOWN"
 
 
 @dataclass(frozen=True)

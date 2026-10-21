@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
@@ -19,7 +20,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _utc_now() -> str:
@@ -89,6 +90,8 @@ class EtfMonitorStore:
                     leg_id TEXT,
                     signal_reference_price TEXT,
                     fill_price TEXT,
+                    fill_date TEXT,
+                    fill_snapshot_id TEXT,
                     status TEXT NOT NULL,
                     source_event_id TEXT NOT NULL,
                     superseded_by_event_id TEXT,
@@ -167,6 +170,8 @@ class EtfMonitorStore:
                 ("superseded_by_event_id", "TEXT"),
                 ("superseded_at", "TEXT"),
                 ("supersede_reason", "TEXT"),
+                ("fill_date", "TEXT"),
+                ("fill_snapshot_id", "TEXT"),
             ):
                 if name not in columns:
                     connection.execute(
@@ -345,7 +350,7 @@ class EtfMonitorStore:
     def save_pending_action(self, core: AcceptedCoreState, *, event_id: str) -> None:
         if core.decision not in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN}:
             return
-        action_id = f"{core.strategy}:{core.as_of.isoformat()}:{core.decision.value}"
+        action_id = f"pending:{event_id}"
         now = _utc_now()
         with self.transaction() as connection:
             connection.execute(
@@ -373,16 +378,37 @@ class EtfMonitorStore:
         self,
         *,
         original_event_id: str,
-        new_decision: Decision,
+        core: AcceptedCoreState,
     ) -> Mapping[str, Any]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT * FROM pending_actions WHERE source_event_id=? "
                 "AND status='PENDING_NEXT_SESSION_OPEN' ORDER BY created_at DESC LIMIT 1",
                 (original_event_id,),
             ).fetchone()
         old_action = "HOLD" if row is None else str(row["action"])
+        new_decision = core.decision
         new_action = new_decision.value
+        old_leg_id = None if row is None else row["leg_id"]
+        old_reference = None if row is None else row["signal_reference_price"]
+        new_leg_id = (
+            None
+            if core.signal_transaction is None
+            else str(core.signal_transaction.get("leg_id") or "")
+        )
+        new_reference = (
+            None
+            if core.signal_reference_price is None
+            else str(core.signal_reference_price)
+        )
+        details_changed = row is not None and (
+            old_leg_id != new_leg_id
+            or (
+                old_reference is None
+                or new_reference is None
+                or Decimal(str(old_reference)) != Decimal(str(new_reference))
+            )
+        )
         if row is None:
             outcome = (
                 "UNCHANGED"
@@ -390,7 +416,7 @@ class EtfMonitorStore:
                 else "CREATED_BY_RECONCILIATION"
             )
         elif new_action == old_action:
-            outcome = "UNCHANGED"
+            outcome = "SUPERSEDED_BY_RECONCILIATION" if details_changed else "UNCHANGED"
         elif new_decision is Decision.HOLD:
             outcome = "CANCELLED_BY_RECONCILIATION"
         else:
@@ -400,6 +426,10 @@ class EtfMonitorStore:
             "new_action": new_action,
             "outcome": outcome,
             "old_action_id": None if row is None else str(row["action_id"]),
+            "old_leg_id": old_leg_id,
+            "new_leg_id": new_leg_id,
+            "old_signal_reference_price": old_reference,
+            "new_signal_reference_price": new_reference,
         }
 
     def reconcile_pending_action(
@@ -418,7 +448,7 @@ class EtfMonitorStore:
             }
         transition = dict(self.describe_pending_transition(
             original_event_id=original_event_id,
-            new_decision=core.decision,
+            core=core,
         ))
         now = _utc_now()
         with self.transaction() as connection:
@@ -444,9 +474,9 @@ class EtfMonitorStore:
                     ),
                 )
             if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN} and (
-                old is None or str(old["action"]) != core.decision.value
+                old is None or transition["outcome"] != "UNCHANGED"
             ):
-                action_id = f"{core.strategy}:{core.as_of.isoformat()}:{core.decision.value}"
+                action_id = f"pending:{event_id}"
                 connection.execute(
                     "INSERT INTO pending_actions(action_id, signal_date, action, leg_id, "
                     "signal_reference_price, fill_price, status, source_event_id, "
@@ -469,6 +499,52 @@ class EtfMonitorStore:
                 )
         return transition
 
+    def settle_pending_actions_at_open(
+        self,
+        *,
+        trading_date: date,
+        raw_open: Decimal,
+        snapshot_id: str,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Atomically record a shadow fill at the first observed later-session raw open."""
+
+        if raw_open <= 0:
+            raise EtfMonitorStateError("shadow next-open fill requires a positive raw open")
+        now = _utc_now()
+        with self.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM pending_actions WHERE status='PENDING_NEXT_SESSION_OPEN' "
+                "AND signal_date < ? ORDER BY signal_date, created_at, action_id",
+                (trading_date.isoformat(),),
+            ).fetchall()
+            if len(rows) > 1:
+                raise EtfMonitorStateError(
+                    "multiple prior-session pending actions require manual reconciliation"
+                )
+            for row in rows:
+                connection.execute(
+                    "UPDATE pending_actions SET status='FILLED_SHADOW_NEXT_OPEN', "
+                    "fill_price=?, fill_date=?, fill_snapshot_id=?, updated_at=? "
+                    "WHERE action_id=? AND status='PENDING_NEXT_SESSION_OPEN'",
+                    (
+                        str(raw_open),
+                        trading_date.isoformat(),
+                        snapshot_id,
+                        now,
+                        row["action_id"],
+                    ),
+                )
+            return tuple(
+                {
+                    **dict(row),
+                    "status": "FILLED_SHADOW_NEXT_OPEN",
+                    "fill_price": str(raw_open),
+                    "fill_date": trading_date.isoformat(),
+                    "fill_snapshot_id": snapshot_id,
+                }
+                for row in rows
+            )
+
     def record_corporate_actions(self, snapshot: MarketDataSnapshot) -> int:
         count = 0
         with self.transaction() as connection:
@@ -490,12 +566,12 @@ class EtfMonitorStore:
         return count
 
     def latest_state(self) -> Mapping[str, Any] | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute("SELECT * FROM monitor_state WHERE singleton=1").fetchone()
             return None if row is None else dict(row)
 
     def event(self, event_id: str) -> Mapping[str, Any] | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute("SELECT * FROM events WHERE event_id=?", (event_id,)).fetchone()
             return None if row is None else dict(row)
 
@@ -606,7 +682,7 @@ class EtfMonitorStore:
             )
 
     def routing_smoke_sent(self) -> bool:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             return connection.execute(
                 "SELECT 1 FROM routing_smoke WHERE singleton=1"
             ).fetchone() is not None

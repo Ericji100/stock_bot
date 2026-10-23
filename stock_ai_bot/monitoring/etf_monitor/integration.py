@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,6 +28,7 @@ RETRY_DELAYS_SECONDS = {
 STARTUP_RECOVERY_TIMEOUT_SECONDS = 30
 STARTUP_BACKFILL_TIMEOUT_SECONDS = 20 * 60
 STARTUP_ROUTE_TIMEOUT_SECONDS = 30
+SHUTDOWN_TIMEOUT_SECONDS = 5
 
 
 @dataclass
@@ -40,9 +41,11 @@ class EtfMonitorRuntime:
     jobs: tuple[Any, ...] = ()
     startup_status: str = "PENDING"
     startup_task: Any | None = None
+    background_tasks: set[asyncio.Task[Any]] = field(default_factory=set)
+    shutting_down: bool = False
 
     async def dispatch(self, phase: MonitorPhase) -> None:
-        if self.startup_status != "READY":
+        if self.shutting_down or self.startup_status != "READY":
             return
         lock = self.locks[phase]
         if lock.locked():
@@ -78,13 +81,48 @@ async def _scheduled_job(context: Any) -> None:
     phase = MonitorPhase(str(context.job.data["phase"]))
     if (
         not isinstance(runtime, EtfMonitorRuntime)
+        or runtime.shutting_down
         or runtime.startup_status != "READY"
     ):
         return
-    context.application.create_task(
+    _create_runtime_task(
+        context.application,
+        runtime,
         runtime.dispatch(phase),
         name=JOB_NAMES[phase],
     )
+
+
+def _create_runtime_task(
+    application: Any,
+    runtime: EtfMonitorRuntime,
+    coroutine: Any,
+    *,
+    name: str,
+) -> asyncio.Task[Any]:
+    """Own ETF tasks across post_init/start/stop, without PTB pre-start tasks.
+
+    PTB only joins Application.create_task tasks created while running. ETF
+    tasks have an explicit, bounded shutdown hook instead, including startup
+    tasks created in post_init before Application.start.
+    """
+    try:
+        task = asyncio.create_task(coroutine, name=name)
+    except BaseException:
+        coroutine.close()
+        raise
+    runtime.background_tasks.add(task)
+
+    def completed(finished: asyncio.Task[Any]) -> None:
+        runtime.background_tasks.discard(finished)
+        if finished.cancelled():
+            return
+        error = finished.exception()
+        if error is not None:
+            _disable_runtime(application, runtime, stage="background task", exc=error)
+
+    task.add_done_callback(completed)
+    return task
 
 
 def _remove_jobs_safely(application: Any, jobs: tuple[Any, ...] | list[Any]) -> None:
@@ -127,13 +165,45 @@ def _disable_runtime(
     exc: BaseException,
 ) -> None:
     runtime.startup_status = "DISABLED"
-    _remove_runtime_safely(application, runtime)
+    current = asyncio.current_task()
+    remaining = {
+        task for task in runtime.background_tasks
+        if not task.done() and task is not current
+    }
+    for task in remaining:
+        task.cancel()
+    # Keep ownership reachable by the shutdown hook until siblings are joined.
+    if not remaining:
+        _remove_runtime_safely(application, runtime)
     _remove_jobs_safely(application, runtime.jobs)
+    _report_runtime_status(application, runtime)
     print(
         f"[ETF 0050 final-v1.7] {stage} disabled ETF runtime: "
         f"{type(exc).__name__}",
         flush=True,
     )
+
+
+def _report_runtime_status(application: Any, runtime: EtfMonitorRuntime) -> None:
+    """Expose ETF readiness separately from the original Bot's liveness."""
+    try:
+        from stock_ai_bot.monitoring.bot_runtime_health import update_schedule_health
+
+        update_schedule_health(
+            job_queue_available=bool(application.job_queue),
+            etf_monitor={
+                "status": runtime.startup_status,
+                "updated_at": datetime.now(ZoneInfo(runtime.config.timezone)).isoformat(),
+                "mode": runtime.config.mode,
+                "schedule": {
+                    "preview": runtime.config.schedule.preview.isoformat(),
+                    "decision": runtime.config.schedule.decision.isoformat(),
+                    "reconciliation": runtime.config.schedule.reconciliation.isoformat(),
+                },
+            },
+        )
+    except Exception as exc:
+        print(f"[ETF 0050] health status write failed: {type(exc).__name__}", flush=True)
 
 
 def register_etf_monitor(application: Any, *, config_path: Any = None) -> EtfMonitorRuntime | None:
@@ -306,8 +376,10 @@ async def _initialize_runtime(application: Any, runtime: EtfMonitorRuntime) -> N
             exc=exc,
         )
         return
-    if application.bot_data.get(RUNTIME_KEY) is runtime:
+    if not runtime.shutting_down and application.bot_data.get(RUNTIME_KEY) is runtime:
         runtime.startup_status = "READY"
+        _report_runtime_status(application, runtime)
+        print("[0050 趨勢策略] 背景準備完成，監控排程已就緒", flush=True)
     else:
         runtime.startup_status = "DISABLED"
 
@@ -316,11 +388,18 @@ async def initialize_etf_monitor(application: Any) -> None:
     runtime = application.bot_data.get(RUNTIME_KEY)
     if not isinstance(runtime, EtfMonitorRuntime):
         return
-    if runtime.startup_status != "PENDING" or runtime.startup_task is not None:
+    if (
+        runtime.shutting_down
+        or runtime.startup_status != "PENDING"
+        or runtime.startup_task is not None
+    ):
         return
     coroutine = _initialize_runtime(application, runtime)
+    _report_runtime_status(application, runtime)
     try:
-        runtime.startup_task = application.create_task(
+        runtime.startup_task = _create_runtime_task(
+            application,
+            runtime,
             coroutine,
             name="etf-0050-final-v1.7-startup",
         )
@@ -332,3 +411,40 @@ async def initialize_etf_monitor(application: Any) -> None:
             stage="startup scheduling",
             exc=exc,
         )
+
+
+async def shutdown_etf_monitor(application: Any) -> None:
+    """Stop only ETF work; safe from both post_stop and post_shutdown.
+
+    SQLite transactions/immutable imports remain durable. A synchronous network
+    call already running in a daemon thread cannot be killed by cancellation;
+    the cancelled coroutine cannot advance to routing or READY afterwards.
+    Abrupt process termination still relies on the existing restart recovery.
+    """
+    runtime = application.bot_data.get(RUNTIME_KEY)
+    if not isinstance(runtime, EtfMonitorRuntime):
+        return
+    runtime.shutting_down = True
+    runtime.startup_status = "STOPPING"
+    _remove_jobs_safely(application, runtime.jobs)
+    current = asyncio.current_task()
+    tasks = {task for task in runtime.background_tasks if task is not current and not task.done()}
+    if (
+        runtime.startup_task is not None
+        and runtime.startup_task is not current
+        and not runtime.startup_task.done()
+    ):
+        tasks.add(runtime.startup_task)
+    for task in tasks:
+        task.cancel()
+    pending: set[asyncio.Task[Any]] = set()
+    if tasks:
+        _, pending = await asyncio.wait(tasks, timeout=SHUTDOWN_TIMEOUT_SECONDS)
+    runtime.startup_status = "STOPPED_WITH_PENDING_TASKS" if pending else "STOPPED"
+    _report_runtime_status(application, runtime)
+    if pending:
+        # Do not hide incomplete shutdown or wait indefinitely on bad dependencies.
+        print("[ETF 0050] shutdown timed out; ETF remains disabled", flush=True)
+    else:
+        _remove_runtime_safely(application, runtime)
+        print("[0050 趨勢策略] 背景工作已停止", flush=True)

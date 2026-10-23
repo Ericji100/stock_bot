@@ -84,6 +84,7 @@ from stock_ai_bot.monitoring.radar_service import (
 from stock_ai_bot.monitoring.etf_monitor.integration import (
     initialize_etf_monitor,
     register_etf_monitor,
+    shutdown_etf_monitor,
 )
 
 from stock_ai_bot.common.progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
@@ -2519,6 +2520,8 @@ def main():
         .token(config['api_token'])
         .request(req)
         .post_init(post_init)
+        .post_stop(shutdown_etf_monitor)
+        .post_shutdown(shutdown_etf_monitor)
         .concurrent_updates(True)
         .build()
     )

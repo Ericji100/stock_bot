@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -44,6 +45,9 @@ class FailClosedTelegramRouter:
             raise EtfMonitorRoutingError("ETF outbox target does not match dedicated chat")
         try:
             await self.verify_route()
+        except asyncio.CancelledError:
+            self.store.mark_outbox_retry(item.event_id, "SHUTDOWN_BEFORE_SEND")
+            raise
         except Exception:
             self.store.mark_outbox_retry(item.event_id, "ROUTE_VERIFICATION_FAILED_BEFORE_SEND")
             raise
@@ -56,6 +60,9 @@ class FailClosedTelegramRouter:
             message_id = getattr(message, "message_id", None)
             if message_id is None:
                 raise EtfMonitorRoutingError("Telegram send returned no message id")
+        except asyncio.CancelledError:
+            self.store.mark_outbox_uncertain(item.event_id, "SEND_CANCELLED_DELIVERY_UNCERTAIN")
+            raise
         except Exception as exc:
             self.store.mark_outbox_uncertain(item.event_id, _safe_error(exc))
             if isinstance(exc, EtfMonitorRoutingError):

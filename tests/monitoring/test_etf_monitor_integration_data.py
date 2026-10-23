@@ -449,10 +449,11 @@ def test_hung_startup_updater_is_bounded_and_jobs_stay_noop(
     assert "startup disabled ETF runtime: TimeoutError" in capsys.readouterr().out
 
 
-def test_startup_task_scheduling_failure_disables_etf(tmp_path, capsys) -> None:
-    class _AppWithFailedTask(_App):
-        def create_task(self, coroutine, *, name=None):
-            raise RuntimeError("private task scheduler detail")
+def test_startup_task_scheduling_failure_disables_etf(tmp_path, monkeypatch, capsys) -> None:
+    def fail_task(*args, **kwargs):
+        raise RuntimeError("private task scheduler detail")
+
+    monkeypatch.setattr(integration, "_create_runtime_task", fail_task)
 
     class _Store:
         def recover_after_restart(self):
@@ -462,7 +463,7 @@ def test_startup_task_scheduling_failure_disables_etf(tmp_path, capsys) -> None:
         def ensure_through(self, day):
             raise AssertionError("must not run")
 
-    app = _AppWithFailedTask()
+    app = _App()
     job = _Job(lambda _: None, {"name": "startup", "data": {}})
     runtime = _startup_runtime(
         store=_Store(),

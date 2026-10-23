@@ -104,10 +104,16 @@ def fetch_fugle_history(symbol: str, start_date: date, end_date: date, frequency
         return pd.DataFrame()
 
     _FUGLE_LIMITER.record_use("historical")
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        _FUGLE_HEALTH.record_failure("fugle", "Malformed historical candle response")
+        return pd.DataFrame()
+    # A valid empty result is symbol/range-specific, not a provider outage.
     _FUGLE_HEALTH.record_success("fugle")
 
     rows = []
     for item in payload.get("data", []):
+        if not isinstance(item, dict) or not isinstance(item.get("date"), str):
+            continue
         timestamp = pd.to_datetime(item.get("date"), errors="coerce")
         if pd.isna(timestamp):
             continue
@@ -132,4 +138,13 @@ def fetch_fugle_history(symbol: str, start_date: date, end_date: date, frequency
         (frame["datetime"].dt.date >= start_date)
         & (frame["datetime"].dt.date <= end_date)
     ].copy()
+    for column in ("open", "high", "low", "close", "volume"):
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    frame = frame.replace([float("inf"), float("-inf")], pd.NA)
+    frame = frame.dropna(subset=["datetime", "open", "high", "low", "close", "volume"])
+    finite_prices = frame[["open", "high", "low", "close"]].gt(0).all(axis=1)
+    valid_range = (frame["high"] >= frame[["open", "close", "low"]].max(axis=1)) & (frame["low"] <= frame[["open", "close", "high"]].min(axis=1))
+    frame = frame[finite_prices & valid_range & frame["volume"].ge(0)].copy()
+    if frame.empty:
+        return frame
     return frame.sort_values("datetime").reset_index(drop=True)

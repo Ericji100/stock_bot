@@ -16,6 +16,8 @@ import json
 
 import pandas as pd
 import yfinance as yf
+from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.history_retry import fetch_history_with_retry, fetch_fallback_frame, frame_or_empty
 
 from stock_ai_bot.scanning.technical_indicator_service import INDICATOR_VERSION
 
@@ -112,7 +114,7 @@ def _column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
 
 
 def standardize_history(frame: pd.DataFrame) -> pd.DataFrame:
-    if frame is None or frame.empty:
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
         return pd.DataFrame(columns=[*REQUIRED_COLUMNS, "adj_close"])
     source = frame.copy()
     if isinstance(source.columns, pd.MultiIndex):
@@ -205,8 +207,8 @@ def fetch_history(
         and complete_cached["date"].dt.date.min() > end_date
     ):
         return pd.DataFrame(columns=[*REQUIRED_COLUMNS, "adj_close"]), "歷史日線不可用（尚未上市）"
-    if _known_empty_through(symbol, end_date):
-        return pd.DataFrame(columns=[*REQUIRED_COLUMNS, "adj_close"]), "歷史日線不可用（已確認）"
+    # Old .empty.json files were also written after network failures. They do
+    # not prove that historical prices or a listing never existed.
     cached = load_cached_history(symbol, end_date)
     adjusted_ready = (
         not require_adjusted
@@ -224,8 +226,8 @@ def fetch_history(
     ):
         return cached, "歷史隔離快取"
 
-    try:
-        raw = yf.download(
+    normalized = fetch_history_with_retry(
+        lambda: yf.download(
             symbol,
             start=start_date,
             end=end_date + timedelta(days=1),
@@ -233,10 +235,18 @@ def fetch_history(
             progress=False,
             auto_adjust=False,
             threads=False,
+            timeout=10,
+        ),
+        normalize=standardize_history,
+        label=f"Yahoo {symbol}",
+    )
+    source = "Yahoo Finance（歷史隔離快取）"
+    if normalized.empty:
+        normalized = fetch_fallback_frame(
+            lambda: fetch_fugle_history(symbol, start_date, end_date, "1d"),
+            normalize=standardize_history,
         )
-    except Exception:
-        raw = pd.DataFrame()
-    normalized = standardize_history(raw)
+        source = "Fugle（歷史隔離快取）"
     if not normalized.empty:
         save_history(symbol, normalized)
         _mark_coverage(
@@ -246,9 +256,7 @@ def fetch_history(
             has_adjusted="adj_close" in normalized.columns and normalized["adj_close"].notna().mean() >= 0.9,
         )
         normalized = load_cached_history(symbol, end_date)
-    else:
-        _mark_empty(symbol, end_date)
-    return normalized, "Yahoo Finance（歷史隔離快取）" if not normalized.empty else "歷史日線不可用"
+    return normalized, source if not normalized.empty else "歷史日線資料不足（下載失敗，可重試）"
 
 
 def _frame_for_symbol(dataset: pd.DataFrame, symbol: str, chunk_size: int) -> pd.DataFrame:
@@ -287,8 +295,6 @@ def prefetch_histories(
     requested = sorted({str(symbol).strip() for symbol in symbols if str(symbol).strip()})
     missing: list[str] = []
     for symbol in requested:
-        if _known_empty_through(symbol, end_date):
-            continue
         if _coverage_contains(symbol, start_date, end_date):
             continue
         frame = load_cached_history(symbol)
@@ -298,7 +304,7 @@ def prefetch_histories(
             or frame["date"].dt.date.max() < end_date
         ):
             missing.append(symbol)
-    negative_cached = sum(_known_empty_through(symbol, end_date) for symbol in requested)
+    negative_cached = 0  # Unverified network failures are not permanent no-data evidence.
     stats: dict[str, Any] = {
         "requested": len(requested),
         "already_cached": len(requested) - len(missing) - negative_cached,
@@ -317,7 +323,7 @@ def prefetch_histories(
     for index, chunk in enumerate(chunks, start=1):
         emit(f"歷史日線批次下載 {index}/{len(chunks)}（{len(chunk)} 檔）")
         try:
-            dataset = yf.download(
+            dataset = frame_or_empty(yf.download(
                 tickers=chunk,
                 start=start_date,
                 end=end_date + timedelta(days=1),
@@ -326,7 +332,8 @@ def prefetch_histories(
                 auto_adjust=False,
                 group_by="ticker",
                 threads=True,
-            )
+                timeout=10,
+            ))
         except Exception as exc:
             dataset = pd.DataFrame()
             stats["errors"].append({"chunk": index, "error": f"{type(exc).__name__}: {exc}"})
@@ -368,7 +375,6 @@ def prefetch_histories(
                     stats["downloaded"] += 1
                 else:
                     stats["empty"] += 1
-                    _mark_empty(symbol, end_date)
                     if error:
                         stats["errors"].append({"symbol": symbol, "error": error})
                 if number % 50 == 0 or number == len(futures):

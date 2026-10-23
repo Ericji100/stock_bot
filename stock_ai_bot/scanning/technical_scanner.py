@@ -12,6 +12,7 @@ import pandas as pd
 import yfinance as yf
 
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.history_retry import fetch_history_with_retry, fetch_fallback_frame
 from stock_ai_bot.scanning.stock_scanner import (
     DEFAULT_SCAN_SETTINGS,
     UNCLASSIFIED_INDUSTRY,
@@ -125,7 +126,7 @@ def _is_fresh(path: Path) -> bool:
 
 
 def _standardize_history(frame: pd.DataFrame) -> pd.DataFrame:
-    if frame.empty:
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
         return pd.DataFrame()
     history = frame.copy()
     if isinstance(history.columns, pd.MultiIndex):
@@ -235,23 +236,27 @@ def fetch_daily_history(
         return cached[cached["date"].dt.date <= end_date].copy(), "本機快取"
 
     start_date = end_date - timedelta(days=HISTORY_DAYS + 80)
-    try:
-        raw = yf.download(
+    history = fetch_history_with_retry(
+        lambda: yf.download(
             symbol,
             start=start_date,
             end=end_date + timedelta(days=1),
             interval="1d",
             progress=False,
             auto_adjust=False,
-        )
-    except Exception:
-        raw = pd.DataFrame()
-    history = _standardize_history(raw)
+            threads=False,
+            timeout=10,
+        ),
+        normalize=_standardize_history,
+        label=f"Yahoo {symbol}",
+    )
     source = "Yahoo Finance"
 
     if history.empty:
-        fugle_history = fetch_fugle_history(symbol, start_date, end_date, "1d")
-        history = _standardize_history(fugle_history)
+        history = fetch_fallback_frame(
+            lambda: fetch_fugle_history(symbol, start_date, end_date, "1d"),
+            normalize=_standardize_history,
+        )
         source = "Fugle"
 
     if not history.empty:

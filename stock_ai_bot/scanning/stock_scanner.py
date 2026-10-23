@@ -15,6 +15,7 @@ import pandas as pd
 import yfinance as yf
 
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.history_retry import frame_or_empty, fetch_fallback_frame
 
 from stock_ai_bot.selection.candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
@@ -279,7 +280,7 @@ def _column_as_series(frame: pd.DataFrame, column: str) -> pd.Series:
 
 
 def _extract_price_metric(frame: pd.DataFrame) -> dict[str, float] | None:
-    if frame.empty or "Close" not in frame.columns or "Volume" not in frame.columns:
+    if not isinstance(frame, pd.DataFrame) or frame.empty or "Close" not in frame.columns or "Volume" not in frame.columns:
         return None
 
     candidate = pd.DataFrame(index=frame.index)
@@ -380,7 +381,7 @@ def _days_since_extreme(close: pd.Series, *, high: bool) -> int | None:
 def _download_single_symbol_price_metric(symbol: str) -> dict[str, float] | None:
     for attempt in range(YF_PRICE_CHUNK_RETRIES):
         try:
-            history = yf.Ticker(symbol).history(period="3mo", interval="1d", auto_adjust=False)
+            history = frame_or_empty(yf.Ticker(symbol).history(period="3mo", interval="1d", auto_adjust=False, timeout=10))
         except Exception:
             history = pd.DataFrame()
 
@@ -397,7 +398,7 @@ def _download_single_symbol_price_metric(symbol: str) -> dict[str, float] | None
 
 
 def _download_fugle_price_metric(symbol: str) -> dict[str, float] | None:
-    history = fetch_fugle_history(symbol, datetime.now().date() - timedelta(days=120), datetime.now().date(), "1d")
+    history = fetch_fallback_frame(lambda: fetch_fugle_history(symbol, datetime.now().date() - timedelta(days=120), datetime.now().date(), "1d"))
     if history.empty:
         return None
     frame = history.rename(
@@ -415,7 +416,7 @@ def _download_chunk_price_metrics(chunk: list[str]) -> dict[str, dict[str, float
 
     for attempt in range(YF_PRICE_CHUNK_RETRIES):
         try:
-            dataset = yf.download(
+            dataset = frame_or_empty(yf.download(
                 tickers=missing_symbols,
                 period="3mo",
                 interval="1d",
@@ -423,7 +424,8 @@ def _download_chunk_price_metrics(chunk: list[str]) -> dict[str, dict[str, float
                 auto_adjust=False,
                 group_by="ticker",
                 threads=False,
-            )
+                timeout=10,
+            ))
         except Exception:
             dataset = pd.DataFrame()
 

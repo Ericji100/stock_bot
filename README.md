@@ -74,6 +74,14 @@ pip install -r requirements.txt
 - ETF 也支援同一套監控清單流程；例如 `add_m 00635U` 會優先用 TWSE OpenAPI / TWSE MIS 取得名稱，並轉成 `00635U.TW (期元大S&P黃金)`。
 - ETF 監控沿用既有即時價、日 K、21MA 與 105MA 訊號；ETF 不套用營收或籌碼選股條件。
 
+#### 0050 final-v1.7 影子監控
+
+- 新模組使用既有 `Application`、Telegram token、`main.py` 與 `JobQueue`；不建立第二個 Bot、polling process 或啟動 BAT。
+- 專用路由固定為 `config/etf_monitor.json` 的 `-5527055845`，每次發送前以 `getChat` 驗證；不會回退到 `config.json` 的舊群組。
+- 排程為台北時間 12:45 盤中預覽、13:55 收盤決策、22:00 完整資料核對。13:55 只產生 `BUY_NEXT_OPEN`、`SELL_NEXT_OPEN` 或 `HOLD` 影子建議，未知的次日開盤成交價不會被預填。
+- 策略核心直接使用已驗收的 `MA21_MA144_REGIME_FIXED_INITIAL_STOP_MACD_21_55_55`；正式資料只接受 hash 驗證的共用 ETF snapshot registry，盤中資料只接受 TWSE MIS。
+- 功能預設 `enabled: false`。凍結 registry 與 production workdata 已分離；2026-10-01 起必須有逐日 hash/evidence delta，缺日即 fail-closed。22:00 correction 會取消/取代舊 pending；Telegram 不確定送達須人工確認，不能宣稱 exactly-once。由 00 完成資料鏈、full-history parity、群組路由與 QA 後才可啟用。完整設定與操作見 [0050 即時監控整合](docs/strategies/dual_ma/0050-live-monitor-integration.md)。
+
 ### 3. 設定 AI 與搜尋金鑰
 
 AI 投研中心讀取 `config/research_center.json` 與 `config/secrets.json`。`config/research_center.json` 放公開設定，`config/secrets.json` 放金鑰，不要提交到 Git。

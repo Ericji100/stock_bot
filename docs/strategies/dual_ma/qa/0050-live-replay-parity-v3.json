@@ -1,0 +1,155 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v3",
+  "status": "PASS_EXACT_WITH_PRODUCTION_ENABLEMENT_BLOCKED",
+  "generated_at": "2026-10-22T00:55:38.0648966+08:00",
+  "tested_code": {
+    "branch": "codex/0050-live-monitor-qa-fix3",
+    "commit": "c440b48d46073b4cc7d91c5e82a42de3d7d61991",
+    "base_commit": "7c944eefae70c237aad72e41378e7447329f7e5d",
+    "config_enabled": false,
+    "old_worktrees_modified": false,
+    "source_sha256": {
+      "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+      "stock_ai_bot/monitoring/etf_monitor/data.py": "3ab692da578ec6fb4c087f7d7f36199e4848b34c9082c263584d005cbefa953e",
+      "stock_ai_bot/monitoring/etf_monitor/integration.py": "187b01bace5806ac7ef3635dc4c8d4e09d2bb61198eab9565ee3237e5fea48e9",
+      "stock_ai_bot/monitoring/etf_monitor/messages.py": "46d4ea06e2b8235abeb68bf0e7a4f5b5a6788d979a242e8fe2134114647b3992",
+      "stock_ai_bot/monitoring/etf_monitor/service.py": "d09e6ab9370345268abaaeb3ff62b7952c6e0c063019f0c39cb023ac4c603815",
+      "stock_ai_bot/monitoring/etf_monitor/store.py": "6d46739cafaeea9a4105af1346766e9ed617335adc2fbb9e089eb34857292d73",
+      "tools/etf_monitor_import_daily_delta.py": "1501fb97b2c508599644c386cc260c0ce8e788f6566c47860bf55732c1b491b3",
+      "docs/strategies/dual_ma/0050-live-monitor-integration.md": "52dc1dc7c24035902f766609e4cd80bc3a495bc4cff85d2f6bb80d0085eaa065"
+    }
+  },
+  "blocking_fixes": {
+    "retryable_data_unavailable": {
+      "status": "PASS",
+      "job_status_after_failure": "FAILED",
+      "same_phase_date_retry_allowed": true,
+      "health_event_idempotent": true,
+      "recovered_phase_status": "SUCCEEDED",
+      "stable_event_payload_collision_count": 0
+    },
+    "pending_reconciliation_quarantine": {
+      "status": "PASS",
+      "failure_status": "QUARANTINED_RECONCILIATION_REQUIRED",
+      "visible_to_next_open_settlement": false,
+      "same_instruction_recovery": "RESTORED_AFTER_RECONCILIATION",
+      "changed_instruction": "SUPERSEDED_BY_RECONCILIATION",
+      "duplicate_active_pending_count": 0
+    },
+    "official_etf_trading_day_gate": {
+      "status": "PASS",
+      "legacy_chip_calendar_used": false,
+      "source_endpoint": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
+      "actual_receipt_sha256": "7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117",
+      "target_year_verified": 2026,
+      "holiday_test": "PASS",
+      "network_outage_result": "DATA_UNAVAILABLE_RETRYABLE",
+      "empty_calendar_fallback": false
+    },
+    "continuous_daily_delta_update": {
+      "status": "PASS_ISOLATED_NOT_PRODUCTION",
+      "runs_on_existing_bot_startup": true,
+      "runs_before_provisional_through": "PRIOR_CALENDAR_DAY",
+      "runs_before_reconciliation_through": "CURRENT_TRADING_DAY",
+      "source_fallback": false,
+      "workflow": [
+        "capture exact official responses to temporary bundle",
+        "validate every delta and all content-addressed receipts",
+        "immutably install receipts, deltas and bundle manifest",
+        "read back the entire installed chain"
+      ],
+      "automatic_review_boundary": {
+        "ordinary_open_closed_days": "ALLOWED_AFTER_FULL_VALIDATION",
+        "weekday_gap": "FAIL_CLOSED",
+        "source_disagreement": "FAIL_CLOSED",
+        "corporate_action_day": "OPERATOR_REVIEW_REQUIRED_NO_INSTALL"
+      },
+      "actual_isolated_run": {
+        "from": "2026-10-01",
+        "through": "2026-10-21",
+        "installed_deltas": 21,
+        "raw_receipts": 4,
+        "bundle_manifest_content_sha256": "e342c6ce8949fb6016d87cce6a2b771bfa6918c3ae4998922a80530ce503425e",
+        "bundle_manifest_file_sha256": "5A78F8CA3144D1ACBCA8ED12D12DFFABE3078FCBA18D0B746F0BA281E92787DD",
+        "readback_latest_date": "2026-10-21",
+        "readback_raw_rows": 5354,
+        "second_run_status": "VERIFIED_ALREADY_COMPLETE",
+        "second_run_installed": 0
+      }
+    }
+  },
+  "full_history_parity": {
+    "status": "PASS_EXACT",
+    "exact_commit_run_duration_seconds": 686.20,
+    "period": {
+      "start": "2006-01-02",
+      "through": "2026-09-30"
+    },
+    "daily_rows": 5093,
+    "daily_state_sha256": "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f",
+    "signal_rows": 183,
+    "service_lifecycle": {
+      "job_runs": 15279,
+      "events": 15279,
+      "pending_actions": 183,
+      "future_rows_exposed": 0,
+      "telegram_send_attempts": 0,
+      "state_mismatch_count": 0,
+      "restart_mismatch_count": 0,
+      "pending_schedule_mismatch_count": 0
+    },
+    "frozen_artifact_comparisons": {
+      "next-session-open-transactions.csv": {"rows": 181, "mismatch_count": 0},
+      "next-session-open-daily-equity.csv": {"rows": 5093, "mismatch_count": 0},
+      "next-session-open-corporate-actions.csv": {"rows": 63, "mismatch_count": 0},
+      "next-session-open-trade-details.csv": {"rows": 91, "mismatch_count": 0}
+    },
+    "total_mismatch_count": 0
+  },
+  "tests": {
+    "independent_00_qa_before_fix3": {
+      "reported_passed": 193,
+      "reported_skipped": 1
+    },
+    "fix3_monitoring": {
+      "command": "python -m pytest tests/monitoring -q",
+      "passed": 46,
+      "skipped": 1,
+      "status": "PASS"
+    },
+    "formal_exact_commit_replay": {
+      "passed": 1,
+      "duration_seconds": 686.20,
+      "status": "PASS"
+    },
+    "compileall": {"status": "PASS"},
+    "covered_recovery_cases": [
+      "DATA_UNAVAILABLE then same phase recovery",
+      "repeated health alert idempotency",
+      "BUY pending quarantine on missing reconciliation",
+      "quarantined pending invisible to next-open fill",
+      "successful reconciliation restore",
+      "cross-day confirmed pending raw-open fill",
+      "partial reconciliation retry without duplicate pending",
+      "official holiday and calendar outage",
+      "startup updater and scheduled retry",
+      "automatic immutable install and corporate-action no-install boundary",
+      "routing mismatch without fallback"
+    ]
+  },
+  "production": {
+    "mutated": false,
+    "config_enabled": false,
+    "as_of_2026_10_21_status": "DATA_UNAVAILABLE",
+    "reason": "daily delta chain is missing 2026-10-01",
+    "current_date_note": "2026-10-22 was not a completed official session at audit generation time",
+    "ready_to_enable": false
+  },
+  "delivery": {
+    "telegram_sent": false,
+    "merged": false,
+    "pushed": false,
+    "documentation_index_modified": false
+  },
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

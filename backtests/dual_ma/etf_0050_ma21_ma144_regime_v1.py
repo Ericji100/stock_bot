@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from . import etf_0050_ma21_macd_v2 as moving
 from .etf_0050_base_v1 import StrategyRunSlice, StrategySpec
@@ -27,9 +27,17 @@ def build_indicator_rows(
 ) -> list[dict[str, Any]]:
     """Reuse the accepted MACD/Dow calculation and add causal SMA144."""
 
-    rows = [dict(row) for row in moving.build_indicator_rows(raw_rows, events)]
+    return list(iter_indicator_rows(raw_rows, events))
+
+
+def iter_indicator_rows(
+    raw_rows: Iterable[Mapping[str, Any]], events: Sequence[Any]
+) -> Iterator[dict[str, Any]]:
+    """Yield one accepted regime row without requesting the next raw bar."""
+
     closes: list[Decimal] = []
-    for row in rows:
+    for source in moving.iter_indicator_rows(raw_rows, events):
+        row = dict(source)
         factor = _d(row["price_rebase_factor"])
         if factor != 1:
             closes = [value * factor for value in closes]
@@ -38,7 +46,7 @@ def build_indicator_rows(
             sum(closes[-144:], Decimal("0")) / Decimal("144")
             if len(closes) >= 144 else None
         )
-    return rows
+        yield row
 
 
 def _entry(
@@ -54,9 +62,13 @@ def _entry(
 
 
 def build_regime_run(
-    *, indicator_rows: Sequence[Mapping[str, Any]], raw_by_date: Mapping[date, Any],
+    *, indicator_rows: Iterable[Mapping[str, Any]], raw_by_date: Mapping[date, Any],
     strategy_id: str, moving_stop: bool, start: date, end: date,
     slippage_bps: int,
+    on_day: Callable[
+        [Mapping[str, Any], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]],
+        None,
+    ] | None = None,
 ) -> tuple[StrategyRunSlice, list[dict[str, Any]], list[dict[str, Any]]]:
     """Freeze one mutually-exclusive regime strategy without sizing or PnL."""
 
@@ -319,7 +331,7 @@ def build_regime_run(
             phase_low = None
 
         if day >= start:
-            daily.append({
+            daily_row = {
                 "strategy_id": strategy_id, "date": day,
                 "technical_close": row["technical_close"], "sma21": sma21,
                 "sma144": sma144, "regime": regime,
@@ -332,12 +344,15 @@ def build_regime_run(
                 "stop_enforcement": stop_enforcement,
                 "stop_hit": stop_hit_today,
                 "suppressed_stop_hit": suppressed_stop_hit,
-            })
+            }
+            daily.append(daily_row)
             decisions.append({
                 "date": day, "strategy": StrategyKind.LONG.value,
                 "close": row["technical_close"], "sma21": sma21,
                 "histogram": histogram, "events": day_events,
             })
+            if on_day is not None:
+                on_day(daily_row, tuple(transactions), tuple(events))
         previous = row
 
     if active is not None:

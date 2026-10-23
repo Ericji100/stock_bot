@@ -13,7 +13,7 @@ import tempfile
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 from .etf_0050_base_v1 import (
     MAIN_SCENARIO_BPS,
@@ -87,6 +87,15 @@ def build_indicator_rows(
 ) -> list[dict[str, Any]]:
     """Build causal daily technical values in the package's action-adjusted coordinate."""
 
+    return list(iter_indicator_rows(raw_rows, events))
+
+
+def iter_indicator_rows(
+    raw_rows: Iterable[Mapping[str, Any]],
+    events: Sequence[Any],
+) -> Iterator[dict[str, Any]]:
+    """Yield one causal indicator row before requesting the next raw bar."""
+
     factors: dict[date, Decimal] = {}
     for event in events:
         factor = Decimal("1")
@@ -105,7 +114,6 @@ def build_indicator_rows(
     signal: Decimal | None = None
     prefix: list[Bar] = []
     dow = DowDefenseTracker()
-    output: list[dict[str, Any]] = []
     for raw in raw_rows:
         day = date.fromisoformat(str(raw["date"]))
         factor = factors.get(day, Decimal("1"))
@@ -138,8 +146,7 @@ def build_indicator_rows(
         ema_slow = _ema(ema_slow, close, MACD_SLOW)
         dif = ema_fast - ema_slow
         signal = _ema(signal, dif, MACD_SIGNAL)
-        output.append(
-            {
+        yield {
                 "date": day,
                 "technical_close": close,
                 "technical_low": low,
@@ -157,8 +164,6 @@ def build_indicator_rows(
                 "histogram": dif - signal,
                 "dow_events": tuple(dow_events),
             }
-        )
-    return output
 
 
 def _frozen_entry(

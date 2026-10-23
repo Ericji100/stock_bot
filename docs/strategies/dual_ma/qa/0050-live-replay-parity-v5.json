@@ -1,0 +1,195 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v5",
+  "status": "FIX5_BLOCKERS_CLOSED_AFFECTED_TESTS_PASS_REPOSITORY_WIDE_NOT_GREEN_PRODUCTION_ENABLEMENT_BLOCKED",
+  "generated_at": "2026-10-22T02:07:24.7322350+08:00",
+  "evidence_correction": {
+    "corrected_at": "2026-10-22T02:24:36.4525174+08:00",
+    "branch": "codex/0050-live-monitor-qa-fix6",
+    "reason": "remove contradictory repository-wide green wording",
+    "runtime_changed": false
+  },
+  "status_summary": {
+    "affected_tests": "PASS",
+    "full_history_parity": "PASS_EXACT",
+    "repository_wide": "NOT_GREEN",
+    "production_delta": "INCOMPLETE_FROM_2026-10-01",
+    "config_enabled": false,
+    "ready_to_enable": false
+  },
+  "tested_code": {
+    "branch": "codex/0050-live-monitor-qa-fix5",
+    "commit": "40728c3ec0f800143bca1323be17ccf5d776fb2a",
+    "base_commit": "df06148d423c10169727056bc67b261ff2be55ad",
+    "config_enabled": false,
+    "isolated_worktree": "D:/code/_codex_worktrees/0050-live-monitor-qa-fix5/stock_ai_bot",
+    "old_worktrees_written_by_fix5": false,
+    "source_sha256": {
+      "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+      "stock_ai_bot/monitoring/etf_monitor/data.py": "2dfe2ed29966a7f97080cf8580eb622c865add1743ee1a537fc662e6a9474d60",
+      "stock_ai_bot/monitoring/etf_monitor/integration.py": "94e07f2681539eafa25ad18e0fabba4853ab8a0c1e9364b60015e300bd3507e9",
+      "tests/monitoring/test_etf_monitor_integration_data.py": "67dceedd34a4a32f95ab28e3aa48ae2b5792aa594586b6ec228279026f429605",
+      "main.py": "7191d6eb43a4ca00c003de85c705d6600736ee2bc123757d121c0b4d934bde62",
+      "啟動機器人.bat": "378424e66dcf913263eaf793aae68eb1a8f5e1a4364a7fef0b08883d2186d367",
+      "啟動機器人_runner.bat": "759e699876e43b71aed62186c4fa4d205d767dfca2fa5d41cc76fa443dd14bcd"
+    }
+  },
+  "blocking_fixes": {
+    "registration_failure_isolation": {
+      "status": "PASS",
+      "covered_failures": [
+        "missing JobQueue",
+        "SQLite store path, permission or schema construction failure",
+        "second run_daily registration failure",
+        "third run_daily registration failure"
+      ],
+      "runtime_published_only_after_all_jobs_register": true,
+      "registered_jobs_removed_on_failure": true,
+      "unremovable_callback_guard": "REQUIRES_EXACT_READY_RUNTIME_IN_BOT_DATA",
+      "bot_data_residue": false,
+      "exception_reaches_original_bot_startup": false,
+      "fallback_route_created": false,
+      "legacy_group_used": false,
+      "sanitized_log_error_class_only": true
+    },
+    "post_init_failure_isolation": {
+      "status": "PASS",
+      "startup_states": ["PENDING", "READY", "DISABLED"],
+      "decision_jobs_before_ready": "NO_OP",
+      "recovery": {
+        "background": true,
+        "timeout_seconds": 30,
+        "exception_result": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES"
+      },
+      "official_backfill": {
+        "background": true,
+        "timeout_seconds": 1200,
+        "network_failure_result": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES",
+        "hung_worker_result": "BOUNDED_WAIT_THEN_ETF_DISABLED",
+        "blocks_original_polling_start": false
+      },
+      "route_verification_timeout_seconds": 30,
+      "startup_task_creation_failure": "ETF_DISABLED_ORIGINAL_BOT_CONTINUES",
+      "ready_transition_requires": [
+        "restart recovery success",
+        "official daily-delta backfill success",
+        "dedicated route verification success",
+        "outbox drain success"
+      ],
+      "failure_cleanup": [
+        "remove exact runtime from bot_data",
+        "schedule known ETF jobs for removal",
+        "leave any unremovable callback as guarded no-op"
+      ]
+    },
+    "automatic_updater_partial_final_recovery": {
+      "status": "PASS",
+      "preverify_error_handling": "MARK_DAY_FOR_RECAPTURE",
+      "legacy_partial_delta_final": "RECAPTURE_QUARANTINE_INSTALL_FULL_CHAIN_READBACK",
+      "legacy_partial_receipt": "RECAPTURE_QUARANTINE_INSTALL_FULL_CHAIN_READBACK",
+      "different_valid_delta": "INSTALLER_STILL_REFUSES_OVERWRITE",
+      "second_run": "VERIFIED_ALREADY_COMPLETE"
+    }
+  },
+  "full_history_parity": {
+    "status": "PASS_EXACT",
+    "command": "python -m pytest -q tests/monitoring/test_etf_monitor_core_replay.py::test_formal_full_history_live_replay_exact_parity",
+    "exact_commit_run_duration_seconds": 607.24,
+    "frozen_market_data_root": "D:/code/stock_ai_bot/stock_data/versions/2026-09-30-v3/market-data",
+    "daily_rows": 5093,
+    "signal_rows": 183,
+    "daily_state_sha256": "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f",
+    "service_lifecycle": {
+      "job_runs": 15279,
+      "events": 15279,
+      "pending_schedule_mismatch_count": 0,
+      "state_mismatch_count": 0,
+      "restart_mismatch_count": 0,
+      "future_rows_exposed": 0,
+      "telegram_send_attempts": 0
+    },
+    "total_mismatch_count": 0
+  },
+  "tests": {
+    "compileall": {
+      "status": "PASS"
+    },
+    "monitoring": {
+      "command": "python -m pytest -q tests/monitoring",
+      "passed": 64,
+      "skipped": 1,
+      "status": "PASS"
+    },
+    "fix5_failure_matrix": {
+      "selected_cases_passed": 11,
+      "status": "PASS",
+      "covered": [
+        "store constructor OSError",
+        "missing JobQueue",
+        "run_daily failure on registration 2 and 3",
+        "successful asynchronous startup",
+        "recover_after_restart OSError",
+        "updater network failure",
+        "hung updater timeout and pre-ready job no-op",
+        "startup task scheduling failure",
+        "automatic updater legacy partial delta recovery",
+        "automatic updater legacy partial receipt recovery"
+      ]
+    },
+    "independent_00_fix5_affected_qa": {
+      "passed": 205,
+      "skipped": 1,
+      "status": "PASS"
+    },
+    "repository_wide": {
+      "command": "python -m pytest -q --tb=short",
+      "passed": 2202,
+      "skipped": 3,
+      "failed": 46,
+      "errors": 24,
+      "subtests_passed": 201,
+      "duration_seconds": 132.32,
+      "status": "NOT_GREEN",
+      "accepted_as_pass": false,
+      "monitoring_failures": 0,
+      "comparison_to_fix4_independent_qa": {
+        "passed_delta": 10,
+        "failed_delta": 0,
+        "error_delta": 0,
+        "skipped_delta": 0
+      },
+      "observed_failure_scopes": [
+        "isolated worktree lacks non-versioned .workdata research artifacts required by multiple dual_ma suites",
+        "unrelated ai workflow and MiniMax integration expectations",
+        "unrelated trade_monitor version hash expectations",
+        "unrelated config JSON expectations"
+      ]
+    },
+    "production_read_only_smoke": {
+      "command": "python -m tools.etf_monitor_data_smoke --as-of 2026-10-21",
+      "expected_exit_code": 2,
+      "observed_exit_code": 2,
+      "status": "DATA_UNAVAILABLE_FAIL_CLOSED",
+      "reason": "daily delta chain is missing 2026-10-01"
+    },
+    "independent_00_production_read_only_smoke": {
+      "frozen_cutoff_2026_09_30": "PASS",
+      "first_delta_day_2026_10_01": "DATA_UNAVAILABLE",
+      "reason": "daily delta chain is missing 2026-10-01"
+    }
+  },
+  "production": {
+    "mutated": false,
+    "config_enabled": false,
+    "as_of_2026_10_21_status": "DATA_UNAVAILABLE",
+    "reason": "daily delta chain is missing 2026-10-01",
+    "ready_to_enable": false
+  },
+  "delivery": {
+    "telegram_sent": false,
+    "bot_started": false,
+    "merged": false,
+    "pushed": false,
+    "documentation_index_modified": false
+  },
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

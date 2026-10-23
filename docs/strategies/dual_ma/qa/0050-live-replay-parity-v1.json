@@ -1,0 +1,129 @@
+{
+  "schema_version": "stock-ai-bot-etf-live-monitor-qa-audit-v1",
+  "status": "PASS_EXACT_WITH_LIVE_ENABLEMENT_BLOCKED_ON_MISSING_DELTA",
+  "generated_at": "2026-10-21T23:08:31.4829787+08:00",
+  "tested_code": {
+    "branch": "codex/0050-live-monitor-qa-fix",
+    "commit": "add36536ab39b9d9e18601f526bc7a43862013df",
+    "config_enabled": false,
+    "old_research_root_modified": false,
+    "source_sha256": {
+      "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+      "config/etf_monitor.schema.json": "2e45ba8342c9c121780254956b7e40330ed8ebf20b36e4792d54ac7f2f4e550f",
+      "config/etf_monitor_daily_delta.schema.json": "a33c4f1c4ebb820762a3dd662069aa94a34b83a4b9c3965d916880dcb245eadc",
+      "stock_ai_bot/monitoring/etf_monitor/core.py": "c2cb22a31896d66e6d01cdc71062b48b76846c42d98c2188eb6cf4cdc135740d",
+      "stock_ai_bot/monitoring/etf_monitor/data.py": "bc592684837b32fcc4f9232f844ee75d1708944ffd4c5f6c2894ca19cd2b5782",
+      "stock_ai_bot/monitoring/etf_monitor/replay.py": "7e297a746592a5a51d803bedb7f6af1edb65e9735301ad9828b6aff0b8648c3a",
+      "stock_ai_bot/monitoring/etf_monitor/store.py": "6ee58fd674548d6a3e19d2914d90bdf98e4fa1086122784b1016697147811521",
+      "stock_ai_bot/monitoring/etf_monitor/service.py": "d876b6ad9a9211a5f3c9759184ec77487ddc90e55e57d3f4059c44676837382c"
+    }
+  },
+  "environment": {
+    "STOCK_AI_BOT_WORKDATA_ROOT": "D:\\code\\stock_ai_bot\\.workdata",
+    "STOCK_AI_BOT_WORKDATA_PROFILE": "prod",
+    "STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT": "D:\\code\\stock_ai_bot\\stock_data\\versions\\2026-09-30-v3\\market-data"
+  },
+  "data_smoke": {
+    "frozen_cutoff": {
+      "status": "PASS",
+      "as_of": "2026-09-30",
+      "rows": 5340,
+      "corporate_actions": 33,
+      "snapshot_id": "2005-01-03_2026-09-30_86d91332d197",
+      "snapshot_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB",
+      "delta_count": 0
+    },
+    "current_date": {
+      "status": "DATA_UNAVAILABLE",
+      "as_of": "2026-10-21",
+      "reason": "daily delta chain is missing 2026-10-01",
+      "fail_closed": true
+    }
+  },
+  "full_history_parity": {
+    "status": "PASS_EXACT",
+    "period": {
+      "start": "2006-01-02",
+      "through": "2026-09-30"
+    },
+    "frozen_snapshot_id": "2005-01-03_2026-09-30_86d91332d197",
+    "frozen_manifest_sha256": "86D91332D1974CE54B0ED76F623EE253919DF3A7C5AA9CCB454A7516560F6CBB",
+    "live_adapter_daily_rows": 5093,
+    "live_adapter_daily_state_sha256": "e8ab3587332175596c1381193ff0b29ea97a53a2d3d4cdc5e56e4c4a9310101f",
+    "signal_rows": 183,
+    "signal_vs_frozen_artifact_mismatch_count": 0,
+    "causality": {
+      "mode": "ONE_OFFICIAL_SESSION_AT_A_TIME_THROUGH_LIVE_ADAPTER",
+      "strictly_increasing_dates": true,
+      "future_rows_exposed_to_daily_output": false
+    },
+    "comparisons": {
+      "next-session-open-transactions.csv": {
+        "rows": 181,
+        "mismatch_count": 0,
+        "actual_normalized_sha256": "f9647fab946410f3daf92c38c22eaed9229179eb181dadb3ca13c6936efa8bca",
+        "expected_file_sha256": "0a6d4c49d307da153c431897738ab6c6c4137a7cd79cbd248a4048cb596a92d1"
+      },
+      "next-session-open-daily-equity.csv": {
+        "rows": 5093,
+        "mismatch_count": 0,
+        "actual_normalized_sha256": "79dedba3dfbf5a84967153fdde81ff99149b628d663ad23c3160058a8b099d63",
+        "expected_file_sha256": "69674b35ffd7420bc88336fc4308d32febfa1858fa7c2c66299a441b284f1dc1"
+      },
+      "next-session-open-corporate-actions.csv": {
+        "rows": 63,
+        "mismatch_count": 0,
+        "actual_normalized_sha256": "1082d73749dad000aa51ddb845b06c7c8f8d522e59c1b33a6772110046ea1295",
+        "expected_file_sha256": "b0b0e2ba03bfc1cd9282afba75a83ac8cbe0cd6d624c9eb654b1b45b8da84efd"
+      },
+      "next-session-open-trade-details.csv": {
+        "rows": 91,
+        "mismatch_count": 0,
+        "actual_normalized_sha256": "88432cc32177d737e2fa875b81e6550e6f71a529e75e18306c2a332c9936df96",
+        "expected_file_sha256": "336649dbd7c6a9cd8c6cae7f68b8598645f394932f2bad7e45130e96abc4f262"
+      }
+    },
+    "total_mismatch_count": 0
+  },
+  "tests": {
+    "focused_monitoring": {
+      "command": "python -m pytest tests/monitoring -q",
+      "status": "PASS",
+      "passed": 29,
+      "duration_seconds": 22.89
+    },
+    "compileall": {
+      "status": "PASS"
+    },
+    "repository_wide_observation": {
+      "command": "python -m pytest -q",
+      "passed": 2167,
+      "failed": 45,
+      "errors": 24,
+      "skipped": 2,
+      "scope_note": "Failures are outside this change set and include missing isolated-worktree sealed .workdata fixtures plus pre-existing config/version/provider assertions; no monitoring test failed."
+    }
+  },
+  "reproduction": {
+    "data_smoke": "python -m tools.etf_monitor_data_smoke --as-of 2026-09-30",
+    "freshness_fail_closed": "python -m tools.etf_monitor_data_smoke --as-of 2026-10-21",
+    "full_history_parity": "python -m tools.etf_monitor_verify_replay",
+    "focused_tests": "python -m pytest tests/monitoring -q"
+  },
+  "readback": {
+    "status": "PASS",
+    "audit_assertions": [
+      "tested commit and source/config hashes are recorded",
+      "frozen base parses under production BAT workdata environment",
+      "missing October delta fails closed",
+      "all formal signal/execution/accounting comparisons have zero mismatches",
+      "daily LIVE stop/MACD/regime state hash is pinned",
+      "monitor remains disabled and no Telegram send was performed"
+    ]
+  },
+  "live_enablement": {
+    "ready": false,
+    "blocker": "No verified daily delta chain is installed for 2026-10-01 through the intended live date."
+  },
+  "handoff": "STOP_WAIT_00_ETF_MONITOR_QA"
+}

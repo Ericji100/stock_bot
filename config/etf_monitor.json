@@ -1,0 +1,31 @@
+{
+  "schema_version": "stock-ai-bot-etf-monitor-config-v1",
+  "enabled": false,
+  "mode": "shadow",
+  "chat_id": "-5527055845",
+  "symbol": "0050",
+  "strategy": "final-v1.7",
+  "timezone": "Asia/Taipei",
+  "schedule": {
+    "preview": "12:45",
+    "decision": "13:55",
+    "reconciliation": "22:00"
+  },
+  "daily_shadow_status": true,
+  "quiet_status_in_formal_mode": true,
+  "require_get_chat": true,
+  "database_relative_path": "database/etf_monitor/0050-final-v1.7.sqlite3",
+  "data": {
+    "snapshot_id": null,
+    "frozen_market_data_relative_path": "stock_data/versions/2026-09-30-v3/market-data",
+    "delta_relative_path": "market-data/etf-live/0050/daily-delta-v1",
+    "raw_daily_relative_path": "data/0050/daily_raw.json",
+    "corporate_actions_relative_path": "events/0050_corporate_action_events.json",
+    "dividends_relative_path": "events/0050_dividends.json"
+  },
+  "job_timeouts_seconds": {
+    "preview": 300,
+    "decision": 600,
+    "reconciliation": 1200
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stock-ai-bot-etf-monitor-config-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "enabled", "mode", "chat_id", "symbol", "strategy",
+    "timezone", "schedule", "database_relative_path", "data",
+    "job_timeouts_seconds", "daily_shadow_status",
+    "quiet_status_in_formal_mode", "require_get_chat"
+  ],
+  "properties": {
+    "schema_version": {"const": "stock-ai-bot-etf-monitor-config-v1"},
+    "enabled": {"type": "boolean"},
+    "mode": {"const": "shadow"},
+    "chat_id": {"const": "-5527055845"},
+    "symbol": {"const": "0050"},
+    "strategy": {"const": "final-v1.7"},
+    "timezone": {"const": "Asia/Taipei"},
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview", "decision", "reconciliation"],
+      "properties": {
+        "preview": {"const": "12:45"},
+        "decision": {"const": "13:55"},
+        "reconciliation": {"const": "22:00"}
+      }
+    },
+    "daily_shadow_status": {"type": "boolean"},
+    "quiet_status_in_formal_mode": {"type": "boolean"},
+    "require_get_chat": {"const": true},
+    "database_relative_path": {"type": "string"},
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_id", "frozen_market_data_relative_path", "delta_relative_path",
+        "raw_daily_relative_path",
+        "corporate_actions_relative_path", "dividends_relative_path"
+      ],
+      "properties": {
+        "snapshot_id": {"type": ["string", "null"]},
+        "frozen_market_data_relative_path": {"type": "string"},
+        "delta_relative_path": {"type": "string"},
+        "raw_daily_relative_path": {"type": "string"},
+        "corporate_actions_relative_path": {"type": "string"},
+        "dividends_relative_path": {"type": "string"}
+      }
+    },
+    "job_timeouts_seconds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview", "decision", "reconciliation"],
+      "properties": {
+        "preview": {"type": "integer", "minimum": 30, "maximum": 3600},
+        "decision": {"type": "integer", "minimum": 30, "maximum": 3600},
+        "reconciliation": {"type": "integer", "minimum": 30, "maximum": 3600}
+      }
+    }
+  }
+}

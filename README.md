@@ -74,7 +74,9 @@ pip install -r requirements.txt
 - ETF 也支援同一套監控清單流程；例如 `add_m 00635U` 會優先用 TWSE OpenAPI / TWSE MIS 取得名稱，並轉成 `00635U.TW (期元大S&P黃金)`。
 - ETF 監控沿用既有即時價、日 K、21MA 與 105MA 訊號；ETF 不套用營收或籌碼選股條件。
 
-#### 0050 final-v1.7 影子監控
+#### 0050 趨勢策略（已整合，預設關閉）
+
+- 2026-10-23 已整合至 `main`，但 ETF 監控維持關閉。本次未啟動正式 Bot、ETF 排程或發送 Telegram；之後啟用須另經使用者明確授權。
 
 - 新模組使用既有 `Application`、Telegram token、`main.py` 與 `JobQueue`；不建立第二個 Bot、polling process 或啟動 BAT。
 - 專用路由固定為 `config/etf_monitor.json` 的 `-5527055845`，每次發送前以 `getChat` 驗證；不會回退到 `config.json` 的舊群組。

@@ -2,7 +2,11 @@
 
 ## 狀態與邊界
 
-本模組是影子監控與建議系統，不連接券商、不送單、不推估未知成交價。`config/etf_monitor.json` 預設 `enabled: false`，合併程式不等於啟用正式排程；只有 00 在資料、群組與 QA 完成後才可改為 `true`。
+2026-10-23 更新：已依使用者授權整合回 `main`，監控仍保持關閉。本次只核准程式整合與離線驗收，不包含重新發送 Telegram、重啟正式 Bot 或啟用 ETF 排程；啟用必須另經使用者明確授權。下列較早日期的開發／啟用檢查紀錄保留作歷史證據，不代表本次自動取得啟用權限。
+
+本次 [main 整合、離線驗收及清理紀錄](qa/0050-main-disabled-integration-2026-10-23.md) 已保存：相關測試323項通過／1項跳過、8項獨立驗收通過、5093日完整歷史逐欄一致；13個03工作樹已移除，7個測試暫存根因執行政策限制仍保留並具名列出。
+
+本模組是影子監控與建議系統，不連接券商、不送單、不推估未知成交價。`config/etf_monitor.json` 預設 `enabled: false`，合併程式不等於啟用正式排程；只有使用者另行明確授權，且資料、群組與 QA 完成後才可改為 `true`。
 
 目前狀態必須分開閱讀（截至 2026-10-22）：production 已唯新增安裝並逐檔 readback `2026-10-01` 至 `2026-10-21` 的 21 份 daily delta 與 4 份 receipt，`2026-10-01`／`2026-10-21` read-only smoke 均通過；尚未存在的 `2026-10-22` delta 會正確回 `DATA_UNAVAILABLE`。fix5 的 ETF/Telegram 受影響測試與 full-history causal parity 是既有順序路徑證據；本修正版處理 preview 寫入、漏晚間確認、漏真正次日執行、22:00 才首次產生或更正指令，以及事件／成交已持久化後 delivery 中斷重試等 P1 邊界。完整 repository test suite 仍為 `NOT_GREEN`；最近同短路徑基準為 2,206 passed、3 skipped、42 failed、24 errors。00 已確認其狀態集合與先前基準相同，歸因包含 checkout CRLF 的 raw-byte SHA、未 mock 的 MiniMax 設定、缺少 `config.json`、既有 topic raw 品質與外部研究 fixtures／舊 contract；這些不屬於本修正版範圍，也沒有用真密鑰或修改無關來源製造假綠。`enabled=false`，因此本文件不宣稱全庫綠燈或可啟用。
 

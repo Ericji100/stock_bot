@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-23 — 0050 趨勢策略整合，監控保持關閉
+
+- 將 03 已驗收的 ETF 監控、持倉恢復保護與精簡中文訊息整合至 `main`，不建立第二 Bot、polling 程序或啟動 BAT。
+- `config/etf_monitor.json` 保持 `enabled=false`；原群組設定、選股名單、既有指令與排程保留，本次不發 Telegram、不啟動監控或自動下單。
+- 以實際啟動環境重跑 ETF／Telegram／原選股排程相關回歸，另獨立比對原 `main.py` 的完整語法結構及模擬註冊結果；驗收證據與清理紀錄見 ETF 整合說明。
+
 ## 2026-10-21 — 0050 live monitor QA isolation rework
 
 - 將 immutable frozen ETF registry 與 mutable workdata delta 分離；新增逐日 OPEN/CLOSED evidence ledger、immutable importer、freshness/缺日 fail-closed 與 production-env data smoke。

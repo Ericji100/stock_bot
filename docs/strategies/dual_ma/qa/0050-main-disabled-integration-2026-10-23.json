@@ -1,0 +1,154 @@
+{
+  "schema": "qa00-0050-disabled-main-integration-v1",
+  "status": "PASS_DISABLED_MAIN_INTEGRATION_WORKTREES_CLEANED_TEMP_DELETE_BLOCKED",
+  "date_taipei": "2026-10-23",
+  "main_integration_commit": "4d433e66e33e002888a010294f7c933782f1f738",
+  "accepted_source_commit": "49e1a0469b266829e345f74d9bdd3ba3d9d3e765",
+  "monitor_enabled": false,
+  "telegram_sent": 0,
+  "production_bat_or_polling_started": false,
+  "remote_pushed": false,
+  "affected_tests": {
+    "tests": 324,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1
+  },
+  "independent_tests": {
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "full_history": {
+    "status": "PASS_EXACT",
+    "days": 5093,
+    "phase_jobs": 15279,
+    "signal_rows": 183,
+    "total_mismatch_count": 0,
+    "restart_checks": 235,
+    "future_rows": 0,
+    "telegram_attempts": 0
+  },
+  "original_user_files_exact": true,
+  "original_user_modified_count": 5,
+  "original_user_untracked_count": 595,
+  "original_bat_and_group_config_exact": true,
+  "original_main_ast_and_registration_equal_except_disabled_etf_hooks": true,
+  "old_daily_jobs": 11,
+  "old_repeating_jobs": 3,
+  "old_startup_jobs": 1,
+  "product_matches_accepted_source": true,
+  "product_sha256": {
+    "main.py": "7191d6eb43a4ca00c003de85c705d6600736ee2bc123757d121c0b4d934bde62",
+    "config/etf_monitor.json": "450d30e40506c68a9dbd80920cc10cc2973308d116a75aeec99ca24ffb65e76d",
+    "stock_ai_bot/monitoring/etf_monitor/accounting.py": "a0109922f5a63755d1fb15d4d423368dd5440a6eff699f0d0dd52522c3518333",
+    "stock_ai_bot/monitoring/etf_monitor/config.py": "630f6d86a8802577f217e5681416ff778e6aea35d07612b3987870abe89a7b00",
+    "stock_ai_bot/monitoring/etf_monitor/core.py": "65466102df5dcad1cc5fbf5eaace9d82c24cb126839f8a95dd13943a5455a0ef",
+    "stock_ai_bot/monitoring/etf_monitor/data.py": "2dfe2ed29966a7f97080cf8580eb622c865add1743ee1a537fc662e6a9474d60",
+    "stock_ai_bot/monitoring/etf_monitor/delta_pipeline.py": "8cb5b4909120d3311fd950343ecbb649fef7cc4d35c01b3a02772f09b50677a4",
+    "stock_ai_bot/monitoring/etf_monitor/errors.py": "20194a56e28d616af1f81e7cb63c7c6edca7f1e2379342f8ce96e1d7c59f724f",
+    "stock_ai_bot/monitoring/etf_monitor/integration.py": "94e07f2681539eafa25ad18e0fabba4853ab8a0c1e9364b60015e300bd3507e9",
+    "stock_ai_bot/monitoring/etf_monitor/messages.py": "0031918509b1f53cec4ab073e845306d0b8e33dfc87a908ee59838389ef9a603",
+    "stock_ai_bot/monitoring/etf_monitor/models.py": "6442f7565bcdad9c039c0d6186c754fa39798bce2dca79975e4e896be32ae019",
+    "stock_ai_bot/monitoring/etf_monitor/replay.py": "56af9cec92574119e297f74e63d9b0d40d46fda08b7afdca3bd3497bd45a3935",
+    "stock_ai_bot/monitoring/etf_monitor/routing.py": "cf8d9efd1e1a7e7ea7e2d754de967d2a836aa76560309d9be05db252f09824e6",
+    "stock_ai_bot/monitoring/etf_monitor/service.py": "72fc4ace0d78c439d219890c118898d20c5f9687969b35ea37588facff9b0324",
+    "stock_ai_bot/monitoring/etf_monitor/store.py": "22a07a0904f0e59e565a07c8232024262ac917a8d3646ae508563050d7ba9ac7",
+    "stock_ai_bot/monitoring/etf_monitor/__init__.py": "3d9daa43639772e8166b8e64ed5e7e24f861f4e2a0de9fc58f7d751ceb0c1fd8"
+  },
+  "worktree_cleanup": {
+    "physical_roots_removed": 13,
+    "physical_parent_dirs_removed": 13,
+    "git_registration_remaining": 0,
+    "recovery_ref_count": 13,
+    "changed_paths_verified": 45,
+    "ignored_recovery_zip_bytes": 6231780,
+    "ignored_recovery_zip_sha256": "4166da4c44751349a27d4c7e3a38f2ec98c350c3caae7c1bfc1d5b9fa3e41c3b",
+    "recovery_refs": [
+      {
+        "name": "0050-chinese-message-compact",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-chinese-message-compact",
+        "commit": "49e1a0469b266829e345f74d9bdd3ba3d9d3e765"
+      },
+      {
+        "name": "0050-chinese-message-smoke",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-chinese-message-smoke",
+        "commit": "61747618eb3b20efe36bd8f1ba39759ca6de370d"
+      },
+      {
+        "name": "0050-eod-recovery-gates",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-eod-recovery-gates",
+        "commit": "470f749d3f89aa1d8951425898010140c213d47a"
+      },
+      {
+        "name": "0050-eod-retry-gates",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-eod-retry-gates",
+        "commit": "568a7a89b92f539b88aaf91e9ede3cbe3daf9999"
+      },
+      {
+        "name": "0050-live-monitor",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor",
+        "commit": "13054628d34aeb214b881a874e25adcff2b4e99e"
+      },
+      {
+        "name": "0050-live-monitor-data-readiness",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-data-readiness",
+        "commit": "aa338337e1a7c6324e4c4a2fc488ffcb03b9c1e8"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix",
+        "commit": "297a0271afc6a5d00c70d0b1f1e2ab167a5b2e9a"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix2",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix2",
+        "commit": "7c944eefae70c237aad72e41378e7447329f7e5d"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix3",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix3",
+        "commit": "49304ad1b6030524eabd03a1f24dd4bfc09b2d3d"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix4",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix4",
+        "commit": "df06148d423c10169727056bc67b261ff2be55ad"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix5",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix5",
+        "commit": "368cb00505675c2f2fd423f23236b1ed9a584a4d"
+      },
+      {
+        "name": "0050-live-monitor-qa-fix6",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-live-monitor-qa-fix6",
+        "commit": "25fdbcefdd4cee80b98342ad647435f91f225159"
+      },
+      {
+        "name": "0050-preview-fill-gates",
+        "ref": "refs/codex/cleanup-snapshots/03-0050-preview-fill-gates",
+        "commit": "731a618d2201aa7f38c24f6bc13cbabd06a73a94"
+      }
+    ]
+  },
+  "test_temp_cleanup": {
+    "status": "BLOCKED_BY_EXECUTION_POLICY_NO_DELETE_PERFORMED",
+    "roots_still_present": 7,
+    "bytes_not_removed": 201273603,
+    "no_bypass_attempted": true,
+    "roots": [
+      "C:/Users/紀成達/AppData/Local/Temp/etf-causal-service-replay-6e6ipt82",
+      "C:/Users/紀成達/AppData/Local/Temp/etf-causal-service-replay-agfswq_k",
+      "C:/Users/紀成達/AppData/Local/Temp/etf-causal-service-replay-bl72s1bq",
+      "C:/Users/紀成達/AppData/Local/Temp/etf-causal-service-replay-co9n63jl",
+      "C:/Users/紀成達/AppData/Local/Temp/etf-causal-service-replay-i1xtd75f",
+      "D:/code/stock_ai_bot/.workdata/q03-int-tmp",
+      "D:/code/stock_ai_bot/.workdata/reports/dual-ma/qa/0050-main-disabled-integration-qa00-20261023/postmerge-test-tmp"
+    ]
+  },
+  "full_repository_suite": "Not rerun or relabeled green; historical 42 failures/24 errors retained as prior scope limitation.",
+  "02_not_interrupted": true,
+  "local_evidence_root": "D:\\code\\stock_ai_bot\\.workdata\\reports\\dual-ma\\qa\\0050-main-disabled-integration-qa00-20261023"
+}

@@ -19,7 +19,7 @@ from stock_ai_bot.monitoring.etf_monitor.data import (
 )
 from stock_ai_bot.monitoring.etf_monitor.delta_pipeline import (
     EMERGENCY_CLOSURE_URL, HOLIDAY_URL, build_daily_delta_bundle,
-    cached_emergency_notice, parse_emergency_closures,
+    cached_emergency_notice, parse_emergency_closures, parse_holidays,
 )
 from stock_ai_bot.monitoring.etf_monitor.errors import EtfMonitorDataError, EtfMonitorRoutingError
 from stock_ai_bot.monitoring.etf_monitor.models import MonitorPhase, stable_sha256
@@ -41,6 +41,23 @@ def response(url, raw):
 
 def test_nested_span_roc_date_is_an_explicit_market_closure():
     assert parse_emergency_closures(NOTICE) == {DAY}
+
+
+def test_annual_schedule_opening_and_last_trading_days_are_not_holidays():
+    raw = json.dumps([
+        {"Date": "1150101", "Name": "中華民國開國紀念日"},
+        {"Date": "1150102", "Name": "國曆新年開始交易日"},
+        {"Date": "1150211", "Name": "農曆春節前最後交易日"},
+        {"Date": "1150212", "Name": "市場無交易，僅辦理結算交割作業"},
+        {"Date": "1150223", "Name": "農曆春節後開始交易日"},
+    ]).encode()
+    assert parse_holidays(raw) == {date(2026, 1, 1), date(2026, 2, 12)}
+
+
+def test_calendar_gate_keeps_annual_information_trading_days_open(monkeypatch):
+    raw = json.dumps([{"Date": "1150101", "Name": "開國紀念日"}, {"Date": "1150223", "Name": "農曆春節後開始交易日"}]).encode()
+    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", lambda url, **k: response(url, raw if url == HOLIDAY_URL else EMPTY))
+    assert OfficialTwseTradingCalendar().verify(date(2026, 2, 23))["is_trading_day"] is True
 
 
 @pytest.mark.parametrize("text", [

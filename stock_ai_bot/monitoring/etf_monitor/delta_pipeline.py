@@ -154,7 +154,13 @@ def parse_holidays(raw: bytes) -> set[date]:
         raise EtfMonitorDataError("TWSE holiday receipt is not valid JSON") from exc
     if not isinstance(payload, list):
         raise EtfMonitorDataError("TWSE holiday receipt root changed")
-    return {_roc_date(row.get("Date")) for row in payload if isinstance(row, Mapping)}
+    # The official schedule also lists the first/last *trading* day of a
+    # holiday season. Those are information rows, not market closures.
+    return {
+        _roc_date(row.get("Date")) for row in payload
+        if isinstance(row, Mapping)
+        and not re.search(r"(?:開始交易日|最後交易日)", str(row.get("Name") or ""))
+    }
 
 
 class _VisibleNoticeText(HTMLParser):

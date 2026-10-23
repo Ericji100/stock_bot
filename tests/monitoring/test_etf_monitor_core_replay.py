@@ -145,6 +145,8 @@ def test_next_open_message_never_invents_unknown_fill_price() -> None:
         core=state,
         snapshot=_snapshot(_synthetic_rows()),
     )
-    assert "尚未成交" in message
-    assert "待下一官方交易日開盤" in message
-    assert "非下單指示" in message
+    assert "下一交易日開盤進場" in message
+    assert "進場參考價" in message
+    assert "（台北時間）" not in message
+    assert "成交狀態：" not in message
+    assert "提醒：" not in message

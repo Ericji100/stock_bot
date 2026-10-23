@@ -11,7 +11,7 @@ from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 from backtests.dual_ma import etf_0050_2006_fixed_methods_v1 as accepted_package
@@ -276,6 +276,20 @@ def _run_causal_service_lifecycle(
     restart_mismatches = 0
     prior_day: date | None = None
     action_days = {event.event_date for event in events}
+    trading_sessions = {
+        value if isinstance(value, date) else date.fromisoformat(str(value))
+        for value in (row["date"] for row in raw_rows)
+    }
+
+    def replay_trading_day(day: date) -> Mapping[str, Any]:
+        return {
+            "is_trading_day": day in trading_sessions,
+            "source": "FROZEN_ACCEPTED_SESSION_CALENDAR",
+            "trading_date": day.isoformat(),
+            "calendar_reason": (
+                "ACCEPTED_SESSION" if day in trading_sessions else "NO_ACCEPTED_SESSION"
+            ),
+        }
 
     with tempfile.TemporaryDirectory(prefix="etf-causal-service-replay-") as temp:
         database = Path(temp) / "monitor.sqlite3"
@@ -289,7 +303,7 @@ def _run_causal_service_lifecycle(
                 data_provider=provider,
                 router=None,
                 core=ReplayCore(),
-                trading_day_predicate=lambda _day: True,
+                trading_day_predicate=replay_trading_day,
             )
 
         service = make_service(store)

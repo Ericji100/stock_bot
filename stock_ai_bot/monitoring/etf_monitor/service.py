@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
@@ -11,7 +11,12 @@ from .accounting import CorporateActionAccounting
 from .config import EtfMonitorConfig
 from .core import AcceptedFinalV17Core
 from .data import MonitorMarketDataProvider, OfficialTwseTradingCalendar
-from .errors import EtfMonitorRoutingError
+from .errors import (
+    EtfMonitorDataError,
+    EtfMonitorNextSessionOpenUnavailable,
+    EtfMonitorRoutingError,
+    EtfMonitorStateError,
+)
 from .messages import render_core_message, render_data_unavailable, render_offline_test
 from .models import (
     Decision,
@@ -57,6 +62,16 @@ def _trading_day_result(value: Any) -> tuple[bool, Mapping[str, Any]]:
     raise TypeError("ETF trading-day gate returned an invalid result")
 
 
+def _durable_calendar_evidence(evidence: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Remove observation-time fields so restart retries keep a stable event payload."""
+
+    return {
+        key: value
+        for key, value in evidence.items()
+        if key not in {"fetched_at"}
+    }
+
+
 class EtfMonitorService:
     def __init__(
         self,
@@ -82,6 +97,21 @@ class EtfMonitorService:
     async def _deliver(self, event_id: str, *, has_outbox: bool = True) -> None:
         if has_outbox and self.router is not None:
             await self.router.deliver(event_id)
+
+    async def _next_trading_session_after(
+        self, signal_date: date
+    ) -> tuple[date, Mapping[str, Any]]:
+        """Pin the next official trading session instead of the next observed run."""
+
+        for offset in range(1, 46):
+            candidate = signal_date + timedelta(days=offset)
+            gate_value = await asyncio.to_thread(self.trading_day_predicate, candidate)
+            is_trading_day, evidence = _trading_day_result(gate_value)
+            if is_trading_day:
+                return candidate, _durable_calendar_evidence(evidence)
+        raise EtfMonitorDataError(
+            f"official next trading session not found within 45 days after {signal_date}"
+        )
 
     async def _data_unavailable(
         self,
@@ -163,6 +193,9 @@ class EtfMonitorService:
                     self.trading_day_predicate, trading_date
                 )
                 is_trading_day, trading_day_evidence = _trading_day_result(gate_value)
+                trading_day_evidence = _durable_calendar_evidence(
+                    trading_day_evidence
+                )
                 if not is_trading_day:
                     self.store.finish_job(phase, trading_date, succeeded=True)
                     return PhaseOutcome(
@@ -179,14 +212,28 @@ class EtfMonitorService:
                         self.accounting.validate, snapshot
                     )
                 shadow_fills: tuple[Mapping[str, Any], ...] = ()
-                if phase in {MonitorPhase.PREVIEW, MonitorPhase.DECISION}:
-                    current_row = snapshot.raw_row_for(trading_date)
-                    if current_row is None:
-                        raise ValueError("current trading-day raw open is unavailable")
-                    shadow_fills = await asyncio.to_thread(
-                        self.store.settle_pending_actions_at_open,
+                if phase is MonitorPhase.DECISION:
+                    due_actions = await asyncio.to_thread(
+                        self.store.confirmed_pending_actions_due_by,
                         trading_date=trading_date,
-                        raw_open=Decimal(str(current_row["open"])),
+                    )
+                    for action in due_actions:
+                        expected_date = date.fromisoformat(str(action["expected_fill_date"]))
+                        expected_row = snapshot.raw_row_for(expected_date)
+                        if expected_row is None:
+                            raise EtfMonitorNextSessionOpenUnavailable(
+                                "verified raw open is unavailable for fixed next session "
+                                f"{expected_date}; action {action['action_id']} remains pending"
+                            )
+                        fills = await asyncio.to_thread(
+                            self.store.settle_pending_actions_at_open,
+                            trading_date=expected_date,
+                            raw_open=Decimal(str(expected_row["open"])),
+                            snapshot_id=snapshot.snapshot_id,
+                        )
+                        shadow_fills = (*shadow_fills, *fills)
+                    shadow_fills = await asyncio.to_thread(
+                        self.store.shadow_fills_for_snapshot,
                         snapshot_id=snapshot.snapshot_id,
                     )
             except Exception as exc:
@@ -226,6 +273,17 @@ class EtfMonitorService:
                     correction_of = prior_same_day_event_id
                     correction_reason = "FULL_DAY_ACCEPTED_DATA_CHANGED_MATERIAL_STATE"
 
+            expected_fill_date: date | None = None
+            expected_fill_calendar_evidence: Mapping[str, Any] | None = None
+            if phase is MonitorPhase.RECONCILIATION and core.decision in {
+                Decision.BUY_NEXT_OPEN,
+                Decision.SELL_NEXT_OPEN,
+            }:
+                (
+                    expected_fill_date,
+                    expected_fill_calendar_evidence,
+                ) = await self._next_trading_session_after(trading_date)
+
             suffix = None
             event_type = core.decision.value
             if phase is MonitorPhase.RECONCILIATION:
@@ -239,16 +297,47 @@ class EtfMonitorService:
                 decision=core.decision,
                 suffix=suffix,
             )
+            existing_event = self.store.event(event_id)
+            existing_payload: Mapping[str, Any] | None = None
+            if existing_event is not None:
+                if (
+                    existing_event["phase"] != phase.value
+                    or existing_event["trading_date"] != trading_date.isoformat()
+                    or existing_event["event_type"] != event_type
+                    or existing_event["supersedes_event_id"] != correction_of
+                ):
+                    raise EtfMonitorStateError(
+                        "stable event id collided with different event metadata"
+                    )
+                decoded = json.loads(str(existing_event["payload_json"]))
+                if not isinstance(decoded, Mapping):
+                    raise EtfMonitorStateError("existing stable event payload is invalid")
+                existing_payload = decoded
             should_notify = not (
                 phase is MonitorPhase.DECISION
                 and core.decision is Decision.HOLD
                 and not self.config.daily_shadow_status
             )
             pending_transition = None
-            if prior_same_day_event_id is not None:
-                pending_transition = self.store.describe_pending_transition(
-                    original_event_id=prior_same_day_event_id,
-                    core=core,
+            if phase is MonitorPhase.RECONCILIATION:
+                durable_transition = (
+                    None
+                    if existing_payload is None
+                    else existing_payload.get("pending_transition")
+                )
+                if existing_payload is not None and not isinstance(
+                    durable_transition, Mapping
+                ):
+                    raise EtfMonitorStateError(
+                        "existing reconciliation event lacks a durable transition plan"
+                    )
+                pending_transition = (
+                    durable_transition
+                    if durable_transition is not None
+                    else self.store.describe_pending_transition(
+                        original_event_id=prior_same_day_event_id,
+                        core=core,
+                    )
                 )
             body = render_core_message(
                 phase=phase,
@@ -273,6 +362,14 @@ class EtfMonitorService:
                 "correction_reason": correction_reason,
                 "pending_transition": pending_transition,
                 "shadow_next_open_fills": shadow_fills,
+                "next_session_open_gate": (
+                    None
+                    if expected_fill_date is None
+                    else {
+                        "expected_fill_date": expected_fill_date,
+                        "calendar_evidence": expected_fill_calendar_evidence,
+                    }
+                ),
                 "trading_day_gate": trading_day_evidence,
             }
             self.store.append_event_with_outbox(
@@ -296,6 +393,9 @@ class EtfMonitorService:
                     core=core,
                     event_id=event_id,
                     original_event_id=prior_same_day_event_id,
+                    expected_fill_date=expected_fill_date,
+                    expected_fill_calendar_evidence=expected_fill_calendar_evidence,
+                    planned_transition=pending_transition,
                 )
             if correction_of is not None:
                 self.store.append_correction(

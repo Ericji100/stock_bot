@@ -10,6 +10,10 @@ class EtfMonitorDataError(EtfMonitorError):
     """Accepted market data is missing, stale, or inconsistent."""
 
 
+class EtfMonitorNextSessionOpenUnavailable(EtfMonitorDataError):
+    """The verified raw open for the fixed next trading session is unavailable."""
+
+
 class EtfMonitorRoutingError(EtfMonitorError):
     """The dedicated Telegram route could not be verified."""
 

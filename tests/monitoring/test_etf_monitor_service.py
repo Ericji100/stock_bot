@@ -240,20 +240,33 @@ def test_reconciliation_retry_after_partial_completion_keeps_one_pending(tmp_pat
 
 
 @pytest.mark.parametrize(
-    ("before", "after", "old_status", "active_action"),
+    ("before", "after", "old_status", "active_action", "public_change"),
     [
-        (Decision.BUY_NEXT_OPEN, Decision.HOLD, "CANCELLED_BY_RECONCILIATION", None),
+        (
+            Decision.BUY_NEXT_OPEN,
+            Decision.HOLD,
+            "CANCELLED_BY_RECONCILIATION",
+            None,
+            "取消先前進場訊號",
+        ),
         (
             Decision.BUY_NEXT_OPEN,
             Decision.SELL_NEXT_OPEN,
             "SUPERSEDED_BY_RECONCILIATION",
             "SELL_NEXT_OPEN",
+            "先前進場訊號改為出場訊號",
         ),
-        (Decision.SELL_NEXT_OPEN, Decision.HOLD, "CANCELLED_BY_RECONCILIATION", None),
+        (
+            Decision.SELL_NEXT_OPEN,
+            Decision.HOLD,
+            "CANCELLED_BY_RECONCILIATION",
+            None,
+            "取消先前出場訊號",
+        ),
     ],
 )
 def test_reconciliation_cancels_or_supersedes_pending_action(
-    tmp_path, before, after, old_status, active_action
+    tmp_path, before, after, old_status, active_action, public_change
 ) -> None:
     service, store = _service(tmp_path, [before, after])
     asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
@@ -267,7 +280,9 @@ def test_reconciliation_cancels_or_supersedes_pending_action(
         body = connection.execute(
             "SELECT body FROM outbox ORDER BY created_at DESC LIMIT 1"
         ).fetchone()[0]
-    assert f"{before.value} → {after.value}" in body
+    assert public_change in body
+    assert before.value not in body
+    assert after.value not in body
 
 
 def test_pending_supersession_survives_restart(tmp_path) -> None:
@@ -310,34 +325,46 @@ def test_reconciliation_atomically_replaces_same_direction_corrected_details(tmp
         body = connection.execute(
             "SELECT body FROM outbox WHERE event_id=?", (correction.event_ids[0],)
         ).fetchone()[0]
-    assert "leg=L1 → L2" in body
-    assert "參考價=51 → 52" in body
+    assert "更新先前進場訊號的參考資訊" in body
+    assert "L1" not in body
+    assert "L2" not in body
+    assert "action_id" not in body
 
 
-def test_pending_action_settles_once_at_next_observed_raw_open_and_survives_restart(
+def test_confirmed_pending_action_settles_once_at_fixed_next_open_and_survives_restart(
     tmp_path,
 ) -> None:
-    store = EtfMonitorStore(tmp_path / "monitor.sqlite3")
-    core = _core(Decision.BUY_NEXT_OPEN)
-    store.save_pending_action(core, event_id="decision-event")
+    service, store = _service(
+        tmp_path,
+        [Decision.BUY_NEXT_OPEN, Decision.BUY_NEXT_OPEN],
+    )
+    asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    confirmation = asyncio.run(
+        service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22))
+    )
     fill_day = DAY.replace(day=22)
-    filled = store.settle_pending_actions_at_open(
+    pending = _pending(store.path)[0]
+    assert pending["expected_fill_date"] == fill_day.isoformat()
+    assert pending["reconciled_by_event_id"] == confirmation.event_ids[0]
+
+    reopened = EtfMonitorStore(store.path)
+    reopened.recover_after_restart()
+    filled = reopened.settle_pending_actions_at_open(
         trading_date=fill_day,
         raw_open=Decimal("52.5"),
-        snapshot_id="next-session-preview",
+        snapshot_id="verified-next-session",
     )
     assert len(filled) == 1
-    assert store.settle_pending_actions_at_open(
+    assert reopened.settle_pending_actions_at_open(
         trading_date=fill_day,
         raw_open=Decimal("52.5"),
-        snapshot_id="next-session-preview",
+        snapshot_id="verified-next-session",
     ) == ()
-    reopened = EtfMonitorStore(store.path)
     row = _pending(reopened.path)[0]
     assert row["status"] == "FILLED_SHADOW_NEXT_OPEN"
     assert row["fill_date"] == "2026-10-22"
     assert Decimal(row["fill_price"]) == Decimal("52.5")
-    assert row["fill_snapshot_id"] == "next-session-preview"
+    assert row["fill_snapshot_id"] == "verified-next-session"
 
 
 def test_cross_day_service_sequence_confirms_then_fills_at_next_raw_open(tmp_path) -> None:
@@ -358,27 +385,44 @@ def test_cross_day_service_sequence_confirms_then_fills_at_next_raw_open(tmp_pat
         store=store,
         data_provider=_DayData(),
         router=None,
-        core=_Core([
-            _core(Decision.BUY_NEXT_OPEN, day=DAY),
-            _core(Decision.BUY_NEXT_OPEN, day=DAY),
-            _core(Decision.HOLD, day=next_day),
-        ]),
+        core=_Core(
+            [
+                _core(Decision.BUY_NEXT_OPEN, day=DAY),
+                _core(Decision.BUY_NEXT_OPEN, day=DAY),
+                _core(Decision.HOLD, day=next_day),
+                _core(Decision.HOLD, day=next_day),
+            ]
+        ),
         trading_day_predicate=lambda _: True,
     )
     asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
     asyncio.run(service.run(MonitorPhase.RECONCILIATION, now=NOW.replace(hour=22)))
+    before_preview = _pending(store.path)
+    before_state = store.latest_state()
+    before_corporate_actions = _count(store.path, "corporate_actions")
     preview = asyncio.run(
         service.run(
             MonitorPhase.PREVIEW,
             now=NOW.replace(day=22, hour=12, minute=45),
         )
     )
+    assert _pending(store.path) == before_preview
+    assert store.latest_state() == before_state
+    assert _count(store.path, "corporate_actions") == before_corporate_actions
+    decision = asyncio.run(
+        service.run(
+            MonitorPhase.DECISION,
+            now=NOW.replace(day=22, hour=13, minute=55),
+        )
+    )
     row = _pending(store.path)[0]
     assert preview.status == "COMPLETED"
+    assert preview.metadata["shadow_next_open_fills"] == ()
+    assert decision.status == "COMPLETED"
     assert row["status"] == "FILLED_SHADOW_NEXT_OPEN"
     assert row["fill_date"] == next_day.isoformat()
     assert Decimal(row["fill_price"]) == Decimal("52.5")
-    assert len(preview.metadata["shadow_next_open_fills"]) == 1
+    assert len(decision.metadata["shadow_next_open_fills"]) == 1
 
 
 def test_data_failure_is_fail_closed_and_records_health_event(tmp_path) -> None:
@@ -471,7 +515,8 @@ def test_reconciliation_failure_quarantines_pending_until_successful_retry(
         body = connection.execute(
             "SELECT body FROM outbox WHERE event_id=?", (recovered.event_ids[0],)
         ).fetchone()[0]
-    assert "RESTORED_AFTER_RECONCILIATION" in body
+    assert "資料恢復確認後，恢復先前進場訊號" in body
+    assert "RESTORED_AFTER_RECONCILIATION" not in body
 
 
 def test_hold_notification_can_be_disabled_without_disabling_state(tmp_path) -> None:

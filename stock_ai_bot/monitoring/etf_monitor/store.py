@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
@@ -20,7 +21,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _utc_now() -> str:
@@ -92,6 +93,8 @@ class EtfMonitorStore:
                     fill_price TEXT,
                     fill_date TEXT,
                     fill_snapshot_id TEXT,
+                    expected_fill_date TEXT,
+                    expected_fill_calendar_json TEXT,
                     status TEXT NOT NULL,
                     source_event_id TEXT NOT NULL,
                     superseded_by_event_id TEXT,
@@ -177,6 +180,8 @@ class EtfMonitorStore:
                 ("supersede_reason", "TEXT"),
                 ("fill_date", "TEXT"),
                 ("fill_snapshot_id", "TEXT"),
+                ("expected_fill_date", "TEXT"),
+                ("expected_fill_calendar_json", "TEXT"),
                 ("quarantined_by_event_id", "TEXT"),
                 ("quarantined_at", "TEXT"),
                 ("quarantine_reason", "TEXT"),
@@ -387,7 +392,7 @@ class EtfMonitorStore:
     def describe_pending_transition(
         self,
         *,
-        original_event_id: str,
+        original_event_id: str | None,
         core: AcceptedCoreState,
     ) -> Mapping[str, Any]:
         with closing(self._connect()) as connection:
@@ -456,50 +461,168 @@ class EtfMonitorStore:
         core: AcceptedCoreState,
         event_id: str,
         original_event_id: str | None,
+        expected_fill_date: date | None = None,
+        expected_fill_calendar_evidence: Mapping[str, Any] | None = None,
+        planned_transition: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
-        if original_event_id is None:
+        if (
+            original_event_id is None
+            and expected_fill_date is None
+            and planned_transition is None
+        ):
             self.save_pending_action(core, event_id=event_id)
             return {
                 "old_action": None,
                 "new_action": core.decision.value,
                 "outcome": "CREATED" if core.decision is not Decision.HOLD else "UNCHANGED",
             }
-        transition = dict(self.describe_pending_transition(
-            original_event_id=original_event_id,
-            core=core,
-        ))
+        transition = dict(
+            planned_transition
+            or self.describe_pending_transition(
+                original_event_id=original_event_id,
+                core=core,
+            )
+        )
+        allowed_outcomes = {
+            "UNCHANGED",
+            "CREATED_BY_RECONCILIATION",
+            "RESTORED_AFTER_RECONCILIATION",
+            "CANCELLED_BY_RECONCILIATION",
+            "SUPERSEDED_BY_RECONCILIATION",
+        }
+        if (
+            transition.get("outcome") not in allowed_outcomes
+            or transition.get("new_action") != core.decision.value
+        ):
+            raise EtfMonitorStateError("invalid durable pending-action transition plan")
+        if (
+            core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN}
+            and expected_fill_date is None
+        ):
+            raise EtfMonitorStateError(
+                "reconciled next-open action requires a fixed official next session"
+            )
+        if expected_fill_date is not None and expected_fill_calendar_evidence is None:
+            raise EtfMonitorStateError(
+                "reconciled next-open action requires official calendar evidence"
+            )
+        expected_calendar_json = (
+            None
+            if expected_fill_calendar_evidence is None
+            else canonical_json(expected_fill_calendar_evidence)
+        )
         now = _utc_now()
         with self.transaction() as connection:
-            old = connection.execute(
-                "SELECT * FROM pending_actions WHERE source_event_id=? "
-                "AND status IN ('PENDING_NEXT_SESSION_OPEN',"
-                "'QUARANTINED_RECONCILIATION_REQUIRED') "
-                "ORDER BY created_at DESC LIMIT 1",
-                (original_event_id,),
-            ).fetchone()
+            old_action_id = transition.get("old_action_id")
+            old = (
+                None
+                if old_action_id is None
+                else connection.execute(
+                    "SELECT * FROM pending_actions WHERE action_id=?",
+                    (str(old_action_id),),
+                ).fetchone()
+            )
+            if old_action_id is not None and old is None:
+                raise EtfMonitorStateError(
+                    "durable pending-action transition references a missing action"
+                )
+            if old is not None and (
+                original_event_id is None
+                or old["source_event_id"] != original_event_id
+                or old["action"] != transition.get("old_action")
+            ):
+                raise EtfMonitorStateError(
+                    "durable pending-action transition does not match its source action"
+                )
+            outcome = str(transition["outcome"])
+            if old is None:
+                expected_outcome = (
+                    "UNCHANGED"
+                    if core.decision is Decision.HOLD
+                    else "CREATED_BY_RECONCILIATION"
+                )
+                if outcome != expected_outcome:
+                    raise EtfMonitorStateError(
+                        "durable pending-action transition has no matching source action"
+                    )
+            elif outcome == "CANCELLED_BY_RECONCILIATION":
+                if core.decision is not Decision.HOLD:
+                    raise EtfMonitorStateError("only HOLD can cancel a pending action")
+            elif outcome == "SUPERSEDED_BY_RECONCILIATION":
+                if core.decision is Decision.HOLD:
+                    raise EtfMonitorStateError("HOLD cannot create a replacement action")
+            elif outcome in {"UNCHANGED", "RESTORED_AFTER_RECONCILIATION"}:
+                if old["action"] != core.decision.value:
+                    raise EtfMonitorStateError(
+                        "durable unchanged transition does not match the current decision"
+                    )
             if old is not None and transition["outcome"] == "RESTORED_AFTER_RECONCILIATION":
                 connection.execute(
                     "UPDATE pending_actions SET status='PENDING_NEXT_SESSION_OPEN', "
-                    "reconciled_by_event_id=?, reconciled_at=?, updated_at=? "
+                    "reconciled_by_event_id=?, reconciled_at=?, expected_fill_date=?, "
+                    "expected_fill_calendar_json=?, updated_at=? "
                     "WHERE action_id=? AND status='QUARANTINED_RECONCILIATION_REQUIRED'",
-                    (event_id, now, now, old["action_id"]),
-                )
-            if old is not None and transition["outcome"] in {
-                "CANCELLED_BY_RECONCILIATION",
-                "SUPERSEDED_BY_RECONCILIATION",
-            }:
-                connection.execute(
-                    "UPDATE pending_actions SET status=?, superseded_by_event_id=?, "
-                    "superseded_at=?, supersede_reason=?, updated_at=? WHERE action_id=?",
                     (
-                        transition["outcome"],
                         event_id,
                         now,
-                        "FULL_DAY_ACCEPTED_DATA_CHANGED_MATERIAL_STATE",
+                        expected_fill_date.isoformat(),
+                        expected_calendar_json,
                         now,
                         old["action_id"],
                     ),
                 )
+            if old is not None and transition["outcome"] == "UNCHANGED":
+                fixed_date = expected_fill_date.isoformat()
+                if not (
+                    old["status"] == "PENDING_NEXT_SESSION_OPEN"
+                    and old["reconciled_by_event_id"] == event_id
+                    and old["expected_fill_date"] == fixed_date
+                    and old["expected_fill_calendar_json"] == expected_calendar_json
+                ):
+                    if old["status"] != "PENDING_NEXT_SESSION_OPEN":
+                        raise EtfMonitorStateError(
+                            "unchanged pending action is no longer fill-eligible"
+                        )
+                    connection.execute(
+                        "UPDATE pending_actions SET reconciled_by_event_id=?, reconciled_at=?, "
+                        "expected_fill_date=?, expected_fill_calendar_json=?, updated_at=? "
+                        "WHERE action_id=? AND status='PENDING_NEXT_SESSION_OPEN'",
+                        (
+                            event_id,
+                            now,
+                            fixed_date,
+                            expected_calendar_json,
+                            now,
+                            old["action_id"],
+                        ),
+                    )
+            if old is not None and transition["outcome"] in {
+                "CANCELLED_BY_RECONCILIATION",
+                "SUPERSEDED_BY_RECONCILIATION",
+            }:
+                if not (
+                    old["status"] == transition["outcome"]
+                    and old["superseded_by_event_id"] == event_id
+                ):
+                    if old["status"] not in {
+                        "PENDING_NEXT_SESSION_OPEN",
+                        "QUARANTINED_RECONCILIATION_REQUIRED",
+                    }:
+                        raise EtfMonitorStateError(
+                            "pending action was already changed by another event"
+                        )
+                    connection.execute(
+                        "UPDATE pending_actions SET status=?, superseded_by_event_id=?, "
+                        "superseded_at=?, supersede_reason=?, updated_at=? WHERE action_id=?",
+                        (
+                            transition["outcome"],
+                            event_id,
+                            now,
+                            "FULL_DAY_ACCEPTED_DATA_CHANGED_MATERIAL_STATE",
+                            now,
+                            old["action_id"],
+                        ),
+                    )
             if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN} and (
                 old is None
                 or transition["outcome"] == "SUPERSEDED_BY_RECONCILIATION"
@@ -507,8 +630,10 @@ class EtfMonitorStore:
                 action_id = f"pending:{event_id}"
                 connection.execute(
                     "INSERT INTO pending_actions(action_id, signal_date, action, leg_id, "
-                    "signal_reference_price, fill_price, status, source_event_id, "
-                    "created_at, updated_at) VALUES(?,?,?,?,?,NULL,'PENDING_NEXT_SESSION_OPEN',?,?,?) "
+                    "signal_reference_price, fill_price, expected_fill_date, "
+                    "expected_fill_calendar_json, status, source_event_id, "
+                    "reconciled_by_event_id, reconciled_at, created_at, updated_at) "
+                    "VALUES(?,?,?,?,?,NULL,?,?,'PENDING_NEXT_SESSION_OPEN',?,?,?,?,?) "
                     "ON CONFLICT(action_id) DO NOTHING",
                     (
                         action_id,
@@ -520,12 +645,128 @@ class EtfMonitorStore:
                         None if core.signal_reference_price is None else str(
                             core.signal_reference_price
                         ),
+                        expected_fill_date.isoformat(),
+                        expected_calendar_json,
                         event_id,
+                        event_id,
+                        now,
                         now,
                         now,
                     ),
                 )
         return transition
+
+    def shadow_fills_for_snapshot(
+        self, *, snapshot_id: str
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return a stable projection of fills already written for one snapshot."""
+
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT action_id, signal_date, action, leg_id, signal_reference_price, "
+                "status, source_event_id, reconciled_by_event_id, expected_fill_date, "
+                "fill_price, fill_date, fill_snapshot_id FROM pending_actions "
+                "WHERE status='FILLED_SHADOW_NEXT_OPEN' AND fill_snapshot_id=? "
+                "ORDER BY signal_date, action_id",
+                (snapshot_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def _has_successful_matching_reconciliation(
+        self,
+        connection: sqlite3.Connection,
+        row: sqlite3.Row,
+    ) -> bool:
+        evidence_event_id = row["reconciled_by_event_id"]
+        if evidence_event_id is None:
+            return False
+        evidence = connection.execute(
+            "SELECT e.phase, e.trading_date, e.event_type, e.payload_json, "
+            "j.status AS job_status FROM events e "
+            "LEFT JOIN job_runs j ON j.run_key='reconciliation_2200:' || e.trading_date "
+            "WHERE e.event_id=?",
+            (evidence_event_id,),
+        ).fetchone()
+        if evidence is None:
+            raise EtfMonitorStateError("pending action reconciliation event is missing")
+        if evidence["job_status"] != "SUCCEEDED":
+            return False
+        if (
+            evidence["phase"] != MonitorPhase.RECONCILIATION.value
+            or evidence["trading_date"] != row["signal_date"]
+            or evidence["event_type"] not in {"RECONCILIATION_CONFIRMED", "CORRECTION"}
+        ):
+            raise EtfMonitorStateError("pending action reconciliation evidence is inconsistent")
+        try:
+            payload = json.loads(str(evidence["payload_json"]))
+        except (TypeError, ValueError) as exc:
+            raise EtfMonitorStateError(
+                "pending action reconciliation payload is invalid"
+            ) from exc
+        core = payload.get("core")
+        data = payload.get("data")
+        gate = payload.get("next_session_open_gate")
+        transition = payload.get("pending_transition")
+        if not all(isinstance(value, Mapping) for value in (core, data, gate, transition)):
+            raise EtfMonitorStateError(
+                "pending action lacks matching confirmation or correction evidence"
+            )
+        if core.get("decision") != row["action"] or data.get("is_complete") is not True:
+            raise EtfMonitorStateError("pending action was not confirmed by complete data")
+        if (
+            gate.get("expected_fill_date") != row["expected_fill_date"]
+            or row["expected_fill_calendar_json"] is None
+            or canonical_json(gate.get("calendar_evidence"))
+            != row["expected_fill_calendar_json"]
+        ):
+            raise EtfMonitorStateError("pending action next-session calendar pin is inconsistent")
+        if transition.get("new_action") != row["action"]:
+            raise EtfMonitorStateError("pending action does not match reconciliation decision")
+        outcome = transition.get("outcome")
+        if outcome in {"UNCHANGED", "RESTORED_AFTER_RECONCILIATION"}:
+            if transition.get("old_action_id") != row["action_id"]:
+                raise EtfMonitorStateError("confirmation does not identify the pending action")
+        elif outcome in {
+            "SUPERSEDED_BY_RECONCILIATION",
+            "CREATED_BY_RECONCILIATION",
+        }:
+            if row["source_event_id"] != evidence_event_id:
+                raise EtfMonitorStateError(
+                    "reconciliation does not identify the created replacement action"
+                )
+            if (
+                outcome == "CREATED_BY_RECONCILIATION"
+                and transition.get("old_action_id") is not None
+            ):
+                raise EtfMonitorStateError(
+                    "new EOD instruction unexpectedly references an old pending action"
+                )
+        else:
+            raise EtfMonitorStateError("pending action evidence is not fill-eligible")
+        return True
+
+    def confirmed_pending_actions_due_by(
+        self, *, trading_date: date
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return successfully confirmed actions whose fixed next session has arrived."""
+
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM pending_actions WHERE status='PENDING_NEXT_SESSION_OPEN' "
+                "AND expected_fill_date IS NOT NULL AND expected_fill_date<=? "
+                "ORDER BY expected_fill_date, signal_date, created_at, action_id",
+                (trading_date.isoformat(),),
+            ).fetchall()
+            ready = [
+                dict(row)
+                for row in rows
+                if self._has_successful_matching_reconciliation(connection, row)
+            ]
+        if len(ready) > 1:
+            raise EtfMonitorStateError(
+                "multiple confirmed pending actions require manual reconciliation"
+            )
+        return tuple(ready)
 
     def quarantine_pending_for_reconciliation(
         self,
@@ -582,7 +823,7 @@ class EtfMonitorStore:
         raw_open: Decimal,
         snapshot_id: str,
     ) -> tuple[Mapping[str, Any], ...]:
-        """Atomically record a shadow fill at the first observed later-session raw open."""
+        """Atomically fill only at the fixed official next-session raw open."""
 
         if raw_open <= 0:
             raise EtfMonitorStateError("shadow next-open fill requires a positive raw open")
@@ -590,14 +831,19 @@ class EtfMonitorStore:
         with self.transaction() as connection:
             rows = connection.execute(
                 "SELECT * FROM pending_actions WHERE status='PENDING_NEXT_SESSION_OPEN' "
-                "AND signal_date < ? ORDER BY signal_date, created_at, action_id",
+                "AND expected_fill_date=? ORDER BY signal_date, created_at, action_id",
                 (trading_date.isoformat(),),
             ).fetchall()
-            if len(rows) > 1:
+            eligible = [
+                row
+                for row in rows
+                if self._has_successful_matching_reconciliation(connection, row)
+            ]
+            if len(eligible) > 1:
                 raise EtfMonitorStateError(
                     "multiple prior-session pending actions require manual reconciliation"
                 )
-            for row in rows:
+            for row in eligible:
                 connection.execute(
                     "UPDATE pending_actions SET status='FILLED_SHADOW_NEXT_OPEN', "
                     "fill_price=?, fill_date=?, fill_snapshot_id=?, updated_at=? "
@@ -618,7 +864,7 @@ class EtfMonitorStore:
                     "fill_date": trading_date.isoformat(),
                     "fill_snapshot_id": snapshot_id,
                 }
-                for row in rows
+                for row in eligible
             )
 
     def record_corporate_actions(self, snapshot: MarketDataSnapshot) -> int:

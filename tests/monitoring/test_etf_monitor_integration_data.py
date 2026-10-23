@@ -1239,7 +1239,11 @@ def test_official_etf_calendar_verifies_holiday_and_preserves_receipt(
 
     monkeypatch.setattr(
         "stock_ai_bot.monitoring.etf_monitor.data.requests.get",
-        lambda *args, **kwargs: _Response(),
+        lambda url, **kwargs: _Response() if "holidaySchedule" in url else SimpleNamespace(
+            url="https://eshop.twse.com.tw/zh/",
+            content="<html>臺灣證券交易所</html>".encode(),
+            raise_for_status=lambda: None,
+        ),
     )
     calendar = OfficialTwseTradingCalendar(receipt_root=tmp_path / "calendar")
     holiday = calendar.verify(date(2026, 10, 21))

@@ -17,7 +17,7 @@ from .errors import (
     EtfMonitorRoutingError,
     EtfMonitorStateError,
 )
-from .messages import render_core_message, render_data_unavailable, render_offline_test
+from .messages import render_core_message, render_data_unavailable, render_market_closed, render_offline_test
 from .models import (
     Decision,
     MonitorPhase,
@@ -176,6 +176,40 @@ class EtfMonitorService:
             metadata={"quarantined_pending_action": quarantined},
         )
 
+    async def _closed_day(
+        self, phase: MonitorPhase, trading_date: date, evidence: Mapping[str, Any]
+    ) -> PhaseOutcome:
+        ids: tuple[str, ...] = ()
+        # A single scheduled daily status, not three notifications and not a
+        # HOLD trading decision. Never read prices or mutate position state.
+        if phase is MonitorPhase.RECONCILIATION and self.config.daily_shadow_status:
+            event_id = stable_event_id(
+                symbol="0050", strategy="final-v1.7", phase=phase,
+                signal_date=trading_date, decision=Decision.HOLD, suffix="MARKET_CLOSED",
+            )
+            existing = self.store.event(event_id)
+            if existing is not None:
+                if (existing["event_type"] != "MARKET_CLOSED"
+                    or existing["phase"] != phase.value
+                    or existing["trading_date"] != trading_date.isoformat()):
+                    raise EtfMonitorStateError("market-closed event identity collision")
+            else:
+                self.store.append_event_with_outbox(
+                    event_id=event_id, phase=phase, trading_date=trading_date,
+                    event_type="MARKET_CLOSED",
+                    payload={"market_status": "CLOSED", "trading_day_gate": evidence},
+                    target_chat_id=self.config.chat_id,
+                    body=render_market_closed(trading_date=trading_date.isoformat()),
+                )
+            await self._deliver(event_id)
+            ids = (event_id,)
+        self.store.finish_job(phase, trading_date, succeeded=True)
+        print(f"[0050 趨勢策略] {trading_date.isoformat()} 今日休市", flush=True)
+        return PhaseOutcome(
+            phase, trading_date, "SKIPPED_OFFICIAL_NON_TRADING_DAY",
+            event_ids=ids, message="今日休市", metadata={"trading_day_gate": evidence},
+        )
+
     async def run(self, phase: MonitorPhase, *, now: datetime | None = None) -> PhaseOutcome:
         if phase not in {
             MonitorPhase.PREVIEW,
@@ -197,13 +231,7 @@ class EtfMonitorService:
                     trading_day_evidence
                 )
                 if not is_trading_day:
-                    self.store.finish_job(phase, trading_date, succeeded=True)
-                    return PhaseOutcome(
-                        phase,
-                        trading_date,
-                        "SKIPPED_OFFICIAL_NON_TRADING_DAY",
-                        metadata={"trading_day_gate": trading_day_evidence},
-                    )
+                    return await self._closed_day(phase, trading_date, trading_day_evidence)
                 snapshot = await self.data_provider.load(phase, trading_date)
                 core = await asyncio.to_thread(self.core.evaluate, snapshot)
                 accounting_validation: Mapping[str, Any] = {}
@@ -236,6 +264,8 @@ class EtfMonitorService:
                         self.store.shadow_fills_for_snapshot,
                         snapshot_id=snapshot.snapshot_id,
                     )
+            except EtfMonitorRoutingError:
+                raise
             except Exception as exc:
                 outcome = await self._data_unavailable(
                     phase=phase,

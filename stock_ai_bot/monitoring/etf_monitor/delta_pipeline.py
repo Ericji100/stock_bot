@@ -4,6 +4,7 @@ import hashlib
 import html
 import json
 import re
+from html.parser import HTMLParser
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -26,11 +27,14 @@ PARSER_STOCK_DAY = "TWSE_STOCK_DAY_V1"
 PARSER_HOLIDAY = "TWSE_HOLIDAY_SCHEDULE_V1"
 PARSER_ACTION = "TWSE_TWT48U_ALL_V1"
 PARSER_DIVIDEND = "TWSE_ETFORTUNE_DIVIDEND_LIST_V1"
+EMERGENCY_CLOSURE_URL = "https://eshop.twse.com.tw/zh/"
+PARSER_EMERGENCY_CLOSURE = "TWSE_EMERGENCY_CLOSURE_NOTICE_V1"
 ALLOWED_PARSERS = {
     PARSER_STOCK_DAY: STOCK_DAY_URL,
     PARSER_HOLIDAY: HOLIDAY_URL,
     PARSER_ACTION: ACTION_URL,
     PARSER_DIVIDEND: DIVIDEND_URL,
+    PARSER_EMERGENCY_CLOSURE: EMERGENCY_CLOSURE_URL,
 }
 
 
@@ -85,7 +89,7 @@ def _receipt_bytes(
     ):
         raise EtfMonitorDataError(f"daily delta {field} endpoint is not the approved TWSE source")
     query = parse_qs(requested.query)
-    if parser in {PARSER_HOLIDAY, PARSER_ACTION} and query:
+    if parser in {PARSER_HOLIDAY, PARSER_ACTION, PARSER_EMERGENCY_CLOSURE} and query:
         raise EtfMonitorDataError(f"daily delta {field} source must not have query overrides")
     if parser == PARSER_DIVIDEND and (
         query.get("stkNo") != ["0050"]
@@ -151,6 +155,75 @@ def parse_holidays(raw: bytes) -> set[date]:
     if not isinstance(payload, list):
         raise EtfMonitorDataError("TWSE holiday receipt root changed")
     return {_roc_date(row.get("Date")) for row in payload if isinstance(row, Mapping)}
+
+
+class _VisibleNoticeText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hidden = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style"}:
+            self.hidden += 1
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style"} and self.hidden:
+            self.hidden -= 1
+
+    def handle_data(self, text):
+        if not self.hidden:
+            self.parts.append(text)
+
+
+def parse_emergency_closures(raw: bytes) -> set[date]:
+    """Only accept an explicit TWSE full-day closure, not a missing quote.
+
+    The official notice can split its ROC date across nested span elements.
+    Negations, other markets, partial-day notices and script text do not match.
+    """
+    try:
+        document = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise EtfMonitorDataError("official emergency notice is not UTF-8") from exc
+    if not re.search(r"<html\b", document, re.I) or not re.search(r"</html\s*>", document, re.I):
+        raise EtfMonitorDataError("official emergency notice page shape changed")
+    parser = _VisibleNoticeText()
+    parser.feed(document)
+    text = re.sub(r"\s+", "", "".join(parser.parts))
+    if "臺灣證券交易所" not in text:
+        raise EtfMonitorDataError("official emergency notice page identity changed")
+    days: set[date] = set()
+    for match in re.finditer(
+        r"臺灣證券交易所(?:於)?(\d{3,4})年(\d{1,2})月(\d{1,2})日(?:全日)?休市[。.!！]",
+        text,
+    ):
+        year, month, day = map(int, match.groups())
+        try:
+            days.add(date(year + 1911 if year < 1911 else year, month, day))
+        except ValueError as exc:
+            raise EtfMonitorDataError("official emergency closure date is invalid") from exc
+    return days
+
+
+def cached_emergency_notice(root: Path | None, day: date) -> bytes | None:
+    """Reuse content-addressed official notices captured by the calendar gate.
+
+    Reparse and rehash the original document; never infer a closure from a
+    filename, operator boolean or absent market data. This also survives the
+    announcement rotating off the current official home page after a holiday.
+    """
+    if root is None or not root.is_dir():
+        return None
+    for path in sorted(root.glob("*.raw")):
+        raw = path.read_bytes()
+        if not raw.lstrip().removeprefix(b"\xef\xbb\xbf").lstrip().startswith(b"<"):
+            continue
+        if path.stem != _sha256(raw):
+            raise EtfMonitorDataError("cached official emergency notice SHA-256 mismatch")
+        if day in parse_emergency_closures(raw):
+            return raw
+    return None
 
 
 def parse_action_preview(raw: bytes) -> dict[date, list[dict[str, str]]]:
@@ -233,16 +306,26 @@ def verify_delta_receipts(
     if not any(day.year == expected_date.year for day in holidays):
         raise EtfMonitorDataError("TWSE holiday receipt does not cover the delta year")
     official_bar = bars.get(expected_date)
+    closure_evidence = payload.get("emergency_closure_evidence")
+    emergency_closed = False
+    if closure_evidence is not None:
+        closure_raw, _closure_meta = _receipt_bytes(
+            closure_evidence, receipt_root=receipt_root,
+            field="emergency closure", parser=PARSER_EMERGENCY_CLOSURE,
+        )
+        emergency_closed = expected_date in parse_emergency_closures(closure_raw)
+        if not emergency_closed:
+            raise EtfMonitorDataError("official emergency notice does not close the delta date")
     status = str(payload.get("market_status") or "")
     if official_bar is not None:
-        if expected_date in holidays:
+        if expected_date in holidays or emergency_closed:
             raise EtfMonitorDataError("official TWSE bar conflicts with the holiday schedule")
         if status != "OPEN" or payload.get("bar") != official_bar:
             raise EtfMonitorDataError("daily delta OHLCV/status differs from raw TWSE STOCK_DAY")
     else:
         if status != "CLOSED" or payload.get("bar") is not None:
             raise EtfMonitorDataError("daily delta claims OPEN without a raw TWSE bar")
-        if expected_date.weekday() < 5 and expected_date not in holidays:
+        if expected_date.weekday() < 5 and expected_date not in holidays and not emergency_closed:
             raise EtfMonitorDataError(
                 "weekday has no TWSE bar and is not an official holiday; halt/missing data needs manual evidence"
             )
@@ -315,6 +398,7 @@ def build_daily_delta_bundle(
     frozen_manifest_sha256: str,
     session_factory: Callable[[], requests.Session] = requests.Session,
     fetched_at: datetime | None = None,
+    closure_receipt_root: Path | None = None,
 ) -> dict[str, Any]:
     """Capture exact TWSE responses and derive a reviewable, not-yet-installed bundle."""
 
@@ -346,6 +430,37 @@ def build_daily_delta_bundle(
             )
             receipt_rows[evidence["receipt_sha256"]] = (raw, evidence)
             month = date(month.year + (month.month == 12), 1 if month.month == 12 else month.month + 1, 1)
+        holiday_raw = next(raw for raw, evidence in receipt_rows.values() if evidence["parser"] == PARSER_HOLIDAY)
+        holidays = parse_holidays(holiday_raw)
+        observed_days: set[date] = set()
+        for raw, evidence in receipt_rows.values():
+            if evidence["parser"] == PARSER_STOCK_DAY:
+                observed_days.update(parse_stock_day(raw, request_url=evidence["request_url"]))
+        cursor = start
+        fetched_notice = False
+        while cursor <= through:
+            cached_raw = cached_emergency_notice(closure_receipt_root, cursor)
+            if cached_raw is not None:
+                digest = _sha256(cached_raw)
+                receipt_rows[digest] = (cached_raw, {
+                    "source_endpoint": EMERGENCY_CLOSURE_URL,
+                    "request_url": EMERGENCY_CLOSURE_URL,
+                    "fetched_at": captured_at.isoformat(),
+                    "receipt_sha256": digest,
+                    "receipt_relative_path": f"receipts/{digest}.raw",
+                    "parser": PARSER_EMERGENCY_CLOSURE,
+                    "reused_verified_calendar_receipt": True,
+                })
+            elif cursor.weekday() < 5 and cursor not in holidays and cursor not in observed_days:
+                if not fetched_notice:
+                    raw, evidence = _fetch_receipt(
+                        session, url=EMERGENCY_CLOSURE_URL,
+                        parser=PARSER_EMERGENCY_CLOSURE, params=None, fetched_at=captured_at,
+                    )
+                    parse_emergency_closures(raw)
+                    receipt_rows[evidence["receipt_sha256"]] = (raw, evidence)
+                    fetched_notice = True
+            cursor += timedelta(days=1)
     for digest, (raw, _evidence) in receipt_rows.items():
         (receipts_dir / f"{digest}.raw").write_bytes(raw)
     evidence_by_parser = {
@@ -384,6 +499,13 @@ def build_daily_delta_bundle(
             ],
             "corporate_actions": [],
         }
+        closure_evidence = next((
+            evidence for raw, evidence in receipt_rows.values()
+            if evidence["parser"] == PARSER_EMERGENCY_CLOSURE
+            and cursor in parse_emergency_closures(raw)
+        ), None)
+        if closure_evidence is not None:
+            payload["emergency_closure_evidence"] = closure_evidence
         payload["content_sha256"] = stable_sha256(payload)
         verify_delta_receipts(payload, expected_date=cursor, receipt_root=output)
         path = output / f"{cursor.isoformat()}.json"

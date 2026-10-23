@@ -31,8 +31,11 @@ from stock_ai_bot.data_sources.etf_snapshot_registry import (
 
 from .config import EtfMonitorConfig
 from .delta_pipeline import (
+    EMERGENCY_CLOSURE_URL,
     HOLIDAY_URL,
     build_daily_delta_bundle,
+    cached_emergency_notice,
+    parse_emergency_closures,
     parse_holidays,
     verify_delta_receipts,
 )
@@ -369,6 +372,7 @@ def install_daily_delta_file(
         payload["calendar_evidence"],
         payload["bar_evidence"],
         *payload["corporate_action_evidence"],
+        *([payload["emergency_closure_evidence"]] if payload.get("emergency_closure_evidence") else []),
     ):
         relative = Path(str(evidence["receipt_relative_path"]))
         source_receipt = path.parent / relative
@@ -410,6 +414,42 @@ class OfficialTwseTradingCalendar:
         self.receipt_root = None if receipt_root is None else receipt_root.resolve()
         self._cache: dict[int, tuple[set[date], dict[str, Any]]] = {}
         self._lock = threading.Lock()
+        self._notice_cache: tuple[set[date], dict[str, Any]] | None = None
+
+    def _emergency_evidence(self, raw: bytes) -> dict[str, Any]:
+        return {
+            "source": "TWSE_EMERGENCY_CLOSURE_OFFICIAL",
+            "source_endpoint": EMERGENCY_CLOSURE_URL,
+            "request_url": EMERGENCY_CLOSURE_URL,
+            "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+        }
+
+    def _emergency_notice(self) -> tuple[set[date], dict[str, Any]]:
+        now = datetime.now(tz=TAIPEI)
+        # Do not retain a morning 'no closure' result for the whole day.
+        if self._notice_cache is not None and (
+            now - datetime.fromisoformat(self._notice_cache[1]["fetched_at"])
+        ).total_seconds() < 60:
+            return self._notice_cache
+        try:
+            response = requests.get(EMERGENCY_CLOSURE_URL, timeout=self.timeout_seconds)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise EtfMonitorDataError("official emergency notice request failed") from exc
+        if str(getattr(response, "url", "")) != EMERGENCY_CLOSURE_URL:
+            raise EtfMonitorDataError("official emergency notice endpoint identity changed")
+        raw = response.content
+        days = parse_emergency_closures(raw)
+        evidence = {**self._emergency_evidence(raw), "fetched_at": now.isoformat()}
+        if self.receipt_root is not None:
+            self.receipt_root.mkdir(parents=True, exist_ok=True)
+            _atomic_install_immutable_bytes(
+                self.receipt_root / f"{evidence['receipt_sha256']}.raw", raw,
+                classify_existing=_classify_content_addressed_receipt,
+                collision_message="official emergency notice receipt identity collision",
+            )
+        self._notice_cache = days, evidence
+        return self._notice_cache
 
     def _load(self, year: int) -> tuple[set[date], dict[str, Any]]:
         try:
@@ -454,6 +494,14 @@ class OfficialTwseTradingCalendar:
 
     def verify(self, trading_date: date) -> Mapping[str, Any]:
         with self._lock:
+            stored = cached_emergency_notice(self.receipt_root, trading_date)
+            if stored is not None:
+                return {
+                    **self._emergency_evidence(stored),
+                    "trading_date": trading_date.isoformat(),
+                    "is_trading_day": False,
+                    "calendar_reason": "OFFICIAL_EMERGENCY_CLOSURE",
+                }
             cached = self._cache.get(trading_date.year)
             today = datetime.now(tz=TAIPEI).date()
             if (
@@ -463,6 +511,16 @@ class OfficialTwseTradingCalendar:
                 cached = self._load(trading_date.year)
                 self._cache[trading_date.year] = cached
         holidays, evidence = cached
+        if trading_date.weekday() < 5 and trading_date not in holidays:
+            with self._lock:
+                closure_days, closure_evidence = self._emergency_notice()
+            if trading_date in closure_days:
+                return {
+                    **closure_evidence,
+                    "trading_date": trading_date.isoformat(),
+                    "is_trading_day": False,
+                    "calendar_reason": "OFFICIAL_EMERGENCY_CLOSURE",
+                }
         return {
             **evidence,
             "trading_date": trading_date.isoformat(),
@@ -788,6 +846,7 @@ class OfficialDailyDeltaUpdater:
                     frozen_snapshot_id=snapshot.snapshot_id,
                     frozen_manifest_sha256=snapshot.package_manifest_sha256,
                     session_factory=self.session_factory,
+                    closure_receipt_root=self.registry.delta_root / "calendar-gate-receipts",
                 )
                 cursor = first_missing
                 validated: list[tuple[date, Path]] = []

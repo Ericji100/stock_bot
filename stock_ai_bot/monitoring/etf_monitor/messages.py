@@ -192,6 +192,15 @@ def render_data_unavailable(*, phase: MonitorPhase, trading_date: str, reason_co
     )
 
 
+def render_market_closed(*, trading_date: str) -> str:
+    return (
+        "0050 趨勢策略｜今日休市\n"
+        f"日期：{trading_date}\n"
+        "狀態：證交所公告休市，今天不進行策略判讀\n"
+        "策略安排：不新增進出場訊號，既有策略紀錄維持不變"
+    )
+
+
 def render_offline_test(decision: Decision) -> str:
     case = {
         Decision.BUY_NEXT_OPEN: "進場情境",

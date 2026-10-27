@@ -62,6 +62,85 @@ def _hold_text(core: AcceptedCoreState) -> str:
     return "目前空手，等待下一次正式訊號"
 
 
+def _histogram(value: Decimal | None) -> str:
+    if value is None:
+        return "—"
+    text = f"{value:+.6f}"
+    # A tiny signed value can still trigger a zero crossing; do not display zero.
+    return f"{value:+.3E}" if value != 0 and Decimal(text) == 0 else text
+
+
+def _exit_stop(core: AcceptedCoreState) -> Decimal | None:
+    # SELL state is already flat. Read the stop from this leg's actual exit event,
+    # rather than the cleared position or another historical trade.
+    leg = (core.signal_transaction or {}).get("leg_id")
+    for event in reversed(core.core_events):
+        if (leg and event.get("leg_id") == leg
+                and str(event.get("date")) == core.as_of.isoformat()
+                and event.get("event") in {
+                    "INITIAL_STOP_EXIT", "STRUCTURAL_STOP_EXIT", "STOP_PRIORITY_OVER_MACD",
+                } and event.get("stop") is not None):
+            return Decimal(str(event["stop"]))
+    return core.fixed_initial_stop
+
+
+def _condition_text(core: AcceptedCoreState, phase: MonitorPhase) -> str:
+    """Explain the accepted decision; never recalculate or replace its signal."""
+    preview = phase is MonitorPhase.PREVIEW
+    price_name = "盤中現價" if preview else "收盤價"
+    confirmation = "暫時符合" if preview else "收盤確認"
+    relation = {
+        "SMA21_GE_SMA144": "≥", "SMA21_LT_SMA144": "<",
+    }.get(core.regime)
+    regime = (
+        f"分流依據：MA21 {_number(core.sma21, 4)} 元 {relation} "
+        f"MA144 {_number(core.sma144, 4)} 元\n"
+        if relation else ""
+    )
+    if core.decision is Decision.BUY_NEXT_OPEN:
+        entry_type = core.core_daily_row.get("selected_entry_type")
+        if not entry_type:
+            entry_type = {
+                "SMA21_GE_SMA144": "MA21_BREAKOUT",
+                "SMA21_LT_SMA144": "MACD_GREEN_TO_RED",
+            }.get(core.regime)
+        if entry_type == "MA21_BREAKOUT":
+            return (
+                f"{regime}進場條件：{confirmation}向上突破 MA21"
+                "（前一交易日價格 ≤ 前一交易日 MA21，本次價格 > 本次 MA21）\n"
+                f"條件數值：{price_name} {_number(core.raw_close)} 元 > "
+                f"MA21 {_number(core.sma21, 4)} 元\n"
+            )
+        if entry_type == "MACD_GREEN_TO_RED":
+            return (
+                f"{regime}進場條件：{confirmation} MACD（21、55、55）柱狀值綠翻紅\n"
+                f"條件數值：前一交易日 {_histogram(core.previous_histogram)}（≤ 0）"
+                f" → 本次 {_histogram(core.histogram)}（> 0）\n"
+            )
+        raise ValueError("public ETF message has an unmapped entry type")
+    if core.decision is Decision.SELL_NEXT_OPEN:
+        if core.exit_reason in {"INITIAL_PROTECTIVE_STOP", "STRUCTURAL_STOP"}:
+            stop_name = "固定初始防守價" if core.exit_reason == "INITIAL_PROTECTIVE_STOP" else "策略防守價"
+            return (
+                f"{regime}出場條件：{confirmation}跌破{stop_name}\n"
+                f"條件數值：{price_name} {_number(core.raw_close)} 元 < "
+                f"{stop_name} {_number(_exit_stop(core), 4)} 元\n"
+            )
+        if core.exit_reason == "MACD_RED_TO_GREEN":
+            low_regime = (
+                "本分流出場依據：只依 MACD 條件，不執行價格防守出場\n"
+                if core.regime == "SMA21_LT_SMA144" else ""
+            )
+            return (
+                f"{regime}出場條件：{confirmation} MACD（21、55、55）柱狀值紅翻綠\n"
+                "啟用條件：這筆持倉自進場起曾出現柱狀值 ≥ 0\n"
+                f"條件數值：前一交易日 {_histogram(core.previous_histogram)}（≥ 0）"
+                f" → 本次 {_histogram(core.histogram)}（< 0）\n"
+                f"{low_regime}"
+            )
+    return ""
+
+
 def _data_time(value: datetime | None) -> str | None:
     if value is None or value.tzinfo is None:
         return None
@@ -142,6 +221,7 @@ def render_core_message(
             phase=phase, trading_date=core.as_of.isoformat(), reason_code=""
         )
     market_data = _market_data_text(phase=phase, core=core, snapshot=snapshot)
+    conditions = _condition_text(core, phase)
     when = f"{core.as_of.isoformat()} {_phase_time(phase)}"
     if phase is MonitorPhase.PREVIEW:
         preview = {
@@ -156,6 +236,7 @@ def render_core_message(
             f"觀察時間：{when}\n"
             f"{market_data}\n"
             f"預覽判讀：{preview}\n"
+            f"{conditions}"
             "策略安排：僅供盤中觀察，須待收盤後正式決策確認"
         )
 
@@ -182,6 +263,7 @@ def render_core_message(
             f"{common}\n"
             f"進場參考價：{_number(core.signal_reference_price)} 元"
             f"\n{stop}"
+            f"{conditions}"
             "策略安排：下一交易日開盤進場"
             f"{correction_text}{transition_text}"
         )
@@ -191,6 +273,7 @@ def render_core_message(
             f"{common}\n"
             f"出場參考價：{_number(core.signal_reference_price)} 元\n"
             f"出場原因：{_exit_reason_text(core.exit_reason)}\n"
+            f"{conditions}"
             "策略安排：下一交易日開盤出場"
             f"{correction_text}{transition_text}"
         )

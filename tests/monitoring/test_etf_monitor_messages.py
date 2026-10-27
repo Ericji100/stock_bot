@@ -35,9 +35,6 @@ PUBLICLY_FORBIDDEN = (
     "LONG",
     "FLAT",
     "fail-closed",
-    "MA21",
-    "MA144",
-    "MACD",
 )
 
 

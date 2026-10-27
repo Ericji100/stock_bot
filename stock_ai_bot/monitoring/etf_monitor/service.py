@@ -140,6 +140,17 @@ class EtfMonitorService:
             decision=Decision.DATA_UNAVAILABLE,
             suffix=f"{reason_code}:{original_event_id or 'NO_SAME_DAY_STATE'}",
         )
+        diagnostic_code = getattr(exc, "reason_code", reason_code)
+        diagnostic = {
+            "reason_code": diagnostic_code,
+            "message": str(exc)[:2000],
+            "details": getattr(exc, "details", {}),
+        }
+        failure_id = self.store.record_data_failure(
+            event_id=event_id, phase=phase, trading_date=trading_date,
+            exception_type=type(exc).__name__, reason_code=diagnostic_code,
+            message=diagnostic["message"], details=diagnostic["details"],
+        )
         quarantined = None
         if original_event_id is not None:
             quarantined = self.store.quarantine_pending_for_reconciliation(
@@ -173,7 +184,11 @@ class EtfMonitorService:
             event_ids=(event_id,),
             decision=Decision.DATA_UNAVAILABLE,
             message=reason_code,
-            metadata={"quarantined_pending_action": quarantined},
+            metadata={
+                "quarantined_pending_action": quarantined,
+                "data_failure_id": failure_id,
+                "data_error": diagnostic,
+            },
         )
 
     async def _closed_day(
@@ -276,7 +291,8 @@ class EtfMonitorService:
                     phase,
                     trading_date,
                     succeeded=False,
-                    error=f"DATA_UNAVAILABLE:{outcome.message}",
+                    error=(f"DATA_UNAVAILABLE:{outcome.metadata['data_error']['reason_code']}:"
+                           f"{outcome.metadata['data_error']['message']}"),
                 )
                 return outcome
 
@@ -402,6 +418,22 @@ class EtfMonitorService:
                 ),
                 "trading_day_gate": trading_day_evidence,
             }
+            if existing_payload is not None:
+                existing_data = existing_payload.get("data", {})
+                if isinstance(existing_data, Mapping) and "quote_evidence" in existing_data:
+                    payload["data"]["quote_evidence"] = existing_data["quote_evidence"]
+            elif snapshot.quote is not None:
+                quote = snapshot.quote
+                payload["data"]["quote_evidence"] = {
+                    "source": quote.source,
+                    "source_endpoint": quote.source_endpoint,
+                    "receipt_sha256": quote.receipt_sha256,
+                    "observed_at": quote.observed_at,
+                    "source_timestamp": quote.source_timestamp,
+                    "last_trade_at": quote.last_trade_at,
+                    "market_status": quote.market_status,
+                    "is_market_closed": quote.is_market_closed,
+                }
             self.store.append_event_with_outbox(
                 event_id=event_id,
                 phase=phase,

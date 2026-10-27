@@ -1,6 +1,6 @@
 {
   "schema_version": "stock-ai-bot-etf-monitor-config-v1",
-  "enabled": false,
+  "enabled": true,
   "mode": "shadow",
   "chat_id": "-5527055845",
   "symbol": "0050",

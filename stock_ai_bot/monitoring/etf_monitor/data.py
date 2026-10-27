@@ -8,7 +8,7 @@ import tempfile
 import threading
 import uuid
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
@@ -907,10 +907,22 @@ class OfficialDailyDeltaUpdater:
 def _price(value: Any, field: str) -> Decimal:
     text = str(value or "").replace(",", "").strip()
     if text in {"", "-", "--"}:
-        raise EtfMonitorDataError(f"TWSE MIS quote has no {field}")
-    result = Decimal(text)
-    if result <= 0:
-        raise EtfMonitorDataError(f"TWSE MIS quote has invalid {field}")
+        raise EtfMonitorDataError(
+            f"TWSE MIS quote has no {field}",
+            reason_code=f"MIS_MISSING_{field.upper()}_PRICE",
+        )
+    try:
+        result = Decimal(text)
+    except InvalidOperation as exc:
+        raise EtfMonitorDataError(
+            f"TWSE MIS quote has invalid {field}",
+            reason_code=f"MIS_INVALID_{field.upper()}_PRICE",
+        ) from exc
+    if not result.is_finite() or result <= 0:
+        raise EtfMonitorDataError(
+            f"TWSE MIS quote has invalid {field}",
+            reason_code=f"MIS_INVALID_{field.upper()}_PRICE",
+        )
     return result
 
 
@@ -920,68 +932,130 @@ class OfficialTwseQuoteProvider:
         self.max_source_age_seconds = max_source_age_seconds
 
     def _fetch(self, observed_at: datetime) -> IntradayQuote:
+        response = None
         try:
             response = requests.get(
                 TWSE_MIS_URL,
-                params={"ex_ch": "tse_0050.tw", "json": "1", "delay": "0"},
-                headers={"Referer": "https://mis.twse.com.tw/stock/fibest.jsp"},
+                params={
+                    "ex_ch": "tse_0050.tw", "json": "1", "delay": "0",
+                    "_": str(int(observed_at.timestamp() * 1000)),
+                },
+                headers={"Referer": "https://mis.twse.com.tw/stock/"},
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError) as exc:
-            raise EtfMonitorDataError("official TWSE MIS quote request failed") from exc
+            raise EtfMonitorDataError(
+                "official TWSE MIS quote request failed",
+                reason_code="MIS_REQUEST_FAILED",
+                details={
+                    "source_endpoint": TWSE_MIS_URL,
+                    "observed_at": observed_at.isoformat(),
+                    "http_status": getattr(response, "status_code", None),
+                    "cause_type": type(exc).__name__,
+                },
+            ) from exc
+        receipt_sha256 = hashlib.sha256(response.content).hexdigest()
+        diagnostics: dict[str, Any] = {
+            "source_endpoint": TWSE_MIS_URL,
+            "observed_at": observed_at.isoformat(),
+            "http_status": getattr(response, "status_code", None),
+            "receipt_sha256": receipt_sha256,
+        }
+        if isinstance(payload, Mapping):
+            diagnostics.update({key: payload.get(key) for key in ("rtcode", "rtmessage", "queryTime")})
+            rows = payload.get("msgArray")
+            if isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], Mapping):
+                diagnostics["quote"] = {
+                    key: rows[0].get(key)
+                    for key in ("c", "d", "t", "ts", "mt", "o", "h", "l", "z", "v")
+                }
+                trade = rows[0].get("trade")
+                if isinstance(trade, Mapping):
+                    diagnostics["quote"]["trade"] = {key: trade.get(key) for key in ("t", "z")}
+        try:
+            return self._parse(payload, observed_at, receipt_sha256)
+        except EtfMonitorDataError as exc:
+            exc.details = {**diagnostics, **exc.details}
+            raise
+
+    def _parse(self, payload: Any, observed_at: datetime, receipt_sha256: str) -> IntradayQuote:
         rows = payload.get("msgArray") if isinstance(payload, Mapping) else None
         if not isinstance(payload, Mapping) or payload.get("rtcode") != "0000" or payload.get("rtmessage") != "OK":
-            raise EtfMonitorDataError("official TWSE MIS status is not OK")
+            raise EtfMonitorDataError("official TWSE MIS status is not OK", reason_code="MIS_STATUS_NOT_OK")
         if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], Mapping):
-            raise EtfMonitorDataError("official TWSE MIS returned an unexpected quote set")
+            raise EtfMonitorDataError("official TWSE MIS returned an unexpected quote set", reason_code="MIS_QUOTE_SET_INVALID")
         row = rows[0]
         if str(row.get("c") or "") != "0050":
-            raise EtfMonitorDataError("official TWSE MIS returned the wrong symbol")
+            raise EtfMonitorDataError("official TWSE MIS returned the wrong symbol", reason_code="MIS_SYMBOL_MISMATCH")
         raw_date = str(row.get("d") or "")
         try:
             trade_date = datetime.strptime(raw_date, "%Y%m%d").date()
         except ValueError as exc:
-            raise EtfMonitorDataError("official TWSE MIS returned an invalid trade date") from exc
+            raise EtfMonitorDataError("official TWSE MIS returned an invalid trade date", reason_code="MIS_DATE_INVALID") from exc
         local_observed_at = observed_at.astimezone(TAIPEI)
+        if trade_date != local_observed_at.date():
+            raise EtfMonitorDataError("official TWSE MIS clocks disagree on the trading date", reason_code="MIS_DATE_MISMATCH")
+        # ts identifies a reference/trial quote. mt is not this status flag:
+        # normal intraday responses legitimately contain a nonzero mt.
+        if str(row.get("ts") or "") != "0":
+            raise EtfMonitorDataError("official TWSE MIS quote is not an actual trade", reason_code="MIS_REFERENCE_QUOTE")
+        last_price, trade_time = row.get("z"), row.get("t")
+        if last_price is None or str(last_price).strip() in {"", "-", "--"}:
+            # Same-response actual-trade object, as used by TWSE's own
+            # tradeFallback frontend. Never use pz, bid/ask or yesterday's close.
+            trade = row.get("trade")
+            if isinstance(trade, Mapping) and trade.get("z") is not None:
+                last_price, trade_time = trade.get("z"), trade.get("t")
         query_time = payload.get("queryTime")
         if not isinstance(query_time, Mapping):
-            raise EtfMonitorDataError("official TWSE MIS has no source query clock")
+            raise EtfMonitorDataError("official TWSE MIS has no source query clock", reason_code="MIS_SOURCE_TIME_INVALID")
         try:
             source_timestamp = datetime.strptime(
                 f"{query_time['sysDate']} {query_time['sysTime']}",
                 "%Y%m%d %H:%M:%S",
             ).replace(tzinfo=TAIPEI)
-            last_trade_at = datetime.strptime(
-                f"{raw_date} {row['t']}", "%Y%m%d %H:%M:%S"
-            ).replace(tzinfo=TAIPEI)
         except (KeyError, TypeError, ValueError) as exc:
-            raise EtfMonitorDataError("official TWSE MIS source/trade clock is invalid") from exc
+            raise EtfMonitorDataError("official TWSE MIS source clock is invalid", reason_code="MIS_SOURCE_TIME_INVALID") from exc
         source_age = (local_observed_at - source_timestamp).total_seconds()
         if source_age < -30 or source_age > self.max_source_age_seconds:
-            raise EtfMonitorDataError("official TWSE MIS response is stale")
+            raise EtfMonitorDataError("official TWSE MIS response is stale", reason_code="MIS_STALE_SOURCE")
         if source_timestamp.date() != trade_date or trade_date != local_observed_at.date():
-            raise EtfMonitorDataError("official TWSE MIS clocks disagree on the trading date")
-        if str(row.get("ts") or "") != "0" or str(row.get("mt") or "") != "000000":
-            raise EtfMonitorDataError("official TWSE MIS market state is not the normal session state")
+            raise EtfMonitorDataError("official TWSE MIS clocks disagree on the trading date", reason_code="MIS_DATE_MISMATCH")
+        try:
+            last_trade_at = datetime.strptime(
+                f"{raw_date} {trade_time}", "%Y%m%d %H:%M:%S"
+            ).replace(tzinfo=TAIPEI)
+        except (TypeError, ValueError) as exc:
+            raise EtfMonitorDataError("official TWSE MIS trade clock is invalid", reason_code="MIS_TRADE_TIME_INVALID") from exc
+        if not time(9) <= last_trade_at.time() <= time(13, 35) or last_trade_at > source_timestamp:
+            raise EtfMonitorDataError("official TWSE MIS trade clock is outside the actual session/source time", reason_code="MIS_TRADE_TIME_INVALID")
         regular_close_confirmed = (
             source_timestamp.time() >= time(13, 35)
-            and time(13, 25) <= last_trade_at.time() <= time(13, 35)
+            and time(13, 30) <= last_trade_at.time() <= time(13, 35)
         )
-        raw = response.content
+        if not regular_close_confirmed and (source_timestamp - last_trade_at).total_seconds() > self.max_source_age_seconds:
+            raise EtfMonitorDataError("official TWSE MIS last actual trade is stale", reason_code="MIS_STALE_TRADE")
+        raw_open = _price(row.get("o"), "open")
+        raw_high = _price(row.get("h"), "high")
+        raw_low = _price(row.get("l"), "low")
+        raw_last = _price(last_price, "last")
+        raw_volume = _price(row.get("v"), "volume")
+        if not raw_low <= min(raw_open, raw_last) <= max(raw_open, raw_last) <= raw_high:
+            raise EtfMonitorDataError("official TWSE MIS OHLC values are inconsistent", reason_code="MIS_OHLC_INCONSISTENT")
         return IntradayQuote(
             symbol="0050",
             observed_at=local_observed_at,
             trade_date=trade_date,
-            raw_open=_price(row.get("o"), "open"),
-            raw_high=_price(row.get("h"), "high"),
-            raw_low=_price(row.get("l"), "low"),
-            raw_last=_price(row.get("z"), "last"),
-            raw_volume=_price(row.get("v"), "volume"),
+            raw_open=raw_open,
+            raw_high=raw_high,
+            raw_low=raw_low,
+            raw_last=raw_last,
+            raw_volume=raw_volume,
             source="TWSE_MIS_OFFICIAL",
             source_endpoint=TWSE_MIS_URL,
-            receipt_sha256=hashlib.sha256(raw).hexdigest(),
+            receipt_sha256=receipt_sha256,
             is_market_closed=regular_close_confirmed,
             source_timestamp=source_timestamp,
             last_trade_at=last_trade_at,

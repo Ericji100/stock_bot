@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import runpy
 from dataclasses import replace
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -13,7 +16,7 @@ from stock_ai_bot.monitoring.etf_monitor.messages import (
     render_data_unavailable,
     render_offline_test,
 )
-from stock_ai_bot.monitoring.etf_monitor.models import Decision, MonitorPhase
+from stock_ai_bot.monitoring.etf_monitor.models import Decision, IntradayQuote, MonitorPhase
 
 
 H = runpy.run_path(str(Path(__file__).with_name("test_etf_monitor_service.py")))
@@ -182,6 +185,77 @@ def test_data_alert_is_chinese_and_never_emits_a_false_signal() -> None:
     assert "INTERNAL_TECHNICAL_REASON" not in body
     assert "觸發進場" not in body
     assert "觸發出場" not in body
+
+
+@pytest.mark.parametrize("phase,label", [
+    (MonitorPhase.PREVIEW, "盤中現價"),
+    (MonitorPhase.DECISION, "收盤價"),
+])
+def test_quote_prices_dates_and_clocks_are_public_without_changing_action(phase, label) -> None:
+    tz = ZoneInfo("Asia/Taipei")
+    source_time = datetime(2026, 10, 21, 13, 54, 58, tzinfo=tz)
+    trade_time = source_time.replace(hour=13, minute=30, second=0)
+    quote = IntradayQuote(
+        symbol="0050", observed_at=source_time, trade_date=DAY,
+        raw_open=Decimal("50"), raw_high=Decimal("52"), raw_low=Decimal("49"),
+        raw_last=Decimal("51"), raw_volume=Decimal("1000"),
+        source="TWSE_MIS_OFFICIAL", source_endpoint="https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+        receipt_sha256="c" * 64, source_timestamp=source_time, last_trade_at=trade_time,
+        is_market_closed=phase is MonitorPhase.DECISION,
+    )
+    snapshot = replace(H["_snapshot"](), quote=quote, source="HASH_VERIFIED_REGISTRY_PLUS_TWSE_MIS")
+    # Public prices are raw execution-basis data, never adjusted indicator prices.
+    core = replace(H["_core"](Decision.HOLD), technical_close=Decimal("999"))
+    body = render_core_message(phase=phase, core=core, snapshot=snapshot)
+    _assert_plain_chinese_public_body(body)
+    assert f"{label}：51.00 元" in body
+    assert "999" not in body
+    kind = "盤中" if phase is MonitorPhase.PREVIEW else "收盤"
+    assert f"價格時間：2026-10-21 13:30（{kind}）" in body
+    assert "資料日期：" not in body and "成交時間：" not in body
+    assert "行情更新：" not in body and "資料取得：" not in body
+    assert "13:54:58" not in body
+    assert "資料來源：臺灣證券交易所（官方即時行情）" in body
+    if phase is MonitorPhase.DECISION:
+        assert "策略狀態：目前空手，等待下一次正式訊號" in body
+        assert "策略安排：本次沒有新增進出場安排" in body
+
+
+def test_complete_official_daily_message_has_no_invented_trade_clock() -> None:
+    snapshot = replace(H["_snapshot"](complete=True), source="HASH_VERIFIED_ETF_SNAPSHOT_REGISTRY")
+    snapshot = replace(snapshot, raw_rows=tuple({**row, "source": "TWSE_OFFICIAL_DAILY_DELTA"} for row in snapshot.raw_rows))
+    body = render_core_message(phase=MonitorPhase.RECONCILIATION, core=H["_core"](Decision.HOLD), snapshot=snapshot)
+    assert "收盤價：51.00 元" in body
+    assert "價格日期：2026-10-21" in body
+    assert "資料來源：臺灣證券交易所（官方日行情）" in body
+    assert "資料取得：" not in body
+    assert "價格時間：" not in body
+    assert "成交時間：" not in body
+
+
+def test_unknown_source_and_missing_clock_are_not_invented() -> None:
+    body = render_core_message(phase=MonitorPhase.DECISION, core=H["_core"](Decision.HOLD), snapshot=H["_snapshot"]())
+    assert "資料來源：已驗證策略行情" in body
+    assert "臺灣證券交易所" not in body
+    assert "行情更新：" not in body and "成交時間：" not in body
+
+
+def test_preview_failure_is_scoped_to_this_preview_and_has_no_fake_price() -> None:
+    body = render_data_unavailable(phase=MonitorPhase.PREVIEW, trading_date=DAY.isoformat(), reason_code="PRIVATE")
+    _assert_plain_chinese_public_body(body)
+    assert "本次無法形成盤中預覽" in body
+    assert "暫停產生正式策略訊號" not in body
+    assert "現價：無可用報價" in body
+    assert "價格時間：未能驗證" in body
+    assert "預定資料來源：臺灣證券交易所（官方資料）" in body
+    assert "PRIVATE" not in body
+
+
+def test_unavailable_core_never_displays_an_unverified_price() -> None:
+    core = replace(H["_core"](Decision.HOLD), decision=Decision.DATA_UNAVAILABLE, raw_close=Decimal("999"))
+    body = render_core_message(phase=MonitorPhase.PREVIEW, core=core, snapshot=H["_snapshot"]())
+    assert "999" not in body
+    assert "現價：無可用報價" in body
 
 
 @pytest.mark.parametrize("decision", list(Decision))

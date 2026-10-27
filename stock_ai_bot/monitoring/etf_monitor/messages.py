@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo
 
 from .models import AcceptedCoreState, Decision, MarketDataSnapshot, MonitorPhase
 
@@ -60,6 +62,38 @@ def _hold_text(core: AcceptedCoreState) -> str:
     return "目前空手，等待下一次正式訊號"
 
 
+def _data_time(value: datetime | None) -> str | None:
+    if value is None or value.tzinfo is None:
+        return None
+    return value.astimezone(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M")
+
+
+def _market_data_text(
+    *, phase: MonitorPhase, core: AcceptedCoreState, snapshot: MarketDataSnapshot
+) -> str:
+    quote = snapshot.quote
+    latest = snapshot.raw_row_for(snapshot.as_of) or {}
+    if ((quote is not None and quote.source == "TWSE_MIS_OFFICIAL")
+            or snapshot.source == "HASH_VERIFIED_REGISTRY_PLUS_TWSE_MIS"):
+        source = "臺灣證券交易所（官方即時行情）"
+    elif latest.get("source") == "TWSE_OFFICIAL_DAILY_DELTA":
+        source = "臺灣證券交易所（官方日行情）"
+    elif snapshot.source == "HASH_VERIFIED_ETF_SNAPSHOT_REGISTRY":
+        source = "已驗證歷史日行情"
+    else:
+        source = "已驗證策略行情"
+    label = "盤中現價" if phase is MonitorPhase.PREVIEW else "收盤價"
+    lines = [f"{label}：{_number(core.raw_close)} 元"]
+    trade_time = _data_time(None if quote is None else quote.last_trade_at)
+    if trade_time is not None:
+        kind = "盤中" if phase is MonitorPhase.PREVIEW else "收盤"
+        lines.append(f"價格時間：{trade_time}（{kind}）")
+    else:
+        lines.append(f"價格日期：{snapshot.as_of.isoformat()}")
+    lines.append(f"資料來源：{source}")
+    return "\n".join(lines)
+
+
 def _transition_text(
     *, core: AcceptedCoreState, transition: Mapping[str, Any] | None
 ) -> str:
@@ -103,7 +137,11 @@ def render_core_message(
     correction_of: str | None = None,
     pending_transition: Mapping[str, Any] | None = None,
 ) -> str:
-    del snapshot  # Data identity remains in the durable event payload, not the public body.
+    if core.decision is Decision.DATA_UNAVAILABLE:
+        return render_data_unavailable(
+            phase=phase, trading_date=core.as_of.isoformat(), reason_code=""
+        )
+    market_data = _market_data_text(phase=phase, core=core, snapshot=snapshot)
     when = f"{core.as_of.isoformat()} {_phase_time(phase)}"
     if phase is MonitorPhase.PREVIEW:
         preview = {
@@ -116,6 +154,7 @@ def render_core_message(
             "0050 趨勢策略｜盤中預覽\n"
             f"訊息性質：{_phase_text(phase)}\n"
             f"觀察時間：{when}\n"
+            f"{market_data}\n"
             f"預覽判讀：{preview}\n"
             "策略安排：僅供盤中觀察，須待收盤後正式決策確認"
         )
@@ -129,7 +168,8 @@ def render_core_message(
         )
     common = (
         f"訊息性質：{_phase_text(phase)}\n"
-        f"訊號時間：{when}"
+        f"訊號時間：{when}\n"
+        f"{market_data}"
     )
     if core.decision is Decision.BUY_NEXT_OPEN:
         stop = (
@@ -182,11 +222,19 @@ def render_core_message(
 
 def render_data_unavailable(*, phase: MonitorPhase, trading_date: str, reason_code: str) -> str:
     del reason_code  # Detailed diagnostics remain in the durable audit payload.
+    status = (
+        "資料不足，本次無法形成盤中預覽"
+        if phase is MonitorPhase.PREVIEW
+        else "資料不足，暫停產生正式策略訊號"
+    )
     return (
         "0050 趨勢策略｜資料異常\n"
         f"訊息性質：{_phase_text(phase)}\n"
-        f"日期：{trading_date}\n"
-        "狀態：資料不足，暫停產生正式策略訊號\n"
+        f"檢查日期：{trading_date}\n"
+        "現價：無可用報價\n"
+        "價格時間：未能驗證\n"
+        "預定資料來源：臺灣證券交易所（官方資料）\n"
+        f"狀態：{status}\n"
         "處理：不產生進場、出場或持有判讀，不改用其他資料來源；"
         "內部原因已寫入稽核紀錄。"
     )

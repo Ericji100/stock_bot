@@ -433,6 +433,86 @@ def test_data_failure_is_fail_closed_and_records_health_event(tmp_path) -> None:
     assert _count(store.path, "events") == 1
 
 
+def test_detailed_failures_survive_changed_retries_and_legacy_alert(tmp_path) -> None:
+    service, store = _service(tmp_path, [])
+    first = asyncio.run(service._data_unavailable(
+        phase=MonitorPhase.PREVIEW, trading_date=DAY,
+        exc=EtfMonitorDataError("legacy failure"),
+    ))
+    with sqlite3.connect(store.path) as connection:
+        # Simulate the unchanged alert already sent by the prior code version.
+        connection.execute("DELETE FROM data_failures")
+        original = connection.execute("SELECT payload_json FROM events").fetchone()[0]
+    for price in ("-", "NaN"):
+        outcome = asyncio.run(service._data_unavailable(
+            phase=MonitorPhase.PREVIEW, trading_date=DAY,
+            exc=EtfMonitorDataError(
+                f"invalid actual trade: {price}", reason_code="MIS_INVALID_LAST_PRICE",
+                details={"raw_last": price, "source_endpoint": "TWSE_MIS_OFFICIAL"},
+            ),
+        ))
+        assert outcome.event_ids == first.event_ids
+    with sqlite3.connect(store.path) as connection:
+        rows = connection.execute(
+            "SELECT reason_code, message, details_json FROM data_failures ORDER BY failure_id"
+        ).fetchall()
+        assert len(rows) == 2
+        assert [json.loads(row[2])["raw_last"] for row in rows] == ["-", "NaN"]
+        assert all(row[0] == "MIS_INVALID_LAST_PRICE" for row in rows)
+        assert connection.execute("SELECT payload_json FROM events").fetchone()[0] == original
+        assert connection.execute("SELECT COUNT(*) FROM outbox").fetchone()[0] == 1
+        assert "MIS_INVALID_LAST_PRICE" not in connection.execute("SELECT body FROM outbox").fetchone()[0]
+
+
+def test_failed_job_retains_concrete_error_text(tmp_path) -> None:
+    service, store = _service(tmp_path, [], fail=True)
+    asyncio.run(service.run(MonitorPhase.PREVIEW, now=NOW))
+    with sqlite3.connect(store.path) as connection:
+        assert "stale" in connection.execute("SELECT error FROM job_runs").fetchone()[0]
+        assert connection.execute("SELECT message FROM data_failures").fetchone()[0] == "stale"
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_quote_clock_audit_is_durable_and_legacy_retries_remain_compatible(tmp_path, legacy) -> None:
+    from datetime import timedelta
+    from stock_ai_bot.monitoring.etf_monitor.models import IntradayQuote, canonical_json
+
+    service, store = _service(tmp_path, [Decision.HOLD, Decision.HOLD])
+    quote = IntradayQuote(
+        symbol="0050", observed_at=NOW, trade_date=DAY,
+        raw_open=Decimal("50"), raw_high=Decimal("53"), raw_low=Decimal("49"),
+        raw_last=Decimal("51"), raw_volume=Decimal("1000"),
+        source="TWSE_MIS_OFFICIAL", source_endpoint="https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+        receipt_sha256="c" * 64, source_timestamp=NOW,
+        last_trade_at=NOW.replace(hour=13, minute=30), is_market_closed=True,
+    )
+
+    class Data:
+        async def load(self, phase, as_of):
+            return replace(_snapshot(), quote=quote)
+
+    service.data_provider = Data()
+    first = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    with sqlite3.connect(store.path) as connection:
+        raw = connection.execute("SELECT payload_json FROM events").fetchone()[0]
+        payload = json.loads(raw)
+        assert payload["data"]["quote_evidence"]["source_timestamp"] == NOW.isoformat()
+        if legacy:
+            del payload["data"]["quote_evidence"]
+            connection.execute("UPDATE events SET payload_json=?", (canonical_json(payload),))
+        before = connection.execute("SELECT payload_json FROM events").fetchone()[0]
+        body = connection.execute("SELECT body FROM outbox").fetchone()[0]
+    store.finish_job(MonitorPhase.DECISION, DAY, succeeded=False, error="AFTER_EVENT_RETRY")
+    quote = replace(quote, observed_at=NOW + timedelta(seconds=30), source_timestamp=NOW + timedelta(seconds=30))
+    retry = asyncio.run(service.run(MonitorPhase.DECISION, now=NOW))
+    assert retry.event_ids == first.event_ids
+    with sqlite3.connect(store.path) as connection:
+        assert connection.execute("SELECT payload_json FROM events").fetchone()[0] == before
+        assert connection.execute("SELECT body FROM outbox").fetchone()[0] == body
+        assert connection.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM outbox").fetchone()[0] == 1
+
+
 def test_data_unavailable_is_idempotent_and_same_phase_can_recover(tmp_path) -> None:
     config = replace(load_etf_monitor_config(), enabled=True)
     store = EtfMonitorStore(tmp_path / "monitor.sqlite3")

@@ -21,7 +21,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _utc_now() -> str:
@@ -163,6 +163,17 @@ class EtfMonitorStore:
                     telegram_message_id TEXT,
                     sent_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS data_failures (
+                    failure_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL,
+                    phase TEXT NOT NULL,
+                    trading_date TEXT NOT NULL,
+                    exception_type TEXT NOT NULL,
+                    reason_code TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    details_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             row = connection.execute(
@@ -243,6 +254,22 @@ class EtfMonitorStore:
                 "UPDATE job_runs SET status=?, error=?, finished_at=? WHERE run_key=?",
                 ("SUCCEEDED" if succeeded else "FAILED", error, _utc_now(), run_key),
             )
+
+    def record_data_failure(
+        self, *, event_id: str, phase: MonitorPhase, trading_date: date,
+        exception_type: str, reason_code: str, message: str,
+        details: Mapping[str, Any],
+    ) -> int:
+        # One immutable record per failed attempt, separate from the idempotent
+        # alert: changing clocks/errors must not collide or resend Telegram.
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "INSERT INTO data_failures(event_id, phase, trading_date, exception_type, "
+                "reason_code, message, details_json, created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (event_id, phase.value, trading_date.isoformat(), exception_type,
+                 reason_code, message, canonical_json(details), _utc_now()),
+            )
+            return int(cursor.lastrowid)
 
     def append_event_with_outbox(
         self,

@@ -88,7 +88,9 @@ def _enabled_config(tmp_path: Path) -> Path:
     return path
 
 
-def test_disabled_feature_is_strict_startup_noop() -> None:
+def test_disabled_feature_is_strict_startup_noop(monkeypatch) -> None:
+    disabled = replace(load_etf_monitor_config(), enabled=False)
+    monkeypatch.setattr(integration, "load_etf_monitor_config", lambda *_: disabled)
     app = _App()
     assert integration.register_etf_monitor(app) is None
     assert app.job_queue.calls == []

@@ -78,7 +78,7 @@ class AiCommandRealM3ParameterMatrixTests(unittest.TestCase):
                 "command": "/radar --source chip --ai-top 3 --no-ai-comment",
                 "parser": "radar",
                 "parameters": ["--source", "--ai-top", "--no-ai-comment"],
-                "expected": {"source": "chip", "ai_top": 3, "model": "minimax", "ai_comment_enabled": False},
+                "expected": {"source": "chip", "ai_top": 3, "model": "deepseek", "ai_comment_enabled": False},
             }
         )
 

@@ -4,6 +4,7 @@ import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Callable, Protocol
 from .final_output_contracts import prompt_rules_for_command
 from .models import CommandRequest, SourceItem
 from .prompt_logging import write_prompt_log
+from .deepseek_service import DeepSeekUnavailable
 
 ProgressCallback = Callable[[str], None]
 
@@ -72,6 +74,8 @@ def should_use_segmented_analysis(
 
 
 def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float) -> Any:
+    if getattr(ai_client, "provider", "") == "deepseek":
+        return ai_client.with_timeout(timeout_seconds).generate_report(prompt)
     if not hasattr(ai_client, "timeout_seconds"):
         return ai_client.generate_report(prompt)
     old_timeout = getattr(ai_client, "timeout_seconds")
@@ -159,6 +163,8 @@ def run_segmented_theme_analysis(
             )
             _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5b8c\u6210 {index}/{len(plans)}\uff5c{plan['title']}\uff5coutput={len(markdown)} chars elapsed={elapsed:.1f}s")
             _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5b8c\u6210\uff5c{plan['title']}\uff5coutput={len(markdown)} chars")
+        except DeepSeekUnavailable:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - started
             fallback = _segment_local_fallback(plan, structured_data, exc)
@@ -192,7 +198,7 @@ def run_segmented_theme_analysis(
                 result_rows[index] = (prompt_path, run, output)
             with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
                 futures = {
-                    executor.submit(execute_segment, index, plan, []): index
+                    executor.submit(copy_context().run, execute_segment, index, plan, []): index
                     for index, plan in remaining_plans
                 }
                 for future in as_completed(futures):
@@ -253,6 +259,8 @@ def run_segmented_theme_analysis(
         final_error = None
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5b8c\u6210 output={len(markdown)} chars elapsed={final_elapsed:.1f}s")
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5b8c\u6210 output={len(markdown)} chars")
+    except DeepSeekUnavailable:
+        raise
     except Exception as exc:
         retry_prompt = _build_compact_final_retry_prompt(request, structured_data, outputs, final_sources, exc)
         retry_prompt_path = write_prompt_log(

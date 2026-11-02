@@ -149,9 +149,25 @@ class NewsRepository:
                     )
                     saved += 1
                 except sqlite3.IntegrityError:
+                    if "local_rule_fallback" not in item.tags:
+                        conn.execute(
+                            """UPDATE news_articles SET category=?, related_symbols=?, related_topics=?,
+                               summary=?, importance_score=?, impact_direction=?, tags=?, news_signal_score=?,
+                               news_heat_risk_score=?, news_signal_reason=?, news_heat_risk_reason=?
+                               WHERE url=? AND tags LIKE '%local_rule_fallback%'""",
+                            (item.category, json.dumps(item.related_symbols, ensure_ascii=False),
+                             json.dumps(item.related_topics, ensure_ascii=False), item.summary,
+                             item.importance_score, item.impact_direction, json.dumps(item.tags, ensure_ascii=False),
+                             item.news_signal_score, item.news_heat_risk_score, item.news_signal_reason,
+                             item.news_heat_risk_reason, item.url),
+                        )
                     skipped += 1
             conn.commit()
         return saved, skipped
+
+    def query_pending_classification(self, limit: int = 6) -> list[NewsItem]:
+        cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+        return self._query("SELECT * FROM news_articles WHERE tags LIKE '%local_rule_fallback%' AND created_at>=? ORDER BY created_at LIMIT ?", (cutoff, limit))
 
     def delete_by_urls(self, urls: list[str]) -> int:
         """Delete stored rows by URL; return deleted count."""

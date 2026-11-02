@@ -11,12 +11,13 @@ from typing import Any, Callable
 from .minimax_service import MiniMaxService
 from .models import CommandRequest, SourceItem
 from .prompt_logging import write_prompt_log
+from .deepseek_service import DeepSeekUnavailable
 
 LOW_MODEL_DIGEST_SCHEMA_VERSION = "low_model_digest_v1"
 LOW_MODEL_DIGEST_PROMPT_VERSION = "low_model_digest_prompt_v1"
 HIGH_MODEL_INPUT_SCHEMA_VERSION = "high_model_input_package_v1"
 AI_WORKFLOW_COVERAGE_SCHEMA_VERSION = "ai_workflow_coverage_v1"
-DEFAULT_LOW_MODEL_NAME = "MiniMax-M3"
+DEFAULT_LOW_MODEL_NAME = "deepseek-flash"
 PROMPT_WORKFLOW_DIR = Path(__file__).resolve().parents[1] / "prompt" / "workflow"
 LOW_MODEL_ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "logs" / "ai_low_model"
 HIGH_MODEL_BALANCED_THRESHOLD_CHARS = 180_000
@@ -549,7 +550,7 @@ def run_low_model_digest_for_payload(
     max_string: int = 2500,
     depth: int = 7,
 ) -> dict[str, Any]:
-    """Run MiniMax M3 as a fact organizer before final analysis."""
+    """Run DeepSeek Flash as a fact organizer before final analysis."""
 
     model_name = getattr(minimax, "model", DEFAULT_LOW_MODEL_NAME) or DEFAULT_LOW_MODEL_NAME
     if not enabled or not minimax.is_configured():
@@ -588,10 +589,10 @@ def run_low_model_digest_for_payload(
     cached = _read_cached_low_model_digest(fingerprint)
     if cached:
         cached["cache_hit"] = True
-        _emit(progress, f"MiniMax M3 資料整理使用快取：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
+        _emit(progress, f"DeepSeek Flash 資料整理使用快取：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
         return cached
 
-    _emit(progress, f"MiniMax M3 資料整理開始：model={model_name}")
+    _emit(progress, f"DeepSeek Flash 資料整理開始：model={model_name}")
     prompt_path = write_prompt_log(
         request,
         prompt,
@@ -614,7 +615,7 @@ def run_low_model_digest_for_payload(
         digest["fingerprint"] = fingerprint
         digest["validation"] = validate_low_model_digest(digest)
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
-        _emit(progress, f"MiniMax M3 資料整理完成：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
+        _emit(progress, f"DeepSeek Flash 資料整理完成：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
         if (digest.get("artifact_paths") or {}).get("json_path"):
             _emit(progress, f"低階資料包已保存：{(digest.get('artifact_paths') or {}).get('json_path')}")
         return digest
@@ -631,7 +632,7 @@ def run_low_model_digest_for_payload(
         }
         digest["validation"] = validate_low_model_digest(digest)
         digest["artifact_paths"] = save_low_model_digest_artifacts(request, digest, fingerprint=fingerprint, purpose=purpose)
-        _emit(progress, f"MiniMax M3 資料整理失敗，改用本地資料中心繼續：{exc}")
+        _emit(progress, f"DeepSeek Flash 資料整理失敗，改用本地資料中心繼續：{exc}")
         return digest
 
 
@@ -2684,7 +2685,7 @@ def _compact_low_model_digest(digest: dict[str, Any], *, input_mode: str) -> dic
 
 def _digest_to_markdown(digest: dict[str, Any]) -> str:
     lines = [
-        "# MiniMax M3 資料整理底稿",
+        "# DeepSeek Flash 資料整理底稿",
         "",
         f"- 狀態：{digest.get('status')}",
         f"- 模型：{digest.get('model')}",
@@ -2725,6 +2726,8 @@ def _emit(progress: ProgressCallback | None, message: str) -> None:
 
 
 def _generate_low_model_json_with_timeout(minimax: MiniMaxService, prompt: str, timeout_seconds: float):
+    if getattr(minimax, "provider", "") == "deepseek":
+        return minimax.with_timeout(timeout_seconds).generate_json(prompt)
     if not hasattr(minimax, "timeout_seconds"):
         return minimax.generate_json(prompt)
     old_timeout = getattr(minimax, "timeout_seconds")
@@ -2757,7 +2760,7 @@ def _run_low_model_digest_guarded(
         _emit(progress, f"{model_name} 低階整理快取命中：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
         return cached
 
-    cooldown = _low_model_cooldown_status()
+    cooldown = None if getattr(minimax, "provider", "") == "deepseek" else _low_model_cooldown_status()
     if cooldown:
         digest = _low_model_cooldown_digest(
             request,
@@ -2833,6 +2836,8 @@ def _run_low_model_digest_guarded(
         _emit(progress, f"{model_name} 低階整理完成：facts={len(digest.get('facts') or [])} sources={len(digest.get('source_map') or [])}")
         return digest
     except Exception as exc:
+        if isinstance(exc, DeepSeekUnavailable):
+            raise
         if not _is_low_model_quota_error(exc):
             retry_digest = _retry_single_low_model_digest(
                 request,
@@ -2954,7 +2959,7 @@ def _run_segmented_low_model_digest(
     depth: int,
     original_prompt_chars: int,
 ) -> dict[str, Any]:
-    cooldown = _low_model_cooldown_status()
+    cooldown = None if getattr(minimax, "provider", "") == "deepseek" else _low_model_cooldown_status()
     if cooldown:
         digest = _low_model_cooldown_digest(
             request,
@@ -3114,6 +3119,8 @@ def _run_segmented_low_model_digest(
             consecutive_transport_failures = 0
             _emit(progress, f"{model_name} 分段資料整理完成 {index}/{len(segments)}：facts={run['output_facts']} sources={run['output_sources']}")
         except Exception as exc:
+            if isinstance(exc, DeepSeekUnavailable):
+                raise
             if _is_low_model_quota_error(exc):
                 cooldown_payload = _write_low_model_cooldown(exc, model_name=model_name)
                 run["status"] = "failed_quota_cooldown"

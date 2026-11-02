@@ -25,6 +25,7 @@ from research_center.date_aware_context import (
 )
 from research_center.models import CommandRequest, SourceItem
 from research_center.orchestrator import ResearchCenter
+from research_center.deepseek_service import DeepSeekError, DeepSeekUnavailable, task_context
 from research_center.ai_workflow_service import build_ai_workflow_coverage, run_low_model_digest_for_payload
 from research_center.data_services import collect_structured_data
 from research_center.evidence_pack_service import build_ai_compact_context, build_three_layer_evidence_context
@@ -120,7 +121,7 @@ class RadarRequest:
     source: str = DEFAULT_SOURCE
     report_date: date | None = None
     ai_top: int = DEFAULT_AI_TOP
-    model: str | None = "minimax"
+    model: str | None = "deepseek"
     ai_comment_enabled: bool = True
     scoring_version: str | None = None
 
@@ -168,7 +169,7 @@ def parse_radar_args(args: list[str] | tuple[str, ...] | None) -> RadarRequest:
     source = DEFAULT_SOURCE
     report_date: date | None = None
     ai_top = DEFAULT_AI_TOP
-    model: str | None = "minimax"
+    model: str | None = "deepseek"
     ai_comment_enabled = True
     scoring_version: str | None = None
     index = 0
@@ -327,6 +328,7 @@ def score_radar_candidate_from_snapshot(
     return item
 
 
+@task_context("radar")
 def run_radar(
     request: RadarRequest | list[str] | tuple[str, ...] | None = None,
     *,
@@ -335,6 +337,8 @@ def run_radar(
     progress: Callable[[str], None] | None = None,
 ) -> RadarResult:
     radar_request = _normalise_radar_request(request)
+    if radar_request.ai_comment_enabled and radar_request.model not in (None, "deepseek"):
+        raise ValueError("模型已統一使用 DeepSeek Flash，請移除舊的 --model 參數。")
     target_date, date_note = resolve_radar_report_date(radar_request.report_date)
     _emit(progress, f"Radar：建立候選名單 source={radar_request.source} date={target_date.isoformat()}")
     if date_note:
@@ -1845,13 +1849,18 @@ def _attach_web_sources(
     progress: Callable[[str], None] | None,
 ) -> None:
     config = load_research_config()
-    service = TavilySearchService(
-        config.tavily_api_key,
-        enable_search=config.enable_tavily_search,
-        enable_extract=False,
-        search_depth=config.tavily_search_depth,
-        max_results_per_query=min(config.tavily_max_results_per_query, 3),
-    )
+    if config.deepseek_only:
+        from research_center.deepseek_service import configured_client
+        from research_center.deepseek_search_service import DeepSeekSearchService
+        service = DeepSeekSearchService(configured_client())
+    else:
+        service = TavilySearchService(
+            config.tavily_api_key,
+            enable_search=config.enable_tavily_search,
+            enable_extract=False,
+            search_depth=config.tavily_search_depth,
+            max_results_per_query=min(config.tavily_max_results_per_query, 3),
+        )
     if not service.is_configured():
         return
     by_code = {item.code: item for item in candidates}
@@ -1873,7 +1882,7 @@ def _attach_web_sources(
         tasks = augment_discovery_tasks_with_date_context(request, {}, tasks)
         try:
             result = service.discover(request, tasks, progress=progress)
-        except TavilyQuotaError:
+        except (TavilyQuotaError, DeepSeekUnavailable):
             break
         except Exception:
             continue
@@ -2559,7 +2568,7 @@ def _attach_ai_comments(
         low_model_digest = {
             "schema_version": "low_model_digest_v1",
             "status": "skipped",
-            "model": "MiniMax-M3",
+            "model": "deepseek-flash",
             "reason": "radar_low_model_digest_not_available",
         }
     for chunk_index, chunk in enumerate(_chunks(selected, RADAR_AI_CHUNK_SIZE), 1):
@@ -2599,6 +2608,16 @@ def _attach_ai_comments(
                     item = by_code.get(code)
                     if item is not None:
                         item.ai_comment = {"status": "failed", "model": model, "error": str(exc), "chunk_index": chunk_index}
+                if isinstance(exc, DeepSeekUnavailable):
+                    for pending in selected:
+                        if pending.code in comments:
+                            pending.ai_comment = {**comments[pending.code], "status": "ok", "model": model}
+                        else:
+                            pending.ai_comment = {"status": "failed", "model": model, "error": str(exc)}
+                    record["jobs"].append(job_record)
+                    chunk_records.append(record)
+                    return {"mode": "radar_compact_ai", "status": "partial_success", "model": model,
+                            "chunks": chunk_records, "comment_count": len(comments), "reason": str(exc)}
             record["jobs"].append(job_record)
         ok_jobs = [job for job in record["jobs"] if job.get("status") == "ok"]
         record.update(
@@ -2707,11 +2726,11 @@ def _attach_radar_low_model_digest(
             depth=6,
         )
     except Exception as exc:
-        _emit(progress, f"Radar：MiniMax M3 批次資料整理略過：{exc}")
+        _emit(progress, f"Radar：批次資料整理略過：{exc}")
         return {
             "schema_version": "low_model_digest_v1",
             "status": "failed",
-            "model": "MiniMax-M3",
+            "model": "deepseek-flash",
             "error": str(exc),
         }
 
@@ -4775,7 +4794,7 @@ def _build_ai_comment_prompt(
     else:
         final_prompt = (
         rendered
-        + "\n\nMiniMax M3 批次資料整理底稿：\n"
+        + "\n\n資料整理模型批次底稿：\n"
         + low_digest_json
         )
     final_prompt = final_prompt.replace("候選股資料：\n", "候選股資料（模板段落）：\n")
@@ -4825,6 +4844,11 @@ def _build_ai_comment_prompt_jobs(
     if len(normal_prompt) <= RADAR_AI_PROMPT_MAX_CHARS:
         return [{"codes": [item.code for item in chunk], "profile": "normal", "prompt": normal_prompt}]
 
+    if len(chunk) > 1:
+        midpoint = len(chunk) // 2
+        return [*_build_ai_comment_prompt_jobs(chunk[:midpoint], analysis_date, low_model_digest=low_model_digest),
+                *_build_ai_comment_prompt_jobs(chunk[midpoint:], analysis_date, low_model_digest=low_model_digest)]
+
     jobs: list[dict[str, Any]] = []
     for item in chunk:
         for profile in ("normal", "tight", "minimal"):
@@ -4842,6 +4866,8 @@ def _call_ai_comment_model(model: str, prompt: str) -> str:
             return _call_ai_comment_model_once(model, prompt)
         except Exception as exc:
             last_error = exc
+            if isinstance(exc, DeepSeekError):
+                raise
             if not _is_retryable_ai_error(exc) or attempt >= 2:
                 raise
             time.sleep(2.0 * (attempt + 1))
@@ -4855,6 +4881,8 @@ def _is_retryable_ai_error(exc: Exception) -> bool:
 
 def _call_ai_comment_model_once(model: str, prompt: str) -> str:
     center = ResearchCenter()
+    if center.config.deepseek_only:
+        return center.deepseek.generate_json(prompt).markdown
     selected = _normalise_model(model)
     if selected == "deepseek":
         if not center.opencode.is_configured():
@@ -5208,21 +5236,9 @@ def _normalise_source(value: str) -> str:
 
 def _normalise_model(value: str) -> str:
     text = str(value or "").strip().lower()
-    aliases = {
-        "gemini": "gemini",
-        "google": "gemini",
-        "deepseek": "deepseek",
-        "opencode": "deepseek",
-        "opencode-go": "deepseek",
-        "deepseek-v4-pro": "deepseek",
-        "minimax": "minimax",
-        "minimax-m3": "minimax",
-        "m3": "minimax",
-    }
-    model = aliases.get(text, text)
-    if model not in {"gemini", "deepseek", "minimax"}:
-        raise ValueError("--model 僅支援 gemini、deepseek 或 minimax")
-    return model
+    if text in {"deepseek", "deepseek-flash", "deepseek-v4-flash"}:
+        return "deepseek"
+    raise ValueError("模型已統一使用 DeepSeek Flash，請移除舊的 --model 參數。")
 
 
 def _source_label(source: str) -> str:

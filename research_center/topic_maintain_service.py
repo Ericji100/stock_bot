@@ -385,6 +385,10 @@ def _iter_balanced_json_objects(text: str) -> list[str]:
     return items
 
 
+from .deepseek_service import task_context
+
+
+@task_context("topic_maintain")
 def run_topic_maintain(
     request: CommandRequest,
     center: Any,
@@ -398,7 +402,10 @@ def run_topic_maintain(
 
     emit("開始執行題材知識庫維護")
 
-    ai_model = request.ai_model or "gemini"
+    official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
+    ai_model = "deepseek" if official else request.ai_model or "gemini"
+    if official:
+        center.deepseek.ensure_ready()
     report_date = (request.report_date or datetime.now().astimezone().date()).isoformat() if request.report_date else datetime.now().astimezone().strftime("%Y-%m-%d")
 
     # Determine mode
@@ -542,11 +549,11 @@ def run_topic_maintain(
             low_model_digest = {
                 "schema_version": "low_model_digest_v1",
                 "status": "failed",
-                "model": "MiniMax-M3",
+                "model": getattr(low_model, "model", "資料整理模型"),
                 "error": str(exc),
             }
             structured_data["low_model_digest"] = low_model_digest
-            emit(f"MiniMax M3 題材資料整理略過：{exc}")
+            emit(f"題材資料整理略過：{exc}")
     low_model_digest_json = _json_dumps(low_model_digest, 20000)
 
     emit(f"結構化資料摘要：{len(sd_json)} chars")
@@ -592,7 +599,11 @@ def run_topic_maintain(
         emit(f"呼叫 AI：{ai_model} / {stage_name}")
         raw_text = ""
         try:
-            if ai_model == "deepseek":
+            if official:
+                client = center.deepseek_organizer if stage_name.startswith("candidate") else center.deepseek
+                result = client.generate_json(stage_prompt)
+                raw_text = _ai_response_to_text(result)
+            elif ai_model == "deepseek":
                 if center is None or not hasattr(center, "opencode"):
                     raise TopicMaintainAIError("DeepSeek model not available")
                 result = center.opencode.generate_report(stage_prompt)
@@ -624,6 +635,8 @@ def run_topic_maintain(
             cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
             parsed = _parse_ai_json_response(cleaned_raw_text)
             stage_log = {"stage": stage_name, "raw": cleaned_raw_text}
+            if official:
+                stage_log["diagnostics"] = result.diagnostics
             if reasoning_stripped:
                 stage_log["model_reasoning_stripped"] = True
             raw_stages.append(stage_log)
@@ -655,6 +668,7 @@ def run_topic_maintain(
         render_prompt=_render_prompt,
         call_ai_json=_call_ai_json,
         progress=emit,
+        require_full_ai=official,
     )
 
     # Save staged raw responses
@@ -679,6 +693,9 @@ def run_topic_maintain(
             report_id=change_id,
             report_variant=f"topic_maintain_{mode.value}",
         )
+        if official:
+            pack.extra["report_metadata"]["model"] = center.config.deepseek_model
+            pack.extra["report_metadata"]["ai_status"] = pack.extra.get("ai_status", "partial_success")
         pack.extra["data_source_summary"] = build_data_source_summary(request, structured_data, list(discovery_sources or []))
         pack.extra["command_result"] = asdict(
             CommandResult(

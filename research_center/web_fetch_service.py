@@ -8,6 +8,7 @@ Search order: requests+BS4 → Tavily Extract
 from __future__ import annotations
 
 import re
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -64,6 +65,40 @@ def fetch_web_content(
     Fetch content from a single URL using requests + BeautifulSoup.
     Falls back to Tavily Extract on failure or partial content.
     """
+    from .config import load_research_config
+    if load_research_config().deepseek_only:
+        from .deepseek_service import configured_client
+        from .deepseek_search_service import DeepSeekSearchService
+        from dataclasses import asdict
+        import hashlib
+        client = configured_client()
+        cache_key = "page:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
+        cached = client.account.cached(cache_key)
+        if cached is not None:
+            return WebFetchResult(**cached)
+        try:
+            local_result = _fetch_with_requests(url, timeout, expected_terms=expected_terms)
+            if local_result.content_status == "success":
+                client.account.cache(cache_key, asdict(local_result), 3600)
+                return local_result
+        except Exception:
+            local_result = None
+        try:
+            fetched = DeepSeekSearchService(client).fetch(url)
+            content = fetched.get("content") or ""
+            published_date = local_result.published_date if local_result else None
+            quality, reason = _assess_fetch_quality(url, content, fetched.get("title"), published_date, expected_terms)
+            result = WebFetchResult(url=url, title=fetched.get("title"), content=content,
+                published_date=published_date, fetch_quality=quality, failure_reason=reason,
+                content_status=("success" if quality != "low" else "partial") if content else "failed", fetch_provider="deepseek_fetch")
+            if result.content_status == "success":
+                client.account.cache(cache_key, asdict(result), 3600)
+            return result
+        except Exception as exc:
+            if local_result is not None:
+                return local_result
+            return WebFetchResult(url=url, title=None, content="", content_status="failed",
+                fetch_provider="deepseek_fetch", failure_reason=str(exc))
     try:
         result = _fetch_with_requests(url, timeout, expected_terms=expected_terms)
         if result.content_status == "success":
@@ -129,7 +164,7 @@ class WebFetchService:
             return fetch_web_content(url, timeout=self.timeout, progress=progress, expected_terms=expected_terms)
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_url = {executor.submit(fetch_one, url): url for url in urls}
+            future_to_url = {executor.submit(copy_context().run, fetch_one, url): url for url in urls}
             for future in as_completed(future_to_url):
                 url = future_to_url[future]
                 try:
@@ -564,7 +599,7 @@ def fetch_many(
         return fetch_web_content(url, progress=progress)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_url = {executor.submit(fetch_one, url): url for url in urls}
+        future_to_url = {executor.submit(copy_context().run, fetch_one, url): url for url in urls}
         for future in as_completed(future_to_url):
             url = future_to_url[future]
             try:

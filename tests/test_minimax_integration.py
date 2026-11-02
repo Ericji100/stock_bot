@@ -22,6 +22,15 @@ from research_center.report_builder import write_report_artifacts
 
 
 class MiniMaxIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # Archived adapter tests must not depend on a developer's real keys.
+        config = ResearchCenterConfig(minimax_api_key="fake-test-key", enable_minimax_search=True)
+        loader = patch("research_center.minimax_search_service.load_research_config", return_value=config)
+        loader.start()
+        self.addCleanup(loader.stop)
+        key = patch("research_center.minimax_search_service._get_api_key", return_value="fake-test-key")
+        key.start()
+        self.addCleanup(key.stop)
     def test_deep_research_minimax_timeout_is_retryable(self):
         request = parse_command_text("/research 2241 --deep --model minimax")
 
@@ -859,17 +868,8 @@ class MiniMaxIntegrationTests(unittest.TestCase):
         self.assertEqual(text.count("main.py"), 1, "bat should contain exactly one main.py call")
         self.assertEqual(text.lower().count("pause"), 1, "bat should contain exactly one pause")
 
-        # Verify ensure_minimax_mcp.py appears exactly once
-        self.assertEqual(
-            text.count("ensure_minimax_mcp.py"), 1,
-            "bat should contain exactly one ensure_minimax_mcp.py call"
-        )
-
-        # Verify for /f dynamic parsing exists
-        self.assertIn("for /f", text.lower(), "bat should contain for /f dynamic parsing")
-
-        # Verify MINIMAX_MCP_COMMAND environment variable is set
-        self.assertIn("MINIMAX_MCP_COMMAND", text, "bat should set MINIMAX_MCP_COMMAND")
+        self.assertNotIn("ensure_minimax_mcp.py", text)
+        self.assertNotIn("MINIMAX_MCP_COMMAND", text)
         self.assertIn("%CD%\\.runtime\\uv_cache", text, "bat should use project-local UV cache")
         self.assertIn("%CD%\\.runtime\\uv_tools", text, "bat should use project-local UV tool dir")
 

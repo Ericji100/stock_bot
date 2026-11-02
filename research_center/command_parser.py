@@ -241,7 +241,7 @@ def _parse_topic_import(raw_text: str, user_id: str | None) -> CommandRequest:
     if command != "topic_import":
         raise CommandParseError("Unsupported topic import command")
     rest = parts[1].strip() if len(parts) > 1 else ""
-    ai_model = "gemini"
+    ai_model = "deepseek"
     parsed_flags: dict[str, str | bool] = {}
     model_match = re.match(r"^--model\s+(\S+)\s*(.*)$", rest, flags=re.DOTALL)
     if model_match:
@@ -325,22 +325,23 @@ def _parse_days(value: str | bool | None) -> int | None:
 
 def _parse_ai_model(value: str | bool | None) -> str:
     if value in (None, False):
-        return "gemini"
+        return "deepseek"
     normalized = str(value).strip().lower().replace("_", "-")
-    aliases = {
-        "gemini": "gemini",
-        "google": "gemini",
-        "deepseek": "deepseek",
-        "opencode": "deepseek",
-        "opencode-go": "deepseek",
-        "deepseek-v4-pro": "deepseek",
-        "minimax": "minimax",
-        "minimax-m3": "minimax",
-        "m3": "minimax",
-    }
-    if normalized not in aliases:
-        raise CommandParseError("--model 僅支援 gemini、deepseek 或 minimax")
-    return aliases[normalized]
+    if normalized in {"deepseek", "deepseek-flash", "deepseek-v4-flash"}:
+        return "deepseek"
+    # Historical requests and archived test fixtures still need to be readable.
+    aliases = {"gemini": "gemini", "google": "gemini", "minimax": "minimax",
+               "minimax-m3": "minimax", "m3": "minimax", "opencode": "deepseek",
+               "opencode-go": "deepseek", "deepseek-v4-pro": "deepseek"}
+    if normalized in aliases:
+        return aliases[normalized]
+    raise CommandParseError("模型已統一為 DeepSeek Flash，請移除舊的 --model 參數。")
+
+
+def validate_deepseek_request(request: CommandRequest) -> None:
+    match = re.search(r"--model\s+(\S+)", request.raw_text)
+    if match and match.group(1).lower() not in {"deepseek", "deepseek-flash", "deepseek-v4-flash"}:
+        raise CommandParseError("模型已統一為 DeepSeek Flash，請移除舊的 --model 參數。")
 
 
 def _validate_request(request: CommandRequest, flags: dict[str, str | bool]) -> None:

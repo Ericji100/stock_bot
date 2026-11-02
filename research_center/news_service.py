@@ -700,11 +700,15 @@ def _penalize_implicit_news_dates(items: list[NewsItem], penalty: int = 250) -> 
     return items
 
 
+from .deepseek_service import DeepSeekUnavailable, task_context
+
+
+@task_context("news")
 def run_news_refresh(
     center: Any,
     repository: NewsRepository,
     progress: ProgressCallback | None = None,
-    ai_model: str = "gemini",
+    ai_model: str = "deepseek",
 ) -> tuple[list[NewsItem], dict[str, Any]]:
     """Refresh news: search, fetch, classify, save.
 
@@ -768,7 +772,7 @@ def run_news_refresh(
                 use_grounding=True, progress=progress,
             )
             all_sources.extend(sources_out)
-            minimax_diag = structured_data_discovery.get("minimax_search_discovery", {})
+            minimax_diag = structured_data_discovery.get("deepseek_search_discovery", structured_data_discovery.get("minimax_search_discovery", {}))
         except Exception as exc:
             emit(f"Discovery 搜尋略過：{exc}")
 
@@ -855,6 +859,11 @@ def run_news_refresh(
         emit(f"台灣過濾後 {len(items)} 筆")
 
         items = _rank_news_for_ai(items, portfolio)
+        official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
+        if official and hasattr(repository, "query_pending_classification"):
+            pending = repository.query_pending_classification(limit=6)
+            items = _deduplicate_items([*pending, *items])
+        all_ranked_items = list(items)
         filtered_count = len(items)
         classify_limit = _classify_limit()
         refresh_classify_limit = _env_int("NEWS_REFRESH_CLASSIFY_LIMIT", 0)
@@ -907,7 +916,11 @@ def run_news_refresh(
         emit(f"持股新聞候選：{holding_count}")
 
         # Save to repository
-        saved, skipped = repository.save_many(classified)
+        deferred = []
+        if official:
+            selected_urls = {item.url for item in items}
+            deferred = _fallback_classification([item for item in all_ranked_items if item.url not in selected_urls])
+        saved, skipped = repository.save_many([*classified, *deferred])
         emit(f"儲存完成：新增 {saved}，略過 {skipped}")
 
         low_digest_meta = {
@@ -917,7 +930,7 @@ def run_news_refresh(
                 if local_fallback_count
                 else ("success" if primary_classifier == "minimax_low" else "skipped")
             ),
-            "model": "MiniMax-M3",
+            "model": "deepseek-flash",
             "reason": "news_general_classification" if primary_classifier == "minimax_low" else "low_model_news_classifier_not_used",
         }
         ai_workflow_coverage = build_ai_workflow_coverage(
@@ -1002,14 +1015,14 @@ def _batch_classify_news(
 
     primary_model = _primary_news_classifier_model(center, ai_model)
     if primary_model != ai_model:
-        emit(f"新聞分類分流：一般分類使用 MiniMax M3，高階模型 {ai_model} 僅複核重要新聞")
+        emit(f"新聞分類分流：一般分類使用 DeepSeek Flash，高階模型 {ai_model} 僅複核重要新聞")
     result_items = _classify_news_batches(
         items,
         center,
         emit,
         ai_model=primary_model,
         prompt_text=prompt_text,
-        label="MiniMax M3 一般新聞分類" if primary_model != ai_model else "AI 分類",
+        label="DeepSeek Flash 一般新聞分類" if primary_model != ai_model else "AI 分類",
     )
     if primary_model == ai_model:
         return result_items
@@ -1031,6 +1044,8 @@ def _batch_classify_news(
 
 
 def _primary_news_classifier_model(center: Any, ai_model: str) -> str:
+    if getattr(getattr(center, "config", None), "deepseek_only", False) is True:
+        return "deepseek"
     if ai_model == "minimax":
         return ai_model
     low_model = getattr(center, "low_model_minimax", None)
@@ -1069,6 +1084,22 @@ def _classify_news_batches(
     text_limit = _classify_text_limit()
     retry_text_limit = _classify_retry_text_limit()
     result_items: list[NewsItem] = []
+    official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
+    article_cache = center.deepseek_organizer.account if official else None
+    def article_key(item):
+        import hashlib
+        value = json.dumps([prompt_text, center.config.deepseek_model, item.url, item.title,
+                            item.full_text or item.summary, item.published_at], ensure_ascii=False, sort_keys=True)
+        return "news-classification:" + hashlib.sha256(value.encode()).hexdigest()
+    if article_cache is not None:
+        uncached = []
+        for item in items:
+            cached = article_cache.cached(article_key(item))
+            if cached is not None:
+                result_items.extend(_apply_classification_meta([item], {"0": cached}))
+            else:
+                uncached.append(item)
+        items = uncached
     total_batches = (len(items) + batch_size - 1) // batch_size
     emit(f"{label}開始：{len(items)} 則，共 {total_batches} 批，每批最多 {batch_size} 則")
     for i in range(0, len(items), batch_size):
@@ -1083,8 +1114,17 @@ def _classify_news_batches(
             ai_result = _call_news_classifier(center, ai_model, full_prompt, timeout_seconds)
             raw = getattr(ai_result, "raw", str(ai_result))
             parsed = _parse_ai_json_batch(raw)
+            if article_cache is not None:
+                for index, item in enumerate(batch):
+                    classification = parsed.get(str(index)) or parsed.get(item.url)
+                    if isinstance(classification, dict):
+                        article_cache.cache(article_key(item), classification, 7 * 86400)
             result_items.extend(_apply_classification_meta(batch, parsed))
             emit(f"{label} {batch_no}/{total_batches} 完成")
+        except DeepSeekUnavailable as exc:
+            emit(f"AI 分類暫停，保存待補分類新聞：{exc}")
+            result_items.extend(_fallback_classification(items[i:]))
+            break
         except Exception as exc:
             emit(f"{label} {batch_no}/{total_batches} failed: {exc}; retrying with lightweight payload")
             retry_json = json.dumps(_classification_payload(batch, retry_text_limit, lightweight=True), ensure_ascii=False)
@@ -1146,6 +1186,7 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
         if meta.get("category") == "exclude":
             continue
         if meta:
+            it.tags = [tag for tag in it.tags if tag != "local_rule_fallback"]
             it.category = normalize_news_category(meta.get("category", it.category) or _guess_category(it.title))
             it.summary = meta.get("summary", it.summary) or it.summary
             it.related_symbols = meta.get("related_symbols", []) or []
@@ -1160,6 +1201,8 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
             it.news_heat_risk_reason = str(meta.get("news_heat_risk_reason", it.news_heat_risk_reason) or "")
         else:
             it.category = _guess_category(it.title)
+            if "local_rule_fallback" not in it.tags:
+                it.tags.append("local_rule_fallback")
         it.category = _correct_news_category(it)
         result_items.append(apply_news_signal_tags(it))
     return result_items
@@ -1181,6 +1224,8 @@ def _fallback_classification(batch: list[NewsItem]) -> list[NewsItem]:
 def _call_news_classifier(center: Any, ai_model: str, prompt: str, timeout_seconds: float) -> Any:
     """Call the selected model with a temporary timeout for news classification."""
 
+    if getattr(getattr(center, "config", None), "deepseek_only", False) is True:
+        return center.deepseek_organizer.generate_json(prompt)
     if ai_model == "deepseek":
         client = center.opencode
         return _call_with_temporary_timeout(client, timeout_seconds, lambda: client.generate_report(prompt))
@@ -1192,7 +1237,7 @@ def _call_news_classifier(center: Any, ai_model: str, prompt: str, timeout_secon
     if ai_model == "minimax_low":
         client = getattr(center, "low_model_minimax", None)
         if client is None or not hasattr(client, "generate_json"):
-            raise RuntimeError("MiniMax M3 low-model classifier is not available.")
+            raise RuntimeError("DeepSeek Flash low-model classifier is not available.")
         return _call_with_temporary_timeout(client, timeout_seconds, lambda: client.generate_json(prompt))
 
     client = center.gemini
@@ -2082,7 +2127,7 @@ def run_scheduled_news_lightweight_refresh(
     center: Any,
     repository: NewsRepository,
     progress: ProgressCallback | None = None,
-    ai_model: str = "minimax",
+    ai_model: str = "deepseek",
     diagnostics: dict[str, Any] | None = None,
 ) -> tuple[list[NewsItem], dict[str, Any]]:
     """Run at most one lightweight refill for scheduled pushes when 24h news is thin."""

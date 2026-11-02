@@ -4,6 +4,8 @@
 
 README 只保留專案入口、啟動方式、常用指令與維護索引；完整歷史內容已保留在 [docs/legacy-readme-full.md](docs/legacy-readme-full.md)，後續細節文件集中在 [docs/](docs/)。
 
+本分支的模型與搜尋設定以「DeepSeek 費用與失敗保護」及遷移驗證文件為準。下方有日期的 MiniMax / Gemini / Tavily 優化與 Live 結果是歷史紀錄，不代表本次 DeepSeek 已經真實驗收；舊模型參數與搜尋輪替在 DeepSeek-only 模式不再啟用。
+
 ## 核心工作流
 
 ```text
@@ -27,7 +29,7 @@ README 只保留專案入口、啟動方式、常用指令與維護索引；完�
 | `/radar` 每日雷達 | 穩定可用 | 可選 AI 短評；`/radar_more` 查看完整名單 |
 | 個股資料匯出 | 穩定可用 | `/export`、`/stock_chart`、`/tmf_chart` |
 | 持股與監控 | 穩定可用 | `portfolio.json` 與 `config.json` 分別管理持股、監控清單 |
-| AI 投研資料中心 | 可用，持續調整 | Gemini、DeepSeek、MiniMax；輸出 Markdown、HTML、JSON |
+| AI 投研資料中心 | DeepSeek 遷移分支驗證中 | 統一官方 DeepSeek Flash；輸出 Markdown、HTML、JSON；實際付費連線待驗證 |
 | `/value_scan` 價值重估 | 可用，持續調整 | 使用本地重估底稿與外部證據，避免只因熱門題材給高分 |
 | 題材雷達與題材庫 | 可用，持續調整 | 代表股、候選股、疑似蹭題材需分開標示 |
 | 新聞系統 | 可用，持續調整 | 本地新聞庫、外部搜尋與每日排程整理 |
@@ -92,10 +94,7 @@ AI 投研中心讀取 `config/research_center.json` 與 `config/secrets.json`。
 
 | Key | 用途 | 必要性 |
 |---|---|---|
-| `gemini_api_key` 或 `google_api_key` | Gemini 投研與 grounding | AI 功能建議設定 |
-| `opencode_api_key` | DeepSeek V4 Pro / OpenCode Go | 使用 `--model deepseek` 時需要 |
-| `minimax_api_key` | MiniMax M3 報告與搜尋 | 使用 `--model minimax` 或 MiniMax 搜尋時需要 |
-| `tavily_api_key` | Tavily Search / Extract | 外部搜尋與新聞補強建議設定 |
+| `deepseek_api_key` | 官方 DeepSeek 分析、整理、Search / Fetch | AI 功能需要；也可用 `DEEPSEEK_API_KEY` 環境變數 |
 | `research_api_token` | 本機 Research API 驗證 | 使用 API 時需要 |
 
 ### 4. 啟動
@@ -110,7 +109,21 @@ Windows 可直接執行：
 啟動機器人.bat
 ```
 
-`啟動機器人.bat` 是唯一日常入口，會在背景隱藏啟動外部 watchdog，再由 watchdog 判斷是否需要啟動可見的內部 runner；日常只會保留 runner CMD 視窗。重複執行入口時會立即要求既有 watchdog 重新檢查 Bot，不必等待下一個定期檢查週期；健康的既有 Bot 不會重複啟動。runner 啟動後會註冊 Telegram slash 指令，並建立每日排程：10:00 AI 題材庫維護（MiniMax M3）、12:30 監控掃描、13:50 午報、17:45 持股籌碼推播、08:45/18:00 新聞整理（預設使用 MiniMax M3 分類）、20:30 交易日全部選股、21:30 Radar 推播（預設使用 MiniMax M3 短評），以及籌碼與完整資料回補任務。需要完整關閉時，請執行 `停止機器人.bat`，不要只關閉 runner 視窗，否則背景 watchdog 會在健康檢查時重新啟動 runner。
+`啟動機器人.bat` 是唯一日常入口，沿用現有 watchdog 與 runner；不要在開發 worktree 同時啟動第二個 Bot。本分支未合併、未重啟正式 Bot。遷移後的 AI 排程統一使用官方 DeepSeek Flash：10:00 題材庫維護、08:45/18:00 背景新聞整理、21:30 Radar 短評。新聞排程預設不發 Telegram，成功與失敗皆僅記錄；手動新聞指令正常回覆。其餘選股、監控、籌碼與回補排程不改。
+
+#### DeepSeek 費用與失敗保護
+
+- `config/research_center.json` 的 `deepseek_only: true` 啟用正式遷移路徑；報告採思考模式，新聞分類與底稿整理採非思考 JSON。兩者皆使用 `deepseek-flash`。
+- 舊模型選單停用；舊按鈕提示重新輸入，不會偷偷切換模型。舊 Gemini、MiniMax、OpenCode、Tavily 金鑰不會由此路徑使用；歷史報告與舊程式相容測試仍保留。
+- 付費前查官方餘額，查詢結果快取 60 秒。402 或 401 會阻止後續付費請求；儲值或修正金鑰後，下次過期查詢可恢復。429 / 部分 5xx 最多重試一次，連線逾時不盲目重送。
+- `deepseek_daily_limit_usd` 預設 5 美元；`deepseek_background_reserve_usd` 預設保留 0.20 美元給手動操作。這是保守預算護欄，不是帳單或可保證的絕對扣款上限。
+- 若官方僅回傳人民幣餘額，使用 `deepseek_usd_cny_budget_rate`（預設 7.5）作預算換算假設，並非即時匯率。費用估計採 Flash 公開尖離峰費率，未套用中國節日折扣。
+- `.cache/deepseek/usage.sqlite3` 保存用途、背景標記、嘗試次數、耗時、輸入字元、官方 token 用量與預估費用；逾時費用記為未知，不能當作零。官方帳單才是實際費用依據。
+- 搜尋結果快取 15 分鐘、正文 1 小時、相同模型與日期的成功 prompt 24 小時、新聞逐篇分類 7 天；不同內容、提示詞或模型不共用分類結果。搜尋仍沿用來源品質與必要資料缺口檢查，不單看來源數量。
+- 額度不足時保留已有資料與成功階段，報告明確標示 fallback / 部分成功。題材庫 AI 審核不完整的更新包不得套用；新聞未分類項目保存本地待補。既有行情／財報／籌碼與本地選股不依賴 AI 餘額。
+- `scheduled_news_push_enabled` 預設 `false`，背景仍更新新聞庫；改成 `true` 才恢復排程通知。
+
+遷移與驗收進度見 [DeepSeek 遷移驗證](docs/deepseek-unification-verification.md)。API Key 請只放本機忽略的秘密設定，不要貼在聊天、README 或 Git。
 
 ## 最常用指令
 
@@ -245,16 +258,16 @@ Windows 可直接執行：
 | 月營收與財報 | MOPS、FinMind 結構化財報、公開資料、本地快取 | `.cache/` | 季財報統一成 v3 schema，FinMind 可匿名或使用 key，MOPS Plus 保留為備援 |
 | 法人籌碼 | TWSE、TPEx、FinMind、Fugle | `.cache/chip_daily` | 缺口時可嘗試 FinMind 即時備援 |
 | 大戶分布 | TDCC | `.cache/tdcc` | 價值重估與籌碼分析使用 |
-| 新聞 | MiniMax、Tavily、Gemini、新聞 URL 匯入 | `database/stock_research.db` | `/news latest` 讀本地庫；`/news refresh` 會搜尋 |
+| 新聞 | DeepSeek Search / Fetch、網頁直接抓取、新聞 URL 匯入 | `database/stock_research.db` | `/news latest` 讀本地庫；`/news refresh` 會搜尋 |
 | 晨間市場速報 | Yahoo Finance、Yahoo 期貨頁首、TAIFEX 備援 | 即時查詢 | `/morning` 台指期夜盤優先抓最新期貨頁首報價；TAIFEX 日檔只作歷史備援，避免清晨日檔未更新時輸出舊夜盤 |
 | 題材庫 | `config/theme_profiles.json` 等 | `config/`、`data/theme/` | 變更包需 review/confirm |
-| AI 報告 | Gemini、DeepSeek、MiniMax | `reports/`、`database/` | 同時保存來源與 metadata |
+| AI 報告 | 官方 DeepSeek Flash | `reports/`、`database/` | 同時保存來源與 metadata |
 
 詳細資料策略請看 [docs/data-sources.md](docs/data-sources.md)。
 
 ## AI、搜尋與成本
 
-### Tavily 多 Key 輪替
+### 歷史相容設定：Tavily 多 Key 輪替（遷移模式停用）
 
 Tavily 可設定多組 Key 共用。建議在 `config/secrets.json` 使用：
 
@@ -560,9 +573,9 @@ AI 只提供分析建議；`change_id`、`status`、`raw_response_path`、`promp
 
 ```text
 /topic_maintain
-/topic_maintain --deep --model minimax
+/topic_maintain --deep
 
-`/topic_maintain` 是題材庫維護的單一入口。手動不帶參數時預設使用 deep 模式，等同執行大範圍全市場題材維護；若要指定模型可使用 `/topic_maintain --model minimax`。
+`/topic_maintain` 是題材庫維護的單一入口。手動不帶參數時預設使用 deep 模式，與排程一樣使用官方 DeepSeek Flash，不再提供模型選單。
 
 /topic_review
 /topic_review change_xxx
@@ -594,11 +607,11 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 
 ## 定時任務序列與排程
 
-- 10:00：每日自動執行 `/topic_maintain --deep --model minimax`，使用 MiniMax M3 產生題材庫變更包；不會自動套用。排程完成訊息與手動 `/topic_maintain` 使用同一套 Telegram 摘要與操作按鈕，可直接點選查看、確認套用或拒絕。
+- 10:00：每日自動執行 `/topic_maintain --deep`，使用 DeepSeek Flash 產生題材庫變更包；不會自動套用。審核不完整的更新包不得確認套用。
 - 12:30：監控掃描。
 - 13:50：午報。
 - 17:45：持股報告。
-- 08:45、18:00：定時新聞整理與推播，預設使用 MiniMax M3 做新聞分類與整理。
+- 08:45、18:00：背景新聞整理，使用 DeepSeek Flash 分類，預設不推播 Telegram。
 - 20:30：交易日執行全部選股，等同 `/scan` 選項 7，完成後發送 Telegram 訊息。
 ### 定時任務可靠性與排查
 
@@ -610,7 +623,7 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 - watchdog 不只檢查 process 是否存活，也會讀取 heartbeat 的 `schedule_health`。若排程健康狀態標示異常，會依既有 watchdog 流程重啟 runner。
 - 若早上定時任務未觸發，優先檢查三個檔案：`.runtime/bot_heartbeat.json`、`logs/scheduled_tasks/當日.jsonl`、runner CMD 視窗輸出。若 audit log 沒有 `triggered`，代表 APScheduler callback 未進入；若有 `started` 但沒有 `completed`，代表任務執行中卡住或 timeout。
 
-- 21:30：交易日執行 Radar 推播，原 20:30 Radar 已移到 21:30；定時 Radar 預設啟用 MiniMax M3 短評。
+- 21:30：交易日執行 Radar 推播，定時 Radar 預設啟用 DeepSeek Flash 短評。
 - 16:30、18:30、21:00：籌碼快取回補；16:30 / 18:30 為今日回補，21:00 為完整回補。
 - 每 2 小時：完整資料回補健康檢查，啟動後 5 分鐘先檢查一次。
 - 報告與推播類定時任務使用 `ScheduledTaskService` 序列佇列；若前一個定時任務尚未完成，下一個任務會排隊，等前一個完成後接續執行。
@@ -638,11 +651,11 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 |---|---|---|---|
 | 監控掃描 | `/check`，使用 `build_monitor_scan_report()` 預設標題 | 12:30，固定標題與無訊號文案 | 同一核心函式，排程固定推播文案 |
 | 午報 | `/noon` / `/tw_market`，單次產生午報 | 13:50，`build_noon_market_report()`，失敗最多重試 6 次，每次間隔 30 分鐘 | 定期任務多 retry，避免資料源短暫未就緒 |
-| 題材庫維護 | `/topic_maintain` 只顯示模型選單；選定後固定組成 `--deep --model <model>` | 10:00，固定 `/topic_maintain --deep --model minimax` | 兩者都固定 deep；差異是手動可選模型、排程固定 MiniMax M3 |
+| 題材庫維護 | `/topic_maintain` 預設 deep，無模型選單 | 10:00，固定 `/topic_maintain --deep` | 兩者使用同一 DeepSeek 核心 |
 | 持股報告 | `/my` 只列出持股清單 | 17:45，`build_portfolio_report()`，依持股報告 retry 規則推播 | 定期推播是完整持股報告，和 `/my` 不同 |
-| 新聞整理 | `/news` 可選 latest / 7d / refresh 與 refresh 模型 | 08:45、18:00，`refresh model=minimax`，使用 scheduled latest 與必要時 lightweight refill | 定期任務固定整理新聞庫並推播，手動可自由查詢或更新 |
+| 新聞整理 | `/news` 可選 latest / 7d / refresh | 08:45、18:00，`refresh model=deepseek`，必要時補充 | 定期靜默更新新聞庫，手動正常回覆 |
 | 全部選股 | `/scan` 可選單一策略或全部 | 20:30，等同 `/scan` 選項 7，交易日才執行 | 同一選股核心，排程固定全部選股 |
-| Radar | `/radar` 預設 `source=combined`，可用參數改來源、日期、模型與 AI 補強數量 | 21:30，固定 `source=technical, ai_top=15, model=minimax, ai_comment=true`，推播摘要最多 15 檔 | 定期 Radar 目前固定技術面來源與短摘要，和手動預設不同 |
+| Radar | `/radar` 預設 `source=combined`，可改來源、日期與 AI 補強數量 | 21:30，固定 `source=technical, ai_top=15, model=deepseek, ai_comment=true`，推播摘要最多 15 檔 | 定期 Radar 仍固定技術面來源與短摘要 |
 | 籌碼快取回補 | 手動通常透過 `/backfill` 進入完整回補流程 | 16:30 / 18:30 今日回補、21:00 完整籌碼快取回補，`force_refresh=false` | 定期任務只暖籌碼快取，不等同完整 `/backfill` |
 | 完整資料回補檢查 | `/backfill [date] [force]` 可指定日期與強制刷新 | 每 2 小時，`run_backfill_if_needed(report_date=None, force_refresh=false)` | 同一回補決策核心；定期任務只做自動日期與非強制檢查 |
 

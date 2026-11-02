@@ -94,7 +94,7 @@ class TopicPipelineServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(pack.status, TopicChangeStatus.PENDING)
-        self.assertTrue(any("MiniMax M3 資料整理底稿" in prompt for prompt in prompts))
+        self.assertTrue(any("資料整理模型底稿" in prompt for prompt in prompts))
         self.assertTrue(any("候選題材證據" in prompt for prompt in prompts))
 
     def test_pipeline_keeps_pack_when_detail_batch_fails(self):

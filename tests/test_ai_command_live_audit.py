@@ -112,7 +112,7 @@ class AiCommandLiveAuditSummaryTests(unittest.TestCase):
 
         with patch("tools.ai_command_live_audit.load_radar_result", return_value=fake_result), \
             patch("tools.ai_command_live_audit._load_radar_records", return_value=[]):
-            report = audit_radar_command("/radar --source technical --ai-top 5 --model minimax", out_dir)
+            report = audit_radar_command("/radar --source technical --ai-top 5 --model deepseek", out_dir)
 
         self.assertEqual(report["status"], "warning")
         self.assertIn("候選股為 0", report["error"])
@@ -137,7 +137,7 @@ class AiCommandLiveAuditSummaryTests(unittest.TestCase):
             patch("tools.ai_command_live_audit._load_radar_records", return_value=[{"radar_id": "old"}]), \
             patch("tools.ai_command_live_audit._record_to_result", return_value=non_empty_result), \
             patch("tools.ai_command_live_audit._select_ai_enrichment_codes", return_value=[]):
-            report = audit_radar_command("/radar --source technical --ai-top 5 --model minimax", out_dir)
+            report = audit_radar_command("/radar --source technical --ai-top 5 --model deepseek", out_dir)
 
         self.assertEqual(report["status"], "success")
         structured_text = (out_dir / "structured_data.json").read_text(encoding="utf-8")
@@ -157,7 +157,7 @@ class AiCommandLiveAuditSummaryTests(unittest.TestCase):
             patch("tools.ai_command_live_audit._select_ai_enrichment_codes", return_value=["2330"]), \
             patch("tools.ai_command_live_audit._load_or_build_radar_light_research", return_value=({"stock": {"code": "2330"}}, [source], "unit")), \
             patch("tools.ai_command_live_audit._build_ai_comment_prompt_jobs", return_value=[{"prompt": "test prompt", "codes": ["2330"]}]):
-            report = audit_radar_command("/radar --source technical --ai-top 5 --model minimax", out_dir)
+            report = audit_radar_command("/radar --source technical --ai-top 5 --model deepseek", out_dir)
 
         self.assertEqual(report["source_count"], 1)
         sources_text = (out_dir / "sources.json").read_text(encoding="utf-8")
@@ -187,7 +187,7 @@ class AiCommandLiveAuditSummaryTests(unittest.TestCase):
             patch("tools.ai_command_live_audit._load_or_build_radar_light_research", return_value=({"stock": {"code": "2330"}}, [source], "unit")), \
             patch("tools.ai_command_live_audit._ensure_radar_source_sufficiency"), \
             patch("tools.ai_command_live_audit._build_ai_comment_prompt_jobs", return_value=[{"prompt": "test prompt", "codes": ["2330"]}]):
-            report = audit_radar_command("/radar --source technical --ai-top 1 --model minimax", out_dir)
+            report = audit_radar_command("/radar --source technical --ai-top 1 --model deepseek", out_dir)
 
         review = {"codex_review_status": "review ok", "warnings": [], "recommendations": []}
         _write_codex_formal_output(out_dir, report, review)

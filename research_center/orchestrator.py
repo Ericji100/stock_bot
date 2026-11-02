@@ -4,6 +4,7 @@ import json
 import re
 import time
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -79,56 +80,64 @@ class _GeminiSegmentedClient:
         return self.service.generate_report(prompt, enable_grounding=False)
 
 
+from .deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DisabledProvider, task_context
+from .deepseek_search_service import DeepSeekSearchService
+
+
 class ResearchCenter:
     def __init__(self, config: ResearchCenterConfig | None = None):
         self.config = config or load_research_config()
         self.database = ResearchDatabase(self.config.database_path)
-        self.gemini = GeminiService(
-            api_key=self.config.api_key,
-            model=self.config.model,
-            enable_grounding=self.config.enable_grounding,
-            fallback_models=self.config.fallback_models,
-        )
-        self.minimax = MiniMaxService(
-            api_key=self.config.minimax_api_key,
-            model=self.config.minimax_model,
-            base_url=self.config.minimax_base_url,
-        )
-        self.low_model_minimax = MiniMaxService(
-            api_key=self.config.minimax_api_key,
-            model=self.config.minimax_low_model,
-            base_url=self.config.minimax_base_url,
-        )
-        self.minimax_search = MiniMaxSearchService(
-            serper_api_key=self.config.serper_api_key,
-            jina_api_key=self.config.jina_api_key,
-            minimax=self.minimax,
-        )
-        self.opencode = OpenCodeService(
-            api_key=self.config.opencode_api_key,
-            model=self.config.opencode_model,
-            base_url=self.config.opencode_base_url,
-            reasoning_effort=self.config.opencode_reasoning_effort,
-        )
-        self.tavily_search = TavilySearchService(
-            api_key=self.config.tavily_api_key,
-            api_keys=self.config.tavily_api_keys,
-            enable_search=self.config.enable_tavily_search,
-            enable_extract=self.config.enable_tavily_extract,
-            search_depth=self.config.tavily_search_depth,
-            extract_depth=self.config.tavily_extract_depth,
-            max_results_per_query=self.config.tavily_max_results_per_query,
-            max_extract_urls_per_task=self.config.tavily_max_extract_urls_per_task,
-        )
+        if not self.config.deepseek_only:
+            self.gemini = GeminiService(api_key=self.config.api_key, model=self.config.model,
+                enable_grounding=self.config.enable_grounding, fallback_models=self.config.fallback_models)
+            self.minimax = MiniMaxService(api_key=self.config.minimax_api_key,
+                model=self.config.minimax_model, base_url=self.config.minimax_base_url)
+            self.low_model_minimax = MiniMaxService(api_key=self.config.minimax_api_key,
+                model=self.config.minimax_low_model, base_url=self.config.minimax_base_url)
+            self.minimax_search = MiniMaxSearchService(serper_api_key=self.config.serper_api_key,
+                jina_api_key=self.config.jina_api_key, minimax=self.minimax)
+            self.opencode = OpenCodeService(api_key=self.config.opencode_api_key, model=self.config.opencode_model,
+                base_url=self.config.opencode_base_url, reasoning_effort=self.config.opencode_reasoning_effort)
+            self.tavily_search = TavilySearchService(api_key=self.config.tavily_api_key,
+                api_keys=self.config.tavily_api_keys, enable_search=self.config.enable_tavily_search,
+                enable_extract=self.config.enable_tavily_extract, search_depth=self.config.tavily_search_depth,
+                extract_depth=self.config.tavily_extract_depth,
+                max_results_per_query=self.config.tavily_max_results_per_query,
+                max_extract_urls_per_task=self.config.tavily_max_extract_urls_per_task)
         self.quota_guard = SearchProviderQuotaGuard(ROOT_DIR / ".cache" / "search_provider_quota.json")
         self.source_health = SourceHealthManager()
+        if self.config.deepseek_only:
+            account = DeepSeekAccount.shared(
+                self.config.deepseek_api_key, ROOT_DIR / ".cache" / "deepseek",
+                background_reserve_usd=self.config.deepseek_background_reserve_usd,
+                daily_limit_usd=self.config.deepseek_daily_limit_usd,
+                usd_cny_budget_rate=self.config.deepseek_usd_cny_budget_rate,
+            )
+            self.deepseek = DeepSeekService(account, model=self.config.deepseek_model)
+            self.deepseek_organizer = DeepSeekService(account, model=self.config.deepseek_model, organizer=True, max_output_tokens=8192)
+            self.deepseek_search = DeepSeekSearchService(self.deepseek)
+            # Internal compatibility handles keep existing workflow contracts reusable.
+            self.opencode = self.deepseek
+            self.low_model_minimax = self.deepseek_organizer
+            self.minimax_search = self.deepseek_search
+            self.gemini = DisabledProvider()
+            self.minimax = DisabledProvider()
+            self.tavily_search = DisabledProvider()
         self._gemini_discovery_runner = _GeminiDiscoveryRunner(self)
 
     def parse(self, raw_text: str, user_id: str | None = None) -> CommandRequest:
         request = parse_command_text(raw_text, user_id=user_id)
+        if self.config.deepseek_only:
+            from .command_parser import validate_deepseek_request
+            validate_deepseek_request(request)
+        elif "--model" not in raw_text:
+            request = replace(request, ai_model="gemini")
         return _with_output_formats(request, self.config.output_formats)
 
     def _segmented_ai_client_for(self, selected_ai_model: str):
+        if self.config.deepseek_only:
+            return self.deepseek
         if selected_ai_model == "deepseek":
             if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
                 raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
@@ -140,6 +149,8 @@ class ResearchCenter:
         return _GeminiSegmentedClient(self.gemini)
 
     def _segmented_provider_key_for(self, selected_ai_model: str) -> str:
+        if self.config.deepseek_only:
+            return "deepseek_segmented"
         if selected_ai_model == "deepseek":
             return "opencode_go_segmented"
         if selected_ai_model == "minimax":
@@ -147,6 +158,9 @@ class ResearchCenter:
         return "gemini_segmented"
 
     def _store_segmented_diagnostics(self, data: dict[str, Any], selected_ai_model: str, diagnostics: dict[str, Any]) -> None:
+        if self.config.deepseek_only:
+            data["deepseek_diagnostics"] = diagnostics
+            return
         if selected_ai_model == "deepseek":
             data["opencode_diagnostics"] = diagnostics
         elif selected_ai_model == "minimax":
@@ -180,6 +194,8 @@ class ResearchCenter:
             raise
 
     def should_use_parallel_model_reports(self, raw_text: str, user_id: str | None = None) -> bool:
+        if self.config.deepseek_only:
+            return False
         try:
             request = self.parse(raw_text, user_id=user_id)
         except Exception:
@@ -209,6 +225,8 @@ class ResearchCenter:
         )
 
     def prepare_parallel_model_run(self, raw_text: str, user_id: str | None = None, progress: ProgressCallback | None = None) -> ResearchCenterResult:
+        if self.config.deepseek_only:
+            return self.run_text_command(raw_text, user_id, progress)
         _emit_progress(progress, "解析 AI 投研指令")
         request = self.parse(raw_text, user_id=user_id)
         _emit_progress(progress, f"指令解析完成：/{request.command} mode={request.mode}")
@@ -448,7 +466,10 @@ class ResearchCenter:
                 "error_classification": classify_error(exc, source="minimax", operation="parallel_model_report").to_dict(),
                 "prompt_path": minimax_prompt_log_path,
             }
+    @task_context()
     def run(self, request: CommandRequest, progress: ProgressCallback | None = None) -> ResearchCenterResult:
+        if self.config.deepseek_only and request.ai_model not in (None, "deepseek"):
+            raise ValueError("其他模型已停用，請重新輸入指令，預設使用 DeepSeek Flash。")
         if request.command == "report":
             _emit_progress(progress, "查詢歷史報告")
             return self._run_report_lookup(request)
@@ -486,10 +507,10 @@ class ResearchCenter:
             _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；Gemini Search 將停用，只整理快照與本地資料")
         structured_data["historical_data_policy"] = historical_policy(request, dropped_sources)
         structured_data["prompt_policy"] = prompt_metadata(request)
-        selected_ai_model = request.ai_model or "gemini"
+        selected_ai_model = "deepseek" if self.config.deepseek_only else request.ai_model or "gemini"
         structured_data["analysis_model_choice"] = selected_ai_model
         if selected_ai_model == "deepseek":
-            structured_data["analysis_model"] = self.config.opencode_model
+            structured_data["analysis_model"] = self.config.deepseek_model if self.config.deepseek_only else self.config.opencode_model
         elif selected_ai_model == "minimax":
             structured_data["analysis_model"] = self.config.minimax_model
         else:
@@ -525,6 +546,8 @@ class ResearchCenter:
             prompt = ""
             final_model_name = str(structured_data.get("analysis_model") or selected_ai_model)
             try:
+                if self.config.deepseek_only:
+                    self.deepseek.ensure_ready()
                 _emit_progress(progress, f"Build AI prompt, selected_model={selected_ai_model}")
                 # Date-aware discovery is allowed for dated reports; local filtering removes future sources.
                 allow_discovery = True
@@ -551,7 +574,7 @@ class ResearchCenter:
                     progress=progress,
                 )
                 if selected_ai_model == "deepseek":
-                    final_model_name = self.config.opencode_model
+                    final_model_name = self.config.deepseek_model if self.config.deepseek_only else self.config.opencode_model
                 elif selected_ai_model == "minimax":
                     final_model_name = self.config.minimax_model
                 else:
@@ -610,15 +633,15 @@ class ResearchCenter:
                     else:
                         _emit_progress(progress, f"Calling AI model: {final_model_name}")
                     if selected_ai_model == "deepseek":
-                        if not self.config.enable_opencode_analysis or not self.opencode.is_configured():
+                        if not self.config.deepseek_only and (not self.config.enable_opencode_analysis or not self.opencode.is_configured()):
                             raise RuntimeError("OpenCode Go / DeepSeek model is not enabled or API key is missing.")
                         opencode_result = self.opencode.generate_report(prompt)
                         markdown = opencode_result.markdown
                         gemini_raw = opencode_result.raw
                         actual_gemini_model = str(opencode_result.diagnostics.get("actual_model") or self.config.opencode_model)
                         structured_data["analysis_model"] = actual_gemini_model
-                        structured_data["analysis_provider"] = "opencode_go"
-                        structured_data["opencode_diagnostics"] = opencode_result.diagnostics
+                        structured_data["analysis_provider"] = "deepseek" if self.config.deepseek_only else "opencode_go"
+                        structured_data["deepseek_diagnostics" if self.config.deepseek_only else "opencode_diagnostics"] = opencode_result.diagnostics
                         gemini_discovery_count = _gemini_discovery_source_count(structured_data)
                         if gemini_discovery_count:
                             _emit_progress(progress, f"DeepSeek analysis will use {gemini_discovery_count} Gemini Search fallback sources")
@@ -707,7 +730,7 @@ class ResearchCenter:
                             _emit_progress(progress, "Gemini Search returned no parseable citations; report will keep diagnostics and local/existing sources")
                         sources = _merge_sources(sources, gemini_sources)
                 ai_used = True
-                structured_data["ai_status"] = "ai_success"
+                structured_data["ai_status"] = "partial_success" if (structured_data.get("segmented_ai_analysis") or {}).get("fallback_count", 0) else "ai_success"
                 _emit_progress(progress, f"AI model completed: {actual_gemini_model or self.config.model}")
                 if selected_ai_model == "gemini" and self.config.enable_minimax_comparison and self.minimax.is_configured():
                     structured_data["comparison_reports"] = [{"model": self.config.minimax_model, "status": "pending"}]
@@ -718,6 +741,8 @@ class ResearchCenter:
                     }
                     _emit_progress(progress, f"MiniMax comparison queued in background: {self.config.minimax_model}")
             except Exception as exc:
+                if isinstance(exc, DeepSeekUnavailable):
+                    structured_data["deepseek_unavailable"] = exc.diagnostics
                 fallback_reason = _format_ai_fallback_reason(
                     selected_ai_model,
                     final_model_name,
@@ -755,7 +780,7 @@ class ResearchCenter:
         _emit_progress(progress, f"AI 投研任務完成：{artifacts.report_id}")
 
         return ResearchCenterResult(
-            status="fallback_success" if fallback_reason else "success",
+            status="fallback_success" if fallback_reason else ("partial_success" if structured_data.get("ai_status") == "partial_success" else "success"),
             request=request,
             summary=summary,
             markdown=markdown,
@@ -857,6 +882,9 @@ class ResearchCenter:
         """Handle topic management commands."""
         cmd = request.command
         _emit_progress(progress, f"[AI題材庫] /{cmd} | 收到指令")
+        result_status = "success"
+        topic_payload = None
+        topic_ai_used = False
 
         try:
             if cmd == "topic_maintain":
@@ -864,6 +892,10 @@ class ResearchCenter:
                 pack = run_topic_maintain(request, center=self, progress=progress)
                 _emit_progress(progress, f"[AI題材庫] /topic_maintain | 任務完成")
                 summary = format_change_pack_created_summary(pack)
+                if self.config.deepseek_only:
+                    topic_payload = pack.to_dict()
+                    topic_ai_used = pack.extra.get("ai_review_complete") is True
+                    result_status = "success" if topic_ai_used else "partial_success"
 
             elif cmd == "topic_review":
                 change_id = request.target
@@ -901,7 +933,7 @@ class ResearchCenter:
                         f"✅ 題材庫已重置\n"
                         f"備份路徑：{result.backup_path}\n"
                         f"已清空：{', '.join(result.cleared_files)}\n\n"
-                        f"下一步：執行 /topic_maintain --deep --model minimax 重新初始化"
+                        f"下一步：執行 /topic_maintain --deep 重新初始化"
                     )
                 else:
                     summary = f"⚠️ 重置取消：{result.error}\n\n請輸入 /topic_reset --confirm 確認重置（會先備份再清空）。"
@@ -962,25 +994,30 @@ class ResearchCenter:
                 summary = f"未知題材庫指令：{cmd}"
 
         except TopicMaintainAIError as exc:
+            result_status = "failed"
             _emit_progress(progress, f"[AI題材庫] /{cmd} | AI 錯誤：{exc.message}")
             summary = f"❌ AI 執行失敗：{exc.message}"
         except TopicImportError as exc:
+            result_status = "failed"
             _emit_progress(progress, f"[AI題材庫] /{cmd} | 匯入失敗：{exc}")
             summary = f"匯入失敗：{exc}"
         except Exception as exc:
+            result_status = "failed"
             _emit_progress(progress, f"[AI題材庫] /{cmd} | 執行失敗：{exc}")
             summary = f"❌ 執行失敗：{exc}"
 
         artifacts = ReportArtifacts("topic_cmd", cmd, Path("__no_markdown_file__"), Path("__no_html_file__"), Path("__no_json_file__"), Path("__no_sources_file__"))
         return ResearchCenterResult(
-            status="success",
+            status=result_status,
             request=request,
             summary=summary,
             markdown=summary,
-            report_json={"command": cmd, "result": summary},
+            report_json={"command": cmd, "result": summary, "change_pack": topic_payload,
+                         "metadata": {"ai_status": "ai_success" if topic_ai_used else result_status}},
             sources=[],
             artifacts=artifacts,
-            ai_used=False,
+            ai_used=topic_ai_used,
+            ai_model=self.config.deepseek_model if topic_ai_used else None,
             runtime_context=(
                 {
                     "telegram_document": {
@@ -1021,16 +1058,16 @@ class ResearchCenter:
 
         if action == "refresh":
             _emit_progress(progress, "[新聞] 執行新聞重新整理")
-            ai_model = request.ai_model or "gemini"
+            ai_model = "deepseek" if self.config.deepseek_only else request.ai_model or "gemini"
             items, meta = run_news_refresh(self, repository, progress, ai_model=ai_model)
             total_cats = len({it.category for it in items if it.category})
             summary = format_news_refresh_result(meta.get("saved", 0), meta.get("skipped", 0), total_cats, items, meta)
             markdown = summary
             classification_status = str(meta.get("classification_status") or "ai_success")
             ai_status = "partial_success" if classification_status == "partial_success" else "ai_success"
-            ai_used = int(meta.get("ai_classified_count") or 0) > 0 or int(meta.get("local_fallback_count") or 0) > 0
+            ai_used = int(meta.get("ai_classified_count") or 0) > 0
             return ResearchCenterResult(
-                status="success", request=request, summary=summary, markdown=markdown,
+                status=("partial_success" if self.config.deepseek_only and (not ai_used or ai_status != "ai_success") else "success"), request=request, summary=summary, markdown=markdown,
                 report_json={
                     "command": "news",
                     "action": "refresh",
@@ -1384,6 +1421,32 @@ class _GeminiDiscoveryRunner:
         self._center = center
 
     def run_discovery_flow(self, request: CommandRequest, sources: list[SourceItem], structured_data: dict[str, Any], use_grounding: bool, progress: ProgressCallback | None) -> tuple[list[SourceItem], bool]:
+        if self._center.config.deepseek_only:
+            tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources)
+            structured_data["search_query_log"] = _build_search_query_log(tasks)
+            self._run_deepseek(request, tasks, sources, structured_data, progress)
+            gaps = build_required_data_gap_summary(request, sources, structured_data)
+            gap_tasks = build_required_gap_fill_tasks(request, gaps)
+            if gap_tasks:
+                self._run_deepseek(request, gap_tasks, sources, structured_data, progress, gap_fill=True)
+            structured_data["required_data_gap_summary"] = build_required_data_gap_summary(request, sources, structured_data)
+            quality = _source_quality_summary(sources, request, structured_data)
+            reasons = _gemini_quality_fallback_reasons(request, quality, structured_data, self._center.config)
+            structured_data["deepseek_source_quality_before"] = {**quality, "gap_reasons": reasons}
+            if reasons:
+                target = request.target or request.market_scope or request.theme_scope or request.candidate_pool or "台股市場"
+                day = request.report_date.isoformat() if request.report_date else date.today().isoformat()
+                queries = [f"{target} {day} 最新 官方公告 公司投資人關係 財經媒體 風險 反證"]
+                if any("official" in reason for reason in reasons):
+                    queries.append(f"{target} {day} site:mops.twse.com.tw OR site:twse.com.tw OR site:tpex.org.tw")
+                quality_tasks = [{"label": "source_quality_gap", "queries": queries,
+                    "objective": "補足官方來源、可信媒體、可驗證日期與反證；不是單看來源總數。"}]
+                self._run_deepseek(request, quality_tasks, sources, structured_data, progress, gap_fill=True)
+            structured_data["deepseek_source_quality"] = _source_quality_summary(sources, request, structured_data)
+            structured_data["deepseek_source_quality"]["gap_reasons"] = _gemini_quality_fallback_reasons(
+                request, structured_data["deepseek_source_quality"], structured_data, self._center.config)
+            sources[:] = normalize_source_items(sources, request, query_intent="search_discovery")
+            return sources, False
         # Date-aware discovery also runs for dated reports; future sources are filtered later.
         allow_discovery = True
         discovery_tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources) if allow_discovery else []
@@ -1424,6 +1487,15 @@ class _GeminiDiscoveryRunner:
             "policy": "Shared search source normalizer: provider, found_by and used_in_section standardized.",
         }
         return sources, gemini_search_used
+
+    def _run_deepseek(self, request, tasks, sources, structured_data, progress, gap_fill=False):
+        result = self._center.deepseek_search.discover(request, tasks, progress=progress)
+        additions = normalize_source_items(result.sources, request, provider="deepseek_search", query_intent="required_data_gap_fill" if gap_fill else "discovery")
+        if gap_fill:
+            additions = _mark_gap_fill_sources(additions)
+        sources[:] = _merge_sources(sources, additions)
+        structured_data["required_gap_deepseek_discovery" if gap_fill else "deepseek_search_discovery"] = result.diagnostics
+        _append_search_provider_log(structured_data, provider="deepseek_search", source_count=len(additions), diagnostics=result.diagnostics)
 
     def _run_required_data_gap_fill(self, request, sources, structured_data, progress):
         before_summary = build_required_data_gap_summary(request, sources, structured_data)
@@ -1521,6 +1593,8 @@ class _GeminiDiscoveryRunner:
             _emit_progress(progress, f"Tavily required gap fill failed: {exc}")
 
     def _run_minimax_mcp(self, request, discovery_tasks, sources, structured_data, progress):
+        if self._center.config.deepseek_only:
+            return self._run_deepseek(request, discovery_tasks, sources, structured_data, progress)
         if not self._center.config.enable_minimax_search:
             structured_data["minimax_search_discovery"] = {"enabled": False, "reason": "disabled_by_config"}
             _emit_progress(progress, "MiniMax MCP Search skipped: disabled_by_config")
@@ -1587,6 +1661,8 @@ class _GeminiDiscoveryRunner:
             _emit_progress(progress, f"MiniMax MCP Search failed: sources=0, reasons={reasons_str}")
 
     def _run_tavily(self, request, discovery_tasks, sources, structured_data, progress):
+        if self._center.config.deepseek_only:
+            return
         if not self._center.config.enable_tavily_search:
             structured_data["tavily_search_discovery"] = {"enabled": False, "reason": "disabled_by_config"}
             _emit_progress(progress, "Tavily Search skipped: disabled by config")
@@ -1687,6 +1763,8 @@ class _GeminiDiscoveryRunner:
             _emit_progress(progress, f"Tavily Search failed: {exc}")
 
     def _should_run_gemini(self, request, sources, structured_data=None):
+        if self._center.config.deepseek_only:
+            return False
         mode = self._center.config.gemini_search_mode
         if mode == "always":
             return True

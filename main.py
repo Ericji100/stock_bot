@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 import asyncio
 import traceback
 import telegram
@@ -52,6 +53,7 @@ from research_center.scheduled_task_service import (
 )
 from research_center.resource_guard_service import DEFAULT_RESOURCE_GUARD
 from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
+from research_center.deepseek_service import task_context
 from research_center.news_repository import NewsRepository
 from research_center.news_formatters import format_news_digest, format_news_refresh_result
 from stock_ai_bot.portfolio.portfolio_manager import (
@@ -128,12 +130,12 @@ SCHEDULED_TASK_TIMEOUT_SECONDS = {
 SCHEDULED_JOB_REGISTRATIONS: tuple[ScheduledJobRegistration, ...] = (
     ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30", parameters="build_monitor_scan_report(title=12:30 監控掃描, empty_message=無突破訊號)"),
     ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50", parameters="build_noon_market_report(), retry=6, retry_delay=30m"),
-    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（MiniMax M3）", "每日 10:00", parameters="/topic_maintain --deep --model minimax"),
+    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（DeepSeek Flash）", "每日 10:00", parameters="/topic_maintain --deep"),
     ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45", parameters="build_portfolio_report(), retry=portfolio default"),
-    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45", parameters="refresh model=minimax, scheduled_latest, lightweight_refill=auto"),
-    ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00", parameters="refresh model=minimax, scheduled_latest, lightweight_refill=auto"),
+    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45", parameters="refresh model=deepseek, scheduled_latest, lightweight_refill=auto, push=false"),
+    ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00", parameters="refresh model=deepseek, scheduled_latest, lightweight_refill=auto, push=false"),
     ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30", parameters="/scan selection=7(all), date=today if trading day"),
-    ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30", parameters="source=technical, ai_top=15, model=minimax, ai_comment=true, push_summary_limit=15"),
+    ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30", parameters="source=technical, ai_top=15, model=deepseek, ai_comment=true, push_summary_limit=15"),
     ScheduledJobRegistration("scheduled:chip_cache:1630", "16:30 籌碼快取今日回補", "每日 16:30", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=false, force_refresh=false)"),
     ScheduledJobRegistration("scheduled:chip_cache:1830", "18:30 籌碼快取今日回補", "每日 18:30", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=false, force_refresh=false)"),
     ScheduledJobRegistration("scheduled:chip_cache:2100", "21:00 籌碼快取完整回補", "每日 21:00", queued=False, parameters="warmup_chip_data_cache(report_date=today, full_backfill=true, force_refresh=false)"),
@@ -1511,14 +1513,7 @@ def build_radar_date_keyboard() -> InlineKeyboardMarkup:
 
 
 def build_radar_model_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("Gemini", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}gemini")],
-            [InlineKeyboardButton("DeepSeek V4 Pro", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}deepseek")],
-            [InlineKeyboardButton("MiniMax M3", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}minimax")],
-            [InlineKeyboardButton("略過 AI 短評", callback_data=f"{RADAR_MODEL_CALLBACK_PREFIX}skip")],
-        ]
-    )
+    return InlineKeyboardMarkup([])
 
 
 def _radar_args_with_scoring(args: list[str] | None, request: RadarRequest) -> list[str]:
@@ -1534,6 +1529,9 @@ async def prompt_radar_model_selection(
     request: RadarRequest,
     args: list[str] | None = None,
 ) -> None:
+    request = replace(request, model="deepseek")
+    await run_stoppable_command(update, "Radar 選股雷達", lambda: execute_radar_request(update, context, request))
+    return
     context.user_data["pending_radar_args"] = _radar_args_with_scoring(args, request)
     date_text = request.report_date.isoformat() if request.report_date else "最新交易日"
     await safe_send_reply(
@@ -1626,6 +1624,9 @@ async def handle_radar_date_text_input(update: Update, context: ContextTypes.DEF
 async def handle_radar_model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    context.user_data.pop("pending_radar_args", None)
+    await query.edit_message_text("模型選單已停用，目前統一使用 DeepSeek Flash，請重新輸入 /radar。")
+    return
     model = query.data.replace(RADAR_MODEL_CALLBACK_PREFIX, "", 1)
     args = list(context.user_data.pop("pending_radar_args", []))
     try:
@@ -1881,7 +1882,7 @@ async def _scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
-    await enqueue_scheduled_task(context, "21:30 Radar 推播（MiniMax M3 短評）", lambda: _scheduled_radar_push(context))
+    await enqueue_scheduled_task(context, "21:30 Radar 推播（DeepSeek Flash 短評）", lambda: _scheduled_radar_push(context))
 
 
 async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
@@ -1891,17 +1892,18 @@ async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
 async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     await enqueue_scheduled_task(
         context,
-        "10:00 AI題材庫維護（MiniMax M3）",
+        "10:00 AI題材庫維護（DeepSeek Flash）",
         lambda: _scheduled_topic_maintain(context),
     )
 
 
+@task_context("topic_maintain", background=True)
 async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
-    raw_command = "/topic_maintain --deep --model minimax"
+    raw_command = "/topic_maintain --deep"
     print(
         format_cmd_message(
-            f"10:00 AI題材庫維護（MiniMax M3）開始：{raw_command}",
+            f"10:00 AI題材庫維護（DeepSeek Flash）開始：{raw_command}",
             "定時任務",
         ),
         flush=True,
@@ -1921,12 +1923,12 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
         result = await asyncio.to_thread(center.run, request, progress)
         await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
-            format_cmd_message("10:00 AI題材庫維護（MiniMax M3）完成", "定時任務"),
+            format_cmd_message("10:00 AI題材庫維護（DeepSeek Flash）完成", "定時任務"),
             flush=True,
         )
     except Exception as exc:
         print(
-            format_cmd_message(f"10:00 AI題材庫維護（MiniMax M3）失敗：{exc}", "定時任務"),
+            format_cmd_message(f"10:00 AI題材庫維護（DeepSeek Flash）失敗：{exc}", "定時任務"),
             flush=True,
         )
         traceback.print_exc()
@@ -1988,6 +1990,7 @@ async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
     print(format_cmd_message(f"20:30 全部選股完成，資料日期 {target_date.isoformat()}", "定時任務"), flush=True)
 
 
+@task_context("radar", background=True)
 async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     target_date = get_tw_today()
@@ -2017,7 +2020,7 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
                 source="technical",
                 report_date=target_date,
                 ai_top=15,
-                model="minimax",
+                model="deepseek",
                 ai_comment_enabled=True,
             ),
             scan_settings=config.get("scan_settings", {}),
@@ -2046,6 +2049,7 @@ async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
     await enqueue_scheduled_task(context, label, lambda: _scheduled_news_refresh(context))
 
 
+@task_context("news", background=True)
 async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     print(f"[{now_timestamp()}] 📰 執行定時新聞整理...")
@@ -2062,7 +2066,7 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         def progress(msg: str) -> None:
             print(msg)
 
-        items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="minimax")
+        items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
         digests = run_news_scheduled_latest(repository)
         diagnostics = build_scheduled_news_diagnostics(repository, digests)
         if int(diagnostics.get("primary24", 0) or 0) < 8 or any(
@@ -2074,7 +2078,7 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
                 center,
                 repository,
                 progress,
-                "minimax",
+                "deepseek",
                 diagnostics,
             )
             if extra_meta.get("ran"):
@@ -2099,6 +2103,9 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
             flush=True,
         )
         text = format_news_digest(digests, period_label="今日")
+        if not center.config.scheduled_news_push_enabled:
+            print(f"[{now_timestamp()}] 新聞背景更新完成，TG 推播關閉：新增 {meta.get('saved', 0)} 則", flush=True)
+            return
         await context.bot.send_message(
             chat_id=config["chat_id"],
             text=text,
@@ -2543,7 +2550,7 @@ def main():
         app.job_queue.run_daily(
             scheduled_topic_maintain,
             time=time(hour=10, minute=0, tzinfo=tw_tz),
-            name="10:00 AI題材庫維護（MiniMax M3）",
+            name="10:00 AI題材庫維護（DeepSeek Flash）",
             job_kwargs=SCHEDULED_JOB_KWARGS,
         )
         # 新增 17:45 庫存籌碼推播排程：與 12:30 策略掃描分離，避免兩種通知混在同一條任務鏈。

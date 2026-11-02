@@ -35,7 +35,7 @@ DEFAULT_COMMANDS: list[str] = [
     "/theme_flow AI電源 --model minimax",
     "/theme_radar --model minimax",
     "/sector_strength --model minimax",
-    "/radar --ai-top 5 --model minimax",
+    "/radar --ai-top 5 --model deepseek",
     "/news refresh --model minimax",
     "/topic_maintain --model minimax",
 ]
@@ -187,18 +187,18 @@ PARAMETER_MATRIX_CASES: list[dict[str, Any]] = [
     },
     {
         "name": "radar_default_combined_ai_top_model",
-        "command": "/radar --ai-top 5 --model minimax",
+        "command": "/radar --ai-top 5 --model deepseek",
         "parser": "radar",
         "parameters": ["--ai-top", "--model"],
-        "expected": {"source": "combined", "ai_top": 5, "model": "minimax", "ai_comment_enabled": True},
+        "expected": {"source": "combined", "ai_top": 5, "model": "deepseek", "ai_comment_enabled": True},
         "execution_scope": "full_m3_representative",
     },
     {
         "name": "radar_source_ai_top_model_date",
-        "command": "/radar --source technical --ai-top 5 --date 2026-06-18 --model minimax",
+        "command": "/radar --source technical --ai-top 5 --date 2026-06-18 --model deepseek",
         "parser": "radar",
         "parameters": ["--source", "--ai-top", "--date", "--model"],
-        "expected": {"source": "technical", "ai_top": 5, "report_date": "2026-06-18", "model": "minimax", "ai_comment_enabled": True},
+        "expected": {"source": "technical", "ai_top": 5, "report_date": "2026-06-18", "model": "deepseek", "ai_comment_enabled": True},
         "execution_scope": "full_m3_representative",
     },
     {
@@ -206,12 +206,12 @@ PARAMETER_MATRIX_CASES: list[dict[str, Any]] = [
         "command": "/radar --source chip --ai-top 3 --no-ai-comment",
         "parser": "radar",
         "parameters": ["--source", "--ai-top", "--no-ai-comment"],
-        "expected": {"source": "chip", "ai_top": 3, "model": "minimax", "ai_comment_enabled": False},
+        "expected": {"source": "chip", "ai_top": 3, "model": "deepseek", "ai_comment_enabled": False},
         "execution_scope": "no_ai_smoke",
     },
     {
         "name": "radar_reject_unsupported",
-        "command": "/radar --brief --model minimax",
+        "command": "/radar --brief --model deepseek",
         "parser": "radar",
         "parameters": ["--brief"],
         "expected_error_contains": "不支援的 Radar 參數",
@@ -822,10 +822,10 @@ def _augment_special_artifacts(record: dict[str, Any], joined_log_text: str) -> 
                 record["fallback_reason"] = record.get("fallback_reason") or "topic maintain used local fallback after AI stage issue"
         if topic_pack or topic_raw:
             record["report_paths"] = paths
-        if topic_pack:
+        if topic_pack or topic_raw:
             output_text = "\n\n".join([
                 str(record.get("summary") or ""),
-                _topic_quality_probe_text(topic_pack),
+                _topic_quality_probe_text(topic_pack or topic_raw),
             ]).strip()
             _write_text((command_dir or topic_pack.parent) / "topic_quality_probe.md", output_text)
         source_match = re.search(r"Discovery來源：(\d+)\s*筆", joined_log_text)
@@ -939,6 +939,8 @@ def _latest_topic_raw_path(joined_log_text: str) -> Path | None:
         path = raw_dir / f"{change_id}.json"
         if path.exists():
             return path
+    if candidate_ids:
+        return None
     if raw_dir.exists():
         files = sorted(raw_dir.glob("change_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
         return files[0] if files else None
@@ -952,6 +954,8 @@ def _latest_topic_change_pack_path(joined_log_text: str) -> Path | None:
         path = pack_dir / f"{change_id}.json"
         if path.exists():
             return path
+    if candidate_ids:
+        return None
     if pack_dir.exists():
         files = sorted(pack_dir.glob("change_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
         return files[0] if files else None

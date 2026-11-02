@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,13 @@ DEFAULT_OPENCODE_REASONING_EFFORT = "medium"
 
 @dataclass(frozen=True)
 class ResearchCenterConfig:
+    deepseek_only: bool = False
+    deepseek_api_key: str | None = None
+    deepseek_model: str = "deepseek-flash"
+    deepseek_daily_limit_usd: float = 5.0
+    deepseek_background_reserve_usd: float = 0.20
+    deepseek_usd_cny_budget_rate: float = 7.5
+    scheduled_news_push_enabled: bool = False
     model: str = DEFAULT_MODEL
     fallback_models: tuple[str, ...] = DEFAULT_FALLBACK_MODELS
     gemini_discovery_model: str = DEFAULT_GEMINI_DISCOVERY_MODEL
@@ -121,6 +129,13 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     api_token = secrets.get("research_api_token") or public_config.get("api_token")
 
     return ResearchCenterConfig(
+        deepseek_only=bool(public_config.get("deepseek_only", True)),
+        deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY") or secrets.get("deepseek_api_key"),
+        deepseek_model=str(public_config.get("deepseek_model") or "deepseek-flash"),
+        deepseek_daily_limit_usd=float(public_config.get("deepseek_daily_limit_usd", 5.0)),
+        deepseek_background_reserve_usd=float(public_config.get("deepseek_background_reserve_usd", 0.20)),
+        deepseek_usd_cny_budget_rate=float(public_config.get("deepseek_usd_cny_budget_rate", 7.5)),
+        scheduled_news_push_enabled=bool(public_config.get("scheduled_news_push_enabled", False)),
         model=model,
         fallback_models=fallback_models,
         gemini_discovery_model=gemini_discovery_model,

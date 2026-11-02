@@ -37,7 +37,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "mode": "deep",
             }
         )
-        self.assertEqual(raw, "/value_scan 我的持股 --deep --model gemini")
+        self.assertEqual(raw, "/value_scan 我的持股 --deep")
         self.assertNotIn("--top", raw)
 
     def test_value_scan_curated_no_top_flag(self):
@@ -49,7 +49,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "mode": "normal",
             }
         )
-        self.assertEqual(raw, "/value_scan 精選選股 --model gemini")
+        self.assertEqual(raw, "/value_scan 精選選股")
         self.assertNotIn("--top", raw)
 
     def test_value_top_keyboard_removed(self):
@@ -79,7 +79,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "mode": "deep",
             }
         )
-        self.assertEqual(raw, "/macro 台幣匯率與電子股 --deep --model gemini")
+        self.assertEqual(raw, "/macro 台幣匯率與電子股 --deep")
 
     def test_menu_can_choose_deepseek_model(self):
         raw = _compose_menu_command(
@@ -90,11 +90,11 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "deepseek",
             }
         )
-        self.assertEqual(raw, "/research 2330 --deep --model deepseek")
+        self.assertEqual(raw, "/research 2330 --deep")
 
     def test_theme_radar_menu_compose_latest_with_model(self):
         raw = _compose_menu_command({"command": "theme_radar", "model": "deepseek"})
-        self.assertEqual(raw, "/theme_radar --model deepseek")
+        self.assertEqual(raw, "/theme_radar")
 
     def test_theme_radar_menu_compose_custom_date_with_model(self):
         raw = _compose_menu_command(
@@ -104,7 +104,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "minimax",
             }
         )
-        self.assertEqual(raw, "/theme_radar --date 2026-05-22 --model minimax")
+        self.assertEqual(raw, "/theme_radar --date 2026-05-22")
 
     def test_fallback_status_note_names_selected_model(self):
         result = SimpleNamespace(
@@ -164,7 +164,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "deepseek",
             }
         )
-        self.assertEqual(raw, "/theme_flow AI伺服器 --date 2026-05-22 --model deepseek")
+        self.assertEqual(raw, "/theme_flow AI伺服器 --date 2026-05-22")
 
     def test_theme_menu_compose_deep_custom_date_with_model(self):
         raw = _compose_menu_command(
@@ -176,7 +176,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "deepseek",
             }
         )
-        self.assertEqual(raw, "/theme AI電源 --deep --date 2026-05-22 --model deepseek")
+        self.assertEqual(raw, "/theme AI電源 --deep --date 2026-05-22")
 
     def test_theme_menu_compose_source_only_latest_with_model(self):
         raw = _compose_menu_command(
@@ -187,7 +187,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "minimax",
             }
         )
-        self.assertEqual(raw, "/theme AI電源 --source-only --model minimax")
+        self.assertEqual(raw, "/theme AI電源 --source-only")
 
     def test_theme_text_input_moves_to_mode_menu(self):
         source = Path("research_center/telegram_handlers.py").read_text(encoding="utf-8")
@@ -208,7 +208,7 @@ class TelegramMenuTests(unittest.TestCase):
                 "model": "minimax",
             }
         )
-        self.assertEqual(raw, "/sector_strength --date 2026-05-22 --model minimax")
+        self.assertEqual(raw, "/sector_strength --date 2026-05-22")
 
     def test_theme_flow_empty_command_asks_for_theme(self):
         sent = {}
@@ -292,7 +292,7 @@ class TelegramMenuTests(unittest.TestCase):
         self.assertFalse(handled)
         self.assertEqual(context.user_data, {})
 
-    def test_topic_maintain_starts_model_menu(self):
+    def test_topic_maintain_executes_without_model_menu(self):
         sent = {}
 
         async def fake_send_reply(update, text, reply_markup=None):
@@ -302,11 +302,9 @@ class TelegramMenuTests(unittest.TestCase):
         context = SimpleNamespace(user_data={})
         handled = asyncio.run(_maybe_start_menu(SimpleNamespace(), context, "/topic_maintain", fake_send_reply))
 
-        self.assertTrue(handled)
-        self.assertEqual(context.user_data["ai_menu"]["command"], "topic_maintain")
-        self.assertNotIn("bootstrap", context.user_data["ai_menu"])
-        callbacks = [b.callback_data for row in sent["reply_markup"].inline_keyboard for b in row]
-        self.assertIn("ai_menu:topic_maintain:model:minimax", callbacks)
+        self.assertFalse(handled)
+        self.assertEqual(context.user_data, {})
+        self.assertEqual(sent, {})
 
     def test_research_empty_command_prompts_for_target(self):
         sent = {}
@@ -839,7 +837,7 @@ class ScanMenuTests(unittest.TestCase):
         self.assertIn("/theme_flow", RESEARCH_HELP_TEXT)
         self.assertIn("/sector_strength", RESEARCH_HELP_TEXT)
         self.assertIn("--date 2026-05-22", RESEARCH_HELP_TEXT)
-        self.assertIn("gemini|deepseek|minimax", RESEARCH_HELP_TEXT)
+        self.assertIn("DeepSeek", RESEARCH_HELP_TEXT)
 
     def test_start_message_has_theme_radar_command(self):
         from main import START_TEXT
@@ -913,8 +911,8 @@ class ScanMenuTests(unittest.TestCase):
     def test_help_text_has_minimax_model_info(self):
         """RESEARCH_HELP_TEXT should show MiniMax M3 and gemini|deepseek|minimax."""
         from research_center.telegram_handlers import RESEARCH_HELP_TEXT
-        self.assertIn("MiniMax M3", RESEARCH_HELP_TEXT)
-        self.assertIn("gemini|deepseek|minimax", RESEARCH_HELP_TEXT)
+        self.assertIn("DeepSeek", RESEARCH_HELP_TEXT)
+        self.assertIn("DeepSeek", RESEARCH_HELP_TEXT)
         self.assertNotIn("[--model deepseek] - 直接執行", RESEARCH_HELP_TEXT)
 
     def test_help_text_source_no_legacy_deepseek_string(self):
@@ -922,8 +920,8 @@ class ScanMenuTests(unittest.TestCase):
         handlers_path = Path("d:/code/stock_ai_bot/research_center/telegram_handlers.py")
         source = handlers_path.read_text(encoding="utf-8")
         self.assertNotIn("[--model deepseek] - 直接執行", source)
-        self.assertIn("MiniMax M3", source)
-        self.assertIn("gemini|deepseek|minimax", source)
+        self.assertIn("DeepSeek", source)
+        self.assertIn("DeepSeek", source)
 
     def test_prompt_topic_directory_preferred_over_config_prompts(self):
         """_load_prompt should prefer prompt/topic/ over config/prompts/ (verified via source inspection)."""
@@ -976,11 +974,11 @@ class ScanMenuTests(unittest.TestCase):
 
     def test_topic_maintain_compose_deepseek(self):
         raw = _compose_topic_maintain_command({"mode": "deep", "model": "deepseek"})
-        self.assertEqual(raw, "/topic_maintain --model deepseek")
+        self.assertEqual(raw, "/topic_maintain")
 
     def test_topic_maintain_compose_minimax(self):
         raw = _compose_topic_maintain_command({"model": "minimax"})
-        self.assertEqual(raw, "/topic_maintain --model minimax")
+        self.assertEqual(raw, "/topic_maintain")
 
     def test_topic_maintain_help_has_no_bootstrap_example(self):
         from research_center.telegram_handlers import RESEARCH_HELP_TEXT
@@ -1038,27 +1036,21 @@ class ScanMenuTests(unittest.TestCase):
         keyboard = _analysis_model_keyboard()
         self.assertIsNotNone(keyboard)
         callbacks = [b.callback_data for row in keyboard.inline_keyboard for b in row]
-        self.assertIn("ai_menu:analysis_model:gemini", callbacks)
-        self.assertIn("ai_menu:analysis_model:deepseek", callbacks)
-        self.assertIn("ai_menu:analysis_model:minimax", callbacks)
+        self.assertEqual(callbacks, [])
 
     def test_analysis_model_keyboard_deepseek_model_flow(self):
         from research_center.telegram_handlers import _analysis_model_keyboard
         keyboard = _analysis_model_keyboard()
         callbacks = [b.callback_data for row in keyboard.inline_keyboard for b in row]
-        self.assertIn("ai_menu:analysis_model:deepseek", callbacks)
+        self.assertEqual(callbacks, [])
 
     def test_radar_model_keyboard_exists(self):
         from main import build_radar_model_keyboard
         keyboard = build_radar_model_keyboard()
         callbacks = [b.callback_data for row in keyboard.inline_keyboard for b in row]
         labels = [b.text for row in keyboard.inline_keyboard for b in row]
-        self.assertIn("MiniMax M3", labels)
-        self.assertNotIn("MiniMax M2.7", labels)
-        self.assertIn("radar_model:gemini", callbacks)
-        self.assertIn("radar_model:deepseek", callbacks)
-        self.assertIn("radar_model:minimax", callbacks)
-        self.assertIn("radar_model:skip", callbacks)
+        self.assertEqual(labels, [])
+        self.assertEqual(callbacks, [])
 
     def test_radar_date_keyboard_exists(self):
         from main import build_radar_date_keyboard
@@ -1118,20 +1110,14 @@ class NewsMenuTests(unittest.TestCase):
         self.assertNotIn(f"{AI_CALLBACK_PREFIX}news_action:holdings", callbacks)
         self.assertNotIn(f"{AI_CALLBACK_PREFIX}news_model:gemini", callbacks)
 
-    def test_news_model_keyboard_three_models(self):
-        """_news_model_keyboard should offer gemini, deepseek, minimax."""
+    def test_news_model_keyboard_is_disabled(self):
+        """News refresh no longer offers provider selection."""
         from research_center.telegram_handlers import _news_model_keyboard, AI_CALLBACK_PREFIX
         keyboard = _news_model_keyboard()
         buttons = [b for row in keyboard.inline_keyboard for b in row]
         labels = [b.text for b in buttons]
         callbacks = [b.callback_data for b in buttons]
-        self.assertEqual(len(buttons), 3)
-        self.assertIn("Gemini", labels)
-        self.assertIn("DeepSeek V4 Pro (OpenCode Go)", labels)
-        self.assertIn("MiniMax M3", labels)
-        self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:gemini", callbacks)
-        self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:deepseek", callbacks)
-        self.assertIn(f"{AI_CALLBACK_PREFIX}news_model:minimax", callbacks)
+        self.assertEqual(buttons, [])
 
     def test_news_action_keyboard_three_actions(self):
         """_news_action_keyboard should offer latest, 7d, refresh."""

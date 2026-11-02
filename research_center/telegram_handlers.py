@@ -15,7 +15,7 @@ from .recent_scans import load_recent_scan_results
 
 RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 
-模型參數: --model gemini|deepseek|minimax；MiniMax M3 適合長文搜尋整理，DeepSeek V4 Pro 適合推理與摘要。
+所有 AI 分析與搜尋統一使用 DeepSeek 官方 API，不需選擇模型。
 
 選股與雷達
 /scan - 開啟選股掃描選單
@@ -32,7 +32,7 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 /research 2330 --score - 個股評分研究
 /research 2330 --deep - 深度個股研究
 /research 2330 --date 2026-05-22 - 指定日期研究
-/research 2330 --model minimax - 指定模型
+/research 2330 --deep - DeepSeek 深度研究
 /value_scan - 開啟價值重估掃描選單
 /value_scan 精選選股 - 掃描精選選股
 /value_scan 我的持股 - 掃描持股
@@ -46,20 +46,20 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 /news refresh --model deepseek - 更新新聞庫
 /macro - 宏觀研究選單
 /macro 台股 - 台股宏觀研究
-/macro 全球 AI --deep --model minimax - 指定主題、模式與模型
+/macro 全球 AI --deep - 指定主題與分析模式
 
 題材與族群
 /theme - 題材研究選單
 /theme AI伺服器 - 題材研究
 /theme AI伺服器 --deep --top 20 - 深度題材研究
-/theme_radar - 市場題材雷達，互動選日期與模型
+/theme_radar - 市場題材雷達，互動選日期
 /theme_radar --days 7 - 近 7 天題材統計
-/theme_radar --date 2026-05-22 --model minimax - 指定日期與模型
+/theme_radar --date 2026-05-22 - 指定日期
 /theme_flow AI伺服器 [--date 2026-05-22] [--model deepseek] - 題材擴散路徑
 /sector_strength [--date 2026-05-22] [--model deepseek] - 族群強弱排行
 
 題材庫維護
-/topic_maintain - 大範圍完整維護題材庫，互動選模型
+/topic_maintain - 使用 DeepSeek 完整維護題材庫
 /topic_seed_prompt - 產生外部高階 AI 題材庫提示詞
 /topic_import - 匯入外部 AI JSON（本地轉成變更包，不呼叫 AI）
 /topic_source_sync - 同步 TPEx/UDN 外部來源並套用正式題材庫
@@ -145,12 +145,19 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
         await query.answer()
         data = query.data[len(AI_CALLBACK_PREFIX):]
         state = context.user_data.setdefault("ai_menu", {})
+        if data.startswith(("analysis_model:", "news_model:", "topic_maintain:model:")):
+            state.clear()
+            await query.edit_message_text("模型選單已停用，目前統一使用 DeepSeek Flash，請重新輸入指令。")
+            return
 
         if data.startswith("research_mode:"):
             mode = data.split(":", 1)[1]
             state["mode"] = mode
             if state.get("date_first") and state.get("date_selected"):
-                await query.edit_message_text("請選擇分析模型：", reply_markup=_analysis_model_keyboard())
+                raw = _compose_menu_command(state)
+                state.clear()
+                await query.edit_message_text(f"開始執行：\n{raw}")
+                await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
                 return
             await query.edit_message_text("請選擇資料日期：", reply_markup=_date_keyboard("research"))
             return
@@ -224,7 +231,10 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
                 if command == "research" and state.get("date_first") and not state.get("mode"):
                     await query.edit_message_text("請選擇研究模式：", reply_markup=_research_mode_keyboard())
                     return
-                await query.edit_message_text("請選擇分析模型：", reply_markup=_analysis_model_keyboard())
+                raw = _compose_menu_command(state)
+                state.clear()
+                await query.edit_message_text(f"開始執行：\n{raw}")
+                await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
                 return
             state["awaiting"] = "date"
             await query.edit_message_text("請輸入日期，格式 YYYY-MM-DD，例如 2026-05-07")
@@ -251,8 +261,9 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
         if data.startswith("news_action:"):
             action = data.split(":", 1)[1]  # "latest", "7d", "refresh"
             if action == "refresh":
-                state["awaiting"] = "news_model"
-                await query.edit_message_text("📰 搜尋並更新新聞\n\n請選擇 AI 分類模型：", reply_markup=_news_model_keyboard())
+                state.clear()
+                await query.edit_message_text("開始以 DeepSeek 更新新聞資料庫。")
+                await _execute_raw_command(update, context, center, "/news refresh", safe_send_reply, safe_reply_document)
                 return
             raw = _compose_news_command("gemini", action)
             state.clear()
@@ -434,7 +445,10 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
             if state.get("command") == "research" and state.get("date_first") and not state.get("mode"):
                 await safe_send_reply(update, "請選擇研究模式：", reply_markup=_research_mode_keyboard())
                 return
-            await safe_send_reply(update, "請選擇分析模型：", reply_markup=_analysis_model_keyboard())
+            raw = _compose_menu_command(state)
+            state.clear()
+            await safe_send_reply(update, f"開始執行：\n{raw}")
+            await _execute_raw_command(update, context, center, raw, safe_send_reply, safe_reply_document)
             return
         if awaiting == "topic_import_payload":
             if not text:
@@ -547,9 +561,7 @@ async def _maybe_start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if command == "topic_maintain" and (
         len(parts) == 1
     ):
-        context.user_data["ai_menu"] = {"command": "topic_maintain"}
-        await safe_send_reply(update, "請選擇 AI 模型：", reply_markup=_topic_model_keyboard())
-        return True
+        return False
     if command == "topic_import" and len(parts) == 1:
         context.user_data["ai_menu"] = {"command": "topic_import", "awaiting": "topic_import_payload"}
         await safe_send_reply(update, "請貼上外部 AI 產生的 JSON，或上傳 .json/.txt 檔。")
@@ -632,7 +644,7 @@ async def _execute_raw_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await _send_runtime_document(update, result, safe_reply_document)
     await _send_report_files(update, result, safe_send_reply, safe_reply_document)
     if (result.runtime_context or {}).get("minimax_comparison"):
-        await safe_send_reply(update, "MiniMax-M3 比較報告已在背景開始產生；完成後會補傳，失敗也會另行通知。")
+        await safe_send_reply(update, "deepseek-flash 比較報告已在背景開始產生；完成後會補傳，失敗也會另行通知。")
         asyncio.create_task(_run_minimax_comparison_background(update, center, result, raw_text, safe_send_reply, safe_reply_document))
 
 
@@ -698,11 +710,7 @@ def _date_keyboard(command: str) -> InlineKeyboardMarkup:
 
 
 def _analysis_model_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:gemini")],
-        [InlineKeyboardButton("DeepSeek V4 Pro (OpenCode Go)", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:deepseek")],
-        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}analysis_model:minimax")],
-    ])
+    return InlineKeyboardMarkup([])
 
 
 def _news_menu_keyboard() -> InlineKeyboardMarkup:
@@ -712,11 +720,7 @@ def _news_menu_keyboard() -> InlineKeyboardMarkup:
 
 def _news_model_keyboard() -> InlineKeyboardMarkup:
     """Layer 1: model selection for /news."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}news_model:gemini")],
-        [InlineKeyboardButton("DeepSeek V4 Pro (OpenCode Go)", callback_data=f"{AI_CALLBACK_PREFIX}news_model:deepseek")],
-        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}news_model:minimax")],
-    ])
+    return InlineKeyboardMarkup([])
 
 
 def _news_action_keyboard() -> InlineKeyboardMarkup:
@@ -751,10 +755,7 @@ def _extract_first_url(text: str) -> str | None:
 
 
 def _topic_model_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Gemini", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:gemini"), InlineKeyboardButton("DeepSeek V4 Pro（OpenCode Go）", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:deepseek")],
-        [InlineKeyboardButton("MiniMax M3", callback_data=f"{AI_CALLBACK_PREFIX}topic_maintain:model:minimax")],
-    ])
+    return InlineKeyboardMarkup([])
 
 
 def _topic_import_confirm_keyboard() -> InlineKeyboardMarkup:
@@ -826,13 +827,7 @@ async def send_topic_result_reply(update: Update, result, safe_send_reply) -> No
 
 
 def _compose_topic_maintain_command(state: dict) -> str:
-    model = state.get("model") or "gemini"
-
-    parts = ["/topic_maintain"]
-    if model != "gemini":
-        parts.extend(["--model", model])
-
-    return " ".join(parts)
+    return "/topic_maintain"
 
 
 def _compose_menu_command(state: dict) -> str:
@@ -840,7 +835,7 @@ def _compose_menu_command(state: dict) -> str:
     date_flag = f" --date {state['date']}" if state.get("date") else ""
     mode = state.get("mode") or "normal"
     mode_flag = " --deep" if mode == "deep" else " --score" if mode == "score" else " --source-only" if mode == "source_only" else ""
-    model_flag = f" --model {state.get('model') or 'gemini'}"
+    model_flag = ""
     default_market = "全球"
     default_value_source = "精選選股"
     if command == "research":
@@ -935,9 +930,9 @@ async def _run_minimax_comparison_background(update: Update, center: ResearchCen
         entry = await asyncio.to_thread(center.run_minimax_comparison_for_result, result, progress)
     except Exception as exc:
         progress(f"MiniMax comparison background task crashed: {exc}")
-        await safe_send_reply(update, f"⚠️ MiniMax-M3 比較報告產出失敗。\n原因：{exc}")
+        await safe_send_reply(update, f"⚠️ deepseek-flash 比較報告產出失敗。\n原因：{exc}")
         return
-    model = entry.get("model") or "MiniMax-M3"
+    model = entry.get("model") or "deepseek-flash"
     status = entry.get("status")
     if status == "success":
         await safe_send_reply(update, f"✅ {model} 比較報告已產生，正在傳送附件。")
@@ -987,6 +982,8 @@ def _telegram_status_note(result) -> str:
             f"⚠️ {_fallback_model_label(result)} 模型調用或公開來源整合未完整成功。"
             f"這不是正式 AI 完成報告，而是本地資料 fallback 報告。原因：{fallback_reason}"
         )
+    elif (getattr(result, "report_json", {}) or {}).get("metadata", {}).get("ai_status") == "partial_success":
+        notes.append("提醒：部分 AI 階段未完成，請查看報告的資料缺口與處理紀錄。")
     return "\n\n" + "\n".join(notes) if notes else ""
 
 

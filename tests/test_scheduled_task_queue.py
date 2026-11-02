@@ -216,7 +216,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             patch.object(main, "safe_send_bot_message", new=AsyncMock()) as send:
             await main._scheduled_topic_maintain(context)
 
-        parse_command.assert_called_once_with("/topic_maintain --deep --model minimax")
+            parse_command.assert_called_once_with("/topic_maintain --deep")
         self.assertIs(center.request, fake_request)
         send.assert_awaited_once_with(context.bot, 123, "變更包已產生\nID：change_test", reply_markup=None)
 
@@ -249,7 +249,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("scheduled_topic_maintain", source)
         self.assertIn("time(hour=10, minute=0, tzinfo=tw_tz)", source)
-        self.assertIn('name="10:00 AI題材庫維護（MiniMax M3）"', source)
+        self.assertIn('name="10:00 AI題材庫維護（DeepSeek Flash）"', source)
 
     def test_registered_scheduled_jobs_summary_covers_expected_jobs(self):
         from research_center.scheduled_task_service import format_registered_scheduled_jobs
@@ -274,8 +274,8 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("排隊執行", summary)
         self.assertIn("背景執行", summary)
         self.assertIn("參數：", summary)
-        self.assertIn("/topic_maintain --deep --model minimax", summary)
-        self.assertIn("source=technical, ai_top=15, model=minimax", summary)
+        self.assertIn("/topic_maintain --deep", summary)
+        self.assertIn("source=technical, ai_top=15, model=deepseek", summary)
         self.assertIn("run_backfill_if_needed(report_date=None, force_refresh=false)", summary)
 
     def test_all_registered_scheduled_jobs_have_actual_parameters(self):

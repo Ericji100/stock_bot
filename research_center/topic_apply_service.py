@@ -44,6 +44,8 @@ def confirm_change_pack(change_id: str, user_id: str = "system") -> TopicApplyRe
     pack = load_change_pack(change_id)
     if pack is None:
         return TopicApplyResult(change_id=change_id, success=False, errors=[f"找不到變更包：{change_id}"])
+    if pack.extra.get("ai_review_complete") is False:
+        return TopicApplyResult(change_id=change_id, success=False, errors=["AI 審核未完整完成，請重新執行題材維護；此草稿不可套用。"])
     if pack.status != TopicChangeStatus.PENDING:
         return TopicApplyResult(
             change_id=change_id,

@@ -134,6 +134,7 @@ def run_topic_pipeline(
     render_prompt: Callable[[str, dict[str, str]], str],
     call_ai_json: AiJsonCall,
     progress: Callable[[str], None] | None = None,
+    require_full_ai: bool = False,
 ) -> tuple[TopicChangePack, list[dict[str, Any]]]:
     """Run staged topic maintenance and return (pack, stage_logs)."""
     stage_logs: list[dict[str, Any]] = []
@@ -160,6 +161,8 @@ def run_topic_pipeline(
     max_count = 12 if mode == TopicChangeMode.INITIAL else 8
     selected = candidates[:max_count]
     ai_detail_batch_limit = DETAIL_AI_BATCH_LIMITS[mode]
+    if require_full_ai:
+        ai_detail_batch_limit = len(selected)
     detail_batch_size = 1 if mode == TopicChangeMode.UPDATE else DETAIL_BATCH_SIZE
 
     actions = []
@@ -248,6 +251,13 @@ def run_topic_pipeline(
         if warning not in pack.warnings:
             pack.warnings.append(warning)
     normalize_change_pack_quality(pack)
+    if require_full_ai:
+        complete = bool(pack.actions) and not any(log.get("error") or "fallback" in str(log.get("stage")) for log in stage_logs)
+        pack.extra["ai_review_complete"] = complete
+        pack.extra["ai_status"] = "ai_success" if complete else "partial_success"
+        if not complete:
+            pack.status = TopicChangeStatus.FAILED
+            pack.warnings.append("AI 審核未完整完成，僅保存草稿與證據，不可套用至正式題材庫。")
     return pack, stage_logs
 
 
@@ -782,7 +792,7 @@ def _append_low_model_digest_block(prompt: str, variables: dict[str, str], max_c
         digest = _truncate_stage_text(digest, max_chars)
     return (
         f"{prompt}\n\n"
-        "## MiniMax M3 資料整理底稿\n"
+        "## 資料整理模型底稿\n"
         "以下底稿只可作為候選題材與證據對照參考；最終變更包仍必須由本階段 AI 重新審查、去重、驗證來源與反證。\n"
         f"{digest}"
     )

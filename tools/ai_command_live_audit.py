@@ -73,7 +73,7 @@ DEFAULT_COMMANDS: list[str] = [
     "/theme_flow AI電源 --model minimax",
     "/theme_radar --model minimax",
     "/sector_strength --model minimax",
-    "/radar --source technical --ai-top 5 --model minimax",
+    "/radar --source technical --ai-top 5 --model deepseek",
     "/news refresh --model minimax",
     "/topic_maintain --model minimax",
 ]

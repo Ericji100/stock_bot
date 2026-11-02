@@ -862,7 +862,10 @@ def run_news_refresh(
         official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
         if official and hasattr(repository, "query_pending_classification"):
             pending = repository.query_pending_classification(limit=6)
-            items = _deduplicate_items([*pending, *items])
+            pending_by_url = {item.url:item for item in pending}
+            for item in items:
+                pending_by_url[item.url] = item
+            items = _deduplicate_items(list(pending_by_url.values()))
         all_ranked_items = list(items)
         filtered_count = len(items)
         classify_limit = _classify_limit()
@@ -970,6 +973,8 @@ def run_news_refresh(
             "ai_classified_count": ai_classified_count,
             "local_fallback_count": local_fallback_count,
             "classification_status": "partial_success" if local_fallback_count else "ai_success",
+            "deferred_classification_count": len(deferred),
+            "deferred_urls": [item.url for item in deferred],
             "minimax_diagnostics": minimax_diag,
             "web_fetch_diagnostics": web_fetch_diag,
             "ai_workflow_coverage": ai_workflow_coverage,
@@ -1199,6 +1204,10 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
             it.news_heat_risk_score = int(meta.get("news_heat_risk_score", it.news_heat_risk_score) or 0)
             it.news_signal_reason = str(meta.get("news_signal_reason", it.news_signal_reason) or "")
             it.news_heat_risk_reason = str(meta.get("news_heat_risk_reason", it.news_heat_risk_reason) or "")
+            for field in ("counter_evidence", "missing_data"):
+                value = meta.get(field)
+                if isinstance(value, list):
+                    setattr(it, field, [str(entry) for entry in value if entry])
         else:
             it.category = _guess_category(it.title)
             if "local_rule_fallback" not in it.tags:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,8 @@ CREATE TABLE IF NOT EXISTS news_articles (
     news_heat_risk_score INTEGER DEFAULT 0,
     news_signal_reason TEXT,
     news_heat_risk_reason TEXT,
+    counter_evidence TEXT,
+    missing_data TEXT,
     news_origin TEXT DEFAULT 'refresh',
     created_at TEXT NOT NULL
 );
@@ -67,22 +70,22 @@ class NewsRepository:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript(SCHEMA)
             _ensure_news_signal_columns(conn)
 
     def save(self, item: NewsItem) -> bool:
         """Save a news item; return False if URL already exists (dedup)."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn, conn:
                 conn.execute(
                     """
                     INSERT INTO news_articles
                     (url, title, source, published_at, category, related_symbols,
                      related_topics, summary, full_text, importance_score, impact_direction,
                      tags, news_signal_score, news_heat_risk_score, news_signal_reason, news_heat_risk_reason,
-                     news_origin, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     news_origin, created_at, counter_evidence, missing_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         apply_news_signal_tags(item).url,
@@ -103,6 +106,8 @@ class NewsRepository:
                         item.news_heat_risk_reason,
                         item.news_origin or "refresh",
                         item.created_at or datetime.now().isoformat(),
+                        json.dumps(item.counter_evidence, ensure_ascii=False),
+                        json.dumps(item.missing_data, ensure_ascii=False),
                     ),
                 )
                 conn.commit()
@@ -114,7 +119,7 @@ class NewsRepository:
         """Batch save; return (saved_count, skipped_count)."""
         saved = 0
         skipped = 0
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             for item in items:
                 try:
                     conn.execute(
@@ -123,8 +128,8 @@ class NewsRepository:
                         (url, title, source, published_at, category, related_symbols,
                          related_topics, summary, full_text, importance_score, impact_direction,
                          tags, news_signal_score, news_heat_risk_score, news_signal_reason, news_heat_risk_reason,
-                         news_origin, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         news_origin, created_at, counter_evidence, missing_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             apply_news_signal_tags(item).url,
@@ -145,6 +150,8 @@ class NewsRepository:
                             item.news_heat_risk_reason,
                             item.news_origin or "refresh",
                             item.created_at or datetime.now().isoformat(),
+                            json.dumps(item.counter_evidence, ensure_ascii=False),
+                            json.dumps(item.missing_data, ensure_ascii=False),
                         ),
                     )
                     saved += 1
@@ -154,12 +161,18 @@ class NewsRepository:
                             """UPDATE news_articles SET category=?, related_symbols=?, related_topics=?,
                                summary=?, importance_score=?, impact_direction=?, tags=?, news_signal_score=?,
                                news_heat_risk_score=?, news_signal_reason=?, news_heat_risk_reason=?
-                               WHERE url=? AND tags LIKE '%local_rule_fallback%'""",
+                               , title=?, full_text=CASE WHEN ?<>'' THEN ? ELSE full_text END,
+                               counter_evidence=?, missing_data=?
+                               WHERE url=? AND (tags LIKE '%local_rule_fallback%' OR (?<>'' AND full_text<>?)
+                                   OR (counter_evidence IS NULL AND missing_data IS NULL))""",
                             (item.category, json.dumps(item.related_symbols, ensure_ascii=False),
                              json.dumps(item.related_topics, ensure_ascii=False), item.summary,
                              item.importance_score, item.impact_direction, json.dumps(item.tags, ensure_ascii=False),
                              item.news_signal_score, item.news_heat_risk_score, item.news_signal_reason,
-                             item.news_heat_risk_reason, item.url),
+                             item.news_heat_risk_reason, item.title, item.full_text or '', item.full_text or '',
+                             json.dumps(item.counter_evidence, ensure_ascii=False),
+                             json.dumps(item.missing_data, ensure_ascii=False),
+                             item.url, item.full_text or '', item.full_text or ''),
                         )
                     skipped += 1
             conn.commit()
@@ -175,7 +188,7 @@ class NewsRepository:
         if not clean_urls:
             return 0
         placeholders = ",".join("?" for _ in clean_urls)
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cur = conn.execute(
                 f"DELETE FROM news_articles WHERE url IN ({placeholders})",
                 tuple(clean_urls),
@@ -243,7 +256,7 @@ class NewsRepository:
     def count_recent(self, hours: int = 24, news_origin: str | None = None) -> int:
         """Count news items from last N hours."""
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             if news_origin:
                 row = conn.execute(
                     "SELECT COUNT(*) FROM news_articles WHERE created_at >= ? AND news_origin = ?",
@@ -259,7 +272,7 @@ class NewsRepository:
         """Append a lightweight user news preference signal."""
         if not preference.url:
             return False
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO news_preferences
@@ -282,7 +295,7 @@ class NewsRepository:
 
     def list_preferences(self, limit: int = 100) -> list[NewsPreference]:
         """Return most recent user news preference signals."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM news_preferences ORDER BY created_at DESC, id DESC LIMIT ?",
@@ -292,7 +305,7 @@ class NewsRepository:
 
     def count_preferences(self) -> int:
         """Count stored user news preference signals."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             row = conn.execute("SELECT COUNT(*) FROM news_preferences").fetchone()
             return row[0] if row else 0
 
@@ -316,7 +329,7 @@ class NewsRepository:
         return stats
 
     def _query(self, sql: str, params: tuple[Any, ...]) -> list[NewsItem]:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
         return [_row_to_item(dict(r)) for r in rows]
@@ -343,6 +356,8 @@ def _row_to_item(row: dict[str, Any]) -> NewsItem:
         news_heat_risk_reason=str(row.get("news_heat_risk_reason", "")),
         news_origin=str(row.get("news_origin", "unknown") or "unknown"),
         created_at=str(row.get("created_at", "")),
+        counter_evidence=_json_list(row.get("counter_evidence")),
+        missing_data=_json_list(row.get("missing_data")),
     ))
 
 
@@ -365,6 +380,8 @@ def _ensure_news_signal_columns(conn: sqlite3.Connection) -> None:
         "news_signal_reason": "TEXT",
         "news_heat_risk_reason": "TEXT",
         "news_origin": "TEXT DEFAULT 'unknown'",
+        "counter_evidence": "TEXT",
+        "missing_data": "TEXT",
     }
     for name, ddl in columns.items():
         if name not in existing:

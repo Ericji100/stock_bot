@@ -117,7 +117,20 @@ AI_FINAL_SECTION_KEYWORDS = (
 )
 
 
+def _forbidden_claims(markdown: str) -> list[str]:
+    hits = []
+    for pattern in FORBIDDEN_PATTERNS:
+        for match in re.finditer(re.escape(pattern), markdown):
+            prefix = markdown[max(0, match.start() - 24):match.start()]
+            if re.search(r'(?:不等於|不代表|並非|不是|不可|不得|不能|不應|無法|不)[「『"\s]*(?:短線|股價|一定|能夠)?[「『"\s]*$', prefix):
+                continue
+            hits.append(pattern)
+            break
+    return hits
+
+
 def validate_report(markdown: str, request: CommandRequest, sources: list[SourceItem], report_json: dict[str, Any]) -> dict[str, Any]:
+    from .report_numeric_validation import validate_valuation_tables
     qa_markdown = _main_markdown_for_qa(markdown)
     headings = _headings(markdown)
     source_refs = sorted(set(re.findall(r"\[S\d{3}\]", qa_markdown)))
@@ -133,7 +146,7 @@ def validate_report(markdown: str, request: CommandRequest, sources: list[Source
         if not _contains_required_content(qa_markdown, headings, term)
     ]
     schema_errors = _schema_errors(report_json)
-    forbidden_hits = [pattern for pattern in FORBIDDEN_PATTERNS if pattern in qa_markdown]
+    forbidden_hits = _forbidden_claims(qa_markdown)
     source_list_present = any("資料來源" in heading or "來源" in heading for heading in headings) or "[S001]" in markdown
     has_scores_when_required = True
     if ((request.command == "research" and request.mode in {"score", "deep"}) or request.command == "value_scan") and not report_json.get("scores"):
@@ -158,7 +171,11 @@ def validate_report(markdown: str, request: CommandRequest, sources: list[Source
     if forbidden_hits:
         warnings.append("報告含禁止語句：" + ", ".join(forbidden_hits))
 
+    numerical = validate_valuation_tables(qa_markdown)
+    warnings.extend(numerical["errors"])
     passed = (
+        numerical["passed"]
+        and
         not missing_sections
         and not schema_errors
         and not forbidden_hits
@@ -170,6 +187,7 @@ def validate_report(markdown: str, request: CommandRequest, sources: list[Source
     )
     return {
         "passed": passed,
+        "numeric_validation": numerical,
         "missing_sections": missing_sections,
         "missing_content_terms": missing_content_terms,
         "schema_errors": schema_errors,

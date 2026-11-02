@@ -138,6 +138,7 @@ class RadarDataMaximizationTests(unittest.TestCase):
             )
 
         with patch.object(radar, "RADAR_AI_PROMPT_MAX_CHARS", 7000), \
+             patch.object(radar, "load_research_config", return_value=SimpleNamespace(deepseek_only=False)), \
              patch.object(radar, "_attach_radar_low_model_digest", return_value={}), \
              patch.object(radar, "_call_ai_comment_model", side_effect=fake_call):
             meta = radar._attach_ai_comments([candidate], ["2330"], "deepseek", date(2026, 5, 22), None)
@@ -446,7 +447,7 @@ def test_parse_radar_args_defaults_to_combined_top15():
     assert request.source == "combined"
     assert request.report_date is None
     assert request.ai_top == 15
-    assert request.model == "minimax"
+    assert request.model == "deepseek"
     assert request.scoring_version == "v3"
 
 
@@ -1410,6 +1411,7 @@ def test_attach_ai_comments_uses_compact_single_stock_job_when_prompt_is_large(m
         )
 
     monkeypatch.setattr(radar, "RADAR_AI_PROMPT_MAX_CHARS", 7000)
+    monkeypatch.setattr(radar, "load_research_config", lambda: SimpleNamespace(deepseek_only=False))
     monkeypatch.setattr(radar, "_attach_radar_low_model_digest", lambda *args, **kwargs: {})
     monkeypatch.setattr(radar, "_call_ai_comment_model", fake_call)
 
@@ -1979,6 +1981,7 @@ def test_attach_web_sources_filters_with_request_argument_order(monkeypatch):
         radar,
         "load_research_config",
         lambda: SimpleNamespace(
+            deepseek_only=False,
             tavily_api_key="test",
             enable_tavily_search=True,
             tavily_search_depth="basic",

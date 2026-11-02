@@ -581,7 +581,8 @@ def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
                 for row in _fetch_json(client, TPEX_NAME_API_URL):
                     code = _normalize_code(row.get("SecuritiesCompanyCode"))
                     shares = _to_float(
-                        row.get("Capitals")
+                        row.get("IssueShares")
+                        or row.get("Capitals")
                         or row.get("股本")
                         or row.get("已發行股份總數")
                         or row.get("IssuedShares")
@@ -615,9 +616,13 @@ def _build_hard_filter_candidates(
     settings = resolve_hard_filter_settings(scan_settings, defaults=HARD_FILTERS)
     universe = load_stock_universe(force_refresh=force_refresh)
     point_in_time_date = report_date if historical_replay else None
+    _print_chip_progress("籌碼母體", 0, "載入全市場營收歷史")
     revenue_history = load_recent_revenue_history(universe, as_of_date=point_in_time_date)
+    _print_chip_progress("籌碼母體", 30, "載入全市場價量資料")
     price_metrics = load_price_metrics(universe, force_refresh=force_refresh, as_of_date=point_in_time_date)
+    _print_chip_progress("籌碼母體", 60, "載入官方發行股數與必要備援")
     issued_shares = _load_issued_shares_map(universe)
+    _print_chip_progress("籌碼母體", 90, "套用既有基本篩選條件")
 
     rows: list[dict[str, Any]] = []
     for entry in universe:

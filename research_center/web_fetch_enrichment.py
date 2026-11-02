@@ -161,6 +161,8 @@ def _web_fetch_source_priority(source: SourceItem) -> int:
     provider = source.provider or ""
     level = source.source_level or ""
     score = 0
+    if "最新官方季度財報" in (source.provider_detail or ""):
+        score += 60
     if level in {"Level 1", "L1_official"}:
         score += 20
     if level in {"Level 2", "L2_media", "L2_industry"}:

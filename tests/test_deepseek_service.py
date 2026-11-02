@@ -15,11 +15,109 @@ from uuid import uuid4
 import httpx
 
 from research_center.deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DeepSeekError, ai_task
-from research_center.deepseek_search_service import DeepSeekSearchService, _safe_result_title
+from research_center.deepseek_search_service import DeepSeekSearchService, _safe_result_title, _stock_table_excerpt
 from research_center.command_parser import parse_command_text, validate_deepseek_request
 
 
 class DeepSeekServiceTests(unittest.TestCase):
+    def test_fetch_downstream_error_does_not_disable_model_analysis(self):
+        self.post_status=504
+        with patch('research_center.deepseek_service.time.sleep'), self.assertRaises(DeepSeekError) as caught:
+            self.client._post('v1/tools/fetch',{'url':'https://example.com/unavailable'},Decimal('0.00075'))
+        self.assertEqual(caught.exception.status,'source_unavailable')
+        self.assertNotIsInstance(caught.exception,DeepSeekUnavailable)
+        self.post_status=200
+        self.client.generate_report('依已有資料分析，揭露正文缺口')
+        self.assertEqual(len(self.posts()),3)
+
+    def test_json_output_length_retry_keeps_prompt_and_is_bounded(self):
+        self.answer='{"actions":[]}'
+        self.finish_reason='length'
+        self.client.max_output_tokens=8192
+        with self.assertRaises(DeepSeekError):
+            self.client.generate_json('完整來源不得刪減')
+        bodies=[json.loads(request.content) for request in self.posts()]
+        self.assertEqual([body['max_tokens'] for body in bodies],[8192,16384])
+        self.assertEqual(bodies[0]['messages'],bodies[1]['messages'])
+
+    def test_invalid_json_preserves_original_response_without_caching_success(self):
+        self.answer='{"actions":['
+        with self.assertRaises(DeepSeekError) as caught:
+            self.client.generate_json('回傳合法題材變更 JSON')
+        self.assertEqual(caught.exception.status,'invalid_json')
+        saved=json.loads(Path(caught.exception.diagnostics['incomplete_output_path']).read_text(encoding='utf-8'))
+        self.assertEqual(saved['content'],self.answer)
+        self.assertNotIn('test-key',json.dumps(saved))
+        from research_center.topic_pipeline_service import _should_retry_detail_error
+        self.assertTrue(_should_retry_detail_error(caught.exception))
+        self.assertFalse(_should_retry_detail_error(DeepSeekUnavailable('連線結果不明','transport_unknown')))
+
+    def test_segment_length_retry_preserves_prompt_and_increases_only_output_limit(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        original=self.account.transport
+        def respond(request):
+            if request.method!='POST':
+                return original.handle_request(request)
+            self.requests.append(request)
+            body=json.loads(request.content)
+            return httpx.Response(200,json={'choices':[{'message':{'content':'完整保留來源與反證'},'finish_reason':'length' if body['max_tokens']==32768 else 'stop'}],
+                'usage':{'prompt_tokens':20,'completion_tokens':10}})
+        self.account.transport=httpx.MockTransport(respond)
+        result=_call_ai_with_timeout_setting(self.client,'完整核心與反證',180)
+        bodies=[json.loads(r.content) for r in self.posts()]
+        self.assertEqual([b['max_tokens'] for b in bodies],[32768,65536])
+        self.assertEqual(bodies[0]['messages'],bodies[1]['messages'])
+        self.assertTrue(result.diagnostics['output_limit_retry'])
+
+    def test_segment_length_retry_is_bounded(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        self.finish_reason='length'
+        with self.assertRaises(DeepSeekError):
+            _call_ai_with_timeout_setting(self.client,'完整核心',180)
+        self.assertEqual(len(self.posts()),2)
+
+    def test_content_filter_does_not_trigger_larger_output_retry(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        self.finish_reason='content_filter'
+        with self.assertRaises(DeepSeekError):
+            _call_ai_with_timeout_setting(self.client,'完整核心',180)
+        self.assertEqual(len(self.posts()),1)
+
+    def test_transport_unknown_stops_following_paid_segments_during_cooldown(self):
+        self.transport_error=True
+        for prompt in ['第一段','下一段不得繼續付費']:
+            with self.assertRaises(DeepSeekUnavailable) as error:
+                self.client.generate_report(prompt)
+            self.assertEqual(error.exception.status,'transport_unknown')
+        self.assertEqual(len(self.posts()),1)
+
+    def test_official_table_date_not_replaced_by_search_crawl_date(self):
+        from unittest.mock import MagicMock
+        adapter=DeepSeekSearchService(MagicMock())
+        row={'title':'法人日表','url':'https://www.twse.com.tw/test','date':'2026-11-02','content':json.dumps({'date':'20190716','fields':['證券代號','外資買賣超'],'data':[['2330','10']]})}
+        with patch.object(adapter,'search',return_value={'results':[row]}):
+            result=adapter.discover(parse_command_text('/research 2330'),[{'queries':['2330 法人']}])
+        self.assertEqual(result.sources[0].published_date,'2019-07-16')
+
+    def test_official_table_without_requested_code_is_not_target_evidence(self):
+        from unittest.mock import MagicMock
+        adapter=DeepSeekSearchService(MagicMock())
+        row={'title':'法人日表','url':'https://www.twse.com.tw/test','content':json.dumps({'fields':['證券代號'],'data':[['2345']]})}
+        with patch.object(adapter,'search',return_value={'results':[row]}):
+            result=adapter.discover(parse_command_text('/research 2330'),[{'queries':['2330 法人']}])
+        self.assertEqual(result.sources,[])
+        self.assertEqual(result.diagnostics['runs'][0]['nonmatching_table_count'],1)
+
+    def test_stock_table_projection_preserves_target_fields_and_raw_input(self):
+        raw=json.dumps({'date':'20261102','fields':['證券代號','外資買賣超'],'data':[['2330','15000'],['2345','999']]})
+        text,projected=_stock_table_excerpt(raw,parse_command_text('/research 2330'))
+        self.assertTrue(projected)
+        self.assertEqual(json.loads(text)['data'],[['2330','15000']])
+        self.assertEqual(len(json.loads(raw)['data']),2)
+
+    def test_multi_stock_commands_do_not_apply_single_stock_projection(self):
+        text='{"fields":["證券代號"],"data":[["2330"],["2345"]]}'
+        self.assertEqual(_stock_table_excerpt(text,parse_command_text('/theme_radar')),(text,False))
     def setUp(self):
         self.root = Path(os.environ.get("CODEX_TASK_TEST_ROOT", ".cache/test_tmp/deepseek")) / uuid4().hex
         self.requests = []

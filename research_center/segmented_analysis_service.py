@@ -13,7 +13,7 @@ from typing import Any, Callable, Protocol
 from .final_output_contracts import prompt_rules_for_command
 from .models import CommandRequest, SourceItem
 from .prompt_logging import write_prompt_log
-from .deepseek_service import DeepSeekUnavailable
+from .deepseek_service import DeepSeekUnavailable, DeepSeekError
 
 ProgressCallback = Callable[[str], None]
 
@@ -73,9 +73,20 @@ def should_use_segmented_analysis(
     return prompt_chars >= threshold_chars
 
 
-def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float) -> Any:
+def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float, *, progress=None) -> Any:
     if getattr(ai_client, "provider", "") == "deepseek":
-        return ai_client.with_timeout(timeout_seconds).generate_report(prompt)
+        try:
+            return ai_client.with_timeout(timeout_seconds).generate_report(prompt)
+        except DeepSeekError as exc:
+            limit=getattr(ai_client,'max_output_tokens',0)
+            if exc.status!='incomplete_output' or exc.diagnostics.get('finish_reason')!='length' or not 0<limit<65536:
+                raise
+            retry_limit=min(65536,limit*2)
+            _emit(progress,f"分段 AI：輸出長度不足，保留完整資料重試一次；輸出上限 {limit}→{retry_limit}，仍受原預算限制。")
+            result=ai_client.with_output_limit(retry_limit).with_timeout(timeout_seconds).generate_report(prompt)
+            result.diagnostics.update({'output_limit_retry':True,'original_output_limit':limit,
+                'retry_output_limit':retry_limit,'original_incomplete':exc.diagnostics})
+            return result
     if not hasattr(ai_client, "timeout_seconds"):
         return ai_client.generate_report(prompt)
     old_timeout = getattr(ai_client, "timeout_seconds")
@@ -108,6 +119,8 @@ def run_segmented_theme_analysis(
 
     base_plans = _segment_plans(request, structured_data)
     plans = _split_oversized_plans(request, structured_data, base_plans)
+    if getattr(ai_client, "provider", "") == "deepseek":
+        plans = _merge_small_segment_plans(request, structured_data, plans, target_chars=140_000)
     max_segments = _max_segment_plan_count(request)
     if len(plans) > max_segments:
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u539f\u59cb\u5206\u6bb5 {len(plans)} \u6bb5\u8d85\u904e\u4e0a\u9650 {max_segments} \u6bb5\uff0c\u6539\u7528\u6574\u5408\u5206\u6bb5\u3002")
@@ -146,7 +159,7 @@ def run_segmented_theme_analysis(
         _emit(progress, f"\u5206\u6bb5 AI\uff1a{index}/{len(plans)}\uff5c{plan['title']}\uff5cprompt={len(prompt)} chars")
         started = time.monotonic()
         try:
-            result = _call_ai_with_timeout_setting(ai_client, prompt, call_timeout_seconds)
+            result = _call_ai_with_timeout_setting(ai_client, prompt, call_timeout_seconds, progress=progress)
             markdown = str(getattr(result, "markdown", "") or "").strip()
             diagnostics = dict(getattr(result, "diagnostics", {}) or {})
             elapsed = time.monotonic() - started
@@ -249,7 +262,7 @@ def run_segmented_theme_analysis(
                 f"segmented final prompt too large: {len(final_prompt)} chars "
                 f"> {SEGMENTED_ANALYSIS_FINAL_HARD_CHARS}"
             )
-        final_result = _call_ai_with_timeout_setting(ai_client, final_prompt, call_timeout_seconds)
+        final_result = _call_ai_with_timeout_setting(ai_client, final_prompt, call_timeout_seconds, progress=progress)
         markdown = str(getattr(final_result, "markdown", "") or "").strip()
         final_diagnostics = dict(getattr(final_result, "diagnostics", {}) or {})
         final_elapsed = time.monotonic() - final_started
@@ -288,7 +301,7 @@ def run_segmented_theme_analysis(
         )
         retry_started = time.monotonic()
         try:
-            retry_result = _call_ai_with_timeout_setting(ai_client, retry_prompt, call_timeout_seconds)
+            retry_result = _call_ai_with_timeout_setting(ai_client, retry_prompt, call_timeout_seconds, progress=progress)
             markdown = str(getattr(retry_result, "markdown", "") or "").strip()
             final_elapsed = time.monotonic() - final_started
             retry_elapsed = time.monotonic() - retry_started
@@ -498,6 +511,8 @@ def _merge_small_segment_plans(
     request: CommandRequest,
     structured_data: dict[str, Any],
     plans: list[dict[str, Any]],
+    *,
+    target_chars: int = SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS,
 ) -> list[dict[str, Any]]:
     """Merge tiny adjacent segments to reduce API calls without dropping data."""
 
@@ -518,12 +533,12 @@ def _merge_small_segment_plans(
         candidate = [*buffer, plan]
         candidate_plan = _combined_segment_plan(candidate, len(merged) + 1) if len(candidate) > 1 else plan
         candidate_prompt = _build_segment_prompt(request, structured_data, candidate_plan, [])
-        if len(candidate_prompt) <= SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS:
+        if len(candidate_prompt) <= target_chars:
             buffer = candidate
             continue
         flush_buffer()
         single_prompt = _build_segment_prompt(request, structured_data, plan, [])
-        if len(single_prompt) <= SEGMENTED_ANALYSIS_MERGE_SMALL_CHARS:
+        if len(single_prompt) <= target_chars:
             buffer = [plan]
         else:
             merged.append(plan)

@@ -34,7 +34,7 @@ from .event_context_service import build_event_context, summarize_event_context
 from .evidence_pack_service import attach_unified_evidence_pack
 from .forum_service import fetch_forum_sources
 from .free_sources import build_free_macro_sources, build_free_research_sources
-from .knowledge_base import enrich_company_rows, theme_knowledge_summary
+from .knowledge_base import enrich_company_rows, theme_knowledge_summary, load_company_knowledge
 from .macro_indicators import build_macro_indicators
 from .macro_data_guard import build_macro_data_guard
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
@@ -120,6 +120,14 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
             request.report_date,
             lookback_days=request.lookback_days or 7,
             progress=progress,
+        )
+        reference = collect_theme_data(request, progress=progress)
+        for field in ("matched_companies", "matched_universe", "topic_context",
+                      "supply_chain_profile", "company_knowledge_summary", "theme_quality_context"):
+            data[field] = reference.get(field)
+        data.setdefault("notes", []).append(
+            "題材關聯公司僅作研究參考，不等於當日強勢股或已獲資金承接；"
+            "資金流判斷仍須使用 related_stocks 與 layer_market_validation 的實際資料。"
         )
     elif request.command == "sector_strength":
         data = build_sector_strength_data(
@@ -326,8 +334,8 @@ def collect_topic_maintain_data(request: CommandRequest, progress: Callable[[str
     candidates = []
     for entry in universe:
         code = str(entry.code)
-        if code in price_metrics:
-            pm = price_metrics[code]
+        pm = price_metrics.get(entry.symbol) or price_metrics.get(code)
+        if pm:
             vol = float(pm.get("avg_volume_20d") or 0)
             candidates.append({
                 "code": code,
@@ -956,6 +964,17 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
     if progress:
         progress(f"題材研究：讀取題材知識庫 {theme}")
     profile = _theme_profile(theme)
+    try:
+        topic_context = build_theme_topic_context(theme)
+    except Exception as exc:
+        topic_context = {"error": str(exc)}
+    node_order = {}
+    for node in topic_context.get("related_supply_chain_nodes", []):
+        if isinstance(node, dict) and node.get("company_code"):
+            node_order.setdefault(str(node["company_code"]), len(node_order))
+    linked_codes = set(node_order)
+    company_knowledge = load_company_knowledge()
+    knowledge_by_code = company_knowledge.get("companies") or {}
     keywords = [theme, *profile.get("keywords", [])]
     industries = set(profile.get("industries", []))
     matched = []
@@ -966,12 +985,18 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
         text = f"{entry.name} {entry.industry}".lower()
         keyword_hit = any(str(keyword).lower() in text for keyword in keywords if keyword)
         industry_hit = any(industry in entry.industry for industry in industries)
-        if keyword_hit or industry_hit:
-            matched.append({**asdict(entry), "theme_match_reason": _theme_match_reason(entry.industry, keyword_hit, industry_hit)})
-    matched = matched[: request.top or 10] if matched else [asdict(entry) for entry in universe[: min(request.top or 10, 50)]]
+        code = str(entry.code)
+        knowledge_text = json.dumps(knowledge_by_code.get(code) or {}, ensure_ascii=False).lower()
+        product_hit = any(str(keyword).lower() in knowledge_text for keyword in keywords if keyword)
+        linked = code in linked_codes
+        if linked or product_hit or keyword_hit or industry_hit:
+            reason = "題材庫供應鏈關聯，仍須本次證據驗證" if linked else ("公司知識關鍵字關聯，仍須本次證據驗證" if product_hit else _theme_match_reason(entry.industry, keyword_hit, industry_hit))
+            matched.append({**asdict(entry), "theme_match_reason": reason, "theme_match_priority": 0 if linked else 1 if product_hit or keyword_hit else 2, "theme_reference_order": node_order.get(code,len(node_order))})
+    matched.sort(key=lambda row: (row["theme_match_priority"], row["theme_reference_order"]))
+    matched = matched[: request.top or 10]
     if progress:
         progress(f"題材研究：命中整理完成，候選 {len(matched)} 檔，補公司知識庫")
-    matched = enrich_company_rows(matched)
+    matched = enrich_company_rows(matched, company_knowledge)
     result = {
         "theme": theme,
         "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
@@ -979,12 +1004,11 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
         "company_knowledge_summary": theme_knowledge_summary(matched),
         "matched_universe": matched,
         "matched_companies": matched,  # alias for backward compatibility with prompt/discovery
+        "topic_context": topic_context,
         "notes": ["Theme 第三版加入 config/company_knowledge.json 公司產品、客戶、營收占比與供應鏈角色資料庫；未覆蓋公司會標示待驗證。"],
     }
-    try:
-        result["topic_context"] = build_theme_topic_context(theme)
-    except Exception as exc:
-        result["topic_context_error"] = str(exc)
+    if not matched:
+        result["notes"].append("本地無可辨識關聯公司，不以股票宇宙前幾檔冒充題材名單；需外部證據補查。")
     result["theme_quality_context"] = _build_theme_quality_context(result)
     return result
 

@@ -14,6 +14,7 @@ from typing import Any, Callable
 from .topic_deduper import decide_topic_action_type
 from .topic_models import TopicChangeMode, TopicChangePack, TopicChangeStatus
 from .topic_quality import normalize_change_pack_quality
+from .topic_input_package import merge_topic_sources, topic_stage_variables
 from .topic_schema_normalizer import (
     normalize_topic_candidate,
     normalize_topic_detail_actions,
@@ -151,6 +152,8 @@ def run_topic_pipeline(
         call_ai_json=call_ai_json,
         stage_logs=stage_logs,
         emit=emit,
+        full_evidence=require_full_ai,
+        structured_data=structured_data,
     )
     if not candidates:
         candidates = _fallback_candidates_from_evidence(structured_data)
@@ -162,7 +165,7 @@ def run_topic_pipeline(
     selected = candidates[:max_count]
     ai_detail_batch_limit = DETAIL_AI_BATCH_LIMITS[mode]
     if require_full_ai:
-        ai_detail_batch_limit = len(selected)
+        ai_detail_batch_limit = 0 if any(log.get("error") for log in stage_logs) else len(selected)
     detail_batch_size = 1 if mode == TopicChangeMode.UPDATE else DETAIL_BATCH_SIZE
 
     actions = []
@@ -185,8 +188,12 @@ def run_topic_pipeline(
                 call_ai_json=call_ai_json,
                 stage_logs=stage_logs,
                 emit=emit,
+                full_evidence=require_full_ai,
+                structured_data=structured_data,
             )
             batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
+            if require_full_ai and any(log.get("error") for log in stage_logs):
+                ai_detail_batch_limit = batch_index
         else:
             stage_logs.append({
                 "stage": f"detail_expand_{batch_index}_local_budget_fallback",
@@ -240,6 +247,8 @@ def run_topic_pipeline(
             "pipeline": "staged_v1",
             "candidate_count": len(candidates),
             "action_count": len(actions),
+            "deferred_candidates": candidates[max_count:],
+            "input_scope": "完整去重來源萃取候選，逐題材提供相關完整證據；既有全庫在本地比對" if require_full_ai else "legacy_bounded_inputs",
         },
     )
     if not pack.actions:
@@ -289,13 +298,17 @@ def _extract_candidates(
     call_ai_json: AiJsonCall,
     stage_logs: list[dict[str, Any]],
     emit: Callable[[str], None],
+    full_evidence: bool = False,
+    structured_data: dict | None = None,
 ) -> list[dict[str, Any]]:
     template = load_prompt("topic_candidate_extract")
     if not template:
         stage_logs.append({"stage": "candidate_extract", "error": "missing prompt"})
         return []
-    variables = _compact_prompt_variables(prompt_variables, CANDIDATE_PROMPT_LIMITS)
+    variables = topic_stage_variables(structured_data or {},prompt_variables) if full_evidence else _compact_prompt_variables(prompt_variables, CANDIDATE_PROMPT_LIMITS)
     prompt = render_prompt(template, variables)
+    if full_evidence:
+        prompt += '\n\n來源依網址去重，完整正文或摘要已在來源欄位提供；只處理本次候選，既有題材完整資料由本地比對與細節階段補充。不可捏造來源網址。'
     prompt = _append_low_model_digest_block(
         prompt,
         variables,
@@ -303,7 +316,7 @@ def _extract_candidates(
     )
     prompt_chars = len(prompt)
     emit(f"AI 產生候選題材 prompt={prompt_chars} chars")
-    if prompt_chars > CANDIDATE_STAGE_PROMPT_HARD_CHARS:
+    if prompt_chars > (600000 if full_evidence else CANDIDATE_STAGE_PROMPT_HARD_CHARS):
         stage_logs.append({
             "stage": "candidate_extract",
             "error": f"prompt_too_large:{prompt_chars}",
@@ -423,18 +436,22 @@ def _expand_batch(
     call_ai_json: AiJsonCall,
     stage_logs: list[dict[str, Any]],
     emit: Callable[[str], None],
+    full_evidence: bool = False,
+    structured_data: dict | None = None,
 ) -> Any:
     template = load_prompt("topic_detail_expand")
     if not template:
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "missing prompt"})
         return {}
-    variables = _compact_detail_prompt_variables(prompt_variables)
-    variables["topic_candidates_json"] = json.dumps(
-        [_compact_detail_candidate(candidate) for candidate in batch],
-        ensure_ascii=False,
-        indent=2,
-    )
+    if full_evidence:
+        variables=topic_stage_variables(structured_data or {},prompt_variables,batch)
+    else:
+        variables = _compact_detail_prompt_variables(prompt_variables)
+        variables["topic_candidates_json"] = json.dumps([_compact_detail_candidate(candidate) for candidate in batch],ensure_ascii=False,indent=2)
     prompt = render_prompt(template, variables)
+    if full_evidence:
+        prompt += '\n\n本批公司量化底稿（僅作參考，不代替證據）：\n'+variables['recent_scan_candidates_json']
+        prompt += '\n所有來源網址必須來自提供的完整證據，不得捏造或把資料不足當作已驗證。'
     prompt = _append_low_model_digest_block(
         prompt,
         variables,
@@ -442,7 +459,7 @@ def _expand_batch(
     )
     prompt_chars = len(prompt)
     emit(f"AI 補題材細節 batch {batch_index} prompt={prompt_chars} chars")
-    if prompt_chars > DETAIL_STAGE_PROMPT_HARD_CHARS:
+    if prompt_chars > (600000 if full_evidence else DETAIL_STAGE_PROMPT_HARD_CHARS):
         stage_logs.append({
             "stage": f"detail_expand_{batch_index}",
             "error": f"prompt_too_large:{prompt_chars}",
@@ -501,6 +518,8 @@ def _expand_batch(
 
 
 def _should_retry_detail_error(exc: Exception) -> bool:
+    if getattr(exc, "status", None) == "invalid_json":
+        return True
     text = str(exc)
     retry_markers = (
         "Expecting property name",
@@ -742,11 +761,7 @@ def _candidate_companies_from_sources(items: list[dict[str, Any]]) -> list[Any]:
 
 
 def _sources_from_structured_data(structured_data: dict[str, Any]) -> list[dict[str, Any]]:
-    for key in ("base_sources", "web_fetched_sources", "discovery_sources"):
-        value = structured_data.get(key)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)][:20]
-    return []
+    return merge_topic_sources(structured_data)
 
 
 def _build_summary(mode: TopicChangeMode, actions: list[Any], candidate_count: int) -> str:

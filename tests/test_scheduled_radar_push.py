@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import main
 
@@ -30,7 +30,8 @@ class ScheduledRadarPushTests(unittest.TestCase):
             patch.object(main, "load_config", return_value={"chat_id": "chat-1", "scan_settings": {}}),
             patch.object(main, "get_tw_today", return_value=date(2026, 6, 10)),
             patch("stock_ai_bot.strategies.chip_strategies.is_possible_trading_day", return_value=True),
-            patch.object(main, "run_radar", return_value=SimpleNamespace()) as run_radar,
+            patch.object(main, "_scheduled_ai_gate", new=AsyncMock(return_value="")),
+            patch.object(main, "run_radar", return_value=SimpleNamespace(candidates=[SimpleNamespace(code='2330',ai_comment={'status':'ok'})],ai_enriched_codes=['2330'])) as run_radar,
             patch.object(main, "format_radar_push_summary", return_value=push_summary) as format_push,
             patch.object(main, "format_radar_report") as format_full,
         ):
@@ -51,6 +52,20 @@ class ScheduledRadarPushTests(unittest.TestCase):
         self.assertTrue(all(len(chunk) <= 4000 for chunk in chunks))
         self.assertEqual("".join(chunks), "x" * 9001)
 
+    def test_mid_run_ai_failure_is_explicit_in_push(self) -> None:
+        bot = FakeBot()
+        with (
+            patch.object(main, "load_config", return_value={"chat_id": "chat-1", "scan_settings": {}}),
+            patch.object(main, "get_tw_today", return_value=date(2026, 6, 10)),
+            patch("stock_ai_bot.strategies.chip_strategies.is_possible_trading_day", return_value=True),
+            patch.object(main, "_scheduled_ai_gate", new=AsyncMock(return_value="")),
+            patch.object(main, "run_radar", return_value=SimpleNamespace(candidates=[SimpleNamespace(code='2330',ai_comment={'status':'failed'})],ai_enriched_codes=['2330'])),
+            patch.object(main, "format_radar_push_summary", return_value="本地排名"),
+        ):
+            result=asyncio.run(main._scheduled_radar_push(SimpleNamespace(bot=bot)))
+        self.assertEqual(result['status'],'partial_success')
+        self.assertIn('未完成 AI 複核',bot.messages[0])
+
     def test_scheduled_radar_send_failure_is_not_swallowed(self) -> None:
         bot = FakeBot(fail_on_part=2)
         context = SimpleNamespace(bot=bot)
@@ -60,7 +75,8 @@ class ScheduledRadarPushTests(unittest.TestCase):
             patch.object(main, "load_config", return_value={"chat_id": "chat-1", "scan_settings": {}}),
             patch.object(main, "get_tw_today", return_value=date(2026, 6, 10)),
             patch("stock_ai_bot.strategies.chip_strategies.is_possible_trading_day", return_value=True),
-            patch.object(main, "run_radar", return_value=SimpleNamespace()),
+            patch.object(main, "_scheduled_ai_gate", new=AsyncMock(return_value="")),
+            patch.object(main, "run_radar", return_value=SimpleNamespace(candidates=[],ai_enriched_codes=[])),
             patch.object(main, "format_radar_push_summary", return_value=long_report),
         ):
             with self.assertRaises(RuntimeError):

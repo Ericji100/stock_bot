@@ -11,8 +11,14 @@ NEWS_SIGNAL_TAGS = {
     "catalyst": "催化事件",
     "counter_evidence": "反證",
     "heat_risk": "過熱風險",
-    "official_fact": "官方事實",
+    "official_fact": "公告／財報線索（須核對原文）",
     "sentiment": "情緒/小道",
+    "market_story": "市場敘事",
+    "early_clue": "早期線索",
+    "theme_diffusion": "題材擴散",
+    "benefit_hypothesis": "受惠假說",
+    "failure_signal": "故事失效訊號",
+    "local_rule_fallback": "本地規則待複核",
 }
 
 
@@ -39,6 +45,8 @@ class NewsItem:
     news_heat_risk_reason: str = ""
     news_origin: str = "refresh"
     created_at: str = ""
+    counter_evidence: list[str] = field(default_factory=list)
+    missing_data: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +69,8 @@ class NewsItem:
             "news_heat_risk_reason": self.news_heat_risk_reason,
             "news_origin": self.news_origin,
             "created_at": self.created_at,
+            "counter_evidence": self.counter_evidence,
+            "missing_data": self.missing_data,
         }
 
     @classmethod
@@ -85,6 +95,8 @@ class NewsItem:
             news_heat_risk_reason=str(data.get("news_heat_risk_reason", "")),
             news_origin=str(data.get("news_origin", "refresh") or "refresh"),
             created_at=str(data.get("created_at", "")),
+            counter_evidence=list(data.get("counter_evidence") or []),
+            missing_data=list(data.get("missing_data") or []),
         )
         return apply_news_signal_tags(item)
 

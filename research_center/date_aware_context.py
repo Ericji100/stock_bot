@@ -320,6 +320,8 @@ def _news_item_to_context(item: NewsItem, analysis_date: date, terms: list[str])
         "news_heat_risk_score": item.news_heat_risk_score,
         "news_signal_reason": item.news_signal_reason,
         "news_heat_risk_reason": item.news_heat_risk_reason,
+        "counter_evidence": item.counter_evidence,
+        "missing_data": item.missing_data,
         "summary": item.summary,
         "matched_terms": [term for term in terms if term.lower() in f"{item.title} {item.summary} {item.full_text}".lower()][:10],
     }

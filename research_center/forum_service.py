@@ -64,11 +64,11 @@ def fetch_forum_sources(query: str, report_date: date | None = None, deep: bool 
 
     if failure_count > 0 and raw_sources:
         notes.append(
-            "論壇搜尋備援：部分論壇直連失敗；Serper/Jina 已停用，後續由 Tavily Search 與 Gemini Search fallback 補足外部來源。"
+            "論壇搜尋備援：部分論壇直連失敗；後續由目前設定的共用搜尋服務補足外部來源，未保證一定補齊。"
         )
     elif failure_count > 0:
         notes.append(
-            "論壇搜尋備援：Serper/Jina 已停用；後續由 Tavily Search 與 Gemini Search fallback 補足外部來源。"
+            "論壇搜尋備援：直連來源未取得資料；後續由目前設定的共用搜尋服務嘗試補足，缺口仍需揭露。"
         )
 
     sources = make_source_items(raw_sources)

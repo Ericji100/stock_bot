@@ -18,6 +18,7 @@
 5. 不要輸出 Markdown。
 6. 不要輸出 `actions`。
 7. 不要輸出 `change_id`、`status`、`raw_response_path`、`prompt_log_path`。
+8. `source_refs` 每筆保留輸入中的 `source_id`、完整 `url` 與對應的 `claim`。只寫可定位的證據主張，不重複抄錄全文；細節審核階段會依這些引用取得完整原文。不得編造來源或省略已知反證。
 
 ## 產出數量
 

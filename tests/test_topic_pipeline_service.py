@@ -6,6 +6,20 @@ from research_center.topic_pipeline_service import run_topic_pipeline
 
 
 class TopicPipelineServiceTests(unittest.TestCase):
+    def test_official_candidate_failure_does_not_spend_on_detail_expansion(self):
+        calls=[]
+        def failed(prompt,stage):
+            calls.append(stage)
+            raise RuntimeError('候選整理未完成')
+        pack,logs=run_topic_pipeline(mode=TopicChangeMode.UPDATE,ai_model='deepseek',
+            change_id='isolated_failure',iso_ts='2026-11-02T10:00:00+0800',
+            structured_data={'existing_topic_profiles':[], 'news_context':{'items':[{'title':'AI電源新訂單'}]}},
+            prompt_variables=self._variables(),load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,call_ai_json=failed,require_full_ai=True)
+        self.assertEqual(calls,['candidate_extract'])
+        self.assertFalse(pack.extra['ai_review_complete'])
+        self.assertEqual(pack.status,TopicChangeStatus.FAILED)
+
     def _load_prompt(self, name):
         if name == "topic_candidate_extract":
             return "{mode} {webfetch_evidence_json}"

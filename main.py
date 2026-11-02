@@ -53,7 +53,7 @@ from research_center.scheduled_task_service import (
 )
 from research_center.resource_guard_service import DEFAULT_RESOURCE_GUARD
 from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
-from research_center.deepseek_service import task_context
+from research_center.deepseek_service import task_context, DeepSeekAccount, DeepSeekUnavailable, configured_client
 from research_center.news_repository import NewsRepository
 from research_center.news_formatters import format_news_digest, format_news_refresh_result
 from stock_ai_bot.portfolio.portfolio_manager import (
@@ -130,9 +130,8 @@ SCHEDULED_TASK_TIMEOUT_SECONDS = {
 SCHEDULED_JOB_REGISTRATIONS: tuple[ScheduledJobRegistration, ...] = (
     ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30", parameters="build_monitor_scan_report(title=12:30 監控掃描, empty_message=無突破訊號)"),
     ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50", parameters="build_noon_market_report(), retry=6, retry_delay=30m"),
-    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（DeepSeek Flash）", "每日 10:00", parameters="/topic_maintain --deep"),
+    ScheduledJobRegistration("scheduled:topic_maintain:1000", "10:00 AI 題材庫維護（DeepSeek Flash）", "週二、週五 10:00", parameters="/topic_maintain --deep, changed evidence only"),
     ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45", parameters="build_portfolio_report(), retry=portfolio default"),
-    ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理", "每日 08:45", parameters="refresh model=deepseek, scheduled_latest, lightweight_refill=auto, push=false"),
     ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00", parameters="refresh model=deepseek, scheduled_latest, lightweight_refill=auto, push=false"),
     ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30", parameters="/scan selection=7(all), date=today if trading day"),
     ScheduledJobRegistration("scheduled:radar:2130", "21:30 Radar 推播", "每日 21:30", parameters="source=technical, ai_top=15, model=deepseek, ai_comment=true, push_summary_limit=15"),
@@ -1897,6 +1896,39 @@ async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _flush_ai_notices(context, account, chat_id, *, raise_on_error=True):
+    if not isinstance(account, DeepSeekAccount):
+        return
+    while True:
+        notice = account.budget.claim_notice()
+        if notice is None:
+            return
+        notice_id, message = notice
+        try:
+            await safe_send_bot_message(context.bot, chat_id, message)
+        except Exception:
+            account.budget.notice_result(notice_id, False)
+            if raise_on_error:
+                raise
+            print("AI 異常通知傳送結果不明，已記錄待查，不自動重送。", flush=True)
+            return
+        else:
+            account.budget.notice_result(notice_id, True)
+
+
+async def _scheduled_ai_gate(context, client, chat_id):
+    account = getattr(client, "account", None)
+    if not isinstance(account, DeepSeekAccount):
+        return ""
+    reason = ""
+    try:
+        await asyncio.to_thread(account.preflight)
+    except DeepSeekUnavailable as exc:
+        reason = exc.status
+    await _flush_ai_notices(context, account, chat_id)
+    return reason
+
+
 @task_context("topic_maintain", background=True)
 async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
@@ -1909,24 +1941,33 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
         flush=True,
     )
 
+    center = None
     try:
         from research_center.command_parser import parse_command_text
         from research_center.orchestrator import ResearchCenter
         from research_center.telegram_handlers import send_topic_result_to_chat
 
         center = ResearchCenter()
+        reason = await _scheduled_ai_gate(context, getattr(center, "deepseek", None), config["chat_id"])
+        if reason:
+            return {"status": "skipped_budget", "reason": reason}
         request = parse_command_text(raw_command)
 
         def progress(message: str) -> None:
             print(format_cmd_message(message, "AI題材庫定時維護"), flush=True)
 
         result = await asyncio.to_thread(center.run, request, progress)
+        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
+        if result.status != "success":
+            print(format_cmd_message("題材庫維護未完整成功，變更包不得視為正式更新", "定時任務"), flush=True)
+            return {"status": result.status, "reason": "題材庫 AI 審核未完整完成"}
         await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
             format_cmd_message("10:00 AI題材庫維護（DeepSeek Flash）完成", "定時任務"),
             flush=True,
         )
     except Exception as exc:
+        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(
             format_cmd_message(f"10:00 AI題材庫維護（DeepSeek Flash）失敗：{exc}", "定時任務"),
             flush=True,
@@ -1946,6 +1987,7 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
                 ),
                 flush=True,
             )
+        raise
 
 
 async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
@@ -2013,21 +2055,29 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
         heartbeat.update(message)
         print(f"[{now_timestamp()}] {message}", flush=True)
 
+    ai_client = None
     try:
+        ai_client = configured_client()
+        blocked = await _scheduled_ai_gate(context, ai_client, config["chat_id"])
         result = await asyncio.to_thread(
             run_radar,
             RadarRequest(
                 source="technical",
                 report_date=target_date,
-                ai_top=15,
+                ai_top=0 if blocked else 15,
                 model="deepseek",
-                ai_comment_enabled=True,
+                ai_comment_enabled=not blocked,
             ),
             scan_settings=config.get("scan_settings", {}),
             config=config,
             progress=progress,
         )
         report_text = format_radar_push_summary(result, limit=15)
+        selected = [c for c in result.candidates if c.code in result.ai_enriched_codes]
+        incomplete = blocked or not selected or any(c.ai_comment.get("status") != "ok" for c in selected)
+        if incomplete:
+            report_text = "本次僅提供本地雷達結果，未完成 AI 複核；不可視為正式 AI 推薦。\n\n" + report_text
+        await _flush_ai_notices(context, ai_client.account, config["chat_id"])
         chunks = prepare_telegram_chunks(report_text)
         print(
             f"[{now_timestamp()}] Radar 21:30 推播文字長度={len(report_text)} chars，拆分段數={len(chunks)}",
@@ -2035,7 +2085,10 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
         )
         await safe_send_bot_message(context.bot, config["chat_id"], report_text)
         print(f"[{now_timestamp()}] Radar 21:30 推播完成：{len(chunks)}/{len(chunks)} 段", flush=True)
+        if incomplete:
+            return {"status": "partial_success", "reason": "本地結果已提供，AI 複核未完整完成"}
     except Exception as exc:
+        await _flush_ai_notices(context, getattr(ai_client, "account", None), config["chat_id"], raise_on_error=False)
         print(f"[{now_timestamp()}] [ERROR] Radar 21:30 推播失敗：{exc}", flush=True)
         raise
     finally:
@@ -2053,9 +2106,13 @@ async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
 async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
     config = load_config()
     print(f"[{now_timestamp()}] 📰 執行定時新聞整理...")
+    center = None
     try:
         from research_center.orchestrator import ResearchCenter
         center = ResearchCenter()
+        reason = await _scheduled_ai_gate(context, getattr(center, "deepseek", None), config["chat_id"])
+        if reason:
+            return {"status": "skipped_budget", "reason": reason}
         db_path = (
             center.config.database_path
             if hasattr(center, "config") and hasattr(center.config, "database_path")
@@ -2067,6 +2124,10 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
             print(msg)
 
         items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
+        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
+        if meta.get("classification_status") == "partial_success":
+            print("新聞已保存待補，AI 分類未完整成功", flush=True)
+            return {"status": "partial_success", "reason": "新聞已保存，分類待補"}
         digests = run_news_scheduled_latest(repository)
         diagnostics = build_scheduled_news_diagnostics(repository, digests)
         if int(diagnostics.get("primary24", 0) or 0) < 8 or any(
@@ -2081,6 +2142,9 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
                 "deepseek",
                 diagnostics,
             )
+            await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
+            if extra_meta.get("classification_status") == "partial_success":
+                return {"status": "partial_success", "reason": "原新聞已保存，補強分類待補"}
             if extra_meta.get("ran"):
                 print(
                     f"[{now_timestamp()}] [定時新聞輕量補強] "
@@ -2114,7 +2178,9 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         )
         print(f"[{now_timestamp()}] ✅ 新聞整理完成：新增 {meta.get('saved', 0)} 則")
     except Exception as e:
+        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(f"[{now_timestamp()}] ⚠️ 新聞整理失敗：{e}")
+        raise
 
 
 async def scheduled_portfolio_report(context: ContextTypes.DEFAULT_TYPE):
@@ -2551,6 +2617,7 @@ def main():
             scheduled_topic_maintain,
             time=time(hour=10, minute=0, tzinfo=tw_tz),
             name="10:00 AI題材庫維護（DeepSeek Flash）",
+            days=(2, 5),
             job_kwargs=SCHEDULED_JOB_KWARGS,
         )
         # 新增 17:45 庫存籌碼推播排程：與 12:30 策略掃描分離，避免兩種通知混在同一條任務鏈。
@@ -2560,13 +2627,7 @@ def main():
             data={"attempt": 0},
             job_kwargs=SCHEDULED_JOB_KWARGS,
         )
-        # 每日 08:45、18:00 新聞自動整理與推播
-        app.job_queue.run_daily(
-            scheduled_news_refresh,
-            time=time(hour=8, minute=45, tzinfo=tw_tz),
-            name="08:45 定時新聞整理",
-            job_kwargs=SCHEDULED_JOB_KWARGS,
-        )
+        # 每日一次背景新聞整理；正常新聞不推播，額度異常另行去重通知。
         app.job_queue.run_daily(
             scheduled_news_refresh,
             time=time(hour=18, minute=0, tzinfo=tw_tz),

@@ -1501,6 +1501,8 @@ class NewsFormatterTests(unittest.TestCase):
             news_heat_risk_score=55,
             news_signal_reason="具備題材催化",
             news_heat_risk_reason="短線熱度偏高",
+            missing_data=["尚缺官方訂單確認"],
+            tags=["market_story", "failure_signal"],
         )
         text = format_news_refresh_result(
             1,
@@ -1525,7 +1527,10 @@ class NewsFormatterTests(unittest.TestCase):
         self.assertIn("判讀：偏利多", text)
         self.assertIn("可信度線索：", text)
         self.assertIn("反證/風險：短線熱度偏高", text)
-        self.assertIn("資料不足：具備題材催化", text)
+        self.assertIn("分析線索：具備題材催化", text)
+        self.assertIn("資料不足：尚缺官方訂單確認", text)
+        self.assertNotIn("market_story", text)
+        self.assertNotIn("failure_signal", text)
         self.assertIn("限制：", text)
 
 

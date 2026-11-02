@@ -10,6 +10,7 @@ import hashlib
 import inspect
 from functools import wraps
 import json
+import os
 from pathlib import Path
 import sqlite3
 import threading
@@ -19,17 +20,21 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
+from .ai_budget_service import MonthlyBudget, BudgetBlocked, REASONS
 
 TASK = ContextVar("deepseek_task", default=("interactive", False, ""))
+RUN_ID = ContextVar("deepseek_run_id", default="")
 
 
 @contextmanager
 def ai_task(command: str, background: bool = False, report_date: str = ""):
     token = TASK.set((command, background, report_date))
+    run_token = RUN_ID.set(RUN_ID.get() or uuid4().hex)
     try:
         yield
     finally:
         TASK.reset(token)
+        RUN_ID.reset(run_token)
 
 
 def task_context(command: str = "", *, background: bool | None = None):
@@ -84,8 +89,10 @@ class DeepSeekAccount:
             return cls._instances[identity]
 
     def __init__(self, key: str | None, root: Path, *, balance_ttl: float = 60,
-                 background_reserve_usd: float = 0.20, daily_limit_usd: float = 5.0,
+                 background_reserve_usd: float = 0.20, daily_limit_usd: float = 0.0,
                  usd_cny_budget_rate: float = 7.5,
+                 budget_root=None, monthly_limit_usd=10, background_monthly_usd=5,
+                 manual_monthly_usd=4, monthly_reserve_usd=1, job_limit_usd=.30, schedule_pacing=True,
                  transport=None):
         self.key = key
         self.root = Path(root)
@@ -94,12 +101,17 @@ class DeepSeekAccount:
         self.daily_limit = Decimal(str(daily_limit_usd))
         self.usd_cny_budget_rate = Decimal(str(usd_cny_budget_rate))
         self.transport = transport
+        self.budget = MonthlyBudget(budget_root or self.root, total=monthly_limit_usd,
+            background=background_monthly_usd, manual=manual_monthly_usd, reserve=monthly_reserve_usd,
+            job_limit=job_limit_usd, pacing=schedule_pacing)
+        self.budget.import_legacy(self.root / "usage.sqlite3")
         self.lock = threading.RLock()
         self.balance_checked_at = 0.0
         self.available: bool | None = None
         self.balances: list[dict[str, str]] = []
         self.block_reason = ""
         self.cooldown_until = 0.0
+        self.cooldown_reason = "rate_limited"
         self.pending: dict[str, Decimal] = {}
         self.request_locks: dict[str, threading.RLock] = {}
         self.spent_since_check = Decimal("0")
@@ -114,6 +126,7 @@ class DeepSeekAccount:
         conn = sqlite3.connect(self.root / "usage.sqlite3", timeout=15)
         conn.execute("CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, day TEXT, command TEXT, background INTEGER, operation TEXT, status TEXT, estimated_usd TEXT, actual_usd TEXT, detail TEXT)")
         conn.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, expires REAL, value TEXT)")
+        conn.execute("CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, command TEXT, operation TEXT, cache_hit INTEGER, detail TEXT)")
         try:
             with conn:
                 yield conn
@@ -129,12 +142,17 @@ class DeepSeekAccount:
         with self.lock, self._db() as conn:
             conn.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (key, time.time() + ttl, json.dumps(value, ensure_ascii=False)))
 
+    def activity(self, operation, cache_hit, detail):
+        with self.lock, self._db() as conn:
+            conn.execute("INSERT INTO activity VALUES (?,?,?,?,?)", (uuid4().hex,TASK.get()[0],operation,int(cache_hit),json.dumps(detail,ensure_ascii=False)))
+
     def refresh_balance(self, *, force: bool = False):
         with self.lock:
             if not self.key:
                 raise DeepSeekUnavailable("尚未設定 DeepSeek 官方 API Key。", "not_configured")
             if not force and time.time() < self.cooldown_until:
-                raise DeepSeekUnavailable("DeepSeek 暫時限流，稍後再試。", "rate_limited", 429)
+                reason = self.cooldown_reason
+                raise DeepSeekUnavailable(REASONS[reason], reason, 429 if reason == "rate_limited" else None)
             if not force and self.available is not None and time.monotonic() - self.balance_checked_at < self.balance_ttl:
                 if not self.available:
                     raise DeepSeekUnavailable(self.block_reason, "insufficient_balance" if "餘額" in self.block_reason else "authentication_failed")
@@ -164,9 +182,34 @@ class DeepSeekAccount:
         self.balance_checked_at = time.monotonic()
         self.block_reason = ("DeepSeek 餘額不足；已保留資料，儲值後重新執行即可。" if status == 402
                              else "DeepSeek 金鑰驗證失敗，請檢查本機設定。")
+        self.budget.incident("insufficient_balance" if status == 402 else "authentication_failed", background=TASK.get()[1])
         raise DeepSeekUnavailable(self.block_reason, "insufficient_balance" if status == 402 else "authentication_failed", status)
 
+    def preflight(self):
+        background = TASK.get()[1]
+        try:
+            self.budget.check(background=background, run_id=RUN_ID.get())
+            result = self.refresh_balance()
+            self.budget.incident(None, background=background, preflight=True)
+            return result
+        except BudgetBlocked as exc:
+            self.budget.incident(exc.reason, background=background)
+            raise DeepSeekUnavailable(REASONS[exc.reason], exc.reason) from None
+        except DeepSeekUnavailable as exc:
+            self.budget.incident(exc.status, background=background)
+            raise
+
     def reserve(self, operation: str, estimate: Decimal) -> str:
+        try:
+            return self._reserve(operation, estimate)
+        except BudgetBlocked as exc:
+            self.budget.incident(exc.reason, background=TASK.get()[1])
+            raise DeepSeekUnavailable(REASONS[exc.reason], exc.reason) from None
+        except DeepSeekUnavailable as exc:
+            self.budget.incident(exc.status, background=TASK.get()[1])
+            raise
+
+    def _reserve(self, operation: str, estimate: Decimal) -> str:
         with self.lock:
             self.refresh_balance()
             command, background, _ = TASK.get()
@@ -188,6 +231,7 @@ class DeepSeekAccount:
                 used = sum(Decimal(actual if actual is not None else est) for status, est, actual in rows if status not in ("rejected", "failed"))
                 if self.daily_limit > 0 and used + estimate > self.daily_limit:
                     raise DeepSeekUnavailable("DeepSeek 已達每日費用保護上限，請調整設定或明日再試。", "daily_budget_exceeded")
+                self.budget.reserve_request(request_id, command, background, RUN_ID.get(), estimate, now)
                 conn.execute("INSERT INTO usage VALUES (?,?,?,?,?,?,?,?,?)", (request_id, day, command, int(background), operation, "pending", str(estimate), None, "{}"))
             self.pending[request_id] = estimate
             return request_id
@@ -201,6 +245,7 @@ class DeepSeekAccount:
                 self.spent_since_check += actual
             with self._db() as conn:
                 conn.execute("UPDATE usage SET status=?, actual_usd=?, detail=? WHERE id=?", (status, str(actual) if actual is not None else None, json.dumps(detail, ensure_ascii=False), request_id))
+            self.budget.finish(request_id, status, actual)
 
 
 def _price(usage: dict) -> Decimal:
@@ -231,11 +276,17 @@ class DeepSeekService:
         return bool(self.account.key)
 
     def ensure_ready(self):
-        return self.account.refresh_balance()
+        return self.account.preflight()
 
     def with_timeout(self, seconds):
         return DeepSeekService(self.account, model=self.model, organizer=self.organizer,
             timeout_seconds=seconds, max_output_tokens=self.max_output_tokens)
+
+    def with_output_limit(self, limit):
+        client=DeepSeekService(self.account,model=self.model,organizer=self.organizer,
+            timeout_seconds=self.timeout_seconds,max_output_tokens=limit)
+        client.max_retries=self.max_retries
+        return client
 
     def _post(self, operation: str, body: dict, estimate: Decimal):
         request_id = self.account.reserve(operation, estimate)
@@ -257,7 +308,14 @@ class DeepSeekService:
                         if attempt < self.max_retries:
                             time.sleep(1 + attempt)
                             continue
+                        if operation.startswith("v1/tools/") and response.status_code != 429:
+                            raise DeepSeekError("搜尋或正文服務暫時無法取得此來源，保留缺口後繼續分析已有資料。",
+                                                "source_unavailable", response.status_code)
                         self.account.cooldown_until = time.time() + 30
+                        status = "rate_limited" if response.status_code == 429 else "service_unavailable"
+                        self.account.cooldown_reason = status
+                        self.account.budget.incident(status, background=TASK.get()[1])
+                        raise DeepSeekUnavailable(REASONS[status], status, response.status_code)
                     if response.status_code >= 400:
                         raise DeepSeekError(f"DeepSeek 請求失敗（HTTP {response.status_code}）。", "http_error", response.status_code)
                     data = response.json()
@@ -268,11 +326,16 @@ class DeepSeekService:
                     if operation.endswith("fetch") and not data.get("content"):
                         actual = Decimal("0")
                     self.account.finish(request_id, "success" if actual is not None else "unknown", metrics({"usage": usage, "model": data.get("model", self.model), "http_status": response.status_code}), actual)
+                    self.account.budget.incident(None, background=TASK.get()[1], preflight=operation != "chat/completions")
                     return data
                 except httpx.TransportError:
                     # A timed-out generation may still be billed. Do not blindly duplicate it.
-                    raise DeepSeekError("DeepSeek 連線中斷或逾時；費用未知，已保留進度。", "transport_unknown") from None
+                    self.account.cooldown_until = time.time() + 30
+                    self.account.cooldown_reason = "transport_unknown"
+                    raise DeepSeekUnavailable("DeepSeek 連線中斷或逾時；費用未知，已保留進度。", "transport_unknown") from None
         except DeepSeekError as exc:
+            if exc.status == "transport_unknown":
+                self.account.budget.incident(exc.status, background=TASK.get()[1])
             self.account.finish(request_id, "unknown" if exc.status == "transport_unknown" else "failed", metrics(exc.diagnostics))
             raise
         except Exception:
@@ -287,29 +350,51 @@ class DeepSeekService:
     def _generate_once(self, prompt: str, json_mode: bool):
         command, _, report_date = TASK.get()
         system = ("請以繁體中文整理事實與來源，只輸出有效 JSON，不提供買賣結論。" if self.organizer
-                  else "請以繁體中文完成使用者要求的分析。區分事實、推論及情境假設，保留來源、反證、風險與資料缺口，不顯示內部推理。")
+                  else "請以繁體中文完成使用者要求的分析。區分事實、推論及情境假設，保留來源、反證、風險與資料缺口，不顯示內部推理。估值表EPS乘本益比上下限須精確驗算，折溢價另列；新官方財報若在指定日前公布，核對後優先於本地舊報表，明列期間衝突。")
         if json_mode:
             system += "只輸出有效 JSON 物件。"
         body = {"model": self.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 "thinking": {"type": "disabled" if self.organizer else "enabled"}, "max_tokens": self.max_output_tokens}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+        prompt_dir = self.account.root / "prompts"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        prompt_path = prompt_dir / (uuid4().hex + ".json")
+        prompt_path.write_text(json.dumps({"command":command,"report_date":report_date,"run_id":RUN_ID.get(),"organizer":self.organizer,"body":body},ensure_ascii=False,indent=2),encoding="utf-8")
         cache_key = "model:" + hashlib.sha256(json.dumps([body, command, report_date], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         data = self.account.cached(cache_key)
         cache_hit = data is not None
+        self.account.activity("model", cache_hit, {"prompt_path":str(prompt_path),"prompt_chars":len(prompt),"model":self.model,"organizer":self.organizer,"run_id":RUN_ID.get()})
         if data is None:
             estimate = (Decimal(len(prompt) + len(system)) * Decimal("0.30") + Decimal(self.max_output_tokens) * Decimal("1.20")) / 1000000
             data = self._post("chat/completions", body, estimate)
         choice = (data.get("choices") or [{}])[0]
         content = str((choice.get("message") or {}).get("content") or "").strip()
         if not content or choice.get("finish_reason") in ("length", "content_filter"):
-            raise DeepSeekError("DeepSeek 未完成完整輸出，已保留成功階段，請重試。", "incomplete_output")
+            directory=self.account.root/'incomplete_outputs'
+            directory.mkdir(parents=True,exist_ok=True)
+            path=directory/(uuid4().hex+'.json')
+            path.write_text(json.dumps({'prompt_path':str(prompt_path),'finish_reason':choice.get('finish_reason'),
+                'content':content,'usage':data.get('usage') or {}},ensure_ascii=False,indent=2),encoding='utf-8')
+            error=DeepSeekError("DeepSeek 未完成完整輸出，已保留成功階段，請重試。", "incomplete_output")
+            error.diagnostics.update({'finish_reason':choice.get('finish_reason'),'output_chars':len(content),
+                'max_output_tokens':self.max_output_tokens,'incomplete_output_path':str(path)})
+            self.account.activity('generation_incomplete',False,error.diagnostics)
+            raise error
         if json_mode:
             try:
                 if not isinstance(json.loads(content), dict):
                     raise ValueError()
-            except (ValueError, TypeError):
-                raise DeepSeekError("DeepSeek 結構化輸出格式不完整。", "invalid_json") from None
+            except (ValueError, TypeError) as exc:
+                directory=self.account.root/'incomplete_outputs'
+                directory.mkdir(parents=True,exist_ok=True)
+                path=directory/(uuid4().hex+'.json')
+                path.write_text(json.dumps({'prompt_path':str(prompt_path),'finish_reason':choice.get('finish_reason'),
+                    'content':content,'usage':data.get('usage') or {},'validation_error':str(exc)},ensure_ascii=False,indent=2),encoding='utf-8')
+                error=DeepSeekError("DeepSeek 結構化輸出格式不完整，原始回應已保留供診斷。", "invalid_json")
+                error.diagnostics.update({'incomplete_output_path':str(path),'output_chars':len(content)})
+                self.account.activity('generation_invalid_json',False,error.diagnostics)
+                raise error from None
         if not cache_hit:
             self.account.cache(cache_key, data, 86400)
         return DeepSeekResult(content, data, {"provider": "deepseek", "model": data.get("model") or self.model, "actual_model": data.get("model") or self.model,
@@ -320,7 +405,17 @@ class DeepSeekService:
         return self._generate(prompt, False)
 
     def generate_json(self, prompt: str):
-        return self._generate(prompt, True)
+        try:
+            return self._generate(prompt, True)
+        except DeepSeekError as exc:
+            if (exc.status != 'incomplete_output' or exc.diagnostics.get('finish_reason') != 'length'
+                    or self.max_output_tokens >= 65536):
+                raise
+            limit=min(65536,self.max_output_tokens*2)
+            result=self.with_output_limit(limit)._generate(prompt, True)
+            result.diagnostics.update({'output_limit_retry':True,'previous_max_output_tokens':self.max_output_tokens,
+                                       'retry_max_output_tokens':limit})
+            return result
 
 
 class DisabledProvider:
@@ -339,11 +434,21 @@ class DisabledProvider:
         raise AttributeError(name)
 
 
+def account_options(config, root):
+    from .ai_budget_service import shared_budget_root
+    return dict(background_reserve_usd=config.deepseek_background_reserve_usd,
+        usd_cny_budget_rate=config.deepseek_usd_cny_budget_rate,
+        budget_root=Path(os.environ["DEEPSEEK_BUDGET_TEST_ROOT"]) if os.environ.get("DEEPSEEK_BUDGET_TEST_ROOT") else shared_budget_root(root),
+        monthly_limit_usd=config.deepseek_monthly_limit_usd,
+        background_monthly_usd=config.deepseek_background_monthly_usd,
+        manual_monthly_usd=config.deepseek_manual_monthly_usd,
+        monthly_reserve_usd=config.deepseek_monthly_reserve_usd,
+        job_limit_usd=config.deepseek_job_limit_usd)
+
+
 def configured_client(*, organizer=False):
     from .config import ROOT_DIR, load_research_config
     config = load_research_config()
-    account = DeepSeekAccount.shared(config.deepseek_api_key, ROOT_DIR / ".cache" / "deepseek",
-        background_reserve_usd=config.deepseek_background_reserve_usd, daily_limit_usd=config.deepseek_daily_limit_usd,
-        usd_cny_budget_rate=config.deepseek_usd_cny_budget_rate)
+    account = DeepSeekAccount.shared(config.deepseek_api_key, ROOT_DIR / ".cache" / "deepseek", **account_options(config, ROOT_DIR))
     return DeepSeekService(account, model=config.deepseek_model, organizer=organizer,
         max_output_tokens=8192 if organizer else 32768)

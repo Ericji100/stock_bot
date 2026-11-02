@@ -17,6 +17,7 @@ import yfinance as yf
 from stock_ai_bot.data_sources.data_source_manager import FinMindQuotaManager, SourceHealthManager
 from stock_ai_bot.data_sources.finmind_client import FinMindClient
 from stock_ai_bot.data_sources.fugle_data import fetch_fugle_history
+from stock_ai_bot.data_sources.official_market_cache import OfficialDailyCache
 
 
 TWSE_NAME_API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
@@ -25,6 +26,7 @@ MOPS_API_BASE_URL = "https://mops.twse.com.tw/mops/api/"
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 ROOT_DIR = Path(__file__).resolve().parents[2]
 STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
+OFFICIAL_DAILY_CACHE_ROOT = ROOT_DIR / ".cache" / "official_market"
 
 
 class StockExportError(Exception):
@@ -263,6 +265,7 @@ class StockDataFetcher:
         self._local_stock_catalog: dict[str, StockMeta] | None = None
         self._tpex_institutional_cache: dict[tuple[str, str, str], dict[str, float] | None] = {}
         self.notes: list[str] = []
+        self._official_daily_cache = OfficialDailyCache(OFFICIAL_DAILY_CACHE_ROOT)
 
     def close(self) -> None:
         self.client.close()
@@ -283,6 +286,10 @@ class StockDataFetcher:
     def _append_note_once(self, message: str) -> None:
         if message not in self.notes:
             self.notes.append(message)
+
+    def _official_daily_json(self,url,trading_date,params):
+        return self._official_daily_cache.get(url,params,trading_date,
+            lambda:self._get_json(url,params=params,is_twse=True))
 
     def _get_json(self, url: str, params: dict[str, Any] | None = None, *, is_twse: bool = False) -> Any:
         last_error: httpx.HTTPStatusError | None = None
@@ -549,21 +556,20 @@ class StockDataFetcher:
         rows: list[dict[str, Any]] = []
         for trading_date in trading_dates:
             try:
-                payload = self._get_json(
-                    "https://www.twse.com.tw/fund/T86",
-                    params={
+                payload = self._official_daily_json(
+                    "https://www.twse.com.tw/rwd/zh/fund/T86",
+                    trading_date, {
                         "response": "json",
                         "date": trading_date.strftime("%Y%m%d"),
                         "selectType": "ALL",
                     },
-                    is_twse=True,
                 )
             except httpx.HTTPError:
                 fallback_row = self._fetch_finmind_institutional_daily(meta, trading_date)
                 if fallback_row:
                     rows.append(fallback_row)
                 continue
-            if payload.get("stat") != "OK":
+            if not OfficialDailyCache.valid(payload,trading_date.strftime('%Y%m%d')):
                 fallback_row = self._fetch_finmind_institutional_daily(meta, trading_date)
                 if fallback_row:
                     rows.append(fallback_row)
@@ -695,27 +701,35 @@ class StockDataFetcher:
     def _fetch_twse_margin_daily(self, meta: StockMeta, trading_dates: list[date]) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
         for trading_date in trading_dates:
-            payload = self._get_json(
-                "https://www.twse.com.tw/exchangeReport/TWT93U",
-                params={
+            payload = self._official_daily_json(
+                "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN",
+                trading_date, {
                     "response": "json",
                     "date": trading_date.strftime("%Y%m%d"),
+                    "selectType": "ALL",
                 },
-                is_twse=True,
             )
-            if payload.get("stat") != "OK":
+            if not OfficialDailyCache.valid(payload,trading_date.strftime('%Y%m%d')):
                 continue
-            for row in payload.get("data", []):
+            expected=['代號','名稱','買進','賣出','現金償還','前日餘額','今日餘額','次一營業日限額','買進','賣出','現券償還','前日餘額','今日餘額','次一營業日限額']
+            table=next((t for t in payload.get('tables',[]) if t.get('fields',[])[:14]==expected),None)
+            if table is None:
+                self._append_note_once('TWSE 融資融券官方欄位無法辨識，保留資料缺口，不套用舊欄位位置。')
+                continue
+            for row in table.get("data", []):
+                if len(row)<14:
+                    continue
                 if str(row[0]).strip() != meta.code:
                     continue
-                financing_buy = _to_lots(row[4])
-                financing_sell = _to_lots(row[3])
-                cash_redemption = _to_lots(row[5])
-                short_sale = _to_lots(row[9])
-                short_covering = _to_lots(row[10])
-                stock_redemption = _to_lots(row[11])
-                financing_balance = _to_lots(row[6])
-                short_balance = _to_lots(row[12])
+                # MI_MARGN reports trading units (lots), not shares; do not divide by 1000.
+                financing_buy = _to_number(row[2])
+                financing_sell = _to_number(row[3])
+                cash_redemption = _to_number(row[4])
+                short_sale = _to_number(row[9])
+                short_covering = _to_number(row[8])
+                stock_redemption = _to_number(row[10])
+                financing_balance = _to_number(row[6])
+                short_balance = _to_number(row[12])
                 rows.append(
                     {
                         "Date": trading_date,
@@ -723,12 +737,12 @@ class StockDataFetcher:
                         "Financing_Buy_Lots": financing_buy,
                         "Financing_Sell_Lots": financing_sell,
                         "Cash_Redemption_Lots": cash_redemption,
-                        "Financing_Net_Change_Lots": (financing_buy or 0) - (financing_sell or 0) - (cash_redemption or 0),
+                        "Financing_Net_Change_Lots": financing_buy-financing_sell-cash_redemption if all(v is not None for v in (financing_buy,financing_sell,cash_redemption)) else None,
                         "Short_Balance_Lots": short_balance,
                         "Short_Sell_Lots": short_sale,
                         "Short_Covering_Lots": short_covering,
                         "Stock_Redemption_Lots": stock_redemption,
-                        "Short_Net_Change_Lots": (short_sale or 0) - (short_covering or 0) - (stock_redemption or 0),
+                        "Short_Net_Change_Lots": short_sale-short_covering-stock_redemption if all(v is not None for v in (short_sale,short_covering,stock_redemption)) else None,
                         "Short_Margin_Ratio": _safe_ratio(short_balance, financing_balance),
                     }
                 )

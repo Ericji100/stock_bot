@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import uuid
 from dataclasses import asdict, is_dataclass
@@ -19,7 +20,7 @@ from .topic_models import (
     TopicChangeStatus,
     TopicSourceLevel,
 )
-from .ai_workflow_service import build_ai_workflow_coverage, run_low_model_digest_for_payload
+from .ai_workflow_service import build_ai_workflow_coverage, run_low_model_digest_for_payload, _stable_fingerprint_payload
 from .topic_repository import (
     backup_topic_files,
     is_formal_library_empty,
@@ -36,6 +37,13 @@ from .models import CandidateSnapshot
 
 
 TOPIC_AI_STAGE_TIMEOUT_SECONDS = 120.0
+
+
+def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources, prompts):
+    payload={"mode":mode.value,"report_date":report_date,"model":model,
+             "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
+    stable=_stable_fingerprint_payload(payload)
+    return 'topic-workflow-v2:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -107,6 +115,7 @@ class TopicMaintainAIError(Exception):
 def _source_item_to_dict(source: Any) -> dict[str, Any]:
     """Convert a SourceItem (or similar object) to a plain dict for JSON serialization."""
     return {
+        "source_id": getattr(source, "source_id", "") or "",
         "title": getattr(source, "title", "") or "",
         "url": getattr(source, "url", "") or "",
         "snippet": getattr(source, "snippet", "") or "",
@@ -444,6 +453,7 @@ def run_topic_maintain(
                     "dropped_after_analysis_date_count": len(dropped_sources),
                 }
             emit(f"Discovery完成，取得 {len(discovery_sources)} 筆來源")
+            structured_data["discovery_sources"] = [_source_item_to_dict(source) for source in discovery_sources]
         except Exception as exc:
             emit(f"Discovery略過：{exc}")
 
@@ -480,6 +490,20 @@ def run_topic_maintain(
                 emit(f"WebFetch evidence candidates略過：{exc}")
                 structured_data["webfetch_evidence"] = {"mode": "rule_based", "items": [], "warnings": [str(exc)]}
 
+    workflow_account = center.deepseek.account if official else None
+    workflow_key = None
+    if workflow_account is not None:
+        workflow_key = _topic_workflow_cache_key(mode, report_date, center.config.deepseek_model,
+            {**structured_data,"company_knowledge":load_company_knowledge_data()},discovery_sources,
+            [template,_load_prompt('topic_candidate_extract'),_load_prompt('topic_detail_expand')])
+        cached = workflow_account.cached(workflow_key)
+        previous = load_change_pack(cached.get('change_id','')) if cached else None
+        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True:
+            previous.extra['workflow_cache_hit']=True
+            workflow_account.activity('topic_workflow',True,{'change_id':previous.change_id})
+            emit('本次資料、日期、模型與提示詞未變，重用已完整審核的待確認更新包；不重複付費分析。')
+            return previous
+
     # Build prompt
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     change_id = f"change_{timestamp}"
@@ -495,6 +519,8 @@ def run_topic_maintain(
         return text
 
     structured_data = _json_safe(structured_data)
+    if official:
+        structured_data['company_knowledge']=_json_safe(load_company_knowledge_data())
     sd_json = _json_dumps(structured_data, 20000)
     discovery_json = _json_dumps(discovery_sources, 20000)
     webfetch_json = _json_dumps(structured_data.get("web_fetched_sources", []), 30000)
@@ -558,7 +584,9 @@ def run_topic_maintain(
 
     emit(f"結構化資料摘要：{len(sd_json)} chars")
     emit(f"Discovery來源：{len(discovery_sources)} 筆")
-    emit(f"WebFetch成功：{len(structured_data.get('web_fetched_sources', []))} 筆")
+    webfetch_stats = structured_data.get("web_fetch_diagnostics") or {}
+    emit(f"正文補取：成功 {webfetch_stats.get('successful', '未記錄')} 筆，"
+         f"處理來源 {len(structured_data.get('web_fetched_sources', []))} 筆；部分成功不等於完整正文。")
     emit(f"既有題材庫：{len(structured_data.get('existing_topic_profiles', []))} 項")
 
     variables = {
@@ -591,6 +619,10 @@ def run_topic_maintain(
     # Save prompt log
     from .prompt_logging import write_prompt_log
     prompt_log_p = write_prompt_log(request, prompt, ai_model, False, discovery_sources, {"purpose": f"topic_maintain_{mode.value}"})
+    if official:
+        input_dir=Path(prompt_log_p).parent.parent/'topic_inputs'
+        input_dir.mkdir(parents=True,exist_ok=True)
+        (input_dir/(change_id+'.json')).write_text(json.dumps(structured_data,ensure_ascii=False,default=str),encoding='utf-8')
     emit("Prompt log 已保存")
 
     raw_stages: list[dict[str, Any]] = []
@@ -601,6 +633,8 @@ def run_topic_maintain(
         try:
             if official:
                 client = center.deepseek_organizer if stage_name.startswith("candidate") else center.deepseek
+                if stage_name.startswith("candidate") and callable(getattr(client, "with_output_limit", None)):
+                    client = client.with_output_limit(max(16384, client.max_output_tokens))
                 result = client.generate_json(stage_prompt)
                 raw_text = _ai_response_to_text(result)
             elif ai_model == "deepseek":
@@ -766,6 +800,8 @@ def run_topic_maintain(
 
     # Save change pack
     save_change_pack(pack)
+    if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True:
+        workflow_account.cache(workflow_key,{'change_id':change_id},3*86400)
     emit(f"變更包已保存：{change_id}")
     return pack
 

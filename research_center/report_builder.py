@@ -76,6 +76,8 @@ def build_report_json(
             "deepseek_diagnostics": data.get("deepseek_diagnostics"),
             "deepseek_search_discovery": data.get("deepseek_search_discovery"),
             "deepseek_unavailable": data.get("deepseek_unavailable"),
+            "numeric_validation": data.get("numeric_validation"),
+            "numeric_validation_original": data.get("numeric_validation_original"),
             "market_data_date": data.get("market_data_date"),
             "report_generated_at": data.get("report_generated_at"),
             "comparison_reports": data.get("comparison_reports"),

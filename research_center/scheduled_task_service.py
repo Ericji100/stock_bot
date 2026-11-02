@@ -14,7 +14,7 @@ from .command_runtime_service import GLOBAL_COMMAND_RUNTIME, CommandRuntimeServi
 from .resource_guard_service import DEFAULT_RESOURCE_GUARD, ResourceGuardService
 
 SCHEDULED_TASK_SCHEMA_VERSION = "scheduled_task_v1"
-ScheduledTaskRunner = Callable[[], Awaitable[None]]
+ScheduledTaskRunner = Callable[[], Awaitable[Any]]
 ScheduledTaskFactory = Callable[[Awaitable[None]], asyncio.Task]
 ScheduledTaskSink = Callable[[str], None]
 ScheduledTaskAuditSink = Callable[[Any, str, dict[str, Any]], None]
@@ -189,10 +189,8 @@ class ScheduledTaskService:
                 self.runtime.update_progress(spec.task_id, "started")
                 self._audit(spec, "started")
                 self._log(f"{spec.label} 開始", spec.category)
-                await self._run_with_timeout(spec, runner)
-                self.runtime.finish_task(spec.task_id)
-                self._audit(spec, "completed", elapsed_seconds=round(time.monotonic() - started_at, 3))
-                self._log(f"{spec.label} 完成", spec.category)
+                outcome = await self._run_with_timeout(spec, runner)
+                self._record_outcome(spec, outcome, started_at)
             except asyncio.CancelledError:
                 self.runtime.fail_task(spec.task_id, "cancelled", source=spec.task_type, operation=spec.task_id)
                 self._audit(spec, "failed", error_type="cancelled")
@@ -250,10 +248,8 @@ class ScheduledTaskService:
             self.runtime.update_progress(spec.task_id, "started")
             self._audit(spec, "started")
             self._log(f"{spec.label} 開始", spec.category)
-            await self._run_with_timeout(spec, runner)
-            self.runtime.finish_task(spec.task_id)
-            self._audit(spec, "completed", elapsed_seconds=round(time.monotonic() - started_at, 3))
-            self._log(f"{spec.label} 完成", spec.category)
+            outcome = await self._run_with_timeout(spec, runner)
+            self._record_outcome(spec, outcome, started_at)
         except asyncio.CancelledError:
             self.runtime.fail_task(spec.task_id, "cancelled", source=spec.task_type, operation=spec.task_id)
             self._audit(spec, "failed", error_type="cancelled")
@@ -278,18 +274,30 @@ class ScheduledTaskService:
             )
             self._log(f"{spec.label} 失敗：{exc}", spec.category)
 
-    async def _run_with_timeout(self, spec: ScheduledTaskSpec, runner: ScheduledTaskRunner) -> None:
-        async def guarded() -> None:
+    def _record_outcome(self, spec, outcome, started_at):
+        status = outcome.get("status") if isinstance(outcome, dict) else None
+        if status in {"skipped_budget", "partial_success", "failed", "fallback_success"}:
+            reason = str(outcome.get("reason") or status)
+            self.runtime.fail_task(spec.task_id, reason, source=spec.task_type, operation=spec.task_id)
+            self._audit(spec, status, elapsed_seconds=round(time.monotonic()-started_at, 3), error_summary=reason)
+            self._log(f"{spec.label} 未完整完成：{reason}", spec.category)
+        else:
+            self.runtime.finish_task(spec.task_id)
+            self._audit(spec, "completed", elapsed_seconds=round(time.monotonic()-started_at, 3))
+            self._log(f"{spec.label} 完成", spec.category)
+
+    async def _run_with_timeout(self, spec: ScheduledTaskSpec, runner: ScheduledTaskRunner):
+        async def guarded():
             if spec.resource_group:
                 async with self.resource_guard.acquire(spec.resource_group):
-                    await runner()
+                    return await runner()
             else:
-                await runner()
+                return await runner()
 
         if spec.timeout_seconds and spec.timeout_seconds > 0:
-            await asyncio.wait_for(guarded(), timeout=float(spec.timeout_seconds))
+            return await asyncio.wait_for(guarded(), timeout=float(spec.timeout_seconds))
         else:
-            await guarded()
+            return await guarded()
 
     def _audit(self, spec: ScheduledTaskSpec, status: str, **event: Any) -> None:
         try:

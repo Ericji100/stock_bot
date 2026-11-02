@@ -29,7 +29,7 @@ class TestForumSerperFallbackRemoved(unittest.TestCase):
     and produces the correct unified backup message when all collectors fail."""
 
     def test_all_collectors_fail_produces_unified_message(self):
-        """All four collectors fail → unified Serper/Jina stopped message."""
+        """All collectors fail without promising a retired provider fallback."""
         collectors = (
             _make_mock("_collect_ptt_stock", side_effect=Exception("WinError 10054")),
             _make_mock("_collect_dcard", side_effect=Exception("Connection refused")),
@@ -54,9 +54,10 @@ class TestForumSerperFallbackRemoved(unittest.TestCase):
         self.assertNotIn("搜尋 fallback 略過", joined)
 
         # Check that messages DO contain the new unified backup message
-        self.assertIn("Serper/Jina 已停用", joined)
-        self.assertIn("Tavily Search", joined)
-        self.assertIn("Gemini Search fallback", joined)
+        self.assertIn("目前設定的共用搜尋服務", joined)
+        self.assertIn("缺口仍需揭露", joined)
+        self.assertNotIn("Tavily", joined)
+        self.assertNotIn("Gemini", joined)
 
     def test_partial_failure_produces_partial_message(self):
         """Some collectors succeed, some fail → partial failure message."""

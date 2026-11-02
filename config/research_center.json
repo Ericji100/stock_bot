@@ -1,7 +1,11 @@
 {
   "deepseek_only": true,
   "deepseek_model": "deepseek-flash",
-  "deepseek_daily_limit_usd": 5.0,
+  "deepseek_monthly_limit_usd": 10.0,
+  "deepseek_background_monthly_usd": 5.0,
+  "deepseek_manual_monthly_usd": 4.0,
+  "deepseek_monthly_reserve_usd": 1.0,
+  "deepseek_job_limit_usd": 0.30,
   "deepseek_background_reserve_usd": 0.20,
   "deepseek_usd_cny_budget_rate": 7.5,
   "scheduled_news_push_enabled": false,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import replace
+from dataclasses import replace, asdict
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
@@ -44,7 +44,7 @@ from .segmented_analysis_service import (
     run_segmented_theme_analysis,
     should_use_segmented_analysis,
 )
-from .source_rank import select_theme_sources_for_prompt, theme_source_relevance
+from .source_rank import select_theme_sources_for_prompt, theme_source_relevance, make_source_items
 from .evidence_pack_service import attach_unified_evidence_pack
 from .error_classification_service import classify_error
 from .ai_data_center import attach_ai_data_center
@@ -80,7 +80,7 @@ class _GeminiSegmentedClient:
         return self.service.generate_report(prompt, enable_grounding=False)
 
 
-from .deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DisabledProvider, task_context
+from .deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DisabledProvider, task_context, account_options
 from .deepseek_search_service import DeepSeekSearchService
 
 
@@ -110,9 +110,7 @@ class ResearchCenter:
         if self.config.deepseek_only:
             account = DeepSeekAccount.shared(
                 self.config.deepseek_api_key, ROOT_DIR / ".cache" / "deepseek",
-                background_reserve_usd=self.config.deepseek_background_reserve_usd,
-                daily_limit_usd=self.config.deepseek_daily_limit_usd,
-                usd_cny_budget_rate=self.config.deepseek_usd_cny_budget_rate,
+                **account_options(self.config, ROOT_DIR),
             )
             self.deepseek = DeepSeekService(account, model=self.config.deepseek_model)
             self.deepseek_organizer = DeepSeekService(account, model=self.config.deepseek_model, organizer=True, max_output_tokens=8192)
@@ -759,6 +757,29 @@ class ResearchCenter:
                 structured_data["ai_status"] = "fallback_success"
                 markdown = fallback_markdown(request, structured_data, sources, fallback_reason)
 
+        if ai_used and not fallback_reason and self.config.deepseek_only:
+            from .report_numeric_validation import validate_valuation_tables, validate_valuation_repair
+            numeric = validate_valuation_tables(markdown)
+            if not numeric["passed"]:
+                structured_data["numeric_validation_original"] = {**numeric, "markdown": markdown}
+                repair_prompt = ("請只修正下列報告的數值一致性，保留所有必要章節、來源、風險、事實與情境假設。"
+                    "不得新編事實，不得以本地規則取代投研結論。估值的 EPS×本益比上下限須精確，另行折溢價請分欄。只輸出完整正式報告。\n"
+                    + "\n".join(numeric["errors"]) + "\n\n" + markdown)
+                write_prompt_log(request, repair_prompt, self.config.deepseek_model, False, sources, {"purpose":"numeric_consistency_repair"})
+                try:
+                    repaired = self.deepseek.generate_report(repair_prompt).markdown
+                    revised = validate_valuation_repair(markdown, repaired)
+                    if revised["passed"]:
+                        markdown = repaired
+                    else:
+                        structured_data["numeric_validation_original"]["repair_candidate"] = repaired
+                    numeric = revised
+                except Exception as exc:
+                    numeric["repair_error"] = str(exc)
+                if not numeric["passed"]:
+                    structured_data["ai_status"] = "partial_success"
+            structured_data["numeric_validation"] = numeric
+
         _emit_progress(progress, "整理 Telegram 摘要與報告檔案")
         summary = summarize_for_telegram(markdown)
         draft_path = write_knowledge_draft(request, markdown, sources, structured_data)
@@ -1066,12 +1087,16 @@ class ResearchCenter:
             classification_status = str(meta.get("classification_status") or "ai_success")
             ai_status = "partial_success" if classification_status == "partial_success" else "ai_success"
             ai_used = int(meta.get("ai_classified_count") or 0) > 0
+            news_sources = make_source_items([{"title":item.title,"url":item.url,"published_date":item.published_at,
+                "snippet":item.summary,"provider":item.source} for item in items])
             return ResearchCenterResult(
                 status=("partial_success" if self.config.deepseek_only and (not ai_used or ai_status != "ai_success") else "success"), request=request, summary=summary, markdown=markdown,
                 report_json={
                     "command": "news",
                     "action": "refresh",
                     "meta": meta,
+                    "items": [item.to_dict() for item in items],
+                    "sources": [asdict(source) for source in news_sources],
                     "metadata": {
                         "ai_status": ai_status,
                         "classification_status": classification_status,
@@ -1079,8 +1104,9 @@ class ResearchCenter:
                         "local_fallback_count": int(meta.get("local_fallback_count") or 0),
                     },
                 },
-                sources=[], artifacts=ReportArtifacts("news", "refresh", Path("__no_md__"), Path("__no_html__"), Path("__no_json__"), Path("__no_sources__")),
+                sources=news_sources, artifacts=ReportArtifacts("news", "refresh", Path("__no_md__"), Path("__no_html__"), Path("__no_json__"), Path("__no_sources__")),
                 ai_used=ai_used,
+                ai_model=self.config.deepseek_model if self.config.deepseek_only and ai_used else ai_model,
             )
 
         if action == "7d":
@@ -1423,6 +1449,13 @@ class _GeminiDiscoveryRunner:
     def run_discovery_flow(self, request: CommandRequest, sources: list[SourceItem], structured_data: dict[str, Any], use_grounding: bool, progress: ProgressCallback | None) -> tuple[list[SourceItem], bool]:
         if self._center.config.deepseek_only:
             tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources)
+            if request.command == "research" or (request.command == "value_scan" and request.target_type == "stock"):
+                stock = structured_data.get("stock") or next(iter(structured_data.get("candidates") or []), {})
+                name = stock.get("name") or request.target or ""
+                day = request.report_date or date.today()
+                year, quarter = (day.year, (day.month-1)//3) if day.month > 3 else (day.year-1, 4)
+                tasks = [{"label":"最新官方季度財報","objective":"查證截至指定日已公布的最新公司官方財報，未公布不得捏造；不以媒體標題替代公告正文。",
+                    "queries":[f"{name} {year} 第{quarter}季 財務報告 官方 新聞稿 每股盈餘", f"{name} 最新 季度財報 投資人關係 官方公告"]}, *tasks]
             structured_data["search_query_log"] = _build_search_query_log(tasks)
             self._run_deepseek(request, tasks, sources, structured_data, progress)
             gaps = build_required_data_gap_summary(request, sources, structured_data)

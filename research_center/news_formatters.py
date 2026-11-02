@@ -27,7 +27,7 @@ def _news_id_label(item: NewsItem) -> str:
 
 
 def _tag_label_text(item: NewsItem) -> str:
-    labels = [NEWS_SIGNAL_TAGS.get(tag, tag) for tag in (item.tags or [])[:3]]
+    labels = [NEWS_SIGNAL_TAGS.get(tag, "其他線索（待確認）") for tag in (item.tags or [])[:3]]
     return " / ".join(labels)
 
 
@@ -171,8 +171,12 @@ def format_news_refresh_result(
                 lines.append(f"   摘要：{summary[:140]}")
             risk = item.news_heat_risk_reason or ""
             signal = item.news_signal_reason or ""
-            lines.append(f"   反證/風險：{risk or ('含反證標籤' if 'counter_evidence' in (item.tags or []) else '未見明確反證')}")
-            lines.append(f"   資料不足：{signal or '缺少更完整正文或官方確認時，僅作新聞線索參考'}")
+            if signal:
+                lines.append(f"   分析線索：{signal}")
+            counter = "；".join(item.counter_evidence or [])
+            gaps = "；".join(item.missing_data or [])
+            lines.append(f"   反證/風險：{'；'.join(dict.fromkeys(part for part in (counter, risk) if part)) or '尚未提供可核對的反證，不能視為沒有風險'}")
+            lines.append(f"   資料不足：{gaps or '未提供逐項資料缺口；需核對原文與官方確認'}")
     if int(meta.get("webfetch_success", 0) or 0) == 0 and int(meta.get("search_sources", 0) or 0) > 0:
         lines.append("")
         lines.append("限制：本次多數來源只有搜尋摘要，缺少正文補取，分類可作快訊參考，重要結論仍需搭配來源原文確認。")
@@ -207,6 +211,10 @@ def format_news_detail(item: NewsItem | None) -> str:
         lines.append(f"線索分：{item.news_signal_score}；過熱風險：{item.news_heat_risk_score}")
     if item.news_signal_reason:
         lines.append(f"線索原因：{_html_text(item.news_signal_reason)}")
+    if item.counter_evidence:
+        lines.append(f"反證：{_html_text('；'.join(item.counter_evidence))}")
+    if item.missing_data:
+        lines.append(f"資料不足：{_html_text('；'.join(item.missing_data))}")
     if item.news_heat_risk_reason:
         lines.append(f"過熱原因：{_html_text(item.news_heat_risk_reason)}")
     summary = (item.summary or item.full_text or "").strip().replace("\n", " ")

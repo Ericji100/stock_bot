@@ -199,7 +199,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
     async def test_1000_topic_maintain_runs_minimax_command(self):
         context = _FakeContext()
         fake_request = SimpleNamespace(command="topic_maintain", ai_model="minimax")
-        fake_result = SimpleNamespace(summary="變更包已產生\nID：change_test")
+        fake_result = SimpleNamespace(status="success", summary="變更包已產生\nID：change_test")
         parse_command = MagicMock(return_value=fake_request)
 
         class FakeCenter:
@@ -225,6 +225,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         fake_request = SimpleNamespace(command="topic_maintain", ai_model="minimax")
 
         class FakeResult:
+            status = "success"
             summary = "摘要文字"
             markdown = "markdown 文字"
 
@@ -260,7 +261,6 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             "12:30",
             "13:50",
             "17:45",
-            "08:45",
             "18:00",
             "20:30",
             "21:30",
@@ -292,9 +292,9 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
     def test_news_jobs_have_stable_names_for_task_ids(self):
         source = Path(main.__file__).read_text(encoding="utf-8")
 
-        self.assertIn('name="08:45 定時新聞整理"', source)
+        self.assertNotIn('name="08:45 定時新聞整理"', source)
         self.assertIn('name="18:00 定時新聞整理"', source)
-        self.assertIn('ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理"', source)
+        self.assertNotIn('ScheduledJobRegistration("scheduled:news:0845", "08:45 定時新聞整理"', source)
         self.assertIn('ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理"', source)
 
     async def test_event_loop_block_with_grace_still_runs_job(self):

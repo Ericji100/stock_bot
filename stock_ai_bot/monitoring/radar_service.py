@@ -56,6 +56,7 @@ DEFAULT_SCORING_VERSION = "v3"
 SUPPORTED_SCORING_VERSIONS = {"v1", "v2", "v3"}
 RADAR_AI_CHUNK_SIZE = 5
 RADAR_AI_PROMPT_MAX_CHARS = 90_000
+RADAR_DEEPSEEK_PROMPT_MAX_CHARS = 600_000
 RADAR_AI_COMPACT_SOURCE_LIMIT = 10
 RADAR_AI_COMPACT_LIST_LIMIT = 12
 RADAR_AI_COMPACT_STRING_LIMIT = 300
@@ -349,7 +350,9 @@ def run_radar(
         save_radar_result(result)
         return result
 
+    _emit(progress, "Radar：補齊候選股營收歷史")
     _attach_revenue_scores(candidates, target_date)
+    _emit(progress, "Radar：建立全市場籌碼評級（沿用既有母體與評分規則）")
     _attach_chip_scores(candidates, target_date, progress)
     _attach_local_news(candidates, target_date)
     prepare_radar_scoring_data(candidates, target_date, progress, scoring_version=radar_request.scoring_version)
@@ -453,7 +456,7 @@ def format_radar_report(result: RadarResult, *, limit: int = 15) -> str:
     if evidence_status.get("selected"):
         lines.extend(
             [
-                "Evidence Pack："
+                "資料證據包："
                 f"{evidence_status.get('success', 0)}/{evidence_status.get('selected', 0)} 成功，"
                 f"{evidence_status.get('timeout', 0)} 檔逾時，"
                 f"{evidence_status.get('failed', 0)} 檔失敗",
@@ -1346,6 +1349,11 @@ def _attach_local_news(candidates: list[RadarCandidate], analysis_date: date) ->
                         "source": item.source,
                         "published_at": item.published_at,
                         "importance_score": item.importance_score,
+                        "summary": item.summary,
+                        "url": item.url,
+                        "tags": item.tags,
+                        "counter_evidence": item.counter_evidence,
+                        "missing_data": item.missing_data,
                     }
                 )
         candidate.news_items = matched[:5]
@@ -2563,6 +2571,9 @@ def _attach_ai_comments(
 
     chunk_records: list[dict[str, Any]] = []
     comments: dict[str, dict[str, Any]] = {}
+    prompt_max_chars = (RADAR_DEEPSEEK_PROMPT_MAX_CHARS
+                        if model == "deepseek" and getattr(load_research_config(), "deepseek_only", False) is True
+                        else RADAR_AI_PROMPT_MAX_CHARS)
     low_model_digest = _attach_radar_low_model_digest(selected, analysis_date, progress)
     if not low_model_digest:
         low_model_digest = {
@@ -2572,7 +2583,8 @@ def _attach_ai_comments(
             "reason": "radar_low_model_digest_not_available",
         }
     for chunk_index, chunk in enumerate(_chunks(selected, RADAR_AI_CHUNK_SIZE), 1):
-        prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date, low_model_digest=low_model_digest)
+        prompt_jobs = _build_ai_comment_prompt_jobs(chunk, analysis_date, low_model_digest=low_model_digest,
+                                                  max_chars=prompt_max_chars)
         record: dict[str, Any] = {
             "chunk_index": chunk_index,
             "codes": [item.code for item in chunk],
@@ -2589,7 +2601,7 @@ def _attach_ai_comments(
                 "status": "pending",
             }
             try:
-                if len(prompt) > RADAR_AI_PROMPT_MAX_CHARS:
+                if len(prompt) > prompt_max_chars:
                     raise ValueError(f"radar compact prompt too large: {len(prompt)} chars")
                 _emit(
                     progress,
@@ -2651,7 +2663,7 @@ def _attach_ai_comments(
         "prompt_chars": sum(int(record.get("prompt_chars") or 0) for record in chunk_records),
         "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
         "candidate_count": len(selected),
-        "prompt_max_chars": RADAR_AI_PROMPT_MAX_CHARS,
+        "prompt_max_chars": prompt_max_chars,
     }
     coverage = build_ai_workflow_coverage(
         "radar",
@@ -2669,7 +2681,7 @@ def _attach_ai_comments(
         "mode": "radar_compact_ai",
         "model": model,
         "chunk_size": RADAR_AI_CHUNK_SIZE,
-        "prompt_max_chars": RADAR_AI_PROMPT_MAX_CHARS,
+        "prompt_max_chars": prompt_max_chars,
         "chunk_count": len(chunk_records),
         "chunks": chunk_records,
         "comment_count": sum(1 for item in selected if item.ai_comment.get("status") == "ok"),
@@ -4839,21 +4851,27 @@ def _build_ai_comment_prompt_jobs(
     analysis_date: date,
     *,
     low_model_digest: dict[str, Any] | None = None,
+    max_chars: int | None = None,
 ) -> list[dict[str, Any]]:
+    if max_chars is None:
+        max_chars = RADAR_AI_PROMPT_MAX_CHARS
     normal_prompt = _build_ai_comment_prompt(chunk, analysis_date, compact_profile="normal", low_model_digest=low_model_digest)
-    if len(normal_prompt) <= RADAR_AI_PROMPT_MAX_CHARS:
+    if len(normal_prompt) <= max_chars:
         return [{"codes": [item.code for item in chunk], "profile": "normal", "prompt": normal_prompt}]
 
     if len(chunk) > 1:
         midpoint = len(chunk) // 2
-        return [*_build_ai_comment_prompt_jobs(chunk[:midpoint], analysis_date, low_model_digest=low_model_digest),
-                *_build_ai_comment_prompt_jobs(chunk[midpoint:], analysis_date, low_model_digest=low_model_digest)]
+        return [*_build_ai_comment_prompt_jobs(chunk[:midpoint], analysis_date, low_model_digest=low_model_digest, max_chars=max_chars),
+                *_build_ai_comment_prompt_jobs(chunk[midpoint:], analysis_date, low_model_digest=low_model_digest, max_chars=max_chars)]
+
+    if max_chars > RADAR_AI_PROMPT_MAX_CHARS:
+        return [{"codes":[item.code for item in chunk], "profile":"normal", "prompt":normal_prompt}]
 
     jobs: list[dict[str, Any]] = []
     for item in chunk:
         for profile in ("normal", "tight", "minimal"):
             prompt = _build_ai_comment_prompt([item], analysis_date, compact_profile=profile, low_model_digest=low_model_digest)
-            if len(prompt) <= RADAR_AI_PROMPT_MAX_CHARS or profile == "minimal":
+            if len(prompt) <= max_chars or profile == "minimal":
                 jobs.append({"codes": [item.code], "profile": profile, "prompt": prompt})
                 break
     return jobs

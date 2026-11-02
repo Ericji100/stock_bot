@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from .models import SourceItem
 from .preferred_sources import match_preferred_source, preferred_source_weight
 from .source_date_normalizer import normalize_published_date_with_status
-from .source_text_cleaner import clean_source_text
+from .source_text_cleaner import clean_source_text, clean_source_title
 
 LEVEL_1_DOMAINS = ("twse.com.tw", "tpex.org.tw", "mops.twse.com.tw", "mopsov.twse.com.tw")
 LEVEL_2_DOMAINS = ("moneydj.com", "cnyes.com", "ctee.com.tw", "udn.com", "digitimes.com", "trendforce.com", "cna.com.tw")
@@ -44,7 +44,8 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
     seen: set[str] = set()
     for raw in raw_sources:
         url = str(raw.get("url") or "").strip()
-        title = clean_source_text(raw.get("title") or url or "未命名來源")
+        original_title = clean_source_text(raw.get("title") or url or "未命名來源")
+        title = clean_source_title(original_title, url)
         snippet = clean_source_text(raw.get("snippet")) if raw.get("snippet") else raw.get("snippet")
         if not url or url in seen:
             continue
@@ -65,6 +66,9 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
             inferred_values=(title, snippet, raw.get("summary"), raw.get("content"), url),
         )
         found_by = list(raw.get("found_by", []))
+        if title != original_title:
+            found_by.append("source_title:code_isolated")
+            provider_detail = f"{provider_detail}；標題程式碼已隔離".strip("；")
         if date_status != "unknown":
             marker = f"source_date:{date_status}"
             if marker not in found_by:

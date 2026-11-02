@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 from .models import CommandRequest, SourceItem
 from .source_date_normalizer import normalize_published_date_with_status
-from .source_text_cleaner import clean_source_text
+from .source_text_cleaner import clean_source_text, clean_source_title
 
 
 def normalize_source_items(
@@ -28,7 +28,10 @@ def normalize_source_items(
         used_in_section = list(source.used_in_section or [])
         if request.command and request.command not in used_in_section:
             used_in_section.append(request.command)
-        title = clean_source_text(source.title)
+        original_title = clean_source_text(source.title)
+        title = clean_source_title(original_title, source.url)
+        if title != original_title and "source_title:code_isolated" not in found_by:
+            found_by.append("source_title:code_isolated")
         snippet = clean_source_text(source.snippet) if source.snippet else source.snippet
         published_date, date_status = normalize_published_date_with_status(
             explicit_values=(source.published_date,),

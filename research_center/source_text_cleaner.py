@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from html import unescape
 from typing import Any
+from urllib.parse import urlparse
 
 
 _MOJIBAKE_MARKERS = (
@@ -32,6 +33,16 @@ def clean_source_text(value: Any) -> str:
         return ""
     repaired = _repair_utf8_mojibake(text)
     return _normalize_spaces(repaired)
+
+
+def clean_source_title(value: Any, url: str = "") -> str:
+    """Isolate script/style dumps misidentified as titles, not financial prose."""
+    title = str(value or "")
+    code_markers = re.findall(r"window\[|function\s*\(|font-family\s*:|box-sizing\s*:|@media\b|\.cm-", title)
+    if len(title) > 2000 and len(code_markers) >= 3:
+        host = urlparse(url).netloc or "來源網站"
+        return f"來源網頁（{host}）"
+    return title
 
 
 def _repair_utf8_mojibake(text: str) -> str:

@@ -10,12 +10,22 @@ from typing import Any
 from .deepseek_service import DeepSeekService, DeepSeekUnavailable, TASK
 from .models import SourceItem
 from .source_rank import make_source_items
+from .source_text_cleaner import clean_source_title
 
 
 @dataclass(frozen=True)
 class DiscoveryResult:
     sources: list[SourceItem]
     diagnostics: dict[str, Any]
+
+
+def _safe_result_title(row: dict, url: str = "") -> dict:
+    title = str(row.get("title") or "")
+    normalized = clean_source_title(title, row.get("url") or url)
+    if normalized != title:
+        # The untouched provider response stays in the cache for provenance.
+        return {**row, "title": normalized, "title_normalization": "code_isolated"}
+    return row
 
 
 class DeepSeekSearchService:
@@ -40,18 +50,18 @@ class DeepSeekSearchService:
                 data = self.client._post("v1/tools/search", body, Decimal("0.00075"))
                 if data.get("results"):
                     self.client.account.cache(key, data, 900)
-        return {**data, "cache_hit": cached}
+        return {**data, "results": [_safe_result_title(row) for row in data.get("results") or []], "cache_hit": cached}
 
     def fetch(self, url: str) -> dict:
         key = "fetch:" + hashlib.sha256(url.encode()).hexdigest()
         with self.client.account.singleflight(key):
             data = self.client.account.cached(key)
             if data is not None:
-                return {**data, "cache_hit": True}
+                return {**_safe_result_title(data, url), "cache_hit": True}
             data = self.client._post("v1/tools/fetch", {"url": url}, Decimal("0.00075"))
             if data.get("content"):
                 self.client.account.cache(key, data, 3600)
-            return {**data, "cache_hit": False}
+            return {**_safe_result_title(data, url), "cache_hit": False}
 
     def discover(self, request, tasks, progress=None) -> DiscoveryResult:
         date = request.report_date.isoformat() if request.report_date else TASK.get()[2]
@@ -62,7 +72,7 @@ class DeepSeekSearchService:
             queries = []
             for group in task.get("queries") or []:
                 queries.extend(group.get("items", []) if isinstance(group, dict) else [str(group)])
-            run = {"label": task.get("label"), "query_count": 0, "cache_hit_count": 0, "error_count": 0}
+            run = {"label": task.get("label"), "query_count": 0, "cache_hit_count": 0, "error_count": 0, "title_code_isolated_count": 0}
             for query in queries:
                 if query in seen_queries:
                     continue
@@ -76,10 +86,13 @@ class DeepSeekSearchService:
                     run["query_count"] += 1
                     run["cache_hit_count"] += bool(result.get("cache_hit"))
                     for row in result.get("results") or []:
+                        isolated = row.get("title_normalization") == "code_isolated"
+                        run["title_code_isolated_count"] += int(isolated)
                         raw_sources.append({"title": row.get("title"), "url": row.get("url"),
                             "snippet": row.get("content") or row.get("summary") or row.get("snippet"),
                             "published_date": row.get("date"), "provider": self.provider,
-                            "found_by": [query], "provider_detail": task.get("label", "")})
+                            "found_by": [query, *(["source_title:code_isolated"] if isolated else [])],
+                            "provider_detail": task.get("label", "") + ("；標題程式碼已隔離，原始回應保留" if isolated else "")})
                 except DeepSeekUnavailable:
                     raise
                 except Exception:

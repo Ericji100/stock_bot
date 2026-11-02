@@ -15,7 +15,7 @@ from uuid import uuid4
 import httpx
 
 from research_center.deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DeepSeekError, ai_task
-from research_center.deepseek_search_service import DeepSeekSearchService
+from research_center.deepseek_search_service import DeepSeekSearchService, _safe_result_title
 from research_center.command_parser import parse_command_text, validate_deepseek_request
 
 
@@ -392,3 +392,46 @@ class DeepSeekServiceTests(unittest.TestCase):
         self.assertEqual(result.content_status, "partial")
         self.assertEqual(result.fetch_quality, "low")
         self.assertIn("no_keyword_match", result.failure_reason)
+
+    def test_provider_title_code_is_isolated_without_losing_evidence(self):
+        title = "window['dataLayer']=[];function(){font-family:arial;box-sizing:border-box;}" * 100
+        row = {"title": title, "url": "https://example.com/article", "content": "公司正式公告與營收數據"}
+        normalized = _safe_result_title(row)
+        self.assertEqual(normalized["content"], row["content"])
+        self.assertEqual(normalized["title"], "來源網頁（example.com）")
+        self.assertEqual(row["title"], title)
+        self.assertEqual(normalized["title_normalization"], "code_isolated")
+
+    def test_normal_financial_text_is_not_truncated_as_a_title(self):
+        title = "公司本季營收成長，毛利率與自由現金流皆改善。" * 150
+        row = {"title": title, "url": "https://example.com/article"}
+        self.assertEqual(_safe_result_title(row), row)
+
+    def test_cached_search_is_normalized_without_mutating_raw_response(self):
+        title = "window['dataLayer']=[];function(){font-family:arial;}" * 100
+        body = {"results": [{"title": title, "url": "https://example.com/article", "summary": "證據"}]}
+        with patch.object(self.account, "cached", return_value=body):
+            result = DeepSeekSearchService(self.client).search("公司公告")
+        self.assertEqual(result["results"][0]["title"], "來源網頁（example.com）")
+        self.assertEqual(body["results"][0]["title"], title)
+        self.assertEqual(self.posts(), [])
+
+    def test_shared_source_ingestion_blocks_forum_code_title(self):
+        from research_center.source_rank import make_source_items
+        title = "window['dataLayer']=[];function(){font-family:arial;}" * 100
+        sources = make_source_items([{"title": title, "url": "https://www.cmoney.tw/forum/", "snippet": "保留論壇來源"}])
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0].snippet, "保留論壇來源")
+        self.assertEqual(sources[0].title, "來源網頁（www.cmoney.tw）")
+        self.assertIn("source_title:code_isolated", sources[0].found_by)
+
+    def test_existing_source_objects_are_normalized_before_model_input(self):
+        from research_center.search_source_normalizer import normalize_source_items
+        from research_center.models import SourceItem
+        title = "window['dataLayer']=[];function(){font-family:arial;}" * 100
+        original = SourceItem("S140", title, "https://www.cmoney.tw/forum/", "Level 4", snippet="原始內容")
+        normalized = normalize_source_items([original], parse_command_text("/research 2330"))
+        self.assertEqual(normalized[0].source_id, "S140")
+        self.assertEqual(normalized[0].snippet, original.snippet)
+        self.assertEqual(original.title, title)
+        self.assertEqual(normalized[0].title, "來源網頁（www.cmoney.tw）")

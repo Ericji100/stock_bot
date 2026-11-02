@@ -19,6 +19,7 @@ import requests
 
 from .models import SourceItem
 from .source_date_normalizer import normalize_published_date
+from .source_text_cleaner import clean_source_title
 
 ProgressCallback = Callable[[str], None] | None
 
@@ -75,6 +76,8 @@ def fetch_web_content(
         cache_key = "page:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
         cached = client.account.cached(cache_key)
         if cached is not None:
+            if cached.get("title"):
+                cached["title"] = clean_source_title(cached["title"], url)
             return WebFetchResult(**cached)
         try:
             local_result = _fetch_with_requests(url, timeout, expected_terms=expected_terms)
@@ -240,7 +243,7 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
     chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
     total_chars = len(text)
     title = soup.find("title")
-    title_text = title.get_text(strip=True) if title else None
+    title_text = clean_source_title(title.get_text(strip=True), url) if title else None
     quality, reason = _assess_fetch_quality(url, text, title_text, published_date, expected_terms)
     if chinese_chars >= MIN_CHINESE_CHARS or total_chars >= MIN_ENGLISH_CHARS:
         return WebFetchResult(
@@ -258,7 +261,7 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
         combined_reason = f"{short_reason}; {reason}" if reason else short_reason
         return WebFetchResult(
             url=url,
-            title=soup.find("title").get_text(strip=True) if soup.find("title") else None,
+            title=title_text,
             content=text[:5000],
             published_date=published_date,
             content_status="partial",

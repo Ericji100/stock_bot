@@ -2477,6 +2477,11 @@ def _build_core_input_audit(command: str, structured_data: dict[str, Any], paylo
         elif _has_semantic_value(sent_value):
             status = "direct"
             note = "高階模型已收到完整核心資料或完整分段資料。"
+            if isinstance(sent_value, dict):
+                if sent_value.get('representation') == 'stock_code_refs':
+                    note += ' 入模筆數按股票代號計算，完整股票欄位位於同包股票主檔，引用不代表刪除。'
+                elif not sent_value.get('資料未刪除'):
+                    note += ' 物件計數為欄位數，與原始表示法不同時不能當成資料保留比例。'
         elif _has_semantic_value(raw_value):
             status = "appendix_only"
             note = "原始資料存在，但本次未直接送入高階模型。"
@@ -2627,6 +2632,13 @@ def _has_semantic_value(value: Any) -> bool:
 
 def _semantic_count(value: Any) -> int:
     if isinstance(value, dict):
+        if value.get('representation') == 'stock_code_refs' and isinstance(value.get('stock_codes'), list):
+            return len(value['stock_codes'])
+        if value.get('資料型態') == '完整分段清單':
+            return sum(len(chunk['資料']) for chunk in value.get('段落', [])
+                       if isinstance(chunk, dict) and isinstance(chunk.get('資料'), list))
+        if value.get('schema_version') == COMPLETE_SEGMENT_CONTEXT_SCHEMA_VERSION and 'payload' in value:
+            return _semantic_count(value['payload'])
         return len(value)
     if isinstance(value, (list, tuple, set)):
         return len(value)

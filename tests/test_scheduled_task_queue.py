@@ -193,7 +193,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
 
         enqueue.assert_awaited_once()
         self.assertIs(enqueue.await_args.args[0], context)
-        self.assertIn("10:00 AI題材庫維護", enqueue.await_args.args[1])
+        self.assertIn("22:30 AI題材庫維護", enqueue.await_args.args[1])
         self.assertTrue(callable(enqueue.await_args.args[2]))
 
     async def test_1000_topic_maintain_runs_minimax_command(self):
@@ -249,8 +249,8 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         source = Path(main.__file__).read_text(encoding="utf-8")
 
         self.assertIn("scheduled_topic_maintain", source)
-        self.assertIn("time(hour=10, minute=0, tzinfo=tw_tz)", source)
-        self.assertIn('name="10:00 AI題材庫維護（DeepSeek Flash）"', source)
+        self.assertIn("time(hour=22, minute=30, tzinfo=tw_tz)", source)
+        self.assertIn('name="22:30 AI題材庫維護（DeepSeek Flash）"', source)
 
     def test_registered_scheduled_jobs_summary_covers_expected_jobs(self):
         from research_center.scheduled_task_service import format_registered_scheduled_jobs
@@ -268,7 +268,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
             "18:30",
             "21:00",
             "每 2 小時",
-            "10:00",
+            "22:30",
         ):
             self.assertIn(expected, summary)
         self.assertIn("排隊執行", summary)
@@ -345,7 +345,7 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
 
     def test_scheduled_jobs_map_to_background_resource_groups(self):
         self.assertEqual(main._scheduled_resource_group("scheduled:news:0845"), "background_news")
-        self.assertEqual(main._scheduled_resource_group("scheduled:topic_maintain:1000"), "background_ai_maintenance")
+        self.assertEqual(main._scheduled_resource_group("scheduled:topic_maintain:2230"), "background_ai_maintenance")
         self.assertEqual(main._scheduled_resource_group("scheduled:radar:2130"), "background_ai_maintenance")
         self.assertEqual(main._scheduled_resource_group("scheduled:chip_cache:2100"), "background_backfill")
         self.assertEqual(main._scheduled_resource_group("scheduled:full_backfill_check"), "background_backfill")

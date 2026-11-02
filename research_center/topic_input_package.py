@@ -3,7 +3,76 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from typing import Any
+
+
+def intern_topic_payloads(payloads: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Replace only byte-identical repeated JSON values with in-prompt references."""
+    counts: Counter[str] = Counter()
+
+    def identity(value):
+        if not isinstance(value, (dict, list, str)):
+            return None
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        return encoded if len(encoded) >= 256 else None
+
+    def count(value):
+        key = identity(value)
+        if key is not None:
+            counts[key] += 1
+        if isinstance(value, dict):
+            for item in value.values():
+                count(item)
+        elif isinstance(value, list):
+            for item in value:
+                count(item)
+
+    count(payloads)
+    records = {}
+    keys = {}
+
+    def encode(value):
+        key = identity(value)
+        if key is not None and counts[key] > 1:
+            if key not in keys:
+                record_id = f"R{len(keys) + 1:04d}"
+                keys[key] = record_id
+                records[record_id] = children(value)
+            return {"$topic_ref": keys[key]}
+        return children(value)
+
+    def children(value):
+        if isinstance(value, dict):
+            return {key: encode(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [encode(item) for item in value]
+        return value
+
+    # Reserve this exact object shape so source data cannot be mistaken for a reference.
+    def has_reserved_reference(value):
+        if isinstance(value, dict):
+            return set(value) == {"$topic_ref"} or any(has_reserved_reference(v) for v in value.values())
+        if isinstance(value, list):
+            return any(has_reserved_reference(v) for v in value)
+        return False
+
+    if has_reserved_reference(payloads):
+        return payloads, {}
+    return {key: encode(value) for key, value in payloads.items()}, records
+
+
+def append_topic_shared_records(prompt: str, variables: dict[str, str]) -> str:
+    records = variables.get("topic_shared_records_json", "{}")
+    if records == "{}":
+        return prompt
+    return prompt + (
+        '\n\n## 本批完整共用資料（精確去重，非摘要）\n'
+        '任何 {"$topic_ref":"R編號"} 都等同於下方相同編號的完整值，必須展開理解；'
+        '可含巢狀引用。引用不是資料缺漏，不可跳過。每個不同主張、日期與反證均保留，'
+        '同網址的不同內容不視為相同證據。只回傳本次分析結果，不抄回整份共用表。\n'
+        f'```json\n{records}\n```'
+    )
 
 
 def merge_topic_sources(data: dict[str, Any]) -> list[dict]:
@@ -89,10 +158,12 @@ def topic_stage_variables(data,variables,batch=None):
         'external_topic_source_caches_json':(data.get('external_topic_source_caches') or {}) if batch is None else {},'low_model_digest_json':{}}
     if batch is not None:
         payloads['topic_candidates_json']=batch
-    for key,value in payloads.items():
-        result[key]=json.dumps(value,ensure_ascii=False,default=str)
     # Both templates receive the same unique full source rows, never duplicated body dumps.
     if batch is not None:
-        result['web_fetched_sources_json']=result['discovery_sources_json']
-        result['discovery_sources_json']='[]'
+        payloads['web_fetched_sources_json']=payloads['discovery_sources_json']
+        payloads['discovery_sources_json']=[]
+    payloads, records = intern_topic_payloads(payloads)
+    for key,value in payloads.items():
+        result[key]=json.dumps(value,ensure_ascii=False,default=str)
+    result['topic_shared_records_json']=json.dumps(records,ensure_ascii=False,default=str)
     return result

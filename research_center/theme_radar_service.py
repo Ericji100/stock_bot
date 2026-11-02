@@ -11,7 +11,7 @@ from typing import Any, Callable
 from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_stock_universe
 
 from .config import ROOT_DIR
-from .market_movers_service import build_market_movers, rows_from_market_movers
+from .market_movers_service import _price_date_audit, build_market_movers, rows_from_market_movers
 from .news_repository import NewsRepository
 from .recent_scans import load_recent_scan_results
 from .sector_alias_service import (
@@ -127,7 +127,8 @@ def collect_theme_radar_data(
         "sector_strength": sector_strength,
         "news_theme_stats": news_stats,
         "topic_library_summary": _topic_library_summary(topic_library),
-        "data_quality": _data_quality(topic_library, mapped_rows, news_stats),
+        "data_quality": {**_data_quality(topic_library, mapped_rows, news_stats),
+                         "market_movers_data_quality": market_movers.get("data_quality", {})},
         "analysis_policy": _analysis_policy(),
     }
 
@@ -221,6 +222,7 @@ def build_theme_flow_data(
             "related_stock_count": len(related),
             "market_data_date": _market_data_date_from(market_movers),
             "stock_rows_source": stock_rows_source,
+            "market_movers_data_quality": (market_movers or {}).get("data_quality", {}),
         },
         "analysis_policy": _analysis_policy(),
     }
@@ -805,6 +807,22 @@ def _load_cached_market_movers_snapshot(target_date: date) -> dict[str, Any] | N
             continue
         if not isinstance(payload, dict):
             continue
+        data_quality = dict(payload.get('data_quality') or {})
+        if not data_quality.get('price_date_audit'):
+            # Legacy snapshots lack all input rows; disclose the scope rather
+            # than treating their maximum date as full-market freshness.
+            visible = {}
+            for values in payload.values():
+                if isinstance(values, list):
+                    for row in values:
+                        if isinstance(row, dict) and (code := row.get('code') or row.get('symbol')):
+                            visible[(code, row.get('price_date'))] = row
+            audit = _price_date_audit(list(visible.values()), target_date)
+            audit['scope'] = 'snapshot_visible_stock_rows_only'
+            audit['warnings'].append('舊快照只可核對已保存的股票列，日期分布不是全市場覆蓋率；未重新下載行情。')
+            data_quality['price_date_audit'] = audit
+            payload['data_quality'] = data_quality
+            payload['market_data_date'] = audit['dominant_price_date'] or 'unknown'
         if path != exact_path:
             payload = dict(payload)
             data_quality = dict(payload.get("data_quality") or {})

@@ -32,18 +32,20 @@ from .topic_repository import (
     write_topic_audit_log,
 )
 from .topic_quality import normalize_change_pack_quality
+from .topic_citation_audit import audit_topic_citations, quarantine_topic_source_leads
 from .topic_pipeline_service import run_topic_pipeline
 from .models import CandidateSnapshot
 
 
 TOPIC_AI_STAGE_TIMEOUT_SECONDS = 120.0
+TOPIC_CANDIDATE_OUTPUT_TOKENS = 32768
 
 
 def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources, prompts):
     payload={"mode":mode.value,"report_date":report_date,"model":model,
              "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
     stable=_stable_fingerprint_payload(payload)
-    return 'topic-workflow-v2:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
+    return 'topic-workflow-v3:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -498,7 +500,7 @@ def run_topic_maintain(
             [template,_load_prompt('topic_candidate_extract'),_load_prompt('topic_detail_expand')])
         cached = workflow_account.cached(workflow_key)
         previous = load_change_pack(cached.get('change_id','')) if cached else None
-        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True:
+        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True and previous.extra.get('evidence_review_complete') is True:
             previous.extra['workflow_cache_hit']=True
             workflow_account.activity('topic_workflow',True,{'change_id':previous.change_id})
             emit('本次資料、日期、模型與提示詞未變，重用已完整審核的待確認更新包；不重複付費分析。')
@@ -634,7 +636,7 @@ def run_topic_maintain(
             if official:
                 client = center.deepseek_organizer if stage_name.startswith("candidate") else center.deepseek
                 if stage_name.startswith("candidate") and callable(getattr(client, "with_output_limit", None)):
-                    client = client.with_output_limit(max(16384, client.max_output_tokens))
+                    client = client.with_output_limit(max(TOPIC_CANDIDATE_OUTPUT_TOKENS, client.max_output_tokens))
                 result = client.generate_json(stage_prompt)
                 raw_text = _ai_response_to_text(result)
             elif ai_model == "deepseek":
@@ -704,6 +706,17 @@ def run_topic_maintain(
         progress=emit,
         require_full_ai=official,
     )
+
+    if official:
+        pack.model = center.config.deepseek_model
+        quarantine_topic_source_leads(pack, structured_data)
+        citation_audit = audit_topic_citations(pack, structured_data)
+        pack.extra['citation_audit'] = citation_audit
+        pack.extra['evidence_review_complete'] = citation_audit['passed']
+        if not citation_audit['passed']:
+            pack.extra['ai_status'] = 'partial_success'
+            pack.warnings.append(f"引用檢核有 {citation_audit['blocking_count']} 項待補查；AI 已完成不等於證據已驗證，此包不可套用。")
+        emit(f"題材引用檢核：{citation_audit['citation_count']} 筆，待補查 {citation_audit['blocking_count']} 項")
 
     # Save staged raw responses
     raw_p = raw_response_path(change_id)
@@ -800,7 +813,7 @@ def run_topic_maintain(
 
     # Save change pack
     save_change_pack(pack)
-    if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True:
+    if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True and pack.extra.get('evidence_review_complete') is True:
         workflow_account.cache(workflow_key,{'change_id':change_id},3*86400)
     emit(f"變更包已保存：{change_id}")
     return pack

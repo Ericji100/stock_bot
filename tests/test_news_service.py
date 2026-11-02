@@ -794,7 +794,7 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
         self.assertEqual(titles, [item.title])
 
-    def test_run_news_latest_uses_created_at_when_published_at_is_blank(self):
+    def test_run_news_latest_does_not_promote_storage_date_to_publication_date(self):
         item = NewsItem(
             id="blank_published",
             title="Taiwan passive components stocks rally on AI server demand",
@@ -809,9 +809,9 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         )
         repo = self.FakeRepository([item])
         titles = [news.title for digest in run_news_latest(repo) for news in digest.items]
-        self.assertEqual(titles, [item.title])
+        self.assertEqual(titles, [])
 
-    def test_run_news_scheduled_latest_uses_created_at_for_trusted_refresh_news(self):
+    def test_run_news_scheduled_latest_does_not_promote_trusted_storage_date(self):
         item = NewsItem(
             id="blank_published_scheduled",
             title="Taiwan passive components stocks rally on AI server demand",
@@ -826,7 +826,7 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         )
         repo = self.FakeRepository([item])
         titles = [news.title for digest in run_news_scheduled_latest(repo) for news in digest.items]
-        self.assertEqual(titles, [item.title])
+        self.assertEqual(titles, [])
 
     def test_run_news_scheduled_latest_rejects_untrusted_created_at_fallback(self):
         item = NewsItem(
@@ -874,7 +874,7 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         self.assertEqual(diagnostics["raw48"], 2)
         self.assertEqual(diagnostics["explicit_dates"], 1)
         self.assertEqual(diagnostics["missing_dates"], 1)
-        self.assertEqual(diagnostics["display_total"], 2)
+        self.assertEqual(diagnostics["display_total"], 1)
 
     def test_scheduled_lightweight_refresh_categories_when_primary_is_thin(self):
         diagnostics = {
@@ -982,7 +982,7 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
         )
         repo = self.FakeRepository([blank, explicit])
         ai_digest = [digest for digest in run_news_latest(repo) if digest.category == "ai_semiconductor"][0]
-        self.assertEqual([news.id for news in ai_digest.items], ["explicit", "blank"])
+        self.assertEqual([news.id for news in ai_digest.items], ["explicit"])
 
     def test_run_news_latest_does_not_use_old_created_at_for_blank_published_at(self):
         item = NewsItem(

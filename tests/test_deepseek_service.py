@@ -20,6 +20,81 @@ from research_center.command_parser import parse_command_text, validate_deepseek
 
 
 class DeepSeekServiceTests(unittest.TestCase):
+    def test_stock_final_summary_does_not_invent_market_ranking_requirements(self):
+        from research_center.segmented_analysis_service import _final_local_summary
+        for command in ('research', 'value_scan'):
+            with self.subTest(command=command):
+                data = {'high_model_input_package': {'command': command, 'command_specific_data': {
+                    'payload': {'stock': {'code': '2330'}, 'candidate_pool': '2330'}}},
+                    'feature_pack': {'candidates': [{'code': '2330'}]}, 'local_scoring': {'scores': []}}
+                summary = _final_local_summary(data)
+                self.assertNotIn('sector_rankings', summary)
+                self.assertEqual(summary['command_role'], command)
+                if command == 'value_scan':
+                    self.assertEqual(summary['candidate_count'], 1)
+                    self.assertEqual(summary['candidate_pool'], '2330')
+
+    def test_official_final_notes_preserve_evidence_after_the_legacy_excerpt(self):
+        from research_center.segmented_analysis_service import _build_final_prompt
+        note = '完整證據。' * 1200 + '德微完整產品與反證不能消失'
+        prompt = _build_final_prompt(parse_command_text('/theme AI電源'), {},
+            [{'label': 'companies', 'markdown': note, 'status': 'success'}], [], complete_segment_notes=True)
+        self.assertIn('德微完整產品與反證不能消失', prompt)
+        self.assertNotIn('intermediate note truncated', prompt)
+
+    def test_official_final_failure_preserves_segments_without_a_compact_request(self):
+        from types import SimpleNamespace
+        from research_center import segmented_analysis_service as service
+        plan = {'label': 'test', 'title': '完整分段', 'payload': {'facts': ['原始反證']}}
+        result = SimpleNamespace(markdown='已完成分段，含原始反證', raw={}, diagnostics={})
+        with patch.object(service, '_segment_plans', return_value=[plan]), \
+                patch.object(service, 'write_prompt_log', return_value=Path('unused-test-prompt')), \
+                patch.object(service, '_build_final_prompt', return_value='完整整合資料'), \
+                patch.object(service, '_build_compact_final_retry_prompt') as compact, \
+                patch.object(service, '_call_ai_with_timeout_setting', side_effect=[result, DeepSeekError('仍未完整輸出', 'incomplete_output')]) as call:
+            report = service.run_segmented_theme_analysis(request=parse_command_text('/theme AI電源'),
+                structured_data={}, sources=[], ai_client=self.client, model_name='deepseek-flash')
+        self.assertEqual(call.call_count, 2)
+        compact.assert_not_called()
+        self.assertEqual(report.diagnostics['final_status'], 'fallback')
+        self.assertIn('原始反證', report.markdown)
+        self.assertEqual(report.segment_runs[0].status, 'success')
+
+    def test_final_report_reserves_existing_output_headroom_without_forcing_usage(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        result = _call_ai_with_timeout_setting(self.client, '完整正式報告與來源', 180, final_output=True)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(json.loads(self.posts()[0].content)['max_tokens'], 65536)
+        self.assertEqual(self.client.max_output_tokens, 32768)
+        self.assertLess(result.diagnostics['usage']['completion_tokens'], 65536)
+
+    def test_final_report_does_not_repeat_the_same_maximum_output_request(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        self.finish_reason = 'length'
+        with self.assertRaises(DeepSeekError):
+            _call_ai_with_timeout_setting(self.client, '完整來源', 180, final_output=True)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_topic_candidate_output_headroom_is_a_cap_not_a_forced_completion(self):
+        from research_center.topic_maintain_service import TOPIC_CANDIDATE_OUTPUT_TOKENS
+        self.assertEqual(TOPIC_CANDIDATE_OUTPUT_TOKENS,32768)
+        self.answer='{"candidates":[]}'
+        result=self.client.with_output_limit(TOPIC_CANDIDATE_OUTPUT_TOKENS).generate_json('完整來源不截斷')
+        self.assertEqual(len(self.posts()),1)
+        self.assertEqual(json.loads(self.posts()[0].content)['max_tokens'],32768)
+        self.assertLess(result.diagnostics['usage']['completion_tokens'],32768)
+
+    def test_reservation_uses_off_peak_and_peak_window_without_lowering_job_limit(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from research_center.deepseek_service import _reserve_model_price
+        off_peak=datetime(2026,11,3,0,30,tzinfo=ZoneInfo('Asia/Taipei'))
+        off=_reserve_model_price(100,20,390,off_peak)
+        self.assertEqual(off,Decimal('0.000027'))
+        self.assertEqual(_reserve_model_price(100,20,390,off_peak.replace(hour=10)),off*2)
+        self.assertEqual(_reserve_model_price(100,20,390,off_peak.replace(hour=8,minute=59)),off*2)
+        self.assertEqual(self.account.budget.job_limit,Decimal('0.3'))
+
     def test_fetch_downstream_error_does_not_disable_model_analysis(self):
         self.post_status=504
         with patch('research_center.deepseek_service.time.sleep'), self.assertRaises(DeepSeekError) as caught:

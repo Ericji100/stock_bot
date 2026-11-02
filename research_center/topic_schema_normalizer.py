@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from .topic_data_normalizer import normalize_string_list, normalize_text_tree, to_traditional_text
-from .topic_models import TopicActionType, TopicChangeAction, TopicConfidence, TopicEvidence, TopicSourceLevel
+from .topic_models import TopicActionType, TopicChangeAction, TopicConfidence, TopicEvidence, TopicSourceLevel, coerce_topic_source_level
 
 
 def slugify_theme_id(value: str) -> str:
@@ -160,10 +160,7 @@ def _normalize_evidence(value: Any) -> list[TopicEvidence]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        try:
-            level = TopicSourceLevel(str(item.get("source_level") or "L2_media"))
-        except ValueError:
-            level = TopicSourceLevel.L2_MEDIA
+        level = coerce_topic_source_level(item.get("source_level"))
         source = str(item.get("source") or item.get("source_title") or item.get("title") or "").strip()
         content = str(item.get("content") or item.get("claim") or item.get("snippet") or "").strip()
         if not source and not content:

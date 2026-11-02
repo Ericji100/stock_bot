@@ -733,6 +733,7 @@ def build_grounding_discovery_prompts(
             "objective": objective,
             "evidence_role": evidence_role,
             "query_budget": task.get("query_budget") or {},
+            "news_quality_policy": task.get("news_quality_policy") or {},
         })
     return prompts
 

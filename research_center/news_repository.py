@@ -10,6 +10,7 @@ from typing import Any
 
 from .config import ROOT_DIR
 from .news_models import NewsItem, NewsPreference, apply_news_signal_tags
+from .source_date_normalizer import normalize_published_date
 
 NEWS_DB_PATH = ROOT_DIR / "database" / "stock_research.db"
 
@@ -156,6 +157,14 @@ class NewsRepository:
                     )
                     saved += 1
                 except sqlite3.IntegrityError:
+                    # Source date corrections must survive deduplication, even when
+                    # the article is waiting for AI classification. Keep precise time.
+                    previous = conn.execute('SELECT published_at FROM news_articles WHERE url=?', (item.url,)).fetchone()
+                    old_date = str(previous[0] or '') if previous else ''
+                    incoming = str(item.published_at or '')
+                    loses_precision = len(incoming) == 10 and len(old_date) > 10 and normalize_published_date(old_date) == incoming
+                    if incoming and normalize_published_date(incoming) and incoming != old_date and not loses_precision:
+                        conn.execute('UPDATE news_articles SET published_at=? WHERE url=?', (incoming, item.url))
                     if "local_rule_fallback" not in item.tags:
                         conn.execute(
                             """UPDATE news_articles SET category=?, related_symbols=?, related_topics=?,

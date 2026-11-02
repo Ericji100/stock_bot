@@ -461,7 +461,7 @@ def _low_model_digest_html(report_json: dict[str, Any]) -> str:
         f"<p>模型：<strong>{html.escape(str(model or '未啟用'))}</strong></p>",
         f"<p>狀態：{html.escape(display_value(status))}</p>",
         f"<p>提示詞紀錄：{html.escape(str(prompt_path or '無'))}</p>",
-        "<p>此分頁只呈現 MiniMax M3 的資料整理底稿；最終投研判斷仍由主分析模型重新評估。</p>",
+        "<p>此分頁只呈現資料整理模型的底稿；最終投研判斷仍由主分析模型重新評估。</p>",
         "</article>",
     ]
     if not digest:
@@ -947,7 +947,7 @@ def _ai_audit_html(report_json: dict[str, Any]) -> str:
         not_applicable = {str(item) for item in (coverage.get("not_applicable") or [])}
         labels = {
             "local_data_package": "本地資料整理包",
-            "low_model_digest": "MiniMax M3 低階整理底稿",
+            "low_model_digest": "低階模型整理底稿",
             "high_model_input_package": "高階模型入模包",
             "deduped_or_indexed_input": "去重或索引化入模",
             "source_index": "來源索引",
@@ -1045,24 +1045,26 @@ def _low_model_digest_html(report_json: dict[str, Any]) -> str:
     digest = metadata.get("low_model_digest") or {}
     validation = metadata.get("low_model_validation") or {}
     prompt_path = metadata.get("low_model_prompt_path")
-    model = metadata.get("low_model_model") or digest.get("model") or "MiniMax M3"
+    model = metadata.get("low_model_model") or digest.get("model") or "未啟用"
+    model_label = display_value(model).replace("MiniMax-", "MiniMax ")
+    title = f"{model_label} 資料整理底稿" if model != "未啟用" else "低階模型資料整理底稿"
     status = str(digest.get("status") or metadata.get("low_model_status") or "").lower()
     error = str(digest.get("error") or validation.get("error") or metadata.get("low_model_error") or "")
 
     if not digest and not validation and not prompt_path:
-        return "<h2>MiniMax M3 資料整理底稿</h2><p>本次沒有產生低階模型資料整理底稿。</p>"
+        return f"<h2>{html.escape(title)}</h2><p>本次沒有產生低階模型資料整理底稿。</p>"
 
     if status in {"failed", "error"} or error:
         if "429" in error or "quota" in error.lower() or "usage" in error.lower() or "limit" in error.lower():
-            message = "MiniMax M3 低階資料整理失敗：額度或速率限制。系統已改用本地 AI 資料中心與高階模型繼續產出報告。"
+            message = "低階資料整理失敗：額度或速率限制。系統已改用本地 AI 資料中心與高階模型繼續產出報告。"
         else:
-            message = "MiniMax M3 低階資料整理失敗。系統已保留診斷資訊，並改用本地 AI 資料中心與高階模型繼續產出報告。"
+            message = "低階資料整理失敗。系統已保留診斷資訊，並改用本地 AI 資料中心與高階模型繼續產出報告。"
     elif status in {"success", "ok", "completed"}:
-        message = "MiniMax M3 已完成低階資料整理。此底稿只供高階模型參考，不是最終投研結論。"
+        message = "已完成低階資料整理。此底稿只供高階模型參考，不是最終投研結論。"
     elif status in {"skipped", "skip"}:
-        message = "MiniMax M3 低階資料整理已略過。完整資料仍保留於本地資料包、JSON 與報告附錄。"
+        message = "低階資料整理已略過。完整資料仍保留於本地資料包、JSON 與報告附錄。"
     else:
-        message = "MiniMax M3 低階資料整理狀態未明。請以主報告與入模審計為準。"
+        message = "低階資料整理狀態未明。請以主報告與入模審計為準。"
 
     rows = ["| 項目 | 內容 |", "|---|---|"]
     rows.append(f"| 模型 | {display_value(model)} |")
@@ -1082,7 +1084,7 @@ def _low_model_digest_html(report_json: dict[str, Any]) -> str:
     if error:
         rows.append(f"| 失敗原因 | {display_value(error)} |")
 
-    parts = ["<h2>MiniMax M3 資料整理底稿</h2>", _markdown_table_to_html(rows)]
+    parts = [f"<h2>{html.escape(title)}</h2>", _markdown_table_to_html(rows)]
     sections = [
         ("事實整理", digest.get("fact_packets") or digest.get("facts")),
         ("事件摘要", digest.get("event_summary") or digest.get("events")),

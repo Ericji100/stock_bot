@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 import hashlib
 import inspect
@@ -248,10 +248,25 @@ class DeepSeekAccount:
             self.budget.finish(request_id, status, actual)
 
 
+def _model_price_factor(now=None, horizon_seconds=0) -> Decimal:
+    now = now or datetime.now(ZoneInfo('Asia/Taipei'))
+    # Ignore holiday discounts conservatively; include any peak in the request window.
+    minutes = max(0, int(horizon_seconds + 59) // 60)
+    for minute in range(minutes + 1):
+        candidate = now + timedelta(minutes=minute)
+        if candidate.weekday() < 5 and (9 <= candidate.hour < 12 or 14 <= candidate.hour < 18):
+            return Decimal('2')
+    return Decimal('1')
+
+
+def _reserve_model_price(chars, output_tokens, horizon_seconds=0, now=None):
+    # One input token per character is a conservative estimate for these JSON/text
+    # packets, not an exact tokenizer or an invoice. Reserve the entire output cap.
+    return (Decimal(chars) * Decimal('0.15') + Decimal(output_tokens) * Decimal('0.60')) * _model_price_factor(now, horizon_seconds) / 1000000
+
+
 def _price(usage: dict) -> Decimal:
-    now = datetime.now(ZoneInfo("Asia/Taipei"))
-    # Conservative peak pricing; ledger stores an estimate, not a provider invoice.
-    factor = Decimal("2") if now.weekday() < 5 and (9 <= now.hour < 12 or 14 <= now.hour < 18) else Decimal("1")
+    factor = _model_price_factor()
     total = int(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0)
     hit = int(usage.get("prompt_cache_hit_tokens", (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)) or 0)
     out = int(usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0)
@@ -366,7 +381,8 @@ class DeepSeekService:
         cache_hit = data is not None
         self.account.activity("model", cache_hit, {"prompt_path":str(prompt_path),"prompt_chars":len(prompt),"model":self.model,"organizer":self.organizer,"run_id":RUN_ID.get()})
         if data is None:
-            estimate = (Decimal(len(prompt) + len(system)) * Decimal("0.30") + Decimal(self.max_output_tokens) * Decimal("1.20")) / 1000000
+            estimate = _reserve_model_price(len(prompt) + len(system), self.max_output_tokens,
+                self.timeout_seconds * (self.max_retries + 1) + 30)
             data = self._post("chat/completions", body, estimate)
         choice = (data.get("choices") or [{}])[0]
         content = str((choice.get("message") or {}).get("content") or "").strip()

@@ -46,6 +46,17 @@ class TopicSourceLevel(Enum):
     L3_COMMUNITY = "L3_community"
 
 
+def coerce_topic_source_level(value: Any) -> TopicSourceLevel:
+    if isinstance(value, TopicSourceLevel):
+        return value
+    token = str(value or '').lower().replace(' ', '').replace('_', '').replace('-', '')
+    if token in {'l1', 'level1', 'l1official'}:
+        return TopicSourceLevel.L1_OFFICIAL
+    if token in {'l2', 'level2', 'l2media', 'l2industry'}:
+        return TopicSourceLevel.L2_MEDIA
+    return TopicSourceLevel.L3_COMMUNITY
+
+
 @dataclass
 class TopicEvidence:
     source: str
@@ -67,10 +78,7 @@ class TopicEvidence:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TopicEvidence:
-        try:
-            level = TopicSourceLevel(data.get("source_level", "L2_media"))
-        except ValueError:
-            level = TopicSourceLevel.L2_MEDIA
+        level = coerce_topic_source_level(data.get("source_level"))
         return cls(
             source=data.get("source", ""),
             source_level=level,

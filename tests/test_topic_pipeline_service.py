@@ -6,6 +6,62 @@ from research_center.topic_pipeline_service import run_topic_pipeline
 
 
 class TopicPipelineServiceTests(unittest.TestCase):
+    def test_official_reordered_actions_still_match_their_own_candidate(self):
+        candidates=[{'theme_id':'first','theme_name':'第一題材','candidate_companies':[{'company_code':'1111'}]},
+                    {'theme_id':'second','theme_name':'第二題材','candidate_companies':[{'company_code':'9999'}]}]
+        def call(prompt,stage):
+            if stage=='candidate_extract':
+                return {'candidates':candidates}
+            return {'actions':[{'theme_id':'second','theme_name':'第二題材'},{'theme_id':'first','theme_name':'第一題材'}]}
+        pack,logs=run_topic_pipeline(mode=TopicChangeMode.UPDATE,ai_model='deepseek',
+            change_id='isolated',iso_ts='2026-11-03T10:00:00+0800',structured_data={},
+            prompt_variables=self._variables(),load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,call_ai_json=call,require_full_ai=True)
+        self.assertTrue(pack.extra['ai_review_complete'])
+        self.assertEqual([a.theme_id for a in pack.actions],['first','second'])
+        self.assertEqual([a.affected_companies[0]['company_code'] for a in pack.actions],['1111','9999'])
+
+    def test_unresolved_shared_references_are_not_valid_final_topic_actions(self):
+        from research_center.topic_pipeline_service import _detail_covers_batch
+        payload={'actions':[{'theme_id':'power','evidence':[{'$topic_ref':'R0001'}]}]}
+        self.assertFalse(_detail_covers_batch(payload,[{'theme_id':'power'}]))
+
+    def test_official_batches_keep_each_candidate_and_do_not_fallback_missing_actions(self):
+        from research_center.topic_pipeline_service import _expand_batch
+        batch=[{'theme_id':'first','theme_name':'第一題材'}, {'theme_id':'second','theme_name':'第二題材'}]
+        logs=[]
+        payload=_expand_batch(batch=batch,batch_index=1,prompt_variables=self._variables(),
+            load_prompt=self._load_prompt,render_prompt=self._render_prompt,
+            call_ai_json=lambda *a:{'actions':[{'theme_id':'first'}]},stage_logs=logs,
+            emit=lambda *a:None,full_evidence=True,structured_data={})
+        self.assertEqual(payload,{})
+        self.assertEqual(logs[-1]['error'],'candidate_coverage_incomplete')
+
+    def test_official_two_candidate_groups_preserve_all_eight_actions(self):
+        candidates=[{'theme_id':f'theme_{i}','theme_name':f'題材{i}'} for i in range(8)]
+        calls=[]
+        def call(prompt,stage):
+            calls.append(stage)
+            if stage=='candidate_extract':
+                return {'candidates':candidates}
+            group=int(stage.rsplit('_',1)[1])-1
+            return {'actions':candidates[group*2:group*2+2]}
+        pack,logs=run_topic_pipeline(mode=TopicChangeMode.UPDATE,ai_model='deepseek',
+            change_id='isolated',iso_ts='2026-11-03T10:00:00+0800',structured_data={},
+            prompt_variables=self._variables(),load_prompt=self._load_prompt,
+            render_prompt=self._render_prompt,call_ai_json=call,require_full_ai=True)
+        self.assertEqual(calls,['candidate_extract',*[f'detail_expand_{i}' for i in range(1,5)]])
+        self.assertEqual([a.theme_id for a in pack.actions],[row['theme_id'] for row in candidates])
+        self.assertTrue(pack.extra['ai_review_complete'])
+
+    def test_official_large_combined_evidence_uses_separate_complete_batches(self):
+        from research_center.topic_pipeline_service import _full_evidence_detail_batches
+        candidates=[{'theme_id':str(i),'candidate_companies':[{'company_code':str(i)}]} for i in (1111,9999)]
+        data={'discovery_sources':[{'url':f'https://example.test/{i}','title':str(i),'content':text*350000}
+                                   for i,text in [(1111,'x'),(9999,'y')]]}
+        groups=_full_evidence_detail_batches(candidates,data,{},lambda name:'{web_fetched_sources_json}',self._render_prompt)
+        self.assertEqual(groups,[[candidates[0]],[candidates[1]]])
+
     def test_official_candidate_failure_does_not_spend_on_detail_expansion(self):
         calls=[]
         def failed(prompt,stage):

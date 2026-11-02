@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -35,9 +35,10 @@ def build_market_movers(
     cache_path = _snapshot_path(target_date)
     if not force_refresh and universe is None and price_metrics is None:
         cached = _read_snapshot(cache_path)
-        if cached and _snapshot_is_fresh(cached, target_date):
+        audited = bool(((cached or {}).get('data_quality') or {}).get('price_date_audit'))
+        if cached and audited and _snapshot_is_fresh(cached, target_date):
             return cached
-        if cached:
+        if cached and audited:
             return _mark_stale_snapshot(cached)
 
     if progress:
@@ -90,7 +91,8 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
     sector_rankings = _sector_rankings(rows)
     missing_fields = _missing_fields(rows)
     source_mode = "price_change_available" if "change_pct" not in missing_fields else "price_volume_proxy"
-    market_data_date = _market_data_date(rows) or target_date.isoformat()
+    date_audit = _price_date_audit(rows, target_date)
+    market_data_date = date_audit['dominant_price_date'] or 'unknown'
     generated_at = datetime.now().isoformat(timespec="seconds")
     return {
         "command_role": "market_movers",
@@ -116,6 +118,7 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
         "sector_mover_rankings": sector_rankings,
         "data_quality": {
             "input_stock_count": len(rows),
+            "price_date_audit": date_audit,
             "missing_fields": missing_fields,
             "change_pct_coverage_pct": _coverage(rows, "change_pct"),
             "volume_ratio_coverage_pct": _coverage(rows, "volume_ratio"),
@@ -186,12 +189,37 @@ def _build_stock_mover_row(entry: Any, price_metrics: dict[str, Any]) -> dict[st
 
 
 def _market_data_date(rows: list[dict[str, Any]]) -> str | None:
-    dates = sorted(
-        str(row.get("price_date") or "").strip()
-        for row in rows
-        if str(row.get("price_date") or "").strip()
-    )
-    return dates[-1] if dates else None
+    counts = _price_date_counts(rows)
+    return max(counts, key=lambda day: (counts[day], day)) if counts else None
+
+
+def _price_date_counts(rows):
+    counts = Counter()
+    for row in rows:
+        try:
+            day = date.fromisoformat(str(row.get('price_date') or '').strip()).isoformat()
+        except ValueError:
+            continue
+        counts[day] += 1
+    return counts
+
+
+def _price_date_audit(rows, target_date):
+    counts = _price_date_counts(rows)
+    latest = max(counts) if counts else None
+    dominant = _market_data_date(rows)
+    warnings = []
+    if len(counts) > 1:
+        warnings.append('行情日期混合；少數股票的最新日期不代表全市場已更新，跨日漲跌與族群排行不可視為同一交易日比較。')
+    if len(rows) > sum(counts.values()):
+        warnings.append('部分行情缺少有效資料日期，不以收集日或報告日補填。')
+    if any(day > target_date.isoformat() for day in counts):
+        warnings.append('發現晚於指定日期的行情，不能用來證明指定日已知的訊號。')
+    return {'schema_version': 1, 'date_counts': dict(sorted(counts.items())),
+            'dominant_price_date': dominant, 'latest_price_date': latest,
+            'latest_date_stock_count': counts.get(latest, 0),
+            'undated_stock_count': len(rows) - sum(counts.values()),
+            'mixed_dates': len(counts) > 1, 'warnings': warnings}
 
 
 def _sector_rankings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -2,23 +2,63 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import re
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from .deepseek_service import DeepSeekService, DeepSeekUnavailable, TASK
 from .models import SourceItem
 from .source_rank import make_source_items
 from .source_text_cleaner import clean_source_title
+from .preferred_sources import match_preferred_source
 
 
 @dataclass(frozen=True)
 class DiscoveryResult:
     sources: list[SourceItem]
     diagnostics: dict[str, Any]
+
+
+def _news_task_quality(rows, policy, as_of):
+    """Judge fresh substantive article coverage, not the raw search-result count."""
+    from .news_models import NewsItem
+    from .news_service import _is_non_article_page
+    from .source_date_normalizer import normalize_published_date
+    fresh = []
+    trusted = 0
+    official = 0
+    url_dated = 0
+    domains = set()
+    seen = set()
+    terms = [str(term).casefold() for term in policy.get('terms', []) if term]
+    for row in rows:
+        url = str(row.get('url') or '')
+        text = f"{row.get('title') or ''} {row.get('snippet') or ''}"
+        day = normalize_published_date(row.get('published_date'))
+        url_day = normalize_published_date(url) if not day else None
+        day = day or url_day
+        if (not url or url in seen or not day or not as_of-timedelta(days=1) <= date.fromisoformat(day) <= as_of or
+                len(text) < 120 or not terms or not any(term in text.casefold() for term in terms)):
+            continue
+        seen.add(url)
+        if _is_non_article_page(NewsItem(title=str(row.get('title') or ''),url=url,summary=text)):
+            continue
+        entry = match_preferred_source(url) or {}
+        level = str(entry.get('level') or '')
+        trusted += int(level in {'Level 1','Level 2','L1_official','L2_media','L2_industry'})
+        official += int(level in {'Level 1','L1_official'})
+        url_dated += int(bool(url_day))
+        fresh.append(url)
+        domains.add(urlsplit(url).hostname or '')
+    passed = len(fresh) >= 4 and len(domains) >= 2 and trusted >= 2 and (official >= 1 or not policy.get('require_official'))
+    return {'passed':passed,'recent_substantive_articles':len(fresh),'distinct_domains':len(domains),
+            'trusted_articles':trusted,'official_articles':official,'url_dated_articles':url_dated,
+            'as_of_date':as_of.isoformat()}
 
 
 def _safe_result_title(row: dict, url: str = "") -> dict:
@@ -90,7 +130,8 @@ class DeepSeekSearchService:
             return {**_safe_result_title(data, url), "cache_hit": False}
 
     def discover(self, request, tasks, progress=None) -> DiscoveryResult:
-        date = request.report_date.isoformat() if request.report_date else TASK.get()[2]
+        report_day = request.report_date.isoformat() if request.report_date else TASK.get()[2]
+        as_of = date.fromisoformat(report_day) if report_day else datetime.now(ZoneInfo('Asia/Taipei')).date()
         raw_sources = []
         seen_queries = set()
         runs = []
@@ -99,6 +140,8 @@ class DeepSeekSearchService:
             for group in task.get("queries") or []:
                 queries.extend(group.get("items", []) if isinstance(group, dict) else [str(group)])
             run = {"label": task.get("label"), "query_count": 0, "cache_hit_count": 0, "error_count": 0, "title_code_isolated_count": 0, "nonmatching_table_count": 0}
+            task_sources = []
+            policy = task.get('news_quality_policy') if request.command == 'news' else None
             for query in queries:
                 if query in seen_queries:
                     continue
@@ -108,7 +151,7 @@ class DeepSeekSearchService:
                 if progress:
                     progress(f"DeepSeek 搜尋：{task.get('label', '')}｜查詢 {run['query_count'] + 1}")
                 try:
-                    result = self.search(query, report_date=date)
+                    result = self.search(query, report_date=report_day)
                     run["query_count"] += 1
                     run["cache_hit_count"] += bool(result.get("cache_hit"))
                     for row in result.get("results") or []:
@@ -128,11 +171,22 @@ class DeepSeekSearchService:
                                     published_date=datetime.strptime(dataset_date,'%Y%m%d').date().isoformat()
                                 except ValueError:
                                     pass
-                        raw_sources.append({"title": row.get("title"), "url": row.get("url"),
+                        source = {"title": row.get("title"), "url": row.get("url"),
                             "snippet": text,
                             "published_date": published_date, "provider": self.provider,
                             "found_by": [query, *(["source_title:code_isolated"] if isolated else []), *(["source_table:stock_projection"] if projected else [])],
-                            "provider_detail": task.get("label", "") + ("；標題程式碼已隔離，原始回應保留" if isolated else "")})
+                            "provider_detail": task.get("label", "") + ("；標題程式碼已隔離，原始回應保留" if isolated else "")}
+                        raw_sources.append(source)
+                        task_sources.append(source)
+                    if policy and run['query_count'] >= 2:
+                        quality = _news_task_quality(task_sources, policy, as_of)
+                        run['quality'] = quality
+                        if quality['passed']:
+                            run['early_stop'] = 'quality_satisfied'
+                            run['unexecuted_query_count'] = sum(q not in seen_queries for q in queries)
+                            if progress:
+                                progress(f"新聞搜尋品質達標：{task.get('label', '')}；保留全部已取得來源，略過重複補搜")
+                            break
                 except DeepSeekUnavailable:
                     raise
                 except Exception:

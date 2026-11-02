@@ -4,11 +4,13 @@ import json
 import math
 import re
 import time
+from threading import RLock
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import pandas as pd
@@ -32,6 +34,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache"
 MONTHLY_CACHE_DIR = CACHE_DIR / "monthly_revenue"
 PRICE_CACHE_PATH = CACHE_DIR / "price_metrics.json"
+_PRICE_CACHE_LOCK = RLock()
 GROSS_MARGIN_CACHE_PATH = CACHE_DIR / "gross_margin.json"
 HISTORICAL_FINANCIAL_CACHE_DIR = CACHE_DIR / "historical_scan" / "financial_statements"
 STOCK_LIST_PATH = ROOT_DIR / "stock_list.json"
@@ -746,26 +749,28 @@ def load_price_metrics(
         return historical_metrics
 
     requested_symbols = [entry.symbol for entry in universe]
+    started_at = datetime.now(ZoneInfo('Asia/Taipei'))
     cached_metrics: dict[str, dict[str, float]] = {}
-    if PRICE_CACHE_PATH.exists():
-        payload = _read_json(PRICE_CACHE_PATH)
-        cached_metrics = payload.get("metrics", {})
+    payload = {}
+    with _PRICE_CACHE_LOCK:
+        if PRICE_CACHE_PATH.exists():
+            payload = _read_json(PRICE_CACHE_PATH)
+            cached_metrics = payload.get("metrics", {})
     cache_fresh = _is_fresh(PRICE_CACHE_PATH, ttl_seconds)
-    if not force_refresh and cache_fresh:
-        if cached_metrics and all(symbol in cached_metrics for symbol in requested_symbols) and _price_metric_schema_ready(cached_metrics, requested_symbols):
-            return {symbol: cached_metrics[symbol] for symbol in requested_symbols}
-
-    schema_ready = _price_metric_schema_ready(cached_metrics, requested_symbols)
-    refresh_all = force_refresh or not cache_fresh
-    metrics: dict[str, dict[str, float]] = {} if refresh_all or not schema_ready else dict(cached_metrics)
-    symbols_to_fetch = requested_symbols if refresh_all else [symbol for symbol in requested_symbols if symbol not in metrics]
+    closed_symbols = _closed_session_price_symbols(payload, started_at)
+    fresh_symbols = _fresh_price_cache_symbols(payload, started_at, ttl_seconds, cache_fresh) | closed_symbols
+    if not force_refresh and all(symbol in fresh_symbols for symbol in requested_symbols):
+        return {symbol: cached_metrics[symbol] for symbol in requested_symbols}
+    refresh_all = force_refresh or not any(symbol in fresh_symbols for symbol in requested_symbols)
+    symbols_to_fetch = requested_symbols if force_refresh else [symbol for symbol in requested_symbols if symbol not in fresh_symbols]
     downloaded_metrics: dict[str, dict[str, float]] = {}
 
     for index in range(0, len(symbols_to_fetch), chunk_size):
         chunk = symbols_to_fetch[index : index + chunk_size]
+        if len(symbols_to_fetch) > chunk_size:
+            print(f"[{now_timestamp()}] [行情資料] 更新價量 {index + 1}～{index + len(chunk)}/{len(symbols_to_fetch)} 檔", flush=True)
         chunk_metrics = _download_chunk_price_metrics(chunk)
         downloaded_metrics.update(chunk_metrics)
-        metrics.update(chunk_metrics)
         time.sleep(YF_PRICE_CHUNK_PAUSE_SECONDS)
 
     if refresh_all and not downloaded_metrics and cached_metrics:
@@ -774,21 +779,75 @@ def load_price_metrics(
     if refresh_all and cached_metrics and len(downloaded_metrics) < max(1, int(len(requested_symbols) * 0.8)):
         return {symbol: cached_metrics[symbol] for symbol in requested_symbols if symbol in cached_metrics}
 
-    if cached_metrics and (not refresh_all and (not metrics or len(metrics) < len(cached_metrics))):
-        merged_metrics = dict(cached_metrics)
-        merged_metrics.update(metrics)
-        metrics = merged_metrics
-
-    if not metrics and cached_metrics:
-        return {symbol: cached_metrics[symbol] for symbol in requested_symbols if symbol in cached_metrics}
-    if not metrics:
+    if not downloaded_metrics and not cached_metrics:
         return {}
-
-    _write_json(
-        PRICE_CACHE_PATH,
-        {"generated_at": datetime.now().isoformat(timespec="seconds"), "metrics": metrics},
-    )
+    # Lock only the merge/write, not network calls. A single-stock refresh must
+    # neither discard other stocks nor renew their individual freshness.
+    with _PRICE_CACHE_LOCK:
+        latest = _read_json(PRICE_CACHE_PATH) if PRICE_CACHE_PATH.exists() else {}
+        metrics = {**cached_metrics, **(latest.get('metrics') or {}), **downloaded_metrics}
+        fetched_at = {**_price_cache_fetched_at(payload), **_price_cache_fetched_at(latest)}
+        downloaded_at = datetime.now(ZoneInfo('Asia/Taipei')).isoformat(timespec='seconds')
+        fetched_at.update({symbol: downloaded_at for symbol in downloaded_metrics})
+        closed_symbols.update(_closed_session_price_symbols(latest, started_at))
+        session_day = _completed_price_session_day(started_at)
+        if session_day:
+            closed_symbols.update(symbol for symbol, metric in downloaded_metrics.items()
+                if _is_closed_price_metric(metric, session_day))
+        _write_json(PRICE_CACHE_PATH, {"generated_at": downloaded_at, "metrics": metrics,
+            "metric_fetched_at": fetched_at, "closed_session": {
+                "date": session_day.isoformat() if session_day else '', "symbols": sorted(closed_symbols)}})
     return {symbol: metrics[symbol] for symbol in requested_symbols if symbol in metrics}
+
+
+def _is_closed_price_metric(metric: Any, day: date) -> bool:
+    return (isinstance(metric, dict) and metric.get('price_date') == day.isoformat() and
+            {'change_pct', 'volume_ratio', 'price_date'}.issubset(metric))
+
+
+def _closed_session_price_symbols(payload: dict, now: datetime) -> set[str]:
+    """Reuse certified final bars after close or overnight, never during trading."""
+    session = payload.get('closed_session') or {}
+    day = _completed_price_session_day(now)
+    if day is None or session.get('date') != day.isoformat():
+        return set()
+    metrics = payload.get('metrics') or {}
+    return {symbol for symbol in session.get('symbols', [])
+            if _is_closed_price_metric(metrics.get(symbol), day)}
+
+
+def _completed_price_session_day(now: datetime) -> date | None:
+    if now.hour >= 16:
+        return now.date()
+    if now.hour < 9:
+        return now.date() - timedelta(days=1)
+    return None
+
+
+def _price_cache_fetched_at(payload: dict) -> dict[str, str]:
+    explicit = payload.get('metric_fetched_at')
+    if isinstance(explicit, dict):
+        return dict(explicit)
+    generated = payload.get('generated_at') or ''
+    return {symbol: generated for symbol in payload.get('metrics') or {}}
+
+
+def _fresh_price_cache_symbols(payload: dict, now: datetime, ttl_seconds: int, legacy_fresh: bool) -> set[str]:
+    metrics = payload.get('metrics') or {}
+    if not isinstance(payload.get('metric_fetched_at'), dict):
+        return {symbol for symbol in metrics if legacy_fresh and _price_metric_schema_ready(metrics, [symbol])}
+    fresh = set()
+    for symbol, timestamp in payload['metric_fetched_at'].items():
+        try:
+            fetched = datetime.fromisoformat(timestamp)
+            if fetched.tzinfo is None:
+                fetched = fetched.replace(tzinfo=ZoneInfo('Asia/Taipei'))
+            age = now.timestamp() - fetched.timestamp()
+        except (TypeError, ValueError):
+            continue
+        if 0 <= age < ttl_seconds and _price_metric_schema_ready(metrics, [symbol]):
+            fresh.add(symbol)
+    return fresh
 
 
 def _price_metric_schema_ready(metrics: dict[str, dict[str, float]], requested_symbols: list[str]) -> bool:

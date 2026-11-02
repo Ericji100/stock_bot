@@ -42,6 +42,22 @@ _NEWS_CATEGORY_TASK_LABELS = {
 _SCHEDULED_LIGHTWEIGHT_CORE_CATEGORIES = tuple(_NEWS_CATEGORY_TASK_LABELS)
 _SCHEDULED_LIGHTWEIGHT_PRIMARY_MIN = 8
 
+_NEWS_QUALITY_TERMS = {
+    "台股與大盤": ["台股", "加權", "櫃買"],
+    "題材與族群輪動": ["輪動", "族群", "題材", "資金"],
+    "AI / 半導體": ["AI", "半導體", "晶片", "封裝"],
+    "供應鏈與產業": ["供應鏈", "訂單", "漲價", "出貨", "產業"],
+    "金融與高股息": ["金控", "銀行", "金融股", "高股息", "ETF"],
+    "政策 / 匯率 / 總經": ["匯率", "利率", "央行", "關稅", "通膨", "政策"],
+    "台指期與盤前風險": ["台指期", "期貨", "夜盤", "選擇權"],
+    "個股利多利空": ["公司", "營收", "法說", "財報", "利多", "利空"],
+    "營收與法人": ["營收", "法人", "外資", "投信"],
+    "個股公告 / MOPS": ["重大訊息", "公告", "公開資訊觀測站", "法說"],
+    "資金與籌碼": ["籌碼", "法人", "外資", "投信", "融資", "集保"],
+    "反證與利空": ["衰退", "砍單", "下滑", "利空", "庫存", "轉弱", "風險"],
+    "科技與AI供應鏈": ["AI", "科技", "供應鏈", "半導體", "伺服器"],
+}
+
 
 def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]:
     """Build category-balanced Taiwan finance discovery search queries."""
@@ -138,6 +154,8 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
             "objective": f"搜尋台股財經新聞：{group.get('title', '新聞')}",
             "exclude": ["行情頁", "報價頁", "個股列表頁", "首頁", "泛國際新聞"],
             "queries": [group],
+            "news_quality_policy": {"terms": _NEWS_QUALITY_TERMS.get(group.get("title"), []),
+                                    "require_official": group.get("title") == "個股公告 / MOPS"},
         })
 
     # Add limited site: queries per task.
@@ -352,7 +370,6 @@ def _backfill_refresh_item_dates(items: list[NewsItem]) -> list[NewsItem]:
             item.summary,
             item.full_text,
             item.url,
-            {"created_at": item.created_at, "news_origin": item.news_origin},
         )
         if inferred:
             item.published_at = inferred
@@ -627,9 +644,8 @@ def _is_trusted_refresh_news(item: NewsItem) -> bool:
 def _effective_news_datetime(item: NewsItem) -> datetime | None:
     """Return the display recency timestamp for a news item.
 
-    Prefer the source-provided published_at. Only /news refresh items may
-    fall back to created_at when the source omitted publish time and no
-    explicit date can be extracted from the fetched content.
+    Prefer the source-provided published_at, then an article date.
+    A storage timestamp cannot establish when the article was published.
     """
     published_text = (item.published_at or "").strip()
     published = _parse_news_datetime(published_text)
@@ -641,8 +657,6 @@ def _effective_news_datetime(item: NewsItem) -> datetime | None:
         embedded = _extract_embedded_news_datetime(item)
         if embedded is not None:
             return embedded
-        if _is_trusted_refresh_news(item):
-            return _parse_news_datetime(item.created_at)
     return None
 
 

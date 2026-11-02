@@ -14,7 +14,7 @@ from typing import Any, Callable
 from .topic_deduper import decide_topic_action_type
 from .topic_models import TopicChangeMode, TopicChangePack, TopicChangeStatus
 from .topic_quality import normalize_change_pack_quality
-from .topic_input_package import merge_topic_sources, topic_stage_variables
+from .topic_input_package import append_topic_shared_records, merge_topic_sources, topic_stage_variables
 from .topic_schema_normalizer import (
     normalize_topic_candidate,
     normalize_topic_detail_actions,
@@ -167,9 +167,12 @@ def run_topic_pipeline(
     if require_full_ai:
         ai_detail_batch_limit = 0 if any(log.get("error") for log in stage_logs) else len(selected)
     detail_batch_size = 1 if mode == TopicChangeMode.UPDATE else DETAIL_BATCH_SIZE
+    batches = list(_chunks(selected, detail_batch_size))
+    if require_full_ai:
+        batches = _full_evidence_detail_batches(selected, structured_data, prompt_variables, load_prompt, render_prompt)
 
     actions = []
-    for batch_index, batch in enumerate(_chunks(selected, detail_batch_size), start=1):
+    for batch_index, batch in enumerate(batches, start=1):
         default_types = []
         for candidate in batch:
             action_type, target_theme_id = decide_topic_action_type(candidate, existing_profiles)
@@ -191,6 +194,11 @@ def run_topic_pipeline(
                 full_evidence=require_full_ai,
                 structured_data=structured_data,
             )
+            if require_full_ai and _detail_covers_batch(payload, batch):
+                rows = payload.get('actions') if isinstance(payload, dict) else payload
+                by_id = {row['theme_id']: row for row in rows}
+                ordered = [by_id[candidate['theme_id']] for candidate in batch]
+                payload = {**payload, 'actions': ordered} if isinstance(payload, dict) else ordered
             batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
             if require_full_ai and any(log.get("error") for log in stage_logs):
                 ai_detail_batch_limit = batch_index
@@ -270,6 +278,30 @@ def run_topic_pipeline(
     return pack, stage_logs
 
 
+def _full_evidence_detail_batches(candidates, structured_data, prompt_variables, load_prompt, render_prompt):
+    """Share complete evidence across adjacent candidates, keeping JSON output bounded."""
+    template = load_prompt("topic_detail_expand")
+    batches = []
+    for candidate in candidates:
+        if batches and len(batches[-1]) < DETAIL_BATCH_SIZE:
+            combined = [*batches[-1], candidate]
+            variables = topic_stage_variables(structured_data, prompt_variables, combined)
+            prompt = _full_detail_prompt(template, variables, render_prompt)
+            if len(prompt) <= 600000:
+                batches[-1] = combined
+                continue
+        batches.append([candidate])
+    return batches
+
+
+def _full_detail_prompt(template, variables, render_prompt):
+    prompt = render_prompt(template, variables)
+    prompt += '\n\n本批公司量化底稿（僅作參考，不代替證據）：\n' + variables['recent_scan_candidates_json']
+    prompt = append_topic_shared_records(prompt, variables)
+    return prompt + ('\n所有來源網址必須來自提供的完整證據，不得捏造或把資料不足當作已驗證。'
+        '\n本批每個候選必須各回傳一筆 action，原樣保留候選 theme_id，不能漏項、合併或以其他題材替代。')
+
+
 def _stage_logs_expose_model_reasoning(stage_logs: list[dict[str, Any]]) -> bool:
     patterns = (
         "<think>",
@@ -308,6 +340,7 @@ def _extract_candidates(
     variables = topic_stage_variables(structured_data or {},prompt_variables) if full_evidence else _compact_prompt_variables(prompt_variables, CANDIDATE_PROMPT_LIMITS)
     prompt = render_prompt(template, variables)
     if full_evidence:
+        prompt = append_topic_shared_records(prompt, variables)
         prompt += '\n\n來源依網址去重，完整正文或摘要已在來源欄位提供；只處理本次候選，既有題材完整資料由本地比對與細節階段補充。不可捏造來源網址。'
     prompt = _append_low_model_digest_block(
         prompt,
@@ -326,6 +359,9 @@ def _extract_candidates(
         return []
     try:
         payload = call_ai_json(prompt, "candidate_extract")
+        if full_evidence and _has_unresolved_topic_ref(payload):
+            stage_logs.append({'stage':'candidate_extract','error':'unresolved_topic_reference'})
+            return []
         if _payload_exposes_model_reasoning(payload):
             stage_logs.append({"stage": "candidate_extract", "error": "model_reasoning_exposed"})
         if isinstance(payload, dict) and isinstance(payload.get("company_knowledge_updates"), dict):
@@ -337,7 +373,7 @@ def _extract_candidates(
         stage_logs.append({"stage": "candidate_extract", "count": len(candidates), "prompt_chars": prompt_chars})
         return candidates
     except Exception as exc:
-        if _should_retry_candidate_error(exc):
+        if not full_evidence and _should_retry_candidate_error(exc):
             candidates = _retry_candidate_extract(
                 prompt_variables=prompt_variables,
                 template=template,
@@ -448,10 +484,10 @@ def _expand_batch(
     else:
         variables = _compact_detail_prompt_variables(prompt_variables)
         variables["topic_candidates_json"] = json.dumps([_compact_detail_candidate(candidate) for candidate in batch],ensure_ascii=False,indent=2)
-    prompt = render_prompt(template, variables)
     if full_evidence:
-        prompt += '\n\n本批公司量化底稿（僅作參考，不代替證據）：\n'+variables['recent_scan_candidates_json']
-        prompt += '\n所有來源網址必須來自提供的完整證據，不得捏造或把資料不足當作已驗證。'
+        prompt = _full_detail_prompt(template, variables, render_prompt)
+    else:
+        prompt = render_prompt(template, variables)
     prompt = _append_low_model_digest_block(
         prompt,
         variables,
@@ -469,6 +505,9 @@ def _expand_batch(
         return {}
     try:
         payload = call_ai_json(prompt, f"detail_expand_{batch_index}")
+        if full_evidence and _has_unresolved_topic_ref(payload):
+            stage_logs.append({'stage':f'detail_expand_{batch_index}','error':'unresolved_topic_reference'})
+            return {}
         if _payload_exposes_model_reasoning(payload):
             stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "model_reasoning_exposed"})
         if isinstance(payload, dict) and isinstance(payload.get("company_knowledge_updates"), dict):
@@ -477,6 +516,9 @@ def _expand_batch(
                 "company_knowledge_updates": payload["company_knowledge_updates"],
             })
         count = len(payload.get("actions", [])) if isinstance(payload, dict) else len(payload or [])
+        if full_evidence and not _detail_covers_batch(payload, batch):
+            stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "candidate_coverage_incomplete", "count": count})
+            return {}
         if count <= 0:
             retry_payload = _retry_detail_batch(
                 prompt=prompt,
@@ -505,7 +547,7 @@ def _expand_batch(
                 reason=str(exc),
             )
             retry_count = len(retry_payload.get("actions", [])) if isinstance(retry_payload, dict) else len(retry_payload or [])
-            if retry_count > 0:
+            if retry_count > 0 and (not full_evidence or _detail_covers_batch(retry_payload, batch)):
                 stage_logs.append({
                     "stage": f"detail_expand_{batch_index}_recovered",
                     "count": retry_count,
@@ -515,6 +557,24 @@ def _expand_batch(
                 return retry_payload
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": str(exc), "prompt_chars": prompt_chars})
         return {}
+
+
+def _detail_covers_batch(payload, batch):
+    actions = payload.get('actions', []) if isinstance(payload, dict) else payload
+    if not isinstance(actions, list) or len(actions) != len(batch):
+        return False
+    expected = [str(row.get('theme_id') or '') for row in batch]
+    actual = [str(row.get('theme_id') or '') for row in actions if isinstance(row, dict)]
+    return (not _has_unresolved_topic_ref(payload) and bool(all(expected)) and
+            sorted(actual) == sorted(expected) and len(set(actual)) == len(actual))
+
+
+def _has_unresolved_topic_ref(value):
+    if isinstance(value, dict):
+        return '$topic_ref' in value or any(_has_unresolved_topic_ref(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_unresolved_topic_ref(item) for item in value)
+    return False
 
 
 def _should_retry_detail_error(exc: Exception) -> bool:

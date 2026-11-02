@@ -9,6 +9,8 @@ import re
 from datetime import date, datetime, timedelta
 from html import unescape
 from typing import Any
+from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 
 _ISO_DATE_RE = re.compile(
@@ -85,6 +87,9 @@ def normalize_published_date_with_status(
 def _extract_date(value: Any) -> str | None:
     if value is None:
         return None
+    if isinstance(value, datetime):
+        local = value.astimezone(ZoneInfo('Asia/Taipei')) if value.tzinfo is not None else value
+        return local.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, dict):
@@ -108,6 +113,26 @@ def _extract_date(value: Any) -> str | None:
     text = unescape(str(value or "").strip())
     if not text:
         return None
+    if text.startswith(('http://', 'https://')):
+        try:
+            parsed = urlsplit(text)
+            host = parsed.hostname or ''
+            pattern = None
+            if host == 'ctee.com.tw' or host.endswith('.ctee.com.tw'):
+                pattern = r'/news/(20\d{6})\d{6}-'
+            elif host == 'cna.com.tw' or host.endswith('.cna.com.tw'):
+                pattern = r'/news/[^/]+/(20\d{6})\d{4}\.aspx'
+            if pattern and (match := re.search(pattern, parsed.path)):
+                return datetime.strptime(match.group(1), '%Y%m%d').date().isoformat()
+        except ValueError:
+            pass
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}[^\n]*', text):
+        try:
+            timestamp = datetime.fromisoformat(text.replace('Z', '+00:00'))
+            local = timestamp.astimezone(ZoneInfo('Asia/Taipei')) if timestamp.tzinfo is not None else timestamp
+            return local.date().isoformat()
+        except ValueError:
+            pass
     if relative := _extract_relative_date(text):
         return relative
     if match := _META_DATE_RE.search(text):

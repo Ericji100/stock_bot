@@ -1,5 +1,6 @@
 """Real filesystem/database operations in isolated fixtures, without paid HTTP."""
 from contextlib import ExitStack
+import json
 import os
 from pathlib import Path
 import unittest
@@ -9,6 +10,67 @@ from uuid import uuid4
 from research_center import topic_repository as repository
 from research_center.topic_apply_service import confirm_change_pack, reject_change_pack
 from research_center.topic_models import TopicChangePack, TopicChangeMode, TopicChangeStatus, TopicChangeAction, TopicActionType
+
+
+class MarketDataDateAuditTests(unittest.TestCase):
+    def test_legacy_theme_flow_snapshot_dates_are_audited_without_network(self):
+        from datetime import date
+        from research_center import theme_radar_service as service
+        root = Path(os.environ['CODEX_TASK_TEST_ROOT']) / uuid4().hex
+        directory = root / '.cache/market_movers'
+        directory.mkdir(parents=True)
+        rows = [{'code': 'A', 'price_date': '2026-10-30'}, {'code': 'B', 'price_date': '2026-10-30'},
+                {'code': 'C', 'price_date': '2026-11-02'}]
+        payload = {'market_data_date': '2026-11-02', 'active_movers': rows, 'top_gainers': rows}
+        (directory / 'market_movers_2026-11-03.json').write_text(json.dumps(payload), encoding='utf-8')
+        with patch.object(service, 'ROOT_DIR', root), patch.object(service, 'build_market_movers') as build:
+            data = service._load_cached_market_movers_snapshot(date(2026, 11, 3))
+        build.assert_not_called()
+        self.assertEqual(data['market_data_date'], '2026-10-30')
+        audit = data['data_quality']['price_date_audit']
+        self.assertEqual(audit['date_counts']['2026-10-30'], 2)
+        self.assertEqual(audit['scope'], 'snapshot_visible_stock_rows_only')
+
+    def test_input_counts_follow_stock_references_not_json_wrapper_keys(self):
+        from research_center.ai_workflow_service import _build_core_input_audit, _semantic_count, COMPLETE_SEGMENT_CONTEXT_SCHEMA_VERSION
+        stocks = [{'code': str(code)} for code in range(1000, 1100)]
+        refs = {'representation': 'stock_code_refs', 'stock_codes': [row['code'] for row in stocks]}
+        self.assertEqual(_semantic_count(refs), 100)
+        chunks = {'資料型態': '完整分段清單', '總筆數': 999,
+                  '段落': [{'資料': stocks[:40]}, {'資料': stocks[40:]}]}
+        self.assertEqual(_semantic_count(chunks), 100)
+        self.assertEqual(_semantic_count({'schema_version': COMPLETE_SEGMENT_CONTEXT_SCHEMA_VERSION, 'payload': refs}), 100)
+        audit = _build_core_input_audit('theme_radar', {'strong_stocks': stocks}, {'strong_stocks': refs})
+        row = next(row for row in audit['sections'] if row['section'] == 'strong_stocks')
+        self.assertEqual(row['raw_count'], row['sent_count'])
+        self.assertIn('股票主檔', row['note'])
+
+    def test_a_few_new_bars_do_not_relabel_the_whole_market(self):
+        from datetime import date
+        from research_center.market_movers_service import _market_data_date, _price_date_audit
+        rows = [{'price_date': '2026-10-30'}] * 1984 + [{'price_date': '2026-11-02'}] * 4
+        audit = _price_date_audit(rows, date(2026, 11, 3))
+        self.assertEqual(_market_data_date(rows), '2026-10-30')
+        self.assertEqual(audit['latest_date_stock_count'], 4)
+        self.assertEqual(audit['date_counts']['2026-10-30'], 1984)
+        self.assertTrue(audit['mixed_dates'])
+        self.assertTrue(audit['warnings'])
+
+    def test_unknown_dates_are_not_replaced_with_the_report_day(self):
+        from datetime import date
+        from research_center.market_movers_service import _assemble_market_movers
+        data = _assemble_market_movers(date(2026, 11, 3), [{'code': 'TEST', 'name': '合成資料'}])
+        self.assertEqual(data['market_data_date'], 'unknown')
+        self.assertEqual(data['data_quality']['price_date_audit']['undated_stock_count'], 1)
+
+    def test_future_dates_are_explicitly_warned_without_deleting_rows(self):
+        from datetime import date
+        from research_center.market_movers_service import _price_date_audit
+        rows = [{'price_date': '2026-11-04'}, {'price_date': 'invalid'}]
+        audit = _price_date_audit(rows, date(2026, 11, 3))
+        self.assertEqual(audit['undated_stock_count'], 1)
+        self.assertTrue(any('指定日期' in warning for warning in audit['warnings']))
+        self.assertEqual(len(rows), 2)
 
 
 class TopicFilesystemWorkflowTests(unittest.TestCase):
@@ -54,6 +116,32 @@ class TopicFilesystemWorkflowTests(unittest.TestCase):
 
 
 class NewsEvidencePersistenceTests(unittest.TestCase):
+    def test_date_corrections_survive_duplicate_pending_items_without_losing_ai_fields(self):
+        from research_center.news_models import NewsItem
+        from research_center.news_repository import NewsRepository
+        root=Path(os.environ['CODEX_TASK_TEST_ROOT'])/uuid4().hex
+        repo=NewsRepository(root/'date.sqlite3')
+        original=NewsItem(title='同篇新聞',url='https://example.test/item',published_at='2026-11-01',
+                          summary='已完成分析',counter_evidence=['需求轉弱'])
+        repo.save(original)
+        incoming=NewsItem(title=original.title,url=original.url,published_at='2026-11-02T10:00:00',tags=['local_rule_fallback'])
+        repo.save_many([incoming])
+        restored=repo.get_by_url(original.url)
+        self.assertEqual(restored.published_at,incoming.published_at)
+        self.assertEqual(restored.summary,original.summary)
+        self.assertEqual(restored.counter_evidence,original.counter_evidence)
+        incoming.published_at='2026-11-02'
+        repo.save_many([incoming])
+        self.assertEqual(repo.get_by_url(original.url).published_at,'2026-11-02T10:00:00')
+
+    def test_unknown_publication_date_stays_unknown_after_refresh(self):
+        from research_center.news_models import NewsItem
+        from research_center.news_service import _backfill_refresh_item_dates
+        item=NewsItem(title='日期不明的台股新聞',url='https://example.test/undated',news_origin='refresh')
+        _backfill_refresh_item_dates([item])
+        self.assertEqual(item.published_at,'')
+        self.assertTrue(item.created_at)
+
     def test_ai_counter_evidence_and_gaps_survive_save_update_and_query(self):
         from research_center.news_models import NewsItem
         from research_center.news_repository import NewsRepository
@@ -85,6 +173,81 @@ class NewsEvidencePersistenceTests(unittest.TestCase):
         self.assertNotIn('market_story',text)
 
 
+class NewsSearchQualityGateTests(unittest.TestCase):
+    def test_shared_publication_dates_convert_utc_to_taiwan_without_moving_date_only_values(self):
+        from datetime import datetime, timezone
+        from research_center.source_date_normalizer import normalize_published_date
+        self.assertEqual(normalize_published_date('2026-11-01T16:00:00+00:00'),'2026-11-02')
+        self.assertEqual(normalize_published_date('2026-11-01T16:00:00Z'),'2026-11-02')
+        self.assertEqual(normalize_published_date(datetime(2026,11,1,16,tzinfo=timezone.utc)),'2026-11-02')
+        self.assertEqual(normalize_published_date('2026-11-01'),'2026-11-01')
+        self.assertEqual(normalize_published_date('2026-11-01T16:00:00'),'2026-11-01')
+
+    def run_search(self, *, day='2026-11-02', command='news', require_official=False, short=False):
+        from datetime import date
+        from types import SimpleNamespace
+        from research_center.deepseek_search_service import DeepSeekSearchService
+        service=DeepSeekSearchService(SimpleNamespace())
+        rows=[{'title':'台股供應鏈風險與新訂單','url':f'https://{host}/{path}', 'date':day,
+               'content':'短文' if short else '台股供應鏈訂單增加，但需注意庫存與需求轉弱風險。'*10}
+              for host,path in [('www.ctee.com.tw','news/20261102700039-430502'),
+                                ('news.cnyes.com','news/id/12345'),('money.udn.com','money/story/5607/12345'),
+                                ('technews.tw','2026/11/02/evidence')]]
+        tasks=[{'label':'供應鏈與產業','queries':[f'完整查詢{i}' for i in range(6)],
+                'news_quality_policy':{'terms':['供應鏈'],'require_official':require_official}}]
+        with patch.object(service,'search',return_value={'results':rows}) as search:
+            result=service.discover(SimpleNamespace(command=command,report_date=date(2026,11,2)),tasks)
+        return search.call_count,result
+
+    def test_fresh_relevant_multi_domain_articles_stop_redundant_queries_but_keep_sources(self):
+        count,result=self.run_search()
+        self.assertEqual(count,2)
+        self.assertEqual(len(result.sources),4)
+        self.assertEqual(result.diagnostics['runs'][0]['early_stop'],'quality_satisfied')
+        self.assertEqual(result.diagnostics['runs'][0]['unexecuted_query_count'],4)
+
+    def test_old_short_or_non_official_results_do_not_satisfy_quality_gate(self):
+        for kwargs in [{'day':'2026-10-26'},{'short':True},{'require_official':True}]:
+            with self.subTest(kwargs=kwargs):
+                count,result=self.run_search(**kwargs)
+                self.assertEqual(count,6)
+                self.assertNotIn('early_stop',result.diagnostics['runs'][0])
+
+    def test_other_commands_are_not_limited_by_news_gate(self):
+        count,result=self.run_search(command='macro')
+        self.assertEqual(count,6)
+
+    def test_news_categories_and_negative_evidence_task_are_not_removed(self):
+        from research_center.news_service import build_news_discovery_queries
+        tasks=build_news_discovery_queries()
+        self.assertEqual(len(tasks),13)
+        self.assertTrue(next(t for t in tasks if t['label']=='反證與利空')['news_quality_policy']['terms'])
+        self.assertTrue(next(t for t in tasks if t['label']=='個股公告 / MOPS')['news_quality_policy']['require_official'])
+
+    def test_real_prompt_registry_preserves_news_quality_policy_for_official_search(self):
+        from research_center.command_parser import parse_command_text
+        from research_center.prompt_registry import build_grounding_discovery_prompts
+        tasks=build_grounding_discovery_prompts(parse_command_text('/news refresh'),{},[])
+        self.assertEqual(len(tasks),13)
+        self.assertTrue(all(task['news_quality_policy']['terms'] for task in tasks))
+        self.assertTrue(next(t for t in tasks if t['label']=='個股公告 / MOPS')['news_quality_policy']['require_official'])
+
+    def test_unknown_provider_dates_use_article_url_dates_not_an_arbitrary_body_date(self):
+        from datetime import date
+        from research_center.deepseek_search_service import _news_task_quality
+        rows=[{'title':'台股供應鏈','url':f'https://{host}/{path}', 'snippet':'台股供應鏈有新訂單但需求風險仍在。'*12}
+              for host,path in [('www.ctee.com.tw','news/20261102700039-430502'),
+                                ('www.ctee.com.tw','news/20261102700040-430502'),
+                                ('technews.tw','2026/11/02/power'),('technews.tw','2026/11/02/chip')]]
+        quality=_news_task_quality(rows,{'terms':['供應鏈']},date(2026,11,2))
+        self.assertTrue(quality['passed'])
+        self.assertEqual(quality['url_dated_articles'],4)
+        for row in rows:
+            row['url']=row['url'].replace('20261102','undated').replace('2026/11/02','undated')
+            row['snippet']='報導回顧2026-11-02事件，並非刊登日期。'*12
+        self.assertFalse(_news_task_quality(rows,{'terms':['供應鏈']},date(2026,11,2))['passed'])
+
+
 class LosslessSegmentMergeTests(unittest.TestCase):
     def test_official_radar_uses_full_packet_above_legacy_limit(self):
         from datetime import date
@@ -111,6 +274,73 @@ class LosslessSegmentMergeTests(unittest.TestCase):
         self.assertEqual(merged[0]['payload']['sections'][1]['payload'],plans[1]['payload'])
         self.assertEqual(merged[1],plans[2])
         self.assertTrue(all(len(_build_segment_prompt(request,{},p,[]))<160000 for p in merged))
+
+
+class ClosedSessionPriceCacheTests(unittest.TestCase):
+    def test_only_certified_same_day_evening_bars_can_bypass_short_ttl(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from stock_ai_bot.scanning.stock_scanner import _closed_session_price_symbols
+        metric={'price_date':'2026-11-02','change_pct':1,'volume_ratio':2}
+        payload={'metrics':{'9999.TW':metric,'8888.TW':{**metric,'price_date':'2026-10-30'}},
+                 'closed_session':{'date':'2026-11-02','symbols':['9999.TW','8888.TW']}}
+        evening=datetime(2026,11,2,21,30,tzinfo=ZoneInfo('Asia/Taipei'))
+        self.assertEqual(_closed_session_price_symbols(payload,evening),{'9999.TW'})
+        self.assertEqual(_closed_session_price_symbols(payload,evening.replace(hour=15)),set())
+        self.assertEqual(_closed_session_price_symbols(payload,evening.replace(day=3)),set())
+        self.assertEqual(_closed_session_price_symbols(payload,evening.replace(day=3,hour=8)),{'9999.TW'})
+        self.assertEqual(_closed_session_price_symbols(payload,evening.replace(day=3,hour=9)),set())
+        self.assertEqual(_closed_session_price_symbols({'metrics':payload['metrics']},evening),set())
+
+    def test_expired_evening_cache_fetches_only_gaps_and_force_still_fetches_all(self):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from stock_ai_bot.scanning import stock_scanner as scanner
+        class FixedNow(datetime):
+            @classmethod
+            def now(cls,tz=None):
+                return cls(2026,11,2,21,30,tzinfo=tz)
+        metric={'price_date':'2026-11-02','change_pct':1,'volume_ratio':2}
+        payload={'metrics':{'9999.TW':metric},
+                 'closed_session':{'date':'2026-11-02','symbols':['9999.TW']}}
+        universe=[SimpleNamespace(symbol=symbol) for symbol in ['9999.TW','8888.TW']]
+        for force,expected in [(False,['8888.TW']),(True,['9999.TW','8888.TW'])]:
+            with self.subTest(force=force), patch.object(scanner,'datetime',FixedNow), \
+                    patch.object(scanner,'PRICE_CACHE_PATH') as path, \
+                    patch.object(scanner,'_read_json',return_value=payload), \
+                    patch.object(scanner,'_is_fresh',return_value=False), \
+                    patch.object(scanner,'_download_chunk_price_metrics',return_value={s:metric for s in expected}) as fetch, \
+                    patch.object(scanner,'_write_json') as write,patch.object(scanner.time,'sleep'):
+                path.exists.return_value=True
+                result=scanner.load_price_metrics(universe,force_refresh=force)
+                self.assertEqual(set(result),{'9999.TW','8888.TW'})
+                self.assertEqual(fetch.call_args.args[0],expected)
+                self.assertEqual(set(write.call_args.args[1]['closed_session']['symbols']),set(result))
+
+    def test_single_stock_refresh_preserves_other_stocks_without_renewing_their_age(self):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from zoneinfo import ZoneInfo
+        from stock_ai_bot.scanning import stock_scanner as scanner
+        class FixedNow(datetime):
+            @classmethod
+            def now(cls,tz=None):
+                return cls(2026,11,2,21,30,tzinfo=tz)
+        metric={'price_date':'2026-11-02','change_pct':1,'volume_ratio':2}
+        old_time='2026-11-02T19:00:00+08:00'
+        payload={'metrics':{s:metric for s in ['9999.TW','8888.TW']},
+                 'metric_fetched_at':{s:old_time for s in ['9999.TW','8888.TW']}}
+        with patch.object(scanner,'datetime',FixedNow),patch.object(scanner,'PRICE_CACHE_PATH') as path, \
+                patch.object(scanner,'_read_json',return_value=payload),patch.object(scanner,'_is_fresh',return_value=True), \
+                patch.object(scanner,'_download_chunk_price_metrics',return_value={'9999.TW':metric}) as fetch, \
+                patch.object(scanner,'_write_json') as write,patch.object(scanner.time,'sleep'):
+            path.exists.return_value=True
+            scanner.load_price_metrics([SimpleNamespace(symbol='9999.TW')])
+            fetch.assert_called_once_with(['9999.TW'])
+            stored=write.call_args.args[1]
+            self.assertEqual(set(stored['metrics']),{'9999.TW','8888.TW'})
+            self.assertEqual(stored['metric_fetched_at']['8888.TW'],old_time)
+            self.assertEqual(scanner._fresh_price_cache_symbols(stored,FixedNow.now(ZoneInfo('Asia/Taipei')),1800,True),{'9999.TW'})
 
 
 class ThemeCandidateRelevanceTests(unittest.TestCase):

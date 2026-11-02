@@ -14,6 +14,19 @@ from research_center.scoring_engine import build_local_scores
 
 
 class ReportSchemaAndScoringTests(unittest.TestCase):
+    def test_low_model_html_does_not_invent_a_retired_provider(self):
+        from research_center.report_html_renderer import _ai_audit_html, _low_model_digest_html
+        for metadata in ({}, {"low_model_model": "deepseek-flash", "low_model_digest": {
+                "model": "deepseek-flash", "status": "success", "facts": ["合成測試事實"]}}):
+            with self.subTest(metadata=metadata):
+                report = {"metadata": metadata}
+                rendered = _low_model_digest_html(report) + _ai_audit_html(report)
+                self.assertNotIn("MiniMax", rendered)
+                if metadata:
+                    self.assertIn("deepseek-flash", rendered)
+                else:
+                    self.assertIn("本次沒有產生低階模型資料整理底稿", rendered)
+
     def test_unreadable_source_title_is_replaced_for_display(self):
         title = _source_display_title("AI?餅?靘??函璆剛圾", "https://example.com/news")
 

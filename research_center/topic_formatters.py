@@ -59,7 +59,7 @@ def _source_level_label(value: Any) -> str:
     return {
         "L1_official": "官方來源",
         "L2_media": "媒體來源",
-        "L3_community": "社群來源",
+        "L3_community": "社群／未分級參考",
     }.get(str(raw), str(raw).replace("_", " "))
 
 
@@ -112,9 +112,15 @@ def _pack_meta_lines(pack: TopicChangePack) -> list[str]:
         f"來源數：{source_count}｜證據數：{evidence_count}｜風險 {risk_count}｜反證 {counter_count}｜資料缺口 {missing_count}",
     ]
     if command_result:
-        status = command_result.get("ai_status") or command_result.get("status")
+        status = extra.get("ai_status") or command_result.get("ai_status") or command_result.get("status")
         if status:
             lines.append(f"AI 狀態：{_ai_status_label(status)}")
+    audit = extra.get("citation_audit")
+    if isinstance(audit, dict):
+        lines.append("引用檢核：" + ("可追溯（不等於主張已證實）" if audit.get("passed") else
+            f"尚有 {audit.get('blocking_count', 0)} 項待補查，不可套用"))
+        if (audit.get('counts') or {}).get('unverified_lead'):
+            lines.append(f"另保留待查線索：{audit['counts']['unverified_lead']} 筆（不作正式證據）")
     return lines
 
 
@@ -140,7 +146,7 @@ def _action_quality_lines(action: TopicChangeAction) -> list[str]:
 
 def format_change_pack_created_summary(pack: TopicChangePack) -> str:
     """Format a newly generated topic change pack for Telegram display."""
-    title = "✅ 變更包已產生" if pack.status == TopicChangeStatus.PENDING else "⚠️ 變更包產生但未通過檢查"
+    title = "✅ 變更包已產生" if pack.status == TopicChangeStatus.PENDING and pack.extra.get("evidence_review_complete") is not False else "⚠️ 變更包產生但未通過檢查"
     return "\n".join([
         title,
         f"變更包代號：{pack.change_id}",

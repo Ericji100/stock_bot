@@ -73,8 +73,12 @@ def should_use_segmented_analysis(
     return prompt_chars >= threshold_chars
 
 
-def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float, *, progress=None) -> Any:
+def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float, *, progress=None, final_output=False) -> Any:
     if getattr(ai_client, "provider", "") == "deepseek":
+        if final_output and 0 < getattr(ai_client, 'max_output_tokens', 0) < 65536:
+            # Final reports include reasoning and all required chapters. Reserve
+            # existing retry headroom up front instead of paying for truncation.
+            ai_client = ai_client.with_output_limit(65536)
         try:
             return ai_client.with_timeout(timeout_seconds).generate_report(prompt)
         except DeepSeekError as exc:
@@ -233,7 +237,8 @@ def run_segmented_theme_analysis(
             outputs.append(output)
 
     final_sources = _sources_for_segment_outputs(outputs, sources)
-    final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources)
+    final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources,
+        complete_segment_notes=getattr(ai_client, 'provider', '') == 'deepseek')
     final_prompt_too_large = len(final_prompt) > SEGMENTED_ANALYSIS_FINAL_HARD_CHARS
     final_prompt_path = write_prompt_log(
         request,
@@ -258,11 +263,13 @@ def run_segmented_theme_analysis(
     final_retry_diagnostics: dict[str, Any] | None = None
     try:
         if final_prompt_too_large:
+            if getattr(ai_client, 'provider', '') == 'deepseek':
+                raise DeepSeekError('最終整合資料超過請求界線；保留分段成果，不以刪減資料重試。', 'final_prompt_too_large')
             raise ValueError(
                 f"segmented final prompt too large: {len(final_prompt)} chars "
                 f"> {SEGMENTED_ANALYSIS_FINAL_HARD_CHARS}"
             )
-        final_result = _call_ai_with_timeout_setting(ai_client, final_prompt, call_timeout_seconds, progress=progress)
+        final_result = _call_ai_with_timeout_setting(ai_client, final_prompt, call_timeout_seconds, progress=progress, final_output=True)
         markdown = str(getattr(final_result, "markdown", "") or "").strip()
         final_diagnostics = dict(getattr(final_result, "diagnostics", {}) or {})
         final_elapsed = time.monotonic() - final_started
@@ -274,6 +281,20 @@ def run_segmented_theme_analysis(
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408\u5b8c\u6210 output={len(markdown)} chars")
     except DeepSeekUnavailable:
         raise
+    except DeepSeekError as exc:
+        # Never turn an official-provider failure into an unannounced compact
+        # prompt. Preserve the work, but do not call it a completed AI report.
+        if getattr(ai_client, 'provider', '') != 'deepseek':
+            raise
+        markdown = _compose_segmented_fallback_report(request, outputs, exc)
+        final_elapsed = time.monotonic() - final_started
+        final_diagnostics = {'status': 'fallback', 'error': str(exc),
+            'elapsed_seconds': round(final_elapsed, 2), 'timeout_seconds': call_timeout_seconds,
+            'full_input_preserved': True, 'diagnostics': exc.diagnostics}
+        raw = {}
+        final_status = 'fallback'
+        final_error = str(exc)
+        _emit(progress, '分段 AI：最終整合未完成，保留全部分段成果；不縮減資料重試、不標記正式成功。')
     except Exception as exc:
         retry_prompt = _build_compact_final_retry_prompt(request, structured_data, outputs, final_sources, exc)
         retry_prompt_path = write_prompt_log(
@@ -785,6 +806,8 @@ def _build_final_prompt(
     data: dict[str, Any],
     outputs: list[dict[str, Any]],
     sources: list[SourceItem],
+    *,
+    complete_segment_notes: bool = False,
 ) -> str:
     command_specific_rules = _final_synthesis_command_rules(request.command)
     return _sanitize_prompt_text("\n".join([
@@ -808,7 +831,7 @@ def _build_final_prompt(
         _json(_final_local_summary(data)),
         "",
         "Segment analysis notes:",
-        _json(_segment_outputs_state(outputs, request.command)),
+        _json(_segment_outputs_state(outputs, request.command, complete=complete_segment_notes)),
         "",
         "Source index:",
         _json(_source_refs(sources)),
@@ -934,7 +957,7 @@ def _prior_outputs_state(outputs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _segment_outputs_state(outputs: list[dict[str, Any]], command: str = "") -> dict[str, Any]:
+def _segment_outputs_state(outputs: list[dict[str, Any]], command: str = "", *, complete: bool = False) -> dict[str, Any]:
     """Summarize segment outputs for final synthesis without quadratic growth."""
 
     rows: list[dict[str, Any]] = []
@@ -953,16 +976,16 @@ def _segment_outputs_state(outputs: list[dict[str, Any]], command: str = "") -> 
                 "status": status,
                 "error": item.get("error"),
                 "output_chars": len(markdown),
-                "note_excerpt": _truncate_segment_text(markdown, excerpt_limit),
+                "note_excerpt": markdown if complete else _truncate_segment_text(markdown, excerpt_limit),
             }
         )
     return {
-        "policy": (
+        "policy": ("完整保留各段已完成的模型分析，不以固定字數裁切；它們仍是待最終模型檢查的底稿，不是已驗證結論。" if complete else (
             "final synthesis receives one bounded but decision-rich note per segment; "
             "the note must preserve scores, target price logic, risks, counter-evidence, source IDs, "
             "data gaps, candidate names and follow-up conditions. Full intermediate Markdown remains in prompt logs and diagnostics."
-        ),
-        "note_excerpt_limit": excerpt_limit,
+        )),
+        "note_excerpt_limit": None if complete else excerpt_limit,
         "segment_count": len(rows),
         "status_counts": status_counts,
         "segments": rows,
@@ -1500,6 +1523,23 @@ def _theme_flow_layer_rows(rows: Any, *, limit: int, sample_limit: int) -> list[
 
 
 def _final_local_summary(data: dict[str, Any]) -> dict[str, Any]:
+    package = data.get('high_model_input_package') or {}
+    feature = data.get('feature_pack') or {}
+    command = package.get('command') or feature.get('command')
+    payload = (package.get('command_specific_data') or {}).get('payload') or {}
+    if command in {'research', 'value_scan'}:
+        summary = {'command_role': command, 'report_date': data.get('report_date'),
+            'local_scoring': data.get('local_scoring') or payload.get('local_scoring'),
+            'data_quality': data.get('data_quality') or {},
+            'scope_note': '此為個股研究或候選價值重估；不以全市場產業排行是否為空判定候選或財報資料缺漏。完整證據分析保留於各段筆記。'}
+        if command == 'research':
+            summary['stock'] = data.get('stock') or payload.get('stock') or feature.get('target')
+        else:
+            candidates = data.get('ai_candidates') or feature.get('candidates') or []
+            summary.update(candidate_pool=data.get('candidate_pool') or payload.get('candidate_pool'),
+                candidates=candidates, candidate_count=len(candidates),
+                ai_candidate_evidence_summary=payload.get('ai_candidate_evidence_summary'))
+        return summary
     sector_data = data if data.get("command_role") == "sector_strength" else data.get("sector_strength") or {}
     return {
         "command_role": data.get("command_role"),

@@ -245,6 +245,22 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
         send.assert_awaited_once_with(context.bot, 123, "摘要文字", reply_markup=None)
         self.assertNotIn("ResearchCenterResult(", send.await_args.args[2])
 
+    async def test_topic_completed_ai_with_invalid_evidence_is_not_reported_as_ai_timeout(self):
+        context = _FakeContext()
+        result = SimpleNamespace(status='partial_success', report_json={
+            'change_pack': {'extra': {'ai_review_complete':True, 'evidence_review_complete':False}}})
+        center = SimpleNamespace(run=lambda *args: result)
+        with patch.object(main, 'load_config', return_value={'chat_id':123}), \
+             patch('research_center.orchestrator.ResearchCenter', return_value=center), \
+             patch.object(main, '_scheduled_ai_gate', new=AsyncMock(return_value=None)), \
+             patch.object(main, '_flush_ai_notices', new=AsyncMock()), \
+             patch.object(main, 'safe_send_bot_message', new=AsyncMock()) as send:
+            outcome = await main._scheduled_topic_maintain(context)
+        self.assertEqual(outcome['status'],'partial_success')
+        self.assertIn('AI 已完成',outcome['reason'])
+        self.assertIn('不可套用',outcome['reason'])
+        send.assert_not_awaited()
+
     def test_main_registers_1000_topic_maintain_job(self):
         source = Path(main.__file__).read_text(encoding="utf-8")
 

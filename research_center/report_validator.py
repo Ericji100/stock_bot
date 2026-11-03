@@ -122,7 +122,7 @@ def _forbidden_claims(markdown: str) -> list[str]:
     for pattern in FORBIDDEN_PATTERNS:
         for match in re.finditer(re.escape(pattern), markdown):
             prefix = markdown[max(0, match.start() - 24):match.start()]
-            if re.search(r'(?:不等於|不代表|並非|不是|不可|不得|不能|不應|無法|不)[「『"\s]*(?:短線|股價|一定|能夠)?[「『"\s]*$', prefix):
+            if re.search(r'(?:不能(?:直接)?解讀為|不等於|不代表|並非|不是|不可|不得|不能|不應|無法|不)[「『"\s]*(?:短線|股價|一定|能夠)?[「『"\s]*$', prefix):
                 continue
             hits.append(pattern)
             break

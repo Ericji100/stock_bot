@@ -1,5 +1,5 @@
 """Offline contracts: missing downloads are not prices or permanent no-data."""
-from datetime import date
+from datetime import date, datetime
 import json
 from unittest.mock import Mock
 
@@ -24,6 +24,12 @@ def bars(count=25):
 
 @pytest.fixture(autouse=True)
 def isolated_caches(tmp_path, monkeypatch):
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 23, 16, tzinfo=tz)
+    # These contracts exercise the live retry path, not a clock-dependent replay.
+    monkeypatch.setattr(technical, 'datetime', FixedClock)
     monkeypatch.setattr(technical, "TECH_CACHE_DIR", tmp_path / "live")
     monkeypatch.setattr(historical, "HISTORICAL_PRICE_CACHE_DIR", tmp_path / "historical")
     monkeypatch.setattr(retry.time, "sleep", lambda _: None)

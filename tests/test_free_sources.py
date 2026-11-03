@@ -35,8 +35,24 @@ class FreeSourceTests(unittest.TestCase):
         )
         result = parse_tdcc_frame(frame, '2330', 'sample.csv')
         self.assertEqual(result['status'], 'covered')
-        self.assertEqual(result['concentration_signal'], 'high_concentration')
-        self.assertEqual(result['large_holder_pct'], 58.0)
+        self.assertEqual(result['large_holder_pct'], 30.0)
+        self.assertEqual(result['data_quality']['excluded_summary_levels'], [16])
+
+    def test_tdcc_total_not_added_and_duplicate_buckets_not_double_counted(self):
+        row = {'證券代號':'2330', '持股分級':'15', '占集保庫存數比例%':'84.38'}
+        frame = pd.DataFrame([row, row, {**row, '持股分級':'17', '占集保庫存數比例%':'100'}])
+        result = parse_tdcc_frame(frame, '2330')
+        self.assertEqual(result['large_holder_pct'], 84.38)
+        self.assertEqual(result['duplicate_row_count'], 1)
+        self.assertEqual(len(result['raw_levels']), 3)
+
+    def test_tdcc_conflicting_or_invalid_buckets_are_quarantined_not_clamped(self):
+        for values in ([50, 60], [101], [float('nan')]):
+            frame = pd.DataFrame([{'證券代號':'2330', '持股分級':'15', '占集保庫存數比例%':value} for value in values])
+            result = parse_tdcc_frame(frame, '2330')
+            self.assertEqual(result['status'], 'invalid')
+            self.assertIsNone(result['large_holder_pct'])
+            self.assertTrue(result['raw_levels'])
 
     def test_parse_tpex_valuation_json_reads_tables_payload(self):
         payload = {

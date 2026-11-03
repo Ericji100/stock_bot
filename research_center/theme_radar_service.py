@@ -4,14 +4,15 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
 from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_stock_universe
 
 from .config import ROOT_DIR
-from .market_movers_service import _price_date_audit, build_market_movers, rows_from_market_movers
+from .knowledge_base import find_theme_company_candidates, load_company_knowledge
+from .market_movers_service import _price_date_audit, _safe_price_metrics as _shared_market_price_metrics, build_market_movers, rows_from_market_movers
 from .news_repository import NewsRepository
 from .recent_scans import load_recent_scan_results
 from .sector_alias_service import (
@@ -156,34 +157,34 @@ def build_theme_flow_data(
         universe = load_stock_universe(False)
         by_code = {str(getattr(entry, "code", "")): entry for entry in universe}
         market_movers = market_movers or _load_cached_market_movers_snapshot(target_date)
-        rows = rows_from_market_movers(market_movers or {}, "active_movers")
-        if rows:
-            stock_rows_source = "market_movers_cache"
+        mapped = _attach_theme_matches([_stock_row(entry, {}) for entry in universe], topic_library)
+        theme_id = str((theme or {}).get('theme_id') or '')
+        node_codes = {str(node.get('company_code') or '') for node in _nodes_for_theme(theme_id, topic_library)}
+        business_candidates = find_theme_company_candidates(universe, query, theme or {},
+            _nodes_for_theme(theme_id, topic_library), load_company_knowledge())
+        business_codes = {row['code'] for row in business_candidates if row['theme_match_priority'] <= 1}
+        related_codes = {row['code'] for row in mapped if row['code'] in node_codes or
+                         any(match.get('theme_id') == theme_id for match in row['theme_matches'])}
+        related_codes.update(business_codes)
+        related_universe = [entry for code, entry in by_code.items() if code in related_codes]
+        _emit(progress, f"題材流向：取得完整關聯公司價量 {len(related_universe)} 檔，包含弱勢與未入選股票")
+        if related_universe:
+            if target_date < datetime.now().date() - timedelta(days=1):
+                price_metrics = load_price_metrics(related_universe, as_of_date=target_date)
+            else:
+                price_metrics = _shared_market_price_metrics(related_universe, report_date=target_date)
         else:
-            codes, recent_policy = _strong_stock_codes("recent", target_date, by_code)
-            rows = _stock_rows(codes, by_code, {})
-            if rows:
-                stock_rows_source = "recent_scan_cache"
-                market_movers = {
-                    "status": "recent_scan_cache_for_theme_flow",
-                    "market_data_date": target_date.isoformat(),
-                    "active_movers": rows,
-                    "strong_stock_policy": recent_policy,
-                    "data_quality": {
-                        "limited_market_price_fields": True,
-                        "warnings": ["theme_flow 使用近期選股快取建立題材流向候選股，避免 standalone 指令大量抓取價量資料。"],
-                    },
-                }
-        if not rows:
-            sample_universe = universe[:80]
-            price_metrics = _safe_price_metrics(sample_universe)
-            market_movers = market_movers or build_market_movers(target_date, universe=sample_universe, price_metrics=price_metrics, progress=progress)
-            rows = rows_from_market_movers(market_movers, "active_movers") or _fallback_active_rows(sample_universe, price_metrics, 80)
-            stock_rows_source = "limited_price_sample"
+            price_metrics = {}
         stock_rows = annotate_rows_with_subsectors(_attach_theme_matches(
-            rows,
-            topic_library,
-        ))
+            [_stock_row(entry, price_metrics) for entry in related_universe], topic_library))
+        # A supply-chain link is a candidate relation, not proof of price strength.
+        for row in stock_rows:
+            if row['code'] in node_codes | business_codes and not any(m.get('theme_id') == theme_id for m in row['theme_matches']):
+                row['theme_matches'].append(_theme_match(theme_id, theme or {}, 'supply_chain_candidate',
+                                                        row['code'], topic_library['supply_chain_nodes'], 45))
+        stock_rows_source = 'full_theme_related_universe'
+        market_movers = {**(market_movers or {}),
+                         'market_data_date': _price_date_audit(stock_rows, target_date)['dominant_price_date'] or 'unknown'}
     else:
         market_movers = market_movers or (preloaded or {}).get("market_movers")
         stock_rows = annotate_rows_with_subsectors(stock_rows)
@@ -195,6 +196,9 @@ def build_theme_flow_data(
         if any(m.get("theme_id") == theme_id for m in row.get("theme_matches", []))
         or (query and query in json.dumps(row.get("theme_matches", []), ensure_ascii=False))
     ]
+    related = list({str(row.get('code')): row for row in related}.values())
+    usable = [row for row in related if row.get('price') is not None and row.get('price_date')]
+    flow_date_audit = _price_date_audit(usable, target_date)
     if preloaded is not None and "news_stats" in preloaded:
         news_stats = preloaded.get("news_stats") or []
     else:
@@ -211,7 +215,7 @@ def build_theme_flow_data(
         "theme_query": query,
         "theme": theme or {"theme_id": "", "theme_name": query, "status": "not_found"},
         "related_stock_count": len(related),
-        "related_stocks": related[:80],
+        "related_stocks": related,
         "layers": layers,
         "layer_market_validation": layer_market_validation,
         "next_layer_candidates": _next_layer_candidates(layers),
@@ -220,9 +224,17 @@ def build_theme_flow_data(
             "theme_found": bool(theme),
             "has_supply_chain_nodes": bool(nodes),
             "related_stock_count": len(related),
+            "quantitative_stock_count": len(usable),
+            "flow_evidence_basis": "price_volume_proxy",
+            "quantitative_missing_codes": [row['code'] for row in related if row not in usable],
+            "price_date_audit": flow_date_audit,
+            "warnings": (["關聯公司量價覆蓋不足，不能推論完整族群資金流。"] if len(usable) < 2 or len(usable) < len(related) else []) + flow_date_audit['warnings'],
             "market_data_date": _market_data_date_from(market_movers),
             "stock_rows_source": stock_rows_source,
-            "market_movers_data_quality": (market_movers or {}).get("data_quality", {}),
+            "market_movers_data_quality": ({'scope':'theme_related_stocks_only', 'price_date_audit':flow_date_audit}
+                                           if stock_rows_source == 'full_theme_related_universe'
+                                           else (market_movers or {}).get("data_quality", {})),
+            "reference_market_snapshot_quality": (market_movers or {}).get("data_quality", {}),
         },
         "analysis_policy": _analysis_policy(),
     }
@@ -757,8 +769,12 @@ def _stock_row(entry: Any, price_metrics: dict[str, Any]) -> dict[str, Any]:
         "symbol": str(getattr(entry, "symbol", "")),
         "industry": str(getattr(entry, "industry", "")),
         "price": metric.get("price") or metric.get("close"),
+        "price_date": metric.get("price_date"),
+        "history_metrics_as_of": metric.get("history_metrics_as_of") or metric.get("price_date"),
+        "history_refresh_required": bool(metric.get("history_refresh_required")),
+        "historical_metric_snapshot": metric.get("historical_metric_snapshot"),
         "previous_close": metric.get("previous_close") or metric.get("prev_close"),
-        "change_pct": metric.get("change_pct") or metric.get("pct_change") or metric.get("return_1d_pct"),
+        "change_pct": next((metric[key] for key in ('change_pct', 'pct_change', 'return_1d_pct') if metric.get(key) is not None), None),
         "volume": metric.get("volume"),
         "avg_volume_20d": metric.get("avg_volume_20d"),
         "volume_ratio": metric.get("volume_ratio") or metric.get("rvol"),
@@ -784,7 +800,7 @@ def _stock_row(entry: Any, price_metrics: dict[str, Any]) -> dict[str, Any]:
 
 def _safe_price_metrics(universe: list[Any]) -> dict[str, Any]:
     try:
-        return load_price_metrics(universe)
+        return _shared_market_price_metrics(universe)
     except Exception:
         return {}
 

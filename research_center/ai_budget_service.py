@@ -51,7 +51,7 @@ def shared_budget_root(root: Path) -> Path:
 
 
 class MonthlyBudget:
-    def __init__(self, root, *, total=10, background=5, manual=4, reserve=1, job_limit=.30, pacing=True):
+    def __init__(self, root, *, total=10, background=7, manual=2, reserve=1, job_limit=.30, pacing=True):
         self.root = Path(root)
         self.total, self.background, self.manual, self.reserve = map(lambda x: Decimal(str(x)), (total, background, manual, reserve))
         self.job_limit = Decimal(str(job_limit))
@@ -159,6 +159,7 @@ class MonthlyBudget:
             rows = conn.execute("SELECT background,status,estimate,actual FROM spending WHERE day LIKE ?", (now.strftime("%Y-%m")+"-%",)).fetchall()
         charged = [(bool(b),Decimal(a if a is not None else e)) for b,s,e,a in rows if s not in ("failed","rejected")]
         return {"month":now.strftime("%Y-%m"),"total_limit":str(self.total),"reserve":str(self.reserve),
+                "background_limit":str(self.background),"manual_limit":str(self.manual),
                 "used_or_reserved":str(sum((v for _,v in charged),Decimal(0))),
                 "background_used":str(sum((v for b,v in charged if b),Decimal(0))),
                 "manual_used":str(sum((v for b,v in charged if not b),Decimal(0))),

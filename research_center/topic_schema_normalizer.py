@@ -168,6 +168,7 @@ def _normalize_evidence(value: Any) -> list[TopicEvidence]:
         result.append(TopicEvidence(
             source=source or "未命名來源",
             source_level=level,
+            supporting_quote=str(item.get('supporting_quote') or '').strip() or None,
             content=to_traditional_text(content),
             url=item.get("url"),
             publish_date=item.get("publish_date") or item.get("published_date"),
@@ -226,6 +227,7 @@ def _normalize_supply_chain_nodes(value: Any, theme_id: str, fallback_evidence: 
         node.setdefault("evidence", evidence)
         node.setdefault("risk_notes", ["待後續維護補強"])
         node.setdefault("missing_data", ["待補供應鏈節點證據"])
+        node.setdefault('verification_status', item.get('status') or 'candidate')
         node.setdefault("upstream", [])
         node.setdefault("downstream", [])
         node.setdefault("product_keywords", [])

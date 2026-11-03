@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from typing import Any
 from io import StringIO
+import re
 from urllib.parse import urlencode
 
 import httpx
@@ -159,6 +160,32 @@ def financial_detail_snapshot(financial_rows: list[dict[str, Any]]) -> dict[str,
         "score_points": 24 if status == "covered" else 12,
         "sample": {key: latest.get(key) for key in useful[:8]},
     }
+
+
+def financial_period_audit(financial_rows, report_date=None) -> dict[str, Any]:
+    """Expose period ambiguity, never turn quarterly/YTD EPS into invented TTM."""
+    rows = financial_rows if isinstance(financial_rows, list) else []
+    as_of = (report_date or datetime.now().date()).isoformat()
+    periods, warnings = [], []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        quarter = str(row.get('Quarter') or row.get('period') or '')
+        published = str(row.get('published_at') or row.get('Published_At') or '')[:10]
+        if published and published > as_of:
+            warnings.append(f'{quarter} 的可用日期晚於指定日期，不得用於當時估值。')
+        match = re.fullmatch(r'(\d{4})Q([1-4])', quarter)
+        periods.append({'period': quarter, 'published_at': published or None,
+                        'currency': row.get('Currency') or row.get('currency'),
+                        'eps_period_basis': row.get('EPS_Period_Basis') or row.get('eps_period_basis') or 'unverified',
+                        'quarter_recognized': bool(match)})
+    if not periods:
+        warnings.append('未取得可核對的結構化季財報，搜尋摘要不等於完整財報。')
+    if any(row['eps_period_basis'] == 'unverified' for row in periods):
+        warnings.append('EPS 單季、累計或全年口徑未證實，不得直接當成近四季 EPS 或年化獲利。')
+    return {'status': 'partial' if warnings else 'covered', 'periods': periods,
+            'report_date': as_of, 'warnings': list(dict.fromkeys(warnings)),
+            'policy': '官方新聞稿與結構化財報分開核對；日期、幣別、期間及單位未對齊不得互相替代。'}
 
 
 def _try_fetch_recent_material_events(stock_code: str, report_date: date | None = None) -> list[dict[str, Any]]:

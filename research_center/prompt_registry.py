@@ -139,6 +139,7 @@ def _research_structured_prompt_data(structured_data: dict[str, Any]) -> dict[st
         "margin_data": structured_data.get("margin_data"),
         "revenue_data": structured_data.get("revenue_data"),
         "financial_data": structured_data.get("financial_data"),
+        "financial_period_audit": structured_data.get("financial_period_audit"),
         "strategy_summary": structured_data.get("strategy_summary"),
         "valuation_data": structured_data.get("valuation_data"),
         "tdcc_data": structured_data.get("tdcc_data"),

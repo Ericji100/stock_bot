@@ -1960,7 +1960,11 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
         await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
         if result.status != "success":
             print(format_cmd_message("題材庫維護未完整成功，變更包不得視為正式更新", "定時任務"), flush=True)
-            return {"status": result.status, "reason": "題材庫 AI 審核未完整完成"}
+            pack = (getattr(result, 'report_json', None) or {}).get('change_pack') or {}
+            extra = pack.get('extra') or {}
+            reason = ("AI 已完成，但引用、日期或更新目標檢核未通過，不可套用"
+                      if extra.get('ai_review_complete') is True else "題材庫 AI 審核未完整完成")
+            return {"status": result.status, "reason": reason}
         await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
             format_cmd_message("22:30 AI題材庫維護（DeepSeek Flash）完成", "定時任務"),

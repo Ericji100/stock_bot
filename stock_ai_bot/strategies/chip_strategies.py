@@ -1526,6 +1526,7 @@ def _load_cached_tdcc_frames() -> pd.DataFrame:
 
 
 def _build_weekly_distribution(candidates: pd.DataFrame, report_date: date | None = None) -> pd.DataFrame:
+    from stock_ai_bot.data_sources.tdcc_distribution import summarize_tdcc_levels
     # The public TDCC bulk feed only exposes the latest snapshot.  Never fetch
     # it while replaying an older date, and never let a newer cached snapshot
     # enter a historical result.
@@ -1547,14 +1548,12 @@ def _build_weekly_distribution(candidates: pd.DataFrame, report_date: date | Non
 
     aggregated = (
         tdcc_df.groupby(["snapshot_date", "code"]).apply(
-            lambda group: pd.Series(
-                {
-                    "big_holder_pct": group.loc[group["level"].isin(TDCC_BIG_BUCKETS), "pct"].sum(),
-                    "retail_holder_pct": group.loc[group["level"].isin(TDCC_RETAIL_BUCKETS), "pct"].sum(),
-                }
-            )
+            lambda group: pd.Series(summarize_tdcc_levels(
+                group.to_dict('records'), large_levels=sorted(TDCC_BIG_BUCKETS),
+                retail_levels=sorted(TDCC_RETAIL_BUCKETS)))
         )
     ).reset_index()
+    aggregated['big_holder_pct'] = aggregated['large_holder_pct']
     return aggregated.sort_values(["code", "snapshot_date"]).reset_index(drop=True)
 
 

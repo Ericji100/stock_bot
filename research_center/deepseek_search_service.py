@@ -174,7 +174,7 @@ class DeepSeekSearchService:
                         source = {"title": row.get("title"), "url": row.get("url"),
                             "snippet": text,
                             "published_date": published_date, "provider": self.provider,
-                            "found_by": [query, *(["source_title:code_isolated"] if isolated else []), *(["source_table:stock_projection"] if projected else [])],
+                            "found_by": [query, *(["source_text:provided_content"] if row.get('content') else []), *(["source_title:code_isolated"] if isolated else []), *(["source_table:stock_projection"] if projected else [])],
                             "provider_detail": task.get("label", "") + ("；標題程式碼已隔離，原始回應保留" if isolated else "")}
                         raw_sources.append(source)
                         task_sources.append(source)

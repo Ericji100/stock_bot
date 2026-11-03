@@ -201,6 +201,7 @@ def _merge_daily_chip_sources(cache_data: dict[str, Any], finmind_data: dict[str
 
 
 def _load_recent_tdcc_rows(stock_code: str, report_date: date | None) -> dict[str, Any]:
+    from stock_ai_bot.data_sources.tdcc_distribution import summarize_tdcc_levels
     files = _cache_files_before(TDCC_CACHE_DIR, "*.csv", report_date)
     rows: list[dict[str, Any]] = []
     for path in files[:8]:
@@ -217,24 +218,18 @@ def _load_recent_tdcc_rows(stock_code: str, report_date: date | None) -> dict[st
         subset = frame[frame[code_col].astype(str).str.strip() == stock_code]
         if subset.empty:
             continue
-        big_pct = 0.0
-        retail_pct = 0.0
-        total_people = 0
+        levels = []
         for _, item in subset.iterrows():
             level = _to_float(item.get(level_col))
-            pct = _to_float(item.get(pct_col)) or 0.0
+            pct = _to_float(item.get(pct_col))
             people = int(_to_float(item.get(people_col)) or 0) if people_col else 0
-            total_people += people
-            if level in {12, 13, 14, 15}:
-                big_pct += pct
-            if level in {1, 2, 3, 4, 5, 6, 7, 8}:
-                retail_pct += pct
+            levels.append({'level': level, 'pct': pct, 'people': people})
+        summary = summarize_tdcc_levels(levels, large_levels=(12, 13, 14, 15), retail_levels=tuple(range(1, 9)))
         rows.append(
             {
                 "snapshot_date": _date_from_path(path),
-                "big_holder_pct": round(big_pct, 2),
-                "retail_holder_pct": round(retail_pct, 2),
-                "total_people": total_people,
+                **summary,
+                "big_holder_pct": summary['large_holder_pct'],
                 "source_file": path.name,
             }
         )

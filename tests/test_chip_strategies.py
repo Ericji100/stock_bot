@@ -118,14 +118,14 @@ class TestFinMindScopePropagation(unittest.TestCase):
     def test_finmind_payload_receives_scope(self, mock_client_cls):
         """_finmind_payload must use scope parameter passed from caller, not hardcode default."""
         from stock_ai_bot.strategies import chip_strategies
-        import importlib
-        importlib.reload(chip_strategies)
+        health = self.enterContext(patch.object(chip_strategies, '_CHIP_HEALTH'))
+        health.is_available.return_value = True
 
         # Mock quota so can_use returns True for any scope
         mock_quota = MagicMock()
         mock_quota.can_use.return_value = True
         mock_quota.record_use = MagicMock()
-        chip_strategies._FINMIND_QUOTA = mock_quota
+        self.enterContext(patch.object(chip_strategies, '_FINMIND_QUOTA', mock_quota))
 
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -150,13 +150,13 @@ class TestFinMindScopePropagation(unittest.TestCase):
     def test_fetch_finmind_net_buy_for_stock_propagates_scope(self, mock_client_cls):
         """_fetch_finmind_net_buy_for_stock passes scope to _finmind_payload."""
         from stock_ai_bot.strategies import chip_strategies
-        import importlib
-        importlib.reload(chip_strategies)
+        health = self.enterContext(patch.object(chip_strategies, '_CHIP_HEALTH'))
+        health.is_available.return_value = True
 
         mock_quota = MagicMock()
         mock_quota.can_use.return_value = True
         mock_quota.record_use = MagicMock()
-        chip_strategies._FINMIND_QUOTA = mock_quota
+        self.enterContext(patch.object(chip_strategies, '_FINMIND_QUOTA', mock_quota))
 
         mock_client = MagicMock()
         mock_response = MagicMock()

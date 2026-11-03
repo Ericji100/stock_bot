@@ -91,8 +91,8 @@ class DeepSeekAccount:
     def __init__(self, key: str | None, root: Path, *, balance_ttl: float = 60,
                  background_reserve_usd: float = 0.20, daily_limit_usd: float = 0.0,
                  usd_cny_budget_rate: float = 7.5,
-                 budget_root=None, monthly_limit_usd=10, background_monthly_usd=5,
-                 manual_monthly_usd=4, monthly_reserve_usd=1, job_limit_usd=.30, schedule_pacing=True,
+                 budget_root=None, monthly_limit_usd=10, background_monthly_usd=7,
+                 manual_monthly_usd=2, monthly_reserve_usd=1, job_limit_usd=.30, schedule_pacing=True,
                  transport=None):
         self.key = key
         self.root = Path(root)
@@ -305,12 +305,24 @@ class DeepSeekService:
 
     def _post(self, operation: str, body: dict, estimate: Decimal):
         request_id = self.account.reserve(operation, estimate)
+        tool_request_path = None
+        if operation.startswith('v1/tools/'):
+            try:
+                directory = self.account.root / 'requests'
+                directory.mkdir(parents=True, exist_ok=True)
+                tool_request_path = directory / (request_id + '.json')
+                tool_request_path.write_text(json.dumps({'request_id':request_id, 'run_id':RUN_ID.get(),
+                    'command':TASK.get()[0], 'operation':operation, 'body':body}, ensure_ascii=False, indent=2), encoding='utf-8')
+            except OSError:
+                self.account.finish(request_id, 'failed', {'reason':'request_log_unavailable', 'http_sent':False}, Decimal(0))
+                raise DeepSeekError('無法保存搜尋請求，尚未連線或扣款。', 'request_log_unavailable') from None
         started = time.monotonic()
         attempts = 0
         prompt_chars = sum(len(str(m.get("content") or "")) for m in body.get("messages", []))
         def metrics(detail):
             return {**detail, "attempts": attempts, "retry_count": max(0, attempts - 1),
-                    "elapsed_seconds": round(time.monotonic() - started, 3), "prompt_chars": prompt_chars}
+                    "elapsed_seconds": round(time.monotonic() - started, 3), "prompt_chars": prompt_chars,
+                    'run_id':RUN_ID.get(), 'request_path':str(tool_request_path) if tool_request_path else None}
         try:
             for attempt in range(self.max_retries + 1):
                 try:

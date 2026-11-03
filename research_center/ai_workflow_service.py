@@ -358,6 +358,7 @@ def _build_low_model_digest_payload(
         "skipped_structured_sections": skipped_sections,
         "data_gap_summary": structured_data.get("data_gap_summary"),
         "report_confidence": structured_data.get("report_confidence"),
+        "financial_period_audit": structured_data.get("financial_period_audit"),
         "ai_input_audit": structured_data.get("ai_input_audit"),
     }
 
@@ -887,6 +888,7 @@ def build_high_model_input_package(
         "input_quality_gate": input_quality_gate,
         "ai_data_center": structured_data.get("ai_data_center") if include_full_context else None,
         "ai_data_center_summary": _ai_data_center_summary(structured_data.get("ai_data_center")),
+        "financial_period_audit": structured_data.get("financial_period_audit"),
         "ai_prompt_context": structured_data.get("ai_prompt_context") if include_full_context else None,
         "ai_prompt_context_summary": _ai_prompt_context_summary(structured_data.get("ai_prompt_context")),
         "ai_input_audit": structured_data.get("ai_input_audit"),
@@ -1433,7 +1435,7 @@ def _semantic_command_payload(request: CommandRequest, structured_data: dict[str
             structured_data,
             [
                 "stock", "price_data", "technical_data", "institutional_data", "margin_data",
-                "revenue_data", "financial_data", "valuation_data", "tdcc_data", "source_events",
+                "revenue_data", "financial_data", "financial_period_audit", "valuation_data", "tdcc_data", "source_events",
                 "company_knowledge", "local_rerating_snapshot", "topic_context", "local_scoring",
                 "unified_evidence_pack",
             ],

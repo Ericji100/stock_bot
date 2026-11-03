@@ -1,11 +1,43 @@
 ﻿from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 COMPANY_KNOWLEDGE_PATH = ROOT_DIR / "config" / "company_knowledge.json"
+
+
+def find_theme_company_candidates(universe, query, profile, related_nodes, knowledge, progress=None):
+    node_order = {str(node['company_code']): index for index, node in enumerate(related_nodes)
+                  if isinstance(node, dict) and node.get('company_code')}
+    companies = knowledge.get('companies') or {}
+    keywords = [str(value).lower() for value in [query, *(profile.get('keywords') or [])] if value]
+    industries = profile.get('industries') or []
+    matched = []
+    for index, entry in enumerate(universe, 1):
+        if progress and (index == 1 or index == len(universe) or index % 300 == 0):
+            progress(f'題材研究：比對股票宇宙 {index}/{len(universe)}，目前命中 {len(matched)} 檔')
+        code = str(entry.code)
+        info = companies.get(code) or {}
+        # Match business descriptions, not unrelated articles stored in the evidence history.
+        products = json.dumps([info.get(key) for key in ('product_lines','products','supply_chain_roles')], ensure_ascii=False).lower()
+        name_text = f'{entry.name} {entry.industry}'.lower()
+        linked = code in node_order
+        product_hit = any(keyword in products for keyword in keywords)
+        keyword_hit = any(keyword in name_text for keyword in keywords)
+        industry_hit = any(industry and industry in entry.industry for industry in industries)
+        if not (linked or product_hit or keyword_hit or industry_hit):
+            continue
+        priority = 0 if linked else 1 if product_hit or keyword_hit else 2
+        reason = ('題材庫供應鏈關聯，仍須本次證據驗證' if linked else
+                  '公司產品／名稱關鍵字關聯，仍須本次證據驗證' if priority == 1 else
+                  f'僅產業分類命中：{entry.industry}，不等於已確認產品關係')
+        row = asdict(entry) if is_dataclass(entry) else {key:getattr(entry,key,'') for key in ('code','name','symbol','industry','market')}
+        matched.append({**row, 'theme_match_reason':reason, 'theme_match_priority':priority,
+                        'theme_reference_order':node_order.get(code, len(node_order))})
+    return sorted(matched, key=lambda row:(row['theme_match_priority'],row['theme_reference_order']))
 
 
 def load_company_knowledge(path: Path | None = None) -> dict[str, Any]:

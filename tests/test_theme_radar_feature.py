@@ -152,7 +152,7 @@ def test_theme_flow_returns_extension_layers_and_candidates():
     assert data["layer_market_validation"][0]["market_validated"] is True
 
 
-def test_theme_flow_uses_recent_scan_cache_before_price_fetch(monkeypatch):
+def test_theme_flow_fetches_related_universe_instead_of_trusting_scan_membership(monkeypatch):
     library = _prepared_library()
     stocks = [
         _stock("2330", "台積電", "半導體"),
@@ -171,17 +171,18 @@ def test_theme_flow_uses_recent_scan_cache_before_price_fetch(monkeypatch):
         raise AssertionError("theme_flow should not build market movers when recent scan cache is enough")
 
     monkeypatch.setattr("research_center.theme_radar_service._safe_price_metrics", fail_price_fetch)
+    monkeypatch.setattr("research_center.theme_radar_service.load_price_metrics", lambda universe, **kwargs: _metrics())
     monkeypatch.setattr("research_center.theme_radar_service.build_market_movers", fail_market_movers)
 
     data = build_theme_flow_data("AI", date(2026, 5, 22))
 
-    assert data["data_quality"]["stock_rows_source"] == "recent_scan_cache"
+    assert data["data_quality"]["stock_rows_source"] == "full_theme_related_universe"
     assert data["related_stock_count"] >= 1
     assert data["market_data_date"] == "2026-05-22"
 
 
 class ThemeFlowStandaloneCachePathTests(unittest.TestCase):
-    def test_theme_flow_uses_recent_scan_cache_before_price_fetch(self):
+    def test_theme_flow_fetches_related_universe_instead_of_trusting_scan_membership(self):
         library = _prepared_library()
         stocks = [
             _stock("2330", "台積電", "半導體"),
@@ -200,10 +201,11 @@ class ThemeFlowStandaloneCachePathTests(unittest.TestCase):
             patch("research_center.theme_radar_service._load_cached_market_movers_snapshot", lambda report_date: None), \
             patch("research_center.theme_radar_service.load_recent_scan_results", lambda limit=30: [{"scan_type": "Radar", "selected_codes": ["2330", "6415"]}]), \
             patch("research_center.theme_radar_service._safe_price_metrics", fail_price_fetch), \
+            patch("research_center.theme_radar_service.load_price_metrics", lambda universe, **kwargs: _metrics()), \
             patch("research_center.theme_radar_service.build_market_movers", fail_market_movers):
             data = build_theme_flow_data("AI", date(2026, 5, 22))
 
-        self.assertEqual(data["data_quality"]["stock_rows_source"], "recent_scan_cache")
+        self.assertEqual(data["data_quality"]["stock_rows_source"], "full_theme_related_universe")
         self.assertGreaterEqual(data["related_stock_count"], 1)
         self.assertEqual(data["market_data_date"], "2026-05-22")
 

@@ -916,7 +916,7 @@ class ResearchCenter:
                 if self.config.deepseek_only:
                     topic_payload = pack.to_dict()
                     topic_ai_used = pack.extra.get("ai_review_complete") is True
-                    result_status = "success" if topic_ai_used and pack.extra.get("evidence_review_complete") is not False and pack.status.value == "pending" else "partial_success"
+                    result_status = "success" if topic_ai_used and pack.extra.get("evidence_review_complete") is not False and pack.extra.get("action_review_complete") is not False and pack.status.value == "pending" else "partial_success"
 
             elif cmd == "topic_review":
                 change_id = request.target

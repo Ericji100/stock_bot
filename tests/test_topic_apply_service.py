@@ -454,7 +454,8 @@ class TestTopicApplyService(unittest.TestCase):
 
         with patch("research_center.topic_apply_service.load_change_pack", return_value=pack):
             with patch("research_center.topic_apply_service.backup_topic_files", return_value={"backup_root": "/tmp/bak"}):
-                with patch("research_center.topic_apply_service.load_topic_profiles", return_value=[]):
+                with patch("research_center.topic_apply_service.load_topic_profiles", return_value=[
+                    apply_service.TopicProfile(theme_id='ai_power',theme_name='AI Power')]):
                     with patch("research_center.topic_apply_service.load_company_topic_map", return_value={}):
                         with patch("research_center.topic_apply_service.load_supply_chain_nodes", return_value=[existing_node]):
                             with patch("research_center.topic_apply_service.save_topic_profiles"):

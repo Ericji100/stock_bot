@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import pandas as pd
+from stock_ai_bot.data_sources.tdcc_distribution import summarize_tdcc_levels
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT_DIR / ".cache"
@@ -445,31 +446,24 @@ def parse_tdcc_frame(frame: pd.DataFrame, stock_code: str, source_name: str = "t
     rows = frame[frame[code_col].astype(str).str.strip() == str(stock_code)].copy()
     if rows.empty:
         return {"status": "empty", "source": source_name, "code": stock_code}
+    if date_col:
+        rows = rows[rows[date_col].astype(str) == rows[date_col].astype(str).max()]
     level_summary = []
-    large_holder_pct = 0.0
-    retail_holder_pct = 0.0
-    total_people = 0
     for _, row in rows.iterrows():
-        level = str(row.get(level_col, "")).strip()
-        pct = _number(row.get(pct_col)) or 0.0
+        raw_level = _number(row.get(level_col))
+        level = int(raw_level) if raw_level is not None else 0
+        pct = _number(row.get(pct_col))
         people = int(_number(row.get(people_col), 0) or 0)
         shares = int(_number(row.get(shares_col), 0) or 0)
-        total_people += people
-        if level in {"15", "16", "17"}:
-            large_holder_pct += pct
-        if level in {"1", "2", "3", "4", "5"}:
-            retail_holder_pct += pct
         level_summary.append({"level": level, "people": people, "shares": shares, "pct": pct})
     data_date = str(rows.iloc[0].get(date_col, "")) if date_col else None
+    summary = summarize_tdcc_levels(level_summary)
     return {
-        "status": "covered",
+        **summary,
         "source": source_name,
         "code": stock_code,
         "data_date": data_date,
-        "total_people": total_people,
-        "large_holder_pct": round(large_holder_pct, 2),
-        "retail_holder_pct": round(retail_holder_pct, 2),
-        "concentration_signal": _tdcc_signal(large_holder_pct, retail_holder_pct),
+        "concentration_signal": _tdcc_signal(summary['large_holder_pct'], summary['retail_holder_pct']) if summary['status'] == 'covered' else 'unavailable',
         "levels": level_summary,
     }
 

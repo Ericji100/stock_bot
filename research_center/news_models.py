@@ -19,6 +19,7 @@ NEWS_SIGNAL_TAGS = {
     "benefit_hypothesis": "受惠假說",
     "failure_signal": "故事失效訊號",
     "local_rule_fallback": "本地規則待複核",
+    "ai_classified": "已完成 AI 判讀（非事實認證）",
 }
 
 
@@ -48,6 +49,12 @@ class NewsItem:
     counter_evidence: list[str] = field(default_factory=list)
     missing_data: list[str] = field(default_factory=list)
 
+    @property
+    def classification_status(self) -> str:
+        if 'local_rule_fallback' in self.tags:
+            return 'pending_ai'
+        return 'ai_classified' if 'ai_classified' in self.tags else 'unverified_legacy'
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -71,6 +78,7 @@ class NewsItem:
             "created_at": self.created_at,
             "counter_evidence": self.counter_evidence,
             "missing_data": self.missing_data,
+            "classification_status": self.classification_status,
         }
 
     @classmethod

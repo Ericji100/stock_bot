@@ -33,13 +33,14 @@ def build_market_movers(
     """
     target_date = report_date or datetime.now().date()
     cache_path = _snapshot_path(target_date)
+    stale = None
     if not force_refresh and universe is None and price_metrics is None:
         cached = _read_snapshot(cache_path)
         audited = bool(((cached or {}).get('data_quality') or {}).get('price_date_audit'))
         if cached and audited and _snapshot_is_fresh(cached, target_date):
             return cached
         if cached and audited:
-            return _mark_stale_snapshot(cached)
+            stale = cached
 
     if progress:
         progress(f"Market movers：載入全市場股票宇宙，date={target_date.isoformat()}")
@@ -51,6 +52,8 @@ def build_market_movers(
 
     rows = [_build_stock_mover_row(entry, price_metrics) for entry in universe]
     rows = [row for row in rows if row.get("has_price_metric")]
+    if not rows and stale:
+        return _mark_stale_snapshot(stale)
     data = _assemble_market_movers(target_date, rows)
 
     if universe is not None and price_metrics is not None:
@@ -454,11 +457,26 @@ def _num(value: Any) -> float:
         return 0.0
 
 
-def _safe_price_metrics(universe: list[Any]) -> dict[str, Any]:
+def _safe_price_metrics(universe: list[Any], report_date: date | None = None) -> dict[str, Any]:
+    from stock_ai_bot.scanning import stock_scanner
+    from stock_ai_bot.data_sources.official_daily_quotes import load_official_closes, merge_official_closes
+    target = report_date or datetime.now().date()
+    official = load_official_closes(universe, target)
     try:
-        return load_price_metrics(universe)
+        cached = stock_scanner._read_json(stock_scanner.PRICE_CACHE_PATH) if stock_scanner.PRICE_CACHE_PATH.exists() else {}
+    except (ValueError, OSError):
+        cached = {}
+    cached_metrics = {key: value for key, value in (cached.get('metrics') or {}).items()
+                      if str(value.get('price_date') or '') <= target.isoformat()}
+    missing = [entry for entry in universe if entry.symbol not in official]
+    try:
+        downloaded = (load_price_metrics(missing, as_of_date=target) if target < datetime.now().date()
+                      else load_price_metrics(missing)) if missing else {}
     except Exception:
-        return {}
+        downloaded = {}
+    requested = {entry.symbol for entry in universe}
+    return merge_official_closes({key: value for key, value in {**cached_metrics, **downloaded}.items()
+                                 if key in requested}, official)
 
 
 def _snapshot_path(target_date: date) -> Path:

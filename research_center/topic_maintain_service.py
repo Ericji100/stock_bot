@@ -45,7 +45,7 @@ def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources
     payload={"mode":mode.value,"report_date":report_date,"model":model,
              "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
     stable=_stable_fingerprint_payload(payload)
-    return 'topic-workflow-v3:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
+    return 'topic-workflow-v5:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -125,6 +125,9 @@ def _source_item_to_dict(source: Any) -> dict[str, Any]:
         "source_level": str(getattr(source, "source_level", "") or ""),
         "provider": str(getattr(source, "provider", "") or ""),
         "provider_detail": str(getattr(source, "provider_detail", "") or ""),
+        "found_by": list(getattr(source, 'found_by', []) or []),
+        "fetch_status": getattr(source, 'fetch_status', None),
+        "fetch_provider": getattr(source, 'fetch_provider', None),
     }
 
 
@@ -500,7 +503,7 @@ def run_topic_maintain(
             [template,_load_prompt('topic_candidate_extract'),_load_prompt('topic_detail_expand')])
         cached = workflow_account.cached(workflow_key)
         previous = load_change_pack(cached.get('change_id','')) if cached else None
-        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True and previous.extra.get('evidence_review_complete') is True:
+        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True and previous.extra.get('evidence_review_complete') is True and previous.extra.get('action_review_complete') is True:
             previous.extra['workflow_cache_hit']=True
             workflow_account.activity('topic_workflow',True,{'change_id':previous.change_id})
             emit('本次資料、日期、模型與提示詞未變，重用已完整審核的待確認更新包；不重複付費分析。')
@@ -710,7 +713,20 @@ def run_topic_maintain(
     if official:
         pack.model = center.config.deepseek_model
         quarantine_topic_source_leads(pack, structured_data)
+        from .topic_citation_audit import quarantine_unproven_company_claims
+        quarantined = quarantine_unproven_company_claims(pack, structured_data)
+        if quarantined:
+            pack.warnings.append(f'{quarantined} 筆公司主張未通過原文對照，完整保留為候選，不視為已確認事實。')
         citation_audit = audit_topic_citations(pack, structured_data)
+        from .topic_apply_service import resolve_action_targets, validate_action_targets
+        profiles = load_topic_profiles()
+        pack.extra['resolved_update_targets'] = resolve_action_targets(pack, profiles)
+        target_audit = validate_action_targets(pack, profiles)
+        pack.extra['action_target_audit'] = target_audit
+        pack.extra['action_review_complete'] = target_audit['passed']
+        if not target_audit['passed']:
+            pack.extra['ai_status'] = 'partial_success'
+            pack.warnings.append(f"{len(target_audit['issues'])} 筆更新目標不符現有題材庫，此包不可套用；保留原始動作供修正。")
         pack.extra['citation_audit'] = citation_audit
         pack.extra['evidence_review_complete'] = citation_audit['passed']
         if not citation_audit['passed']:
@@ -813,7 +829,7 @@ def run_topic_maintain(
 
     # Save change pack
     save_change_pack(pack)
-    if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True and pack.extra.get('evidence_review_complete') is True:
+    if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True and pack.extra.get('evidence_review_complete') is True and pack.extra.get('action_review_complete') is True:
         workflow_account.cache(workflow_key,{'change_id':change_id},3*86400)
     emit(f"變更包已保存：{change_id}")
     return pack

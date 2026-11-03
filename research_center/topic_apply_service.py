@@ -34,6 +34,45 @@ from .topic_repository import (
 from .topic_quality import applyable_field_value, infer_status, is_applyable_status, is_retainable_company_status, normalize_status
 
 
+def resolve_action_targets(pack: TopicChangePack, profiles) -> int:
+    known = {p.get('theme_id') if isinstance(p, dict) else p.theme_id for p in profiles}
+    resolved = 0
+    for action in pack.actions:
+        # Pipeline candidates keep their own identity; updates carry an explicit
+        # existing target. Never infer that identity from a similar name.
+        if (action.action_type == TopicActionType.UPDATE_THEME and action.theme_id not in known
+                and action.target_theme_id in known):
+            original = action.theme_id
+            action.extra['original_candidate_theme_id'] = original
+            action.theme_id = action.target_theme_id
+            for node in action.supply_chain_nodes:
+                if isinstance(node, dict) and node.get('theme_id') == original:
+                    node['theme_id'] = action.theme_id
+            resolved += 1
+        if action.action_type == TopicActionType.CREATE_THEME:
+            known.add(action.theme_id)
+    return resolved
+
+
+def validate_action_targets(pack: TopicChangePack, profiles) -> dict[str, Any]:
+    known = {p.get('theme_id') if isinstance(p, dict) else p.theme_id for p in profiles}
+    issues = []
+    for index, action in enumerate(pack.actions):
+        kind = action.action_type
+        if kind == TopicActionType.CREATE_THEME:
+            known.add(action.theme_id)
+        elif action.theme_id not in known:
+            issues.append({'action_index': index, 'theme_id': action.theme_id,
+                           'reason': '更新目標不存在；不得默默略過或自動改成新增。'})
+        elif kind == TopicActionType.MERGE_THEME:
+            if action.target_theme_id not in known or action.target_theme_id == action.theme_id:
+                issues.append({'action_index': index, 'theme_id': action.theme_id,
+                               'reason': '合併目的題材不存在或與來源相同。'})
+            else:
+                known.discard(action.theme_id)
+    return {'passed': not issues, 'issues': issues}
+
+
 def confirm_change_pack(change_id: str, user_id: str = "system") -> TopicApplyResult:
     """Apply a pending change pack to the formal topic library.
 
@@ -55,10 +94,16 @@ def confirm_change_pack(change_id: str, user_id: str = "system") -> TopicApplyRe
             errors=[f"變更包狀態為 {pack.status.value}，只能套用 pending 變更包"],
         )
 
+    profiles = load_topic_profiles()
+    resolve_action_targets(pack, profiles)
+    target_audit = validate_action_targets(pack, profiles)
+    if not target_audit['passed']:
+        return TopicApplyResult(change_id=change_id, success=False,
+                                errors=[item['reason'] + ' ' + item['theme_id'] for item in target_audit['issues']])
+
     backup_result = backup_topic_files(f"confirm_{change_id}")
     backup_path = backup_result.get("backup_root", "")
 
-    profiles = load_topic_profiles()
     profile_map = {p.theme_id: p for p in profiles}
     company_map = load_company_topic_map()
     supply_nodes = load_supply_chain_nodes()

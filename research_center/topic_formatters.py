@@ -116,6 +116,9 @@ def _pack_meta_lines(pack: TopicChangePack) -> list[str]:
         if status:
             lines.append(f"AI 狀態：{_ai_status_label(status)}")
     audit = extra.get("citation_audit")
+    targets = extra.get('action_target_audit') or {}
+    if targets.get('passed') is False:
+        lines.append(f"更新目標檢核：{len(targets.get('issues') or [])} 項不符，不可套用")
     if isinstance(audit, dict):
         lines.append("引用檢核：" + ("可追溯（不等於主張已證實）" if audit.get("passed") else
             f"尚有 {audit.get('blocking_count', 0)} 項待補查，不可套用"))
@@ -146,7 +149,7 @@ def _action_quality_lines(action: TopicChangeAction) -> list[str]:
 
 def format_change_pack_created_summary(pack: TopicChangePack) -> str:
     """Format a newly generated topic change pack for Telegram display."""
-    title = "✅ 變更包已產生" if pack.status == TopicChangeStatus.PENDING and pack.extra.get("evidence_review_complete") is not False else "⚠️ 變更包產生但未通過檢查"
+    title = "✅ 變更包已產生" if pack.status == TopicChangeStatus.PENDING and pack.extra.get("evidence_review_complete") is not False and pack.extra.get("action_review_complete") is not False else "⚠️ 變更包產生但未通過檢查"
     return "\n".join([
         title,
         f"變更包代號：{pack.change_id}",

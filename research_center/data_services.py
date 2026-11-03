@@ -34,7 +34,7 @@ from .event_context_service import build_event_context, summarize_event_context
 from .evidence_pack_service import attach_unified_evidence_pack
 from .forum_service import fetch_forum_sources
 from .free_sources import build_free_macro_sources, build_free_research_sources
-from .knowledge_base import enrich_company_rows, theme_knowledge_summary, load_company_knowledge
+from .knowledge_base import enrich_company_rows, theme_knowledge_summary, load_company_knowledge, find_theme_company_candidates
 from .macro_indicators import build_macro_indicators
 from .macro_data_guard import build_macro_data_guard
 from .mops_sources import build_mops_reference_events, financial_detail_snapshot
@@ -143,6 +143,15 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     else:
         return {"message": "report lookup does not collect structured market data"}, []
 
+    from stock_ai_bot.data_sources.tdcc_distribution import validate_tdcc_snapshot
+    for row in [data, *(data.get('ai_candidates') or [])]:
+        if not isinstance(row, dict):
+            continue
+        if 'tdcc_data' in row:
+            row['tdcc_data'] = validate_tdcc_snapshot(row['tdcc_data'])
+        free = row.get('free_public_sources')
+        if isinstance(free, dict) and 'tdcc' in free:
+            row['free_public_sources'] = {**free, 'tdcc':validate_tdcc_snapshot(free['tdcc'])}
     attach_date_aware_context(request, data, progress=progress)
     attach_news_context(request, data, progress=progress)
     attach_news_events(request, data)
@@ -465,6 +474,7 @@ def collect_topic_maintain_data(request: CommandRequest, progress: Callable[[str
         "market_signals": market_signals,
         "legacy_theme_references": legacy_themes,
         "candidate_companies": candidate_companies,
+        "authoritative_company_names": {str(entry.code): str(entry.name) for entry in universe},
         "report_date": request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(),
         "notes": [
             "topic_maintain 先用本地快取與既有設定檔建立候選題材、候選股、缺口與搜尋計畫，再交由 discovery/WebFetch 取得最新公開來源。",
@@ -968,31 +978,9 @@ def collect_theme_data(request: CommandRequest, progress: Callable[[str], None] 
         topic_context = build_theme_topic_context(theme)
     except Exception as exc:
         topic_context = {"error": str(exc)}
-    node_order = {}
-    for node in topic_context.get("related_supply_chain_nodes", []):
-        if isinstance(node, dict) and node.get("company_code"):
-            node_order.setdefault(str(node["company_code"]), len(node_order))
-    linked_codes = set(node_order)
     company_knowledge = load_company_knowledge()
-    knowledge_by_code = company_knowledge.get("companies") or {}
-    keywords = [theme, *profile.get("keywords", [])]
-    industries = set(profile.get("industries", []))
-    matched = []
-    total = len(universe)
-    for index, entry in enumerate(universe, 1):
-        if progress and (index == 1 or index == total or index % 300 == 0):
-            progress(f"題材研究：比對股票宇宙 {index}/{total}，目前命中 {len(matched)} 檔")
-        text = f"{entry.name} {entry.industry}".lower()
-        keyword_hit = any(str(keyword).lower() in text for keyword in keywords if keyword)
-        industry_hit = any(industry in entry.industry for industry in industries)
-        code = str(entry.code)
-        knowledge_text = json.dumps(knowledge_by_code.get(code) or {}, ensure_ascii=False).lower()
-        product_hit = any(str(keyword).lower() in knowledge_text for keyword in keywords if keyword)
-        linked = code in linked_codes
-        if linked or product_hit or keyword_hit or industry_hit:
-            reason = "題材庫供應鏈關聯，仍須本次證據驗證" if linked else ("公司知識關鍵字關聯，仍須本次證據驗證" if product_hit else _theme_match_reason(entry.industry, keyword_hit, industry_hit))
-            matched.append({**asdict(entry), "theme_match_reason": reason, "theme_match_priority": 0 if linked else 1 if product_hit or keyword_hit else 2, "theme_reference_order": node_order.get(code,len(node_order))})
-    matched.sort(key=lambda row: (row["theme_match_priority"], row["theme_reference_order"]))
+    matched = find_theme_company_candidates(universe, theme, profile,
+        topic_context.get('related_supply_chain_nodes') or [], company_knowledge, progress)
     matched = matched[: request.top or 10]
     if progress:
         progress(f"題材研究：命中整理完成，候選 {len(matched)} 檔，補公司知識庫")

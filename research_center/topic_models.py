@@ -65,6 +65,7 @@ class TopicEvidence:
     url: str | None = None
     publish_date: str | None = None
     score_contribution: float = 0.0
+    supporting_quote: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +75,7 @@ class TopicEvidence:
             "url": self.url,
             "publish_date": self.publish_date,
             "score_contribution": self.score_contribution,
+            "supporting_quote": self.supporting_quote,
         }
 
     @classmethod
@@ -86,6 +88,7 @@ class TopicEvidence:
             url=data.get("url"),
             publish_date=data.get("publish_date"),
             score_contribution=float(data.get("score_contribution", 0.0)),
+            supporting_quote=data.get('supporting_quote'),
         )
 
 

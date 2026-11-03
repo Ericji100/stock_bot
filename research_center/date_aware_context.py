@@ -208,7 +208,7 @@ def build_saved_news_context(
         start_date = analysis_date - timedelta(days=window)
         candidates: list[NewsItem] = []
         for item in raw_items:
-            published = parse_date_like(item.published_at) or parse_date_like(item.created_at)
+            published = parse_date_like(item.published_at)
             if not published:
                 continue
             if published > analysis_date:
@@ -294,7 +294,7 @@ def _news_matches_terms(item: NewsItem, terms: list[str], command: str) -> bool:
 
 
 def _news_sort_key(item: NewsItem, analysis_date: date, terms: list[str]) -> tuple[int, int, int]:
-    published = parse_date_like(item.published_at) or parse_date_like(item.created_at) or date.min
+    published = parse_date_like(item.published_at) or date.min
     age_days = max((analysis_date - published).days, 0)
     recency_score = max(365 - age_days, 0)
     text = f"{item.title} {item.summary} {item.full_text}".lower()
@@ -304,7 +304,7 @@ def _news_sort_key(item: NewsItem, analysis_date: date, terms: list[str]) -> tup
 
 def _news_item_to_context(item: NewsItem, analysis_date: date, terms: list[str]) -> dict[str, Any]:
     item = apply_news_signal_tags(item)
-    published = parse_date_like(item.published_at) or parse_date_like(item.created_at)
+    published = parse_date_like(item.published_at)
     return {
         "title": item.title,
         "url": item.url,
@@ -312,6 +312,8 @@ def _news_item_to_context(item: NewsItem, analysis_date: date, terms: list[str])
         "published_at": item.published_at,
         "days_before_analysis_date": (analysis_date - published).days if published else None,
         "category": item.category,
+        "classification_status": item.classification_status,
+        "classification_policy": "本地或歷史狀態不明的分類僅作線索，不代表 AI 已判讀或事實已核實。",
         "related_symbols": item.related_symbols,
         "related_topics": item.related_topics,
         "importance_score": item.importance_score,

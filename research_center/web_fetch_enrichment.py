@@ -82,7 +82,7 @@ def _enrich_sources_with_web_fetch(
                 continue
             if fetched.content:
                 enriched_count += 1
-                snippet = fetched.content[:2000]
+                snippet = fetched.content
             else:
                 snippet = source.snippet
             enriched_sources.append(
@@ -119,9 +119,22 @@ def _enrich_sources_with_web_fetch(
                 "failure_reason": item.failure_reason,
                 "published_date": item.published_date,
                 "content_preview": item.content[:1200],
+                "content": item.content,
             }
             for item in result.results
         ]
+        if request.command in {'research', 'value_scan'}:
+            from .mops_sources import financial_period_audit
+            structured_data['financial_period_audit'] = financial_period_audit(
+                structured_data.get('financial_data'), request.report_date)
+            official_financial = [source for source in sources
+                                  if source.source_level in {'Level 1', 'L1_official'} and
+                                  any(term in f'{source.title} {source.provider_detail}' for term in
+                                      ('財報', '財務', '季度', 'earnings', 'financial', 'results'))]
+            structured_data['financial_period_audit'].update(
+                official_financial_urls=[source.url for source in official_financial],
+                official_body_urls=[source.url for source in official_financial
+                                    if source.fetch_status == 'success' and len(source.snippet or '') >= 300])
         if progress:
             progress(f"WebFetch completed: enriched={enriched_count}/{len(selected)}")
     except Exception as exc:

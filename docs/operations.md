@@ -14,7 +14,7 @@ Windows 可執行：
 啟動機器人.bat
 ```
 
-批次檔會設定 UTF-8、MiniMax MCP 所需的 `UV_CACHE_DIR` / `UV_TOOL_DIR`，並嘗試檢查 MiniMax MCP 是否可用；若不可用，系統會繼續以 Tavily/Gemini fallback 執行。
+日常只使用 `啟動機器人.bat`，沿用單一 watchdog 與 runner，不從開發 worktree 啟動第二個 Bot。DeepSeek-only 模式的分析與搜尋使用官方 DeepSeek；不再啟動舊 MiniMax MCP 或使用舊 Gemini／Tavily 金鑰。公開行情與非 AI 選股照原流程。
 
 ## 設定檔
 
@@ -36,9 +36,10 @@ Windows 可執行：
 | 12:30 | 監控掃描 |
 | 13:50 | 台股午報 |
 | 17:45 | 持股籌碼推播 |
-| 08:45、18:00 | 新聞整理與推播 |
+| 18:00 | 每日新聞背景整理；正常新聞不發 Telegram，異常通知另行去重 |
 | 20:30 | 交易日全部選股 |
-| 21:30 | Radar 推播，不啟用 AI 短評 |
+| 21:30 | 交易日 Radar 推播，15 檔 DeepSeek Flash 短評 |
+| 週二、五 22:30 | AI 題材庫維護，產生待審核更新包，不自動套用 |
 | 16:30、18:30、21:00 | 籌碼快取回補 |
 | 每 2 小時 | 完整資料回補健康檢查 |
 
@@ -60,6 +61,8 @@ Windows 可執行：
 ```
 
 ## 日常檢查
+
+AI 月總額 US$10：背景 7、手動／測試 2、緩衝 1。背景約 US$6.63 是目前樣本估算，不是固定帳單。額度不足或未知費用仍占額度時，停止新付費請求、保存成果並發去重異常通知；行情與本地選股不因此停用。完整驗證與已知限制見 [DeepSeek 遷移驗證](deepseek-unification-verification.md)。
 
 ```text
 /backfill_status

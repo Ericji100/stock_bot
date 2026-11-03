@@ -32,6 +32,8 @@ def _tag_label_text(item: NewsItem) -> str:
 
 
 def _impact_label(item: NewsItem) -> str:
+    if item.classification_status == 'pending_ai':
+        return '待 AI 複核（本地線索）'
     raw = str(item.impact_direction or "").strip().lower()
     if raw in {"positive", "bullish", "利多"}:
         return "利多"
@@ -133,9 +135,11 @@ def format_news_refresh_result(
             "資料狀態："
             f"搜尋來源 {meta.get('search_sources', 0)} 筆、"
             f"篩選後 {meta.get('filtered_count', 0)} 筆、"
-            f"AI分類 {meta.get('total', len(items))} 筆、"
+            f"AI分類 {meta.get('ai_classified_count', meta.get('total', len(items)))} 筆、"
             f"正文補取成功 {meta.get('webfetch_success', 0)} 筆"
         )
+        if meta.get('deferred_classification_count'):
+            lines.append(f"待 AI 複核：{meta['deferred_classification_count']} 則已保存，不列為已完成 AI 判讀。")
     category_counts = meta.get("category_counts") if isinstance(meta, dict) else {}
     if isinstance(category_counts, dict) and category_counts:
         ordered = sorted(category_counts.items(), key=lambda item: (-int(item[1] or 0), news_category_label(str(item[0]))))

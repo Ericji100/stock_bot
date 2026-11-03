@@ -20,7 +20,7 @@ class MonthlyBudgetTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(os.environ.get("CODEX_TASK_TEST_ROOT", ".cache/test_tmp/monthly_budget")) / uuid4().hex
         self.now = datetime(2026,11,2,10,tzinfo=ZoneInfo("Asia/Taipei"))
-        self.budget = MonthlyBudget(self.root, job_limit=0, pacing=False)
+        self.budget = MonthlyBudget(self.root, background=5, manual=4, job_limit=0, pacing=False)
 
     def put(self, amount, background=False, status="success", actual=True, now=None):
         token = uuid4().hex
@@ -81,14 +81,14 @@ class MonthlyBudgetTests(unittest.TestCase):
 
     def test_restart_uses_persistent_ledger(self):
         self.put(4)
-        other=MonthlyBudget(self.root,job_limit=0,pacing=False)
+        other=MonthlyBudget(self.root,background=5,manual=4,job_limit=0,pacing=False)
         with self.assertRaises(BudgetBlocked):
             other.check(estimate=Decimal('.01'),now=self.now)
 
     def test_atomic_parallel_reservations_share_limit(self):
         def reserve(i):
             try:
-                MonthlyBudget(self.root,job_limit=0,pacing=False).reserve_request(str(i),'test',False,str(i),Decimal('1'),self.now)
+                MonthlyBudget(self.root,background=5,manual=4,job_limit=0,pacing=False).reserve_request(str(i),'test',False,str(i),Decimal('1'),self.now)
                 return True
             except BudgetBlocked:
                 return False
@@ -137,6 +137,16 @@ class MonthlyBudgetTests(unittest.TestCase):
         config=load_research_config()
         self.assertEqual(config.deepseek_daily_limit_usd,0)
         self.assertEqual(config.deepseek_monthly_limit_usd,10)
+        self.assertEqual(config.deepseek_background_monthly_usd,7)
+        self.assertEqual(config.deepseek_manual_monthly_usd,2)
+
+    def test_approved_background_budget_fits_observation_without_spending_buffer(self):
+        budget = MonthlyBudget(self.root, job_limit=0, pacing=False)
+        budget.reserve_request('background', 'schedule', True, 'bg', Decimal('6.63'), self.now)
+        budget.finish('background', 'success', Decimal('6.63'))
+        budget.check(estimate=Decimal('2'), now=self.now)
+        with self.assertRaises(BudgetBlocked):
+            budget.check(estimate=Decimal('2.01'), now=self.now)
 
     def test_scheduled_quota_failure_notifies_once_and_recovers(self):
         import main
@@ -197,7 +207,7 @@ class MonthlyBudgetTests(unittest.TestCase):
         def forbidden(request):
             requests.append(request)
             raise AssertionError('budget exhaustion must stop before HTTP')
-        account=DeepSeekAccount('fake-key',self.root/'client',budget_root=self.root,transport=httpx.MockTransport(forbidden))
+        account=DeepSeekAccount('fake-key',self.root/'client',budget_root=self.root,background_monthly_usd=5,manual_monthly_usd=4,transport=httpx.MockTransport(forbidden))
         with patch.object(main,'safe_send_bot_message',new=AsyncMock()) as send, ai_task('news',True):
             reason=asyncio.run(main._scheduled_ai_gate(SimpleNamespace(bot=object()),DeepSeekService(account),123))
             self.assertEqual(reason,'background_budget_exceeded')

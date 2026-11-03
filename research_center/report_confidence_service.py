@@ -6,7 +6,7 @@ from typing import Any
 from .models import CommandRequest
 
 
-CONFIDENCE_SCHEMA_VERSION = "report_confidence_v1"
+CONFIDENCE_SCHEMA_VERSION = "report_confidence_v2"
 
 
 def build_report_confidence(
@@ -50,7 +50,13 @@ def build_report_confidence(
     else:
         warnings.append("結構化資料覆蓋度不足")
 
-    score = max(0, min(100, score))
+    quality = ai_input_audit.get('quality_checks') or {}
+    warnings.extend(quality.get('warnings') or [])
+    cap = int(quality.get('confidence_cap', 79))
+    if not quality:
+        warnings.append('未完成正文、日期與數值品質檢核，不能僅以來源筆數列為高可信。')
+    warnings = list(dict.fromkeys(warnings))
+    score = max(0, min(100, cap, score))
     level = _confidence_level(score, warnings)
     return {
         "schema_version": CONFIDENCE_SCHEMA_VERSION,
@@ -61,7 +67,8 @@ def build_report_confidence(
         "confidence_label": _confidence_label(level),
         "reasons": reasons,
         "warnings": warnings,
-        "policy": "可信度由本地依來源品質、反證覆蓋、資料完整度與日期可靠性計算；AI 可引用但不得改寫為更高可信度。",
+        "quality_checks": quality,
+        "policy": "這是資料品質估計，不是預測成功率或投資評分。依正文、獨立來源、反證、日期與數值缺口限制；AI 不得將缺口改寫為更高可信度。",
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
 

@@ -441,6 +441,8 @@ def _news_quality_score(item: NewsItem, portfolio: dict[str, str] | None = None)
         score += 25
     if item.summary and len(item.summary) >= 80:
         score += 10
+    if any(term in text for term in ('重大訊息', '財報', '法說', '砍單', '衰退', '反證', '違約', '利空')):
+        score += 25
     for keyword in ("taiwan", "台股", "股票", "半導體", "ai", "營收", "法說", "外資", "產業", "金融", "匯率", "政策"):
         if keyword.lower() in text:
             score += 8
@@ -875,11 +877,12 @@ def run_news_refresh(
         items = _rank_news_for_ai(items, portfolio)
         official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
         if official and hasattr(repository, "query_pending_classification"):
-            pending = repository.query_pending_classification(limit=6)
+            pending = _filter_by_published_window(repository.query_pending_classification(limit=6), hours=168)
             pending_by_url = {item.url:item for item in pending}
             for item in items:
                 pending_by_url[item.url] = item
             items = _deduplicate_items(list(pending_by_url.values()))
+            items = _rank_news_for_ai(items, portfolio)
         all_ranked_items = list(items)
         filtered_count = len(items)
         classify_limit = _classify_limit()
@@ -988,6 +991,8 @@ def run_news_refresh(
             "local_fallback_count": local_fallback_count,
             "classification_status": "partial_success" if local_fallback_count else "ai_success",
             "deferred_classification_count": len(deferred),
+            "analysis_coverage_status": "partial" if deferred or local_fallback_count else "complete",
+            "analysis_coverage_note": "待補新聞已保存，但未經 AI 判讀；不作為已完成的利多利空結論。" if deferred else "",
             "deferred_urls": [item.url for item in deferred],
             "minimax_diagnostics": minimax_diag,
             "web_fetch_diagnostics": web_fetch_diag,
@@ -1214,6 +1219,8 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
             it.impact_direction = meta.get("impact_direction", "") or ""
             if isinstance(meta.get("tags"), list):
                 it.tags = [str(tag) for tag in meta.get("tags") or [] if tag]
+            if 'ai_classified' not in it.tags:
+                it.tags.append('ai_classified')
             it.news_signal_score = int(meta.get("news_signal_score", it.news_signal_score) or 0)
             it.news_heat_risk_score = int(meta.get("news_heat_risk_score", it.news_heat_risk_score) or 0)
             it.news_signal_reason = str(meta.get("news_signal_reason", it.news_signal_reason) or "")

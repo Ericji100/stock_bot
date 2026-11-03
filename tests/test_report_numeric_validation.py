@@ -56,3 +56,8 @@ class ForbiddenClaimTests(unittest.TestCase):
     def test_affirmative_claim_after_denial_still_fails(self):
         from research_center.report_validator import _forbidden_claims
         self.assertEqual(_forbidden_claims('不保證獲利。但是這支股票必漲。'),['必漲'])
+
+    def test_cannot_interpret_as_rising_is_a_denial_not_a_guarantee(self):
+        from research_center.report_validator import _forbidden_claims
+        self.assertEqual(_forbidden_claims('不能直接解讀為短線必漲。'),[])
+        self.assertEqual(_forbidden_claims('不能解讀為短線必漲，但我認為股票必漲。'),['必漲'])

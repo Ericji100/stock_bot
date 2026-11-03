@@ -173,7 +173,7 @@ class NewsRepository:
                                , title=?, full_text=CASE WHEN ?<>'' THEN ? ELSE full_text END,
                                counter_evidence=?, missing_data=?
                                WHERE url=? AND (tags LIKE '%local_rule_fallback%' OR (?<>'' AND full_text<>?)
-                                   OR (counter_evidence IS NULL AND missing_data IS NULL))""",
+                                   OR (counter_evidence IS NULL AND missing_data IS NULL) OR ?=1)""",
                             (item.category, json.dumps(item.related_symbols, ensure_ascii=False),
                              json.dumps(item.related_topics, ensure_ascii=False), item.summary,
                              item.importance_score, item.impact_direction, json.dumps(item.tags, ensure_ascii=False),
@@ -181,7 +181,7 @@ class NewsRepository:
                              item.news_heat_risk_reason, item.title, item.full_text or '', item.full_text or '',
                              json.dumps(item.counter_evidence, ensure_ascii=False),
                              json.dumps(item.missing_data, ensure_ascii=False),
-                             item.url, item.full_text or '', item.full_text or ''),
+                             item.url, item.full_text or '', item.full_text or '', int('ai_classified' in item.tags)),
                         )
                     skipped += 1
             conn.commit()

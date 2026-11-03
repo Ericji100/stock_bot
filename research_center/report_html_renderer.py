@@ -774,8 +774,9 @@ def _local_scoring_html(report_json: dict[str, Any]) -> str:
 
 def _qa_markdown(report_json: dict[str, Any]) -> str:
     qa = ((report_json.get("metadata") or {}).get("qa_validation") or {})
+    reader = ((report_json.get("metadata") or {}).get("reader_content_review") or {})
     warnings = qa.get("warnings") or []
-    if not qa and not warnings:
+    if not qa and not warnings and not reader:
         return "## QA\n\n- 無 QA 提醒。"
     lines = ["## QA", "", f"- 檢查通過：{display_value(qa.get('passed'))}"]
     lines.extend(f"- {item}" for item in warnings)
@@ -783,6 +784,10 @@ def _qa_markdown(report_json: dict[str, Any]) -> str:
         lines.append(f"- 缺少章節：{item}")
     for item in qa.get("schema_errors") or []:
         lines.append(f"- 格式檢查錯誤：{item}")
+    if reader:
+        lines.extend(['', '### 內容檢查範圍', '', '- 自動檢查不等於內容與預測品質通過，實質審閱仍待完成。'])
+        lines.extend('- '+str(item) for item in [*reader.get('errors', []), *reader.get('warnings', [])])
+        lines.append('- '+reader['scope'])
     return "\n".join(lines)
 
 

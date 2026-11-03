@@ -1037,6 +1037,9 @@ def _batch_classify_news(
         # Fallback: categorize by simple keyword matching
         return _simple_categorize(items)
 
+    from .reader_quality_rules import reader_quality_rules
+    prompt_text += "\n\n" + reader_quality_rules()
+
     primary_model = _primary_news_classifier_model(center, ai_model)
     if primary_model != ai_model:
         emit(f"新聞分類分流：一般分類使用 DeepSeek Flash，高階模型 {ai_model} 僅複核重要新聞")
@@ -1140,7 +1143,7 @@ def _classify_news_batches(
             parsed = _parse_ai_json_batch(raw)
             if article_cache is not None:
                 for index, item in enumerate(batch):
-                    classification = parsed.get(str(index)) or parsed.get(item.url)
+                    classification = parsed.get(item.id) or parsed.get(item.url) or parsed.get(str(index))
                     if isinstance(classification, dict):
                         article_cache.cache(article_key(item), classification, 7 * 86400)
             result_items.extend(_apply_classification_meta(batch, parsed))
@@ -1187,9 +1190,11 @@ def _truncate_for_ai(text: str, limit: int) -> str:
 
 def _classification_payload(items: list[NewsItem], text_limit: int, lightweight: bool = False) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
-    for item in items:
+    for index, item in enumerate(items):
         snippet_limit = min(text_limit, 240) if text_limit else 200
         row = {
+            "id": item.id,
+            "index": index,
             "title": item.title,
             "url": item.url,
             "source": item.source,
@@ -1206,7 +1211,7 @@ def _classification_payload(items: list[NewsItem], text_limit: int, lightweight:
 def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) -> list[NewsItem]:
     result_items: list[NewsItem] = []
     for idx, it in enumerate(batch):
-        meta = parsed.get(str(idx)) or parsed.get(it.url, {})
+        meta = parsed.get(it.id) or parsed.get(it.url) or parsed.get(str(idx), {})
         if meta.get("category") == "exclude":
             continue
         if meta:
@@ -1673,7 +1678,9 @@ def _has_broad_market_headline(item: NewsItem) -> bool:
 
 
 def _has_macro_policy_headline(item: NewsItem) -> bool:
-    return _title_has_any(item, _HEADLINE_MACRO_POLICY_TERMS)
+    from dataclasses import replace
+    title = re.sub(r'毛利率|淨利率|營業利益率|營業利率|獲利率', '', item.title or '')
+    return _title_has_any(replace(item, title=title), _HEADLINE_MACRO_POLICY_TERMS)
 
 
 def _has_company_event_headline(item: NewsItem) -> bool:
@@ -1796,6 +1803,9 @@ def _correct_news_category(item: NewsItem) -> str:
         return "supply_chain"
     if _has_ai_semiconductor_headline(item) and not _has_broad_market_headline(item):
         return "ai_semiconductor"
+
+    if 'ai_classified' in (item.tags or []) and category != 'other':
+        return category
 
     if category == "ai_semiconductor":
         return category

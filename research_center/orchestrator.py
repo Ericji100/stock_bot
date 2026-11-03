@@ -557,6 +557,11 @@ class ResearchCenter:
                         "dropped_after_analysis_date_count": len(dropped_discovery_sources),
                     }
                 prompt_sources = _select_sources_for_prompt(request, sources, structured_data, progress)
+                from .search_source_normalizer import validate_source_identity_map
+                identity = validate_source_identity_map(sources, prompt_sources)
+                structured_data['source_identity_validation'] = identity
+                if not identity['passed']:
+                    raise ValueError('來源編號對照不一致：' + '；'.join(identity['errors']))
                 _enrich_sources_with_web_fetch(request, prompt_sources, structured_data, progress)
                 persist_search_sources_to_news(request, structured_data, sources, progress=progress)
                 attach_news_events(request, structured_data)
@@ -758,17 +763,15 @@ class ResearchCenter:
                 markdown = fallback_markdown(request, structured_data, sources, fallback_reason)
 
         if ai_used and not fallback_reason and self.config.deepseek_only:
-            from .report_numeric_validation import validate_valuation_tables, validate_valuation_repair
-            numeric = validate_valuation_tables(markdown)
+            from .report_numeric_validation import validate_report_numbers, validate_valuation_repair, numeric_repair_prompt
+            numeric = validate_report_numbers(markdown, sources)
             if not numeric["passed"]:
                 structured_data["numeric_validation_original"] = {**numeric, "markdown": markdown}
-                repair_prompt = ("請只修正下列報告的數值一致性，保留所有必要章節、來源、風險、事實與情境假設。"
-                    "不得新編事實，不得以本地規則取代投研結論。估值的 EPS×本益比上下限須精確，另行折溢價請分欄。只輸出完整正式報告。\n"
-                    + "\n".join(numeric["errors"]) + "\n\n" + markdown)
+                repair_prompt = numeric_repair_prompt(markdown, numeric['errors'])
                 write_prompt_log(request, repair_prompt, self.config.deepseek_model, False, sources, {"purpose":"numeric_consistency_repair"})
                 try:
-                    repaired = self.deepseek.generate_report(repair_prompt).markdown
-                    revised = validate_valuation_repair(markdown, repaired)
+                    repaired = self.deepseek.with_output_limit(65536).with_timeout(900).generate_report(repair_prompt).markdown
+                    revised = validate_valuation_repair(markdown, repaired, sources)
                     if revised["passed"]:
                         markdown = repaired
                     else:

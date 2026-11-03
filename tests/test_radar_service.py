@@ -376,7 +376,8 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
 
         self.assertIn("繁體中文", prompt)
         self.assertIn("ai_compact_pack", prompt)
-        self.assertIn("MiniMax M3 批次資料整理底稿", prompt)
+        self.assertIn("資料整理模型批次底稿", prompt)
+        self.assertNotIn("MiniMax M3 批次資料整理底稿", prompt)
         self.assertIn("禁止整段英文分析", prompt)
         self.assertIn("不得新增候選股票", prompt)
         self.assertIn("不得改變本地分數", prompt)
@@ -438,7 +439,7 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
 
         self.assertIn(STOCK_MARK_START, text)
         self.assertIn("技術策略：B（", text)
-        self.assertIn("AI短評信心：中", text)
+        self.assertIn("AI關注優先度：中", text)
         self.assertNotIn("｜策略 B｜AI 中", text)
 
 
@@ -1580,7 +1581,7 @@ def test_format_radar_report_shows_ai_comment():
         strategy_codes={"A"},
         score_components={"technical": 30, "revenue": 15, "chip": 10, "theme": 10, "market": 5},
         total_score=70,
-        ai_comment={"status": "ok", "priority": "高", "reason": "技術與題材同步。", "risk": "追高風險。", "watch": "觀察量能。"},
+        ai_comment={"status": "ok", "priority": "高", "confidence": "中", "reason": "技術與題材同步。", "risk": "追高風險。", "watch": "觀察量能。"},
     )
     result = radar.RadarResult(
         request=radar.RadarRequest(source="technical", report_date=date(2026, 5, 22), ai_top=5, model="deepseek"),
@@ -1592,10 +1593,16 @@ def test_format_radar_report_shows_ai_comment():
 
     text = radar.format_radar_report(result)
 
-    assert "AI短評信心：高" in text
+    assert "AI短評信心：中" in text
+    assert "AI短評信心：高" not in text
     assert "AI短評：技術與題材同步。" in text
     assert "風險：追高風險。" in text
     assert "觀察：觀察量能。" in text
+
+
+def test_legacy_radar_priority_is_not_misrepresented_as_confidence():
+    candidate = radar.RadarCandidate(code='2330', name='台積電', ai_comment={'status':'ok','priority':'high'})
+    assert radar._ai_badge(candidate) == '｜AI關注優先度：高'
 
 
 def test_radar_ai_comment_display_cleans_internal_english_labels():

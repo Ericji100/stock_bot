@@ -45,10 +45,14 @@ def resolve_action_targets(pack: TopicChangePack, profiles) -> int:
             original = action.theme_id
             action.extra['original_candidate_theme_id'] = original
             action.theme_id = action.target_theme_id
-            for node in action.supply_chain_nodes:
-                if isinstance(node, dict) and node.get('theme_id') == original:
-                    node['theme_id'] = action.theme_id
             resolved += 1
+        original = action.extra.get('original_candidate_theme_id')
+        if (action.action_type == TopicActionType.UPDATE_THEME and action.theme_id in known
+                and action.target_theme_id == action.theme_id and original):
+            for collection in (action.supply_chain_nodes, action.company_relations):
+                for row in collection:
+                    if isinstance(row, dict) and row.get('theme_id') == original:
+                        row['theme_id'] = action.theme_id
         if action.action_type == TopicActionType.CREATE_THEME:
             known.add(action.theme_id)
     return resolved

@@ -75,7 +75,7 @@ def should_use_segmented_analysis(
 
 def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float, *, progress=None, final_output=False) -> Any:
     if getattr(ai_client, "provider", "") == "deepseek":
-        if final_output and 0 < getattr(ai_client, 'max_output_tokens', 0) < 65536:
+        if (final_output or len(prompt) >= 100_000) and 0 < getattr(ai_client, 'max_output_tokens', 0) < 65536:
             # Final reports include reasoning and all required chapters. Reserve
             # existing retry headroom up front instead of paying for truncation.
             ai_client = ai_client.with_output_limit(65536)
@@ -239,7 +239,11 @@ def run_segmented_theme_analysis(
     final_sources = _sources_for_segment_outputs(outputs, sources)
     final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources,
         complete_segment_notes=getattr(ai_client, 'provider', '') == 'deepseek')
-    final_prompt_too_large = len(final_prompt) > SEGMENTED_ANALYSIS_FINAL_HARD_CHARS
+    final_capacity = None
+    if getattr(ai_client, 'provider', '') == 'deepseek' and callable(getattr(ai_client, 'prompt_capacity', None)):
+        final_capacity = ai_client.prompt_capacity(final_prompt, output_tokens=max(65536, ai_client.max_output_tokens))
+    final_prompt_too_large = (not final_capacity['fits'] if final_capacity is not None
+                              else len(final_prompt) > SEGMENTED_ANALYSIS_FINAL_HARD_CHARS)
     final_prompt_path = write_prompt_log(
         request,
         final_prompt,
@@ -254,6 +258,7 @@ def run_segmented_theme_analysis(
             "estimated_tokens": max(1, len(final_prompt) // 4),
             "source_count": len(final_sources),
             "call_timeout_seconds": call_timeout_seconds,
+            "context_capacity": final_capacity,
         },
     )
     prompt_paths.append(str(final_prompt_path))
@@ -273,7 +278,8 @@ def run_segmented_theme_analysis(
         markdown = str(getattr(final_result, "markdown", "") or "").strip()
         final_diagnostics = dict(getattr(final_result, "diagnostics", {}) or {})
         final_elapsed = time.monotonic() - final_started
-        final_diagnostics = {**final_diagnostics, "elapsed_seconds": round(final_elapsed, 2), "timeout_seconds": call_timeout_seconds}
+        final_diagnostics = {**final_diagnostics, "elapsed_seconds": round(final_elapsed, 2), "timeout_seconds": call_timeout_seconds,
+                             "context_capacity": final_capacity}
         raw = dict(getattr(final_result, "raw", {}) or {})
         final_status = "success"
         final_error = None
@@ -778,10 +784,12 @@ def _build_segment_prompt(
     plan: dict[str, Any],
     prior_outputs: list[dict[str, Any]],
 ) -> str:
+    from .reader_quality_rules import reader_quality_rules
     payload = _compact_segment_payload(plan.get("payload") or {})
     prior_state = _prior_outputs_state(prior_outputs)
     return _sanitize_prompt_text("\n".join([
         "# Segmented AI analysis task",
+        reader_quality_rules(),
         "",
         f"Command: {request.command}",
         f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
@@ -809,9 +817,14 @@ def _build_final_prompt(
     *,
     complete_segment_notes: bool = False,
 ) -> str:
+    from .reader_quality_rules import reader_quality_rules
     command_specific_rules = _final_synthesis_command_rules(request.command)
+    local_summary = _final_local_summary(data, complete_core=complete_segment_notes)
+    local_json = (json.dumps(local_summary, ensure_ascii=False, separators=(',', ':'), default=str)
+                  if 'complete_core_packet' in local_summary else _json(local_summary))
     return _sanitize_prompt_text("\n".join([
         "# Segmented AI final synthesis task",
+        reader_quality_rules(),
         "",
         f"Command: {request.command}",
         f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
@@ -828,13 +841,16 @@ def _build_final_prompt(
         *command_specific_rules,
         "",
         "Local core summary:",
-        _json(_final_local_summary(data)),
+        local_json,
         "",
         "Segment analysis notes:",
         _json(_segment_outputs_state(outputs, request.command, complete=complete_segment_notes)),
         "",
         "Source index:",
         _json(_source_refs(sources)),
+        "",
+        "交稿前檢查：重要事實及估值依據直接標示對應的 [S編號]，只用實際提供的編號；本地數值註明資料日期，不編造引用。",
+        "必要來源摘錄中的明確數值優先於分段底稿所稱缺資料；供應商提供的官方新聞稿摘錄不等於已取得完整三張財務報表。",
     ]))
 
 
@@ -1522,13 +1538,20 @@ def _theme_flow_layer_rows(rows: Any, *, limit: int, sample_limit: int) -> list[
     return result
 
 
-def _final_local_summary(data: dict[str, Any]) -> dict[str, Any]:
+def _final_local_summary(data: dict[str, Any], *, complete_core: bool = False) -> dict[str, Any]:
     package = data.get('high_model_input_package') or {}
     feature = data.get('feature_pack') or {}
     command = package.get('command') or feature.get('command')
     payload = (package.get('command_specific_data') or {}).get('payload') or {}
+    required_evidence = [row for row in package.get('required_original_excerpts', [])
+                         if isinstance(row, dict) and row.get('core_evidence_required') is True]
+    if complete_core and payload.get('schema_version') in {'theme_radar_relation_payload_v1', 'sector_strength_relation_payload_v1'}:
+        return {'command_role': command, 'report_date': data.get('report_date') or package.get('report_date'),
+                'required_financial_evidence': required_evidence, 'complete_core_packet': payload,
+                'scope_note': '完整沿用已正規化的股票主檔、題材／族群／子族群排行及關聯，非僅前幾名。分段底稿不是另一套正式排行；逐項核對本封包，不把未在摘要重述的公司當成未收到。'}
     if command in {'research', 'value_scan'}:
         summary = {'command_role': command, 'report_date': data.get('report_date'),
+            'required_financial_evidence': required_evidence,
             'local_scoring': data.get('local_scoring') or payload.get('local_scoring'),
             'data_quality': data.get('data_quality') or {},
             'scope_note': '此為個股研究或候選價值重估；不以全市場產業排行是否為空判定候選或財報資料缺漏。完整證據分析保留於各段筆記。'}
@@ -1541,8 +1564,9 @@ def _final_local_summary(data: dict[str, Any]) -> dict[str, Any]:
                 ai_candidate_evidence_summary=payload.get('ai_candidate_evidence_summary'))
         return summary
     sector_data = data if data.get("command_role") == "sector_strength" else data.get("sector_strength") or {}
-    return {
-        "command_role": data.get("command_role"),
+    summary = {
+        "command_role": data.get("command_role") or command,
+        "required_financial_evidence": required_evidence,
         "report_date": data.get("report_date"),
         "market_data_date": data.get("market_data_date") or sector_data.get("market_data_date"),
         "sector_rankings": _final_top_rows(sector_data.get("sector_rankings") or data.get("sector_rankings") or [], limit=4),
@@ -1551,6 +1575,14 @@ def _final_local_summary(data: dict[str, Any]) -> dict[str, Any]:
         "strong_stocks": _stock_refs(data.get("strong_stocks") or data.get("market_movers") or [], 10),
         "data_quality": _final_compact(data.get("data_quality") or sector_data.get("data_quality") or {}, depth=2, max_list=6, max_keys=20, max_string=420),
     }
+    if command in {'theme', 'theme_flow', 'macro'}:
+        # Do not invent a missing full-market ranking requirement for a report
+        # that did not collect one. Actual supplied rankings remain unchanged.
+        for key in ('sector_rankings', 'subsector_rankings', 'theme_rankings'):
+            if summary[key]['total_count'] == 0:
+                summary.pop(key)
+        summary['scope_note'] = '依本指令研究範圍判斷必要資料；未要求的全市場排行未提供時不是本指令資料缺漏。實際提供的公司、題材、風險與證據仍保留在各段筆記。'
+    return summary
 
 
 def _final_top_rows(rows: Any, *, limit: int) -> dict[str, Any]:

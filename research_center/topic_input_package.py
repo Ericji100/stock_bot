@@ -109,9 +109,9 @@ def _references(value):
         yield from re.findall(r'https?://[^\s"<>]+',value)
 
 
-def topic_stage_variables(data,variables,batch=None):
+def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     result=dict(variables)
-    sources=merge_topic_sources(data)
+    sources=merge_topic_sources(data) if source_rows is None else source_rows
     profiles=data.get('existing_topic_profiles') or []
     evidence=data.get('webfetch_evidence') or {}
     if batch is None:
@@ -164,6 +164,6 @@ def topic_stage_variables(data,variables,batch=None):
         payloads['discovery_sources_json']=[]
     payloads, records = intern_topic_payloads(payloads)
     for key,value in payloads.items():
-        result[key]=json.dumps(value,ensure_ascii=False,default=str)
-    result['topic_shared_records_json']=json.dumps(records,ensure_ascii=False,default=str)
+        result[key]=json.dumps(value,ensure_ascii=False,separators=(',', ':'),default=str)
+    result['topic_shared_records_json']=json.dumps(records,ensure_ascii=False,separators=(',', ':'),default=str)
     return result

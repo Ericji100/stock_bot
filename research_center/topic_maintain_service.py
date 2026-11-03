@@ -49,14 +49,15 @@ def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources
 
 
 def _load_prompt(name: str) -> str:
+    from .reader_quality_rules import reader_quality_rules
     root = Path(__file__).resolve().parents[1]
     # Prefer prompt/topic/ directory, fallback to config/prompts/
     topic_path = root / "prompt" / "topic" / f"{name}.md"
     if topic_path.exists():
-        return topic_path.read_text(encoding="utf-8")
+        return topic_path.read_text(encoding="utf-8") + "\n\n" + reader_quality_rules()
     config_path = root / "config" / "prompts" / f"{name}.md"
     if config_path.exists():
-        return config_path.read_text(encoding="utf-8")
+        return config_path.read_text(encoding="utf-8") + "\n\n" + reader_quality_rules()
     return ""
 
 
@@ -877,6 +878,9 @@ def _build_topic_candidate_snapshots(
 
 
 def _parse_topic_company_ref(value: Any) -> tuple[str, str]:
+    if isinstance(value, dict):
+        return (str(value.get("company_code") or value.get("code") or "").strip(),
+                str(value.get("company_name") or value.get("name") or "").strip())
     text = str(value or "").strip()
     if not text:
         return "", ""

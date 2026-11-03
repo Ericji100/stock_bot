@@ -6,6 +6,50 @@ from research_center.topic_models import TopicChangePack, TopicEvidence, TopicSo
 
 
 class TopicCitationAuditTests(unittest.TestCase):
+    def test_id_only_counter_evidence_is_checked_against_actual_source_body(self):
+        quote='這是可直接核對的完整反證原文，出貨已遞延到下一季度。'
+        pack=self.pack()
+        pack.actions[0].counter_evidence=[{'source_id':'S001','supporting_quote':quote}]
+        data={'discovery_sources':[{'source_id':'S001','url':'https://example.test/article','content':quote}]}
+        audit=audit_topic_citations(pack,data)
+        self.assertTrue(audit['passed'])
+        self.assertEqual(audit['counts']['resolved_source_id'],1)
+        pack.actions[0].counter_evidence[0]['supporting_quote']=quote.replace('遞延','提前')
+        self.assertFalse(audit_topic_citations(pack,data)['passed'])
+
+    def test_unknown_and_ambiguous_source_ids_cannot_pass_unchecked(self):
+        pack=self.pack()
+        pack.actions[0].company_relations=[{'evidence_source_ids':['S999']}]
+        self.assertFalse(audit_topic_citations(pack,{'discovery_sources':[{'url':'https://example.test/article'}]})['passed'])
+        data={'discovery_sources':[{'source_id':'S999','url':'https://example.test/article'},
+                                   {'source_id':'S999','url':'https://other.test/article'},
+                                   {'url':'https://third.test/root'}]}
+        pack.actions[0].evidence[0].url='https://third.test/root'
+        audit=audit_topic_citations(pack,data)
+        self.assertFalse(audit['passed'])
+        self.assertEqual(audit['counts']['source_id_ambiguous'],1)
+
+    def test_colliding_id_requires_unique_explicit_evidence_not_first_source(self):
+        quote='這是供核對的長篇完整反證引文，出貨時程確實延後。'
+        pack=self.pack()
+        pack.actions[0].counter_evidence=[{'source_id':'S001','supporting_quote':quote}]
+        data={'base_sources':[{'source_id':'S001','url':'https://other.test/forum','content':'無關論壇'}],
+              'discovery_sources':[{'source_id':'S001','url':'https://example.test/article','content':quote}]}
+        audit=audit_topic_citations(pack,data)
+        self.assertTrue(audit['passed'])
+        self.assertEqual(audit['counts']['source_id_disambiguated_by_supplied_evidence'],1)
+        self.assertEqual(audit['resolved_source_references'][0]['url'],'https://example.test/article')
+        pack.actions[0].counter_evidence[0]['supporting_quote']=quote.replace('延後','提前')
+        self.assertFalse(audit_topic_citations(pack,data)['passed'])
+
+    def test_occupancy_spelling_variant_preserves_numeric_quote_checks(self):
+        quote='國巨表示，2025年第4季AI相關業績佔比約12%至13%，預期今年底佔比可升至15%。'
+        data={'discovery_sources':[{'url':'https://example.test/article',
+                                   'content':quote.replace('佔','占')}]}
+        self.assertTrue(audit_topic_citations(self.pack(supporting_quote=quote),data)['passed'])
+        changed=self.pack(supporting_quote=quote.replace('15%','50%'))
+        self.assertFalse(audit_topic_citations(changed,data)['passed'])
+
     def test_search_page_is_preserved_as_lead_not_used_as_formal_support(self):
         pack=self.pack()
         lead=TopicEvidence(source='搜尋線索',source_level=TopicSourceLevel.L3_COMMUNITY,

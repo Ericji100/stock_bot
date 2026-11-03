@@ -158,7 +158,9 @@ def select_theme_sources_for_prompt(
         "selected_provider_counts": _provider_counts(selected),
         "selected_level_counts": _level_counts(selected),
     }
-    return _renumber_sources(selected), diagnostics
+    # These IDs already belong to the full report inventory. Re-ranking a
+    # subset must not give a different document the same citation identifier.
+    return selected, diagnostics
 
 
 def theme_source_relevance(source: SourceItem, terms: list[str]) -> int:

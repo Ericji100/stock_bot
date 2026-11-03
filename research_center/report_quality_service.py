@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any
+import re
 
 from .company_knowledge_update_service import source_quality_score
 from .models import CommandRequest, SourceItem
@@ -20,6 +21,28 @@ QUALITY_COMMANDS = (
     "news",
     "topic_maintain",
 )
+
+
+def review_reader_content(markdown: str, sources: list[SourceItem]) -> dict[str, Any]:
+    """Mechanical diagnostics, not a claim of semantic accuracy or human review."""
+    from .report_numeric_validation import validate_report_numbers
+    refs = set(re.findall(r"\[(S\d+)\]", markdown))
+    known = {item.source_id for item in sources}
+    unknown = sorted(refs - known)
+    numeric = validate_report_numbers(markdown, sources)
+    errors = list(numeric['errors'])
+    if unknown:
+        errors.append('正文引用不存在的來源編號：' + '、'.join(unknown))
+    warnings = []
+    if sources and not refs:
+        warnings.append('正文未使用可核對的來源編號；來源附錄不能證明重要結論有引用依據。')
+    if re.search(r'<think>|</think>|\ufffd', markdown, re.I):
+        warnings.append('正文含模型草稿標記或字元解碼異常，需檢閱。')
+    return {'schema_version': 'reader_review_v1', 'mechanical_checks_passed': not errors,
+            'errors': errors, 'warnings': warnings, 'cited_source_ids': sorted(refs),
+            'unknown_source_ids': unknown, 'numeric_validation': numeric,
+            'semantic_review_status': 'pending',
+            'scope': '只驗算明確估值、引用金額的部分單位換算及來源編號存在性；未證明所有數值、引用語意、資料完整或預測正確。'}
 
 
 def build_report_quality_layer(

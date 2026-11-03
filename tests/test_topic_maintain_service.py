@@ -357,7 +357,7 @@ class TestTopicMaintainService(unittest.TestCase):
             action_type=TopicActionType.UPDATE_THEME,
             theme_id="ai_power",
             theme_name="AI 電源",
-            affected_companies=["2308 台達電"],
+            affected_companies=["2308 台達電", {"company_code":"2308", "company_name":"台達電"}],
             confidence=TopicConfidence.HIGH,
             reason="AI 電源需求擴散，但訂單能見度仍待驗證。",
             risk_notes=["客戶拉貨節奏不確定"],

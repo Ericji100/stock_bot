@@ -1381,7 +1381,14 @@ def _selected_sources_from_data(structured_data: dict[str, Any], sources: list[S
 
 def _source_excerpts(sources: list[SourceItem], *, limit: int) -> list[dict[str, Any]]:
     excerpts: list[dict[str, Any]] = []
-    for item in sources[:limit]:
+    # Required financial discovery is not necessarily in the first search rows.
+    required = [item for item in sources if _required_financial_source(item) and item.snippet]
+    selected = list(sources[:limit])
+    selected_ids = {item.source_id for item in selected}
+    selected.extend(item for item in required if item.source_id not in selected_ids)
+    required_ids = {item.source_id for item in required}
+    for item in selected:
+        required_content = item.source_id in required_ids
         excerpts.append({
             "source_id": item.source_id,
             "title": item.title,
@@ -1389,9 +1396,18 @@ def _source_excerpts(sources: list[SourceItem], *, limit: int) -> list[dict[str,
             "source_level": item.source_level,
             "published_date": item.published_date,
             "provider": item.provider,
-            "snippet": _truncate_text(item.snippet, 900),
+            "snippet": item.snippet if required_content else _truncate_text(item.snippet, 900),
+            "core_evidence_required": required_content,
+            "content_scope": "provider_supplied_text_not_full_statements" if required_content else "excerpt",
         })
     return excerpts
+
+
+def _required_financial_source(source: SourceItem) -> bool:
+    if '最新官方季度財報' in str(source.provider_detail or ''):
+        return True
+    official = str(source.source_level).lower() in {'level 1', 'l1', 'l1_official'}
+    return official and bool(re.search(r'財報|季報|年報|法說|每股盈餘|earnings|quarterly|annual report', source.title, re.I))
 
 
 def _dedupe_strategy_for_command(command: str, payload: Any) -> str:

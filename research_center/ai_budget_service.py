@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 import sqlite3
+import re
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -51,11 +52,15 @@ def shared_budget_root(root: Path) -> Path:
 
 
 class MonthlyBudget:
-    def __init__(self, root, *, total=10, background=7, manual=2, reserve=1, job_limit=.30, pacing=True):
+    def __init__(self, root, *, total=10, background=7, manual=2, reserve=1, job_limit=.30, pacing=True, manual_allowances=None):
         self.root = Path(root)
         self.total, self.background, self.manual, self.reserve = map(lambda x: Decimal(str(x)), (total, background, manual, reserve))
         self.job_limit = Decimal(str(job_limit))
         self.pacing = pacing
+        self.manual_allowances = {str(month): Decimal(str(amount)) for month, amount in (manual_allowances or {}).items()}
+        if any(not re.fullmatch(r'\d{4}-(?:0[1-9]|1[0-2])', month) or not amount.is_finite() or amount < 0
+               for month, amount in self.manual_allowances.items()):
+            raise ValueError('單月追加額度須使用 YYYY-MM 與非負有限金額。')
         if min(self.total, self.background, self.manual, self.reserve, self.job_limit) < 0 or self.total <= 0:
             raise ValueError("AI 月度預算必須為正數，分額不可為負數。")
         if self.background + self.manual + self.reserve > self.total:
@@ -86,15 +91,16 @@ class MonthlyBudget:
 
     def _check(self, conn, estimate, background, run_id, now):
         month = now.strftime("%Y-%m")
+        total_limit, manual_limit = self._limits(now)
         rows = conn.execute("SELECT background,run_id,status,estimate,actual FROM spending WHERE day LIKE ?", (month+"-%",)).fetchall()
         values = [(b,r,Decimal(a if a is not None else e)) for b,r,s,e,a in rows if s not in ("failed", "rejected")]
         total = sum((v for _,_,v in values), Decimal(0))
         used = sum((v for b,_,v in values if bool(b) == bool(background)), Decimal(0))
         def exceeds(value, limit):
             return value + estimate > limit or (estimate == 0 and value >= limit)
-        if exceeds(total, self.total - self.reserve):
+        if exceeds(total, total_limit - self.reserve):
             raise BudgetBlocked("monthly_budget_exceeded")
-        if exceeds(used, self.background if background else self.manual):
+        if exceeds(used, self.background if background else manual_limit):
             raise BudgetBlocked("background_budget_exceeded" if background else "manual_budget_exceeded")
         if background and self.pacing:
             pace = min(self.background, self.background * now.day / calendar.monthrange(now.year, now.month)[1] + Decimal("0.50"))
@@ -155,12 +161,17 @@ class MonthlyBudget:
 
     def summary(self, now=None):
         now = now or datetime.now(ZoneInfo("Asia/Taipei"))
+        total_limit, manual_limit = self._limits(now)
         with self.db() as conn:
             rows = conn.execute("SELECT background,status,estimate,actual FROM spending WHERE day LIKE ?", (now.strftime("%Y-%m")+"-%",)).fetchall()
         charged = [(bool(b),Decimal(a if a is not None else e)) for b,s,e,a in rows if s not in ("failed","rejected")]
-        return {"month":now.strftime("%Y-%m"),"total_limit":str(self.total),"reserve":str(self.reserve),
-                "background_limit":str(self.background),"manual_limit":str(self.manual),
+        return {"month":now.strftime("%Y-%m"),"total_limit":str(total_limit),"reserve":str(self.reserve),
+                "background_limit":str(self.background),"manual_limit":str(manual_limit),
                 "used_or_reserved":str(sum((v for _,v in charged),Decimal(0))),
                 "background_used":str(sum((v for b,v in charged if b),Decimal(0))),
                 "manual_used":str(sum((v for b,v in charged if not b),Decimal(0))),
                 "unknown_or_pending":sum(s in ("unknown","pending") for _,s,_,_ in rows)}
+
+    def _limits(self, now):
+        extra = self.manual_allowances.get(now.strftime('%Y-%m'), Decimal(0))
+        return self.total + extra, self.manual + extra

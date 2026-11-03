@@ -20,6 +20,74 @@ from research_center.command_parser import parse_command_text, validate_deepseek
 
 
 class DeepSeekServiceTests(unittest.TestCase):
+    def test_live_audit_excludes_prepared_budget_blocked_prompt_and_separates_cache(self):
+        from research_center.deepseek_service import RUN_ID
+        from tools.deepseek_live_validation import input_and_usage_audit
+        with ai_task('research',False,'2026-11-03'):
+            run_id=RUN_ID.get()
+            self.client.generate_report('實際送出 https://example.test/sent')
+            self.client.generate_report('實際送出 https://example.test/sent')
+            with patch.object(self.account,'reserve',side_effect=DeepSeekUnavailable('測試預算不足','manual_budget_exceeded')):
+                with self.assertRaises(DeepSeekUnavailable):
+                    self.client.generate_report('只準備未送出的完整來源 https://example.test/blocked')
+        audit=input_and_usage_audit(self.account,set(),set(),{'sources':[{'url':'https://example.test/blocked'}]},run_id=run_id)
+        self.assertEqual(len(audit['actual_model_prompt_paths']),1)
+        self.assertEqual(len(audit['cached_model_prompt_paths']),1)
+        self.assertEqual(len(audit['unverified_prepared_prompt_paths']),1)
+        self.assertEqual(len(audit['prepared_model_prompt_paths']),3)
+        self.assertIn('https://example.test/blocked',audit['source_urls_not_found_in_sent_text'])
+        self.assertEqual(audit['legacy_unique_length_matches'],[])
+
+    def test_pending_and_activity_keep_actual_run_id(self):
+        from research_center.deepseek_service import RUN_ID
+        with ai_task('research', False, '2026-11-03'):
+            run_id = RUN_ID.get()
+            request_id = self.account.reserve('chat/completions', Decimal('.001'))
+            self.account.activity('search', True, {'query': 'cached'})
+        with self.account._db() as conn:
+            detail = json.loads(conn.execute('SELECT detail FROM usage WHERE id=?', (request_id,)).fetchone()[0])
+            activity = json.loads(conn.execute('SELECT detail FROM activity').fetchall()[-1][0])
+        self.assertEqual(detail['run_id'], run_id)
+        self.assertEqual(activity['run_id'], run_id)
+        self.account.finish(request_id, 'failed', {'run_id': run_id, 'http_sent': False}, Decimal(0))
+
+    def test_capacity_uses_model_bound_instead_of_legacy_character_cap(self):
+        prompt = '資料' * 100_000
+        capacity = self.client.prompt_capacity(prompt, output_tokens=65536)
+        self.assertTrue(capacity['fits'])
+        self.assertGreater(len(prompt), 180_000)
+        self.assertEqual(capacity['conservative_total_bound'], 600000 + 4096 + 65536)
+        self.assertFalse(self.client.prompt_capacity('資' * 320_000, output_tokens=65536)['fits'])
+
+    def test_over_context_request_never_contacts_provider_or_reserves_money(self):
+        with patch.object(self.account, 'reserve') as reserve, self.assertRaises(DeepSeekError) as caught:
+            self.client.generate_report('資' * 340_000)
+        self.assertEqual(caught.exception.status, 'prompt_too_large')
+        reserve.assert_not_called()
+        self.assertFalse(self.posts())
+
+    def test_large_segment_reserves_headroom_on_first_request_without_truncation_retry(self):
+        from research_center.segmented_analysis_service import _call_ai_with_timeout_setting
+        _call_ai_with_timeout_setting(self.client, '資料' * 50_000, 180)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(json.loads(self.posts()[0].content)['max_tokens'], 65536)
+
+    def test_official_final_exceeding_legacy_char_cap_is_sent_intact(self):
+        from research_center import segmented_analysis_service as service
+        plan = {'label': 'test', 'title': '完整分段', 'payload': {'facts': ['原始反證']}}
+        segment = SimpleNamespace(markdown='完整底稿', raw={}, diagnostics={})
+        final = SimpleNamespace(markdown='正式完整報告', raw={}, diagnostics={})
+        prompt = '資料' * 100_000
+        with patch.object(service, '_segment_plans', return_value=[plan]), \
+                patch.object(service, 'write_prompt_log', return_value=Path('unused-test-prompt')), \
+                patch.object(service, '_build_final_prompt', return_value=prompt), \
+                patch.object(service, '_call_ai_with_timeout_setting', side_effect=[segment, final]) as call:
+            report = service.run_segmented_theme_analysis(request=parse_command_text('/theme AI電源'),
+                structured_data={}, sources=[], ai_client=self.client, model_name='deepseek-flash')
+        self.assertEqual(call.call_args.args[1], prompt)
+        self.assertEqual(report.diagnostics['final_status'], 'success')
+        self.assertTrue(report.diagnostics['final_diagnostics']['context_capacity']['fits'])
+
     def test_stock_final_summary_does_not_invent_market_ranking_requirements(self):
         from research_center.segmented_analysis_service import _final_local_summary
         for command in ('research', 'value_scan'):

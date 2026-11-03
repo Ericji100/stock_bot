@@ -227,14 +227,29 @@ class ReportDataQualityTests(unittest.TestCase):
         original = action.theme_id
         action.target_theme_id = 'existing_power'
         action.supply_chain_nodes = [{'theme_id':original,'company_code':'2330','role':'原始角色'}]
+        action.company_relations = [{'theme_id':original,'company_code':'2330'},
+                                    {'theme_id':'explicit_other','company_code':'2308'}]
         profiles = [{'theme_id':'existing_power','theme_name':'既有電源'}]
         self.assertEqual(resolve_action_targets(pack,profiles),1)
         self.assertEqual(action.theme_id,'existing_power')
         self.assertEqual(action.extra['original_candidate_theme_id'],original)
         self.assertEqual(action.supply_chain_nodes[0]['theme_id'],'existing_power')
         self.assertEqual(action.supply_chain_nodes[0]['role'],'原始角色')
+        self.assertEqual(action.company_relations[0]['theme_id'],'existing_power')
+        self.assertEqual(action.company_relations[1]['theme_id'],'explicit_other')
         self.assertTrue(validate_action_targets(pack,profiles)['passed'])
+        action.company_relations[0]['theme_id']=original
         self.assertEqual(resolve_action_targets(pack,profiles),0)
+        self.assertEqual(action.company_relations[0]['theme_id'],'existing_power')
+
+    def test_topic_missing_counter_evidence_is_disclosed_not_fabricated(self):
+        from tests.test_topic_citation_audit import TopicCitationAuditTests
+        from research_center.topic_quality import normalize_change_pack_quality
+        pack=TopicCitationAuditTests().pack()
+        normalize_change_pack_quality(pack)
+        self.assertEqual(pack.actions[0].counter_evidence,[])
+        self.assertTrue(any('未列出可核對的獨立反證' in item for item in pack.actions[0].missing_data))
+        self.assertFalse(any('hypothesis_only' in text for text in pack.warnings))
 
     def test_price_volume_proxy_cannot_become_high_confidence_just_from_source_count(self):
         request = CommandRequest(command='theme_flow',raw_text='/theme_flow AI')

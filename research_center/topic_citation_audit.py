@@ -41,10 +41,30 @@ def _non_document(url: str) -> bool:
             bool(set(parse_qs(parts.query)) & {"q", "query", "search"}))
 
 
+def _id_only_rows(value, path=''):
+    if isinstance(value,dict):
+        if value.get('source_id') and not (value.get('url') or value.get('source_url')):
+            yield path,value
+        for key,item in value.items():
+            if key in {'source_refs','evidence_source_ids'} and isinstance(item,list):
+                for index,reference in enumerate(item):
+                    if isinstance(reference,str):
+                        yield f'{path}/{key}/{index}', {'source_id':reference}
+            yield from _id_only_rows(item,f'{path}/{key}')
+    elif isinstance(value,list):
+        for index,item in enumerate(value):
+            yield from _id_only_rows(item,f'{path}/{index}')
+
+
 def _provided_body(row):
     # Search API content and fetched HTML are both supplied text. A plain search
     # snippet is not promoted without provenance, regardless of its length.
     return str(row.get('content') or (row.get('snippet') if 'source_text:provided_content' in (row.get('found_by') or []) else '') or '')
+
+
+def _quote_text(value):
+    # Normalize only a spelling variant, not numbers or approximate wording.
+    return ''.join(str(value or '').split()).replace('佔', '占')
 
 
 def _company_quote_matches(claim, catalogue):
@@ -53,10 +73,10 @@ def _company_quote_matches(claim, catalogue):
     for item in claim.get('evidence') or []:
         if not isinstance(item, dict):
             continue
-        quote = ''.join(str(item.get('supporting_quote') or '').split())
+        quote = _quote_text(item.get('supporting_quote'))
         url = _url(item.get('url') or item.get('source_url'))
         for doc in catalogue.get(url, []):
-            if len(quote) < 16 or quote not in ''.join(_provided_body(doc).split()):
+            if len(quote) < 16 or quote not in _quote_text(_provided_body(doc)):
                 continue
             title = str(doc.get('title') or '')
             parts = urlsplit(url)
@@ -152,6 +172,40 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
         company_rows(structured_data.get(key))
     citations = list(_rows({"actions": [a.to_dict() for a in pack.actions],
                             "company_knowledge_updates": pack.company_knowledge_updates}))
+    id_urls = {}
+    for source in collected:
+        if source.get('source_id') and (url := _url(source.get('url'))):
+            id_urls.setdefault(str(source['source_id']),set()).add(url)
+    resolved_references=[]
+    for path,row in _id_only_rows({'actions':[a.to_dict() for a in pack.actions]}):
+        reference=str(row['source_id'])
+        urls=id_urls.get(reference,set())
+        resolution='unique_source_id'
+        if len(urls)>1:
+            quote=_quote_text(row.get('supporting_quote'))
+            matching={url for url in urls if len(quote)>=16 and any(
+                quote in _quote_text(_provided_body(source)) for source in catalogue.get(url,[]))}
+            resolution='exact_supplied_quote'
+            if len(matching)!=1:
+                action_index=int(path.split('/')[2])
+                explicit={_url(value.get('url') or value.get('source_url'))
+                          for _,value in _rows(pack.actions[action_index].to_dict())}
+                matching=urls & explicit
+                resolution='explicit_action_url'
+            if len(matching)==1:
+                urls=matching
+                counts['source_id_disambiguated_by_supplied_evidence']+=1
+        if len(urls)==1:
+            url=next(iter(urls))
+            citations.append((path,{**row,'url':url}))
+            resolved_references.append({'path':path,'source_id':reference,'url':url,'resolution':resolution})
+            counts['resolved_source_id']+=1
+        elif _url(reference):
+            citations.append((path,{**row,'url':reference}))
+        else:
+            reason='source_id_ambiguous' if urls else 'source_id_unresolved'
+            counts[reason]+=1
+            issues.append({'path':path,'source_id':reference,'reason':reason})
     for path, row in citations:
         raw_url = row.get("url") or row.get("source_url")
         url = _url(raw_url)
@@ -176,8 +230,8 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
             flags.append("citation_date_mismatch")
         quote = str(row.get('supporting_quote') or '').strip()
         if quote:
-            normalized = ''.join(quote.split())
-            if len(normalized) < 16 or not any(normalized in ''.join(_provided_body(source).split()) for source in rows):
+            normalized = _quote_text(quote)
+            if len(normalized) < 16 or not any(normalized in _quote_text(_provided_body(source)) for source in rows):
                 flags.append('supporting_quote_not_in_body')
         if rows and not supplied_dates:
             counts["date_unknown"] += 1
@@ -214,5 +268,6 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
                                    'reason': 'verified_company_without_body_quote', 'company_code': code})
     return {"schema_version": 1, "report_date": as_of, "citation_count": len(citations),
             "counts": dict(counts), "issues": issues, "blocking_count": len(issues),
+            "resolved_source_references":resolved_references,
             "passed": not issues,
             "scope": "驗證引用可追溯、日期、頁型與已確認公司主張的原文對照；不表示已獨立證實主張。舊資料可作背景，不代表近期訂單。"}

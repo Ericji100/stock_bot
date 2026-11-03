@@ -27,6 +27,7 @@ class ResearchCenterConfig:
     deepseek_monthly_limit_usd: float = 10.0
     deepseek_background_monthly_usd: float = 7.0
     deepseek_manual_monthly_usd: float = 2.0
+    deepseek_manual_allowances_usd: dict[str, float] = field(default_factory=dict)
     deepseek_monthly_reserve_usd: float = 1.0
     deepseek_job_limit_usd: float = 0.30
     deepseek_background_reserve_usd: float = 0.20
@@ -141,6 +142,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         deepseek_monthly_limit_usd=float(public_config.get("deepseek_monthly_limit_usd", 10)),
         deepseek_background_monthly_usd=float(public_config.get("deepseek_background_monthly_usd", 7)),
         deepseek_manual_monthly_usd=float(public_config.get("deepseek_manual_monthly_usd", 2)),
+        deepseek_manual_allowances_usd=dict(public_config.get('deepseek_manual_allowances_usd') or {}),
         deepseek_monthly_reserve_usd=float(public_config.get("deepseek_monthly_reserve_usd", 1)),
         deepseek_job_limit_usd=float(public_config.get("deepseek_job_limit_usd", .30)),
         deepseek_background_reserve_usd=float(public_config.get("deepseek_background_reserve_usd", 0.20)),

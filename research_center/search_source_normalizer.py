@@ -8,6 +8,27 @@ from .source_date_normalizer import normalize_published_date_with_status
 from .source_text_cleaner import clean_source_text, clean_source_title
 
 
+def validate_source_identity_map(inventory, prompt_sources):
+    """Check the bound prompt namespace against the report's full inventory."""
+    known = {}
+    errors = []
+    checked = 0
+    for source in inventory:
+        if source.source_id in known and known[source.source_id] != source.url:
+            errors.append(f'來源編號 {source.source_id} 對應多個不同網址。')
+        known[source.source_id] = source.url
+    for source in prompt_sources:
+        source_id = source.get('source_id') if isinstance(source, dict) else source.source_id
+        url = source.get('url') if isinstance(source, dict) else source.url
+        if not source_id or not url:
+            continue
+        checked += 1
+        if known.get(source_id) != url:
+            errors.append(f'入模來源 {source_id} 與報告來源網址不一致，不能僅以編號存在判定引用有效。')
+    return {'passed': not errors, 'checked_prompt_sources': checked, 'errors': errors,
+            'scope': '只核對入模來源與報告索引的編號／網址一致性，不證明來源內容支持分析結論。'}
+
+
 def normalize_source_items(
     sources: Iterable[SourceItem],
     request: CommandRequest,

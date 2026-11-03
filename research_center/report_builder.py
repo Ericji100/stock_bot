@@ -14,7 +14,7 @@ from .convergence_service import build_report_convergence_layer
 from .report_display_normalizer import normalize_report_text
 from .report_validator import append_qa_notes, validate_report
 from .company_knowledge_update_service import source_quality_score
-from .report_quality_service import build_report_quality_layer
+from .report_quality_service import build_report_quality_layer, review_reader_content
 from .artifact_registry import build_artifact_record, register_artifact
 
 DISCLAIMER = "本報告為研究輔助資訊，不構成任何投資建議。投資決策仍需自行判斷並承擔風險。"
@@ -258,18 +258,35 @@ def write_report_artifacts(
 
     markdown = normalize_report_text(sanitize_report_markdown(markdown))
     summary = normalize_report_text(sanitize_report_markdown(summary))
-    markdown = _append_value_scan_candidate_analysis(request, markdown, structured_data)
+    reader_review = review_reader_content(markdown, sources)
+    from .search_source_normalizer import validate_source_identity_map
+    bound = (((structured_data or {}).get('high_model_input_package') or {}).get('complete_source_index') or {})
+    bound = bound.get('sources', []) if isinstance(bound, dict) else bound
+    identity = validate_source_identity_map(sources, bound)
+    reader_review['errors'].extend(identity['errors'])
+    reader_review['mechanical_checks_passed'] = not reader_review['errors']
+    # Local templates must not masquerade as additional AI analysis or fill its omissions.
+    markdown = _append_value_scan_candidate_analysis(request, markdown, structured_data, include_analysis=not ai_used)
     markdown = _append_report_quality_summary(request, markdown, structured_data, sources)
     markdown = _append_source_reference_bridge(markdown, sources)
     markdown = _append_complete_source_appendix(markdown, sources)
     markdown = normalize_report_text(markdown)
     report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant, report_id)
     qa = validate_report(markdown, request, sources, report_json)
+    if reader_review['errors']:
+        qa['passed'] = False
+        qa.setdefault('warnings', []).extend(reader_review['errors'])
+        if ai_used and not fallback_reason:
+            if structured_data is None:
+                structured_data = {}
+            structured_data['ai_status'] = 'partial_success'
     markdown = append_qa_notes(markdown, qa)
     markdown = normalize_report_text(markdown)
-    if markdown != report_json.get("markdown_validated_source"):
+    if markdown != report_json.get("markdown_validated_source") or reader_review['errors']:
         report_json = build_report_json(request, markdown, summary, sources, ai_used, fallback_reason, structured_data, report_variant, report_id)
     report_json["metadata"]["qa_validation"] = qa
+    report_json["metadata"]["reader_content_review"] = reader_review
+    report_json["metadata"]["source_identity_validation"] = identity
 
     markdown_path = output_dir / f"{report_id}.md" if "md" in request.output_formats else Path("__no_markdown_file__")
     html_path = output_dir / f"{report_id}.html" if "html" in request.output_formats else Path("__no_html_file__")
@@ -398,7 +415,7 @@ def _qa_main_markdown(markdown: str) -> str:
 
 
 
-def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str, structured_data: dict[str, Any] | None) -> str:
+def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str, structured_data: dict[str, Any] | None, *, include_analysis: bool = True) -> str:
     data = structured_data or {}
     if request.command != "value_scan":
         return markdown
@@ -407,10 +424,12 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
     if not candidates:
         return markdown
     marker = "\u5b8c\u6574\u5019\u9078\u80a1\u9010\u6a94\u91cd\u4f30\u5206\u6790"
+    if not include_analysis:
+        marker = "候選股本地資料檢查 QA"
     if marker in markdown:
         return markdown
     lines = [markdown.rstrip(), "", "---", "", "## " + marker, ""]
-    lines.append("\u4ee5\u4e0b\u7ae0\u7bc0\u7531\u7a0b\u5f0f\u4f9d\u672c\u6b21\u5be6\u969b\u9001\u5165 AI \u7684 ai_candidates \u81ea\u52d5\u9644\u52a0\uff0c\u78ba\u4fdd\u5be6\u969b\u5206\u6790\u5019\u9078\u80a1\u6709\u53ef\u8ffd\u6eaf\u7684\u9010\u6a94\u5206\u6790\u5e95\u7a3f\u3002")
+    lines.append("以下是程式依本地候選資料產生的備援底稿，不是正式 AI 分析；缺漏僅代表本地欄位狀態。")
     matrix = _value_scan_data_completeness_matrix(data)
     if matrix:
         lines.extend(["", "### 資料完整度矩陣", ""])
@@ -431,6 +450,8 @@ def _append_value_scan_candidate_analysis(request: CommandRequest, markdown: str
                     missing=item["missing"],
                 )
             )
+    if not include_analysis:
+        return "\n".join(lines).strip() + "\n"
     for index, row in enumerate(candidates, 1):
         code = str(row.get("code") or "").strip()
         name = str(row.get("name") or "").strip()
@@ -1070,7 +1091,8 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
     title = _report_title(request)
     source_lines = [f"- [{item.source_id}] {item.source_level} {item.title} {item.url}" for item in sources] or ["- 目前沒有外部來源。"]
     data_block = json.dumps(structured_data, ensure_ascii=False, indent=2, default=str)[:12000]
-    fallback_note = f"\n\n公開網路搜尋失敗，本報告僅使用本地結構化資料。原因：{reason}" if reason else ""
+    fallback_note = (f"\n\n本次 AI 正式分析未完成。已取得的外部來源與本地資料仍保留，"
+                     f"但不代表已完成 AI 綜合判斷。原因：{reason}" if reason else "")
     if request.source_only:
         analysis_note = "本報告為 source-only 模式，只整理資料與來源，不做主觀分析、不做評分。"
     else:

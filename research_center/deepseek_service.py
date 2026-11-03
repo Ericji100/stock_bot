@@ -93,6 +93,7 @@ class DeepSeekAccount:
                  usd_cny_budget_rate: float = 7.5,
                  budget_root=None, monthly_limit_usd=10, background_monthly_usd=7,
                  manual_monthly_usd=2, monthly_reserve_usd=1, job_limit_usd=.30, schedule_pacing=True,
+                 manual_allowances=None,
                  transport=None):
         self.key = key
         self.root = Path(root)
@@ -103,7 +104,7 @@ class DeepSeekAccount:
         self.transport = transport
         self.budget = MonthlyBudget(budget_root or self.root, total=monthly_limit_usd,
             background=background_monthly_usd, manual=manual_monthly_usd, reserve=monthly_reserve_usd,
-            job_limit=job_limit_usd, pacing=schedule_pacing)
+            job_limit=job_limit_usd, pacing=schedule_pacing, manual_allowances=manual_allowances)
         self.budget.import_legacy(self.root / "usage.sqlite3")
         self.lock = threading.RLock()
         self.balance_checked_at = 0.0
@@ -144,7 +145,8 @@ class DeepSeekAccount:
 
     def activity(self, operation, cache_hit, detail):
         with self.lock, self._db() as conn:
-            conn.execute("INSERT INTO activity VALUES (?,?,?,?,?)", (uuid4().hex,TASK.get()[0],operation,int(cache_hit),json.dumps(detail,ensure_ascii=False)))
+            conn.execute("INSERT INTO activity VALUES (?,?,?,?,?)", (uuid4().hex,TASK.get()[0],operation,int(cache_hit),
+                         json.dumps({**detail, 'run_id': RUN_ID.get()},ensure_ascii=False)))
 
     def refresh_balance(self, *, force: bool = False):
         with self.lock:
@@ -232,7 +234,8 @@ class DeepSeekAccount:
                 if self.daily_limit > 0 and used + estimate > self.daily_limit:
                     raise DeepSeekUnavailable("DeepSeek 已達每日費用保護上限，請調整設定或明日再試。", "daily_budget_exceeded")
                 self.budget.reserve_request(request_id, command, background, RUN_ID.get(), estimate, now)
-                conn.execute("INSERT INTO usage VALUES (?,?,?,?,?,?,?,?,?)", (request_id, day, command, int(background), operation, "pending", str(estimate), None, "{}"))
+                conn.execute("INSERT INTO usage VALUES (?,?,?,?,?,?,?,?,?)", (request_id, day, command, int(background), operation, "pending", str(estimate), None,
+                             json.dumps({'run_id': RUN_ID.get()})))
             self.pending[request_id] = estimate
             return request_id
 
@@ -246,6 +249,10 @@ class DeepSeekAccount:
             with self._db() as conn:
                 conn.execute("UPDATE usage SET status=?, actual_usd=?, detail=? WHERE id=?", (status, str(actual) if actual is not None else None, json.dumps(detail, ensure_ascii=False), request_id))
             self.budget.finish(request_id, status, actual)
+
+
+def _request_body_sha256(body):
+    return hashlib.sha256(json.dumps(body,ensure_ascii=False,sort_keys=True).encode('utf-8')).hexdigest()
 
 
 def _model_price_factor(now=None, horizon_seconds=0) -> Decimal:
@@ -303,6 +310,16 @@ class DeepSeekService:
         client.max_retries=self.max_retries
         return client
 
+    def prompt_capacity(self, prompt, *, output_tokens=None):
+        # UTF-8 bytes are a conservative text-token upper bound, not a billing
+        # estimate. Reserve output plus message framing; never trim input here.
+        output = self.max_output_tokens if output_tokens is None else output_tokens
+        upper_bound = len(prompt.encode('utf-8')) + 4096 + output
+        return {'fits': upper_bound <= 1_000_000, 'context_tokens': 1_000_000,
+                'input_utf8_bytes': len(prompt.encode('utf-8')), 'output_reserved_tokens': output,
+                'conservative_total_bound': upper_bound,
+                'reference': 'https://api-docs.deepseek.com/quick_start/pricing/'}
+
     def _post(self, operation: str, body: dict, estimate: Decimal):
         request_id = self.account.reserve(operation, estimate)
         tool_request_path = None
@@ -322,7 +339,8 @@ class DeepSeekService:
         def metrics(detail):
             return {**detail, "attempts": attempts, "retry_count": max(0, attempts - 1),
                     "elapsed_seconds": round(time.monotonic() - started, 3), "prompt_chars": prompt_chars,
-                    'run_id':RUN_ID.get(), 'request_path':str(tool_request_path) if tool_request_path else None}
+                    'run_id':RUN_ID.get(), 'request_path':str(tool_request_path) if tool_request_path else None,
+                    'request_body_sha256':_request_body_sha256(body)}
         try:
             for attempt in range(self.max_retries + 1):
                 try:
@@ -375,6 +393,11 @@ class DeepSeekService:
             return self._generate_once(prompt, json_mode)
 
     def _generate_once(self, prompt: str, json_mode: bool):
+        capacity = self.prompt_capacity(prompt)
+        if not capacity['fits']:
+            error = DeepSeekError('完整資料超過模型上下文容量；未送出付費請求，也未刪減資料。', 'prompt_too_large')
+            error.diagnostics.update(capacity)
+            raise error
         command, _, report_date = TASK.get()
         system = ("請以繁體中文整理事實與來源，只輸出有效 JSON，不提供買賣結論。" if self.organizer
                   else "請以繁體中文完成使用者要求的分析。區分事實、推論及情境假設，保留來源、反證、風險與資料缺口，不顯示內部推理。估值表EPS乘本益比上下限須精確驗算，折溢價另列；新官方財報若在指定日前公布，核對後優先於本地舊報表，明列期間衝突。")
@@ -391,7 +414,8 @@ class DeepSeekService:
         cache_key = "model:" + hashlib.sha256(json.dumps([body, command, report_date], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         data = self.account.cached(cache_key)
         cache_hit = data is not None
-        self.account.activity("model", cache_hit, {"prompt_path":str(prompt_path),"prompt_chars":len(prompt),"model":self.model,"organizer":self.organizer,"run_id":RUN_ID.get()})
+        self.account.activity("model", cache_hit, {"prompt_path":str(prompt_path),"prompt_chars":len(prompt),"model":self.model,"organizer":self.organizer,"run_id":RUN_ID.get(),
+                                                   "request_body_sha256":_request_body_sha256(body)})
         if data is None:
             estimate = _reserve_model_price(len(prompt) + len(system), self.max_output_tokens,
                 self.timeout_seconds * (self.max_retries + 1) + 30)
@@ -470,6 +494,7 @@ def account_options(config, root):
         monthly_limit_usd=config.deepseek_monthly_limit_usd,
         background_monthly_usd=config.deepseek_background_monthly_usd,
         manual_monthly_usd=config.deepseek_manual_monthly_usd,
+        manual_allowances=getattr(config, 'deepseek_manual_allowances_usd', {}),
         monthly_reserve_usd=config.deepseek_monthly_reserve_usd,
         job_limit_usd=config.deepseek_job_limit_usd)
 

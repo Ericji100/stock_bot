@@ -134,7 +134,7 @@ def normalize_change_pack_quality(pack: Any) -> None:
         "inferred_items": 0,
         "candidate_items": 0,
         "missing_items": 0,
-        "policy": "topic_confirm applies verified+inferred as formal relations; candidate company relations are retained as hypothesis_only; candidate supply-chain nodes are skipped; missing is recorded as missing_data.",
+        "policy": "確認時套用已驗證與合理推論的關係；候選公司關係只保留為假說，候選供應鏈節點不套用，缺少資料另行記錄。",
     }
     for action in getattr(pack, "actions", []) or []:
         fallback_evidence = [ev.to_dict() if hasattr(ev, "to_dict") else ev for ev in getattr(action, "evidence", []) or []]
@@ -156,13 +156,17 @@ def normalize_change_pack_quality(pack: Any) -> None:
             status = infer_status(entry, fallback_evidence)
             entry.setdefault("verification_status", status)
             _bump(summary, status)
+        if not getattr(action, 'counter_evidence', None):
+            warning = '本次未列出可核對的獨立反證；風險假設與資料缺口不等於已有反證。'
+            if warning not in action.missing_data:
+                action.missing_data.append(warning)
         _collect_action_missing_data(action)
 
     extra = getattr(pack, "extra", None)
     if isinstance(extra, dict):
         extra["quality_summary"] = summary
     if hasattr(pack, "warnings"):
-        warning = "topic_confirm will apply verified+inferred records, retain candidate company relations as hypothesis_only, and skip candidate supply-chain nodes."
+        warning = "確認時只套用已驗證與合理推論的紀錄；候選公司關係僅作假說保留，候選供應鏈節點不套用。"
         if warning not in pack.warnings:
             pack.warnings.append(warning)
 
@@ -176,7 +180,7 @@ def _collect_action_missing_data(action: Any) -> None:
             status = normalize_status(entry.get("verification_status") or entry.get("status"))
             if status == "missing":
                 label = entry.get("company_name") or entry.get("company_code") or entry.get("role") or collection_name
-                for item in _as_list(entry.get("missing_data")) or [f"{label}: missing verifiable evidence"]:
+                for item in _as_list(entry.get("missing_data")) or [f"{label}：缺少可核對證據"]:
                     if item not in missing:
                         missing.append(item)
             for field in ("products", "customers", "revenue_exposure", "benefit_logic"):

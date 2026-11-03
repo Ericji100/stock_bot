@@ -606,7 +606,9 @@ def _strategy_codes_label(strategy_codes: set[str] | list[str] | tuple[str, ...]
 def _ai_badge(item: RadarCandidate) -> str:
     comment = item.ai_comment or {}
     if comment.get("status") == "ok":
-        return f"｜AI短評信心：{_priority_label(comment.get('priority') or '中')}"
+        if comment.get('confidence'):
+            return f"｜AI短評信心：{_priority_label(comment['confidence'])}"
+        return f"｜AI關注優先度：{_priority_label(comment.get('priority') or '中')}"
     if comment.get("status") in {"failed", "missing"}:
         return "｜AI短評：未完成"
     return ""
@@ -4810,7 +4812,8 @@ def _build_ai_comment_prompt(
         + low_digest_json
         )
     final_prompt = final_prompt.replace("候選股資料：\n", "候選股資料（模板段落）：\n")
-    final_prompt = final_prompt.rstrip() + "\n\n候選股資料：\n" + candidate_payload_json
+    from research_center.reader_quality_rules import reader_quality_rules
+    final_prompt = final_prompt.rstrip() + "\n\n" + reader_quality_rules('radar') + "\n\n候選股資料：\n" + candidate_payload_json
     return final_prompt
 
 

@@ -349,7 +349,7 @@ def _extract_candidates(
     )
     prompt_chars = len(prompt)
     emit(f"AI 產生候選題材 prompt={prompt_chars} chars")
-    if prompt_chars > (600000 if full_evidence else CANDIDATE_STAGE_PROMPT_HARD_CHARS):
+    if prompt_chars > CANDIDATE_STAGE_PROMPT_HARD_CHARS and not full_evidence:
         stage_logs.append({
             "stage": "candidate_extract",
             "error": f"prompt_too_large:{prompt_chars}",
@@ -358,6 +358,32 @@ def _extract_candidates(
         })
         return []
     try:
+        if full_evidence:
+            prompts = _candidate_capacity_prompts(structured_data or {}, prompt_variables, template, render_prompt)
+            if len(prompts) > 1:
+                merged = {}
+                for index, part in enumerate(prompts, 1):
+                    emit(f'候選題材完整來源分段 {index}/{len(prompts)}：{len(part)} chars')
+                    payload = call_ai_json(part, f'candidate_extract_part_{index}')
+                    if _has_unresolved_topic_ref(payload) or _payload_exposes_model_reasoning(payload):
+                        raise ValueError('分段候選包含未展開引用或模型草稿。')
+                    if isinstance(payload, dict) and isinstance(payload.get('company_knowledge_updates'), dict):
+                        stage_logs.append({'stage':f'candidate_extract_company_knowledge_{index}',
+                                           'company_knowledge_updates':payload['company_knowledge_updates']})
+                    for candidate in _candidates_from_payload(payload):
+                        previous = merged.setdefault(candidate['theme_id'], candidate)
+                        if previous is candidate:
+                            continue
+                        for field in ('keywords', 'source_refs', 'candidate_companies'):
+                            for value in candidate[field]:
+                                if value not in previous[field]:
+                                    previous[field].append(value)
+                        if candidate['reason'] and candidate['reason'] not in previous['reason']:
+                            previous['reason'] += '\n' + candidate['reason']
+                stage_logs.append({'stage':'candidate_extract', 'count':len(merged), 'part_count':len(prompts),
+                                   'prompt_chars':sum(map(len,prompts))})
+                return list(merged.values())
+            prompt = prompts[0]
         payload = call_ai_json(prompt, "candidate_extract")
         if full_evidence and _has_unresolved_topic_ref(payload):
             stage_logs.append({'stage':'candidate_extract','error':'unresolved_topic_reference'})
@@ -391,6 +417,25 @@ def _extract_candidates(
                 return candidates
         stage_logs.append({"stage": "candidate_extract", "error": str(exc), "prompt_chars": prompt_chars})
         return []
+
+
+def _candidate_capacity_prompts(data, variables, template, render_prompt):
+    """Split complete source rows, repeating context rather than dropping evidence."""
+    from .deepseek_service import DeepSeekService
+    sources = merge_topic_sources(data)
+    def build(rows):
+        stage = topic_stage_variables(data, variables, source_rows=rows)
+        prompt = append_topic_shared_records(render_prompt(template, stage), stage)
+        return prompt + '\n完整來源依本批網址核對；只整理候選，不作最終結論、不捏造網址。'
+    def split(rows):
+        prompt = build(rows)
+        if DeepSeekService(None).prompt_capacity(prompt, output_tokens=32768)['fits']:
+            return [prompt]
+        if len(rows) <= 1:
+            raise ValueError('單筆來源或共用題材背景超過容量，完整保留，不截斷、不冒稱完成。')
+        middle = len(rows)//2
+        return split(rows[:middle]) + split(rows[middle:])
+    return split(sources)
 
 
 def _candidates_from_payload(payload: Any) -> list[dict[str, Any]]:

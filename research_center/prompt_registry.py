@@ -60,7 +60,7 @@ def _prompt_structured_data(request: CommandRequest, structured_data: dict[str, 
             "analysis_model_choice": structured_data.get("analysis_model_choice"),
             "\u9ad8\u968e\u6a21\u578b\u5165\u6a21\u63d0\u9192": [
                 "\u4f60\u6536\u5230\u7684\u662f\u672c\u5730\u8cc7\u6599\u4e2d\u5fc3\u6574\u7406\u5f8c\u7684\u9ad8\u968e\u6a21\u578b\u8cc7\u6599\u5305\uff0c\u4e0d\u662f\u5b8c\u6574\u539f\u59cb\u8cc7\u6599\uff1b\u5b8c\u6574\u4f86\u6e90\u4ecd\u4fdd\u5b58\u5728\u5831\u544a JSON \u8207 HTML \u9644\u9304\u3002",
-                "MiniMax M3 \u7684\u8cc7\u6599\u6574\u7406\u53ea\u80fd\u4f5c\u70ba\u5e95\u7a3f\uff0c\u4e0d\u80fd\u76f4\u63a5\u8996\u70ba\u6700\u7d42\u6295\u7814\u7d50\u8ad6\u3002",
+                "資料整理模型的輸出只能作為底稿，不是獨立查證，也不能直接視為最終投研結論。",
                 "\u6700\u7d42\u5224\u65b7\u5fc5\u9808\u91cd\u65b0\u6aa2\u67e5\u4f86\u6e90\u3001\u53cd\u8b49\u3001\u8cc7\u6599\u7f3a\u53e3\u3001\u786c\u6578\u64da\u8207\u53ef\u4fe1\u5ea6\u3002",
                 "\u82e5\u8cc7\u6599\u5305\u7f3a\u5c11\u95dc\u9375\u8cc7\u8a0a\uff0c\u5fc5\u9808\u660e\u78ba\u6a19\u793a\u8cc7\u6599\u4e0d\u8db3\uff0c\u4e0d\u5f97\u81ea\u884c\u88dc\u5beb\u6216\u8a87\u5927\u3002",
             ],
@@ -929,7 +929,8 @@ def _split_scoring_blocks(files: list[tuple[str, str]]) -> list[str]:
 
 def _rules_for_request(request: CommandRequest) -> str:
     """Load prompt rules files based on command and mode."""
-    blocks: list[str] = []
+    from .reader_quality_rules import reader_quality_rules
+    blocks: list[str] = [reader_quality_rules()]
     quality_rule = _read_rule_prompt("output_quality_rules.md")
     if quality_rule:
         blocks.append(f"## output_quality_rules.md\n{quality_rule}")

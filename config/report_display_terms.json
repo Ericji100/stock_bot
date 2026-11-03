@@ -1,6 +1,18 @@
 {
   "schema_version": "report_display_terms_v1",
   "terms": {
+    "local_ranking": "本地候選排序",
+    "data_coverage_below_60": "必要資料覆蓋不足六成",
+    "no_high_quality_source": "尚無高品質來源",
+    "rejected_sources": "不適用來源數",
+    "financial_detail": "財報細項",
+    "gross_margin_cache": "毛利率快取",
+    "chip_backup_summary": "籌碼資料摘要",
+    "cross_validation": "交叉驗證",
+    "latest_period": "最新資料期間",
+    "reader_content_review": "正文內容檢查",
+    "semantic_review_status": "實質內容審閱狀態",
+    "mechanical_checks_passed": "機械檢查通過",
     "ai_power_semiconductor_mosfet": "AI 電源與功率半導體 MOSFET",
     "ai_final_scoring_policy": "AI 最終評分規則",
     "analysis_model": "AI 模型",

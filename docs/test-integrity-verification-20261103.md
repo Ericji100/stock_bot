@@ -25,7 +25,8 @@
 | 四個正式模組的 AST 差異核對 | 僅匯入與契約路徑不同，所有函式內容及其他常數相同 |
 | 完整 pytest | 2,630 通過、2 略過、240 子測試通過；398.80 秒，回傳碼 0 |
 | 還原供測試的舊資料 | 2,530 份逐檔 SHA-256 相同，未改寫既有結果 |
-| 正式檔案保護與心跳 | 合併前讀回通過；合併後另核對 |
+| 正式檔案保護與心跳 | 合併前後原 14 份未提交檔、297 份規則及 435 份研究封存 SHA-256 相同；Bot／watchdog 未重啟 |
+| 正式主工作區唯讀驗證 | 37 個版本、2 份契約及 4 個讀取端通過；未呼叫網路或產生回測結果 |
 
 ## 測試範圍與證據
 
@@ -52,4 +53,9 @@
 
 ## 收尾
 
-程式修正與全套 pytest 已完成；正式合併後原檔完整性／心跳及本次 owned 暫存回收，於完成時補記於此。
+- 程式修正提交 `d6a739c` 已 fast-forward 合併到 `main`，未推送遠端。未 stash、未覆蓋主工作區的既有修改；`.gitattributes` 改變 Git 保存方式，但正式 297 份規則原檔與 8 份共用 schema 的 bytes 全部不變。
+- `safety-after-merge.json`：Bot PID 17556、啟動時間仍為 08:51:12；watchdog PID 17484、啟動時間仍為 08:51:11。09:35:19 心跳持續更新、JobQueue 可用。本輪未啟停 Bot、未發 Telegram 測試訊息、未新增付費分析或搜尋。
+- `main-readonly-smoke.json`：實際從主工作區匯入版本驗證器及四個契約讀取端，全部通過；不是用開發工作樹的通過結果替代主目錄讀回。
+- 必要原始錯誤、最終 pytest 文字／XML、逐檔 hash 與執行方式均保留。`reproduction/*.snapshot.txt` 僅為取證副本，不是可從新位置直接執行的工具。
+- 暫存回收未完成：計畫工具因引用了此開發 worktree 外的正式檔案，回傳 `REFERENCE_FILE_OUTSIDE_PROJECT_OR_INSIDE_TASK`（exit 2）。尚未產生計畫或回收收據，未呼叫 recycle，也未換工具／API 或重試繞過；原始錯誤保留於開發工作樹 `.codex-cleanup/ds/integrity-1103/plan-error.json`。
+- 本次 `.codex-tmp/ds/integrity-1103/` 原地保留 **7,126 檔、645,337,037 bytes**，ownership marker 仍在，供後續檢查。原 ZIP、正式研究資料、其他任務暫存及備份均未清理。此收尾限制不影響上列兩項修復與已完成的 pytest 結果。

@@ -57,5 +57,13 @@
 - `safety-after-merge.json`：Bot PID 17556、啟動時間仍為 08:51:12；watchdog PID 17484、啟動時間仍為 08:51:11。09:35:19 心跳持續更新、JobQueue 可用。本輪未啟停 Bot、未發 Telegram 測試訊息、未新增付費分析或搜尋。
 - `main-readonly-smoke.json`：實際從主工作區匯入版本驗證器及四個契約讀取端，全部通過；不是用開發工作樹的通過結果替代主目錄讀回。
 - 必要原始錯誤、最終 pytest 文字／XML、逐檔 hash 與執行方式均保留。`reproduction/*.snapshot.txt` 僅為取證副本，不是可從新位置直接執行的工具。
-- 暫存回收未完成：計畫工具因引用了此開發 worktree 外的正式檔案，回傳 `REFERENCE_FILE_OUTSIDE_PROJECT_OR_INSIDE_TASK`（exit 2）。尚未產生計畫或回收收據，未呼叫 recycle，也未換工具／API 或重試繞過；原始錯誤保留於開發工作樹 `.codex-cleanup/ds/integrity-1103/plan-error.json`。
-- 本次 `.codex-tmp/ds/integrity-1103/` 原地保留 **7,126 檔、645,337,037 bytes**，ownership marker 仍在，供後續檢查。原 ZIP、正式研究資料、其他任務暫存及備份均未清理。此收尾限制不影響上列兩項修復與已完成的 pytest 結果。
+- 先前清理計畫因引用開發 worktree 外的正式檔案，被 `REFERENCE_FILE_OUTSIDE_PROJECT_OR_INSIDE_TASK`（exit 2）拒絕，當時未呼叫 recycle。原始錯誤及當時保留紀錄仍保存，不改寫歷史結果。
+
+### 使用者授權後的清理重試（2026-11-03）
+
+- 重新確認 owner nonce、無測試寫入者、2,530 份 fixture 與封存收據相同、12 份執行方式已逐檔保存。報告中的暫存路徑是歷史取證說明，不是執行依賴；沒有移除報告文字來掩蓋引用。以本工作樹內九份實際程式／設定作引用檢查，未放寬工具檢核。
+- `retry-plan.json` 保存逐檔 snapshot；SHA-256：`7aea1019bd561a4e5cd4d99c24a7691bbf94f830d3e0e58f7576f982453f2f7d`。檢視計畫後才於另一呼叫執行同一工具的 recycle。
+- **回收成功且已驗證**：7,126 檔、645,337,037 bytes，僅本次 `.codex-tmp/ds/integrity-1103/`。使用 Windows `ITransferSource.RecycleItem`，未永久刪除、未清空回收筒；09:48:14 完成內容驗證，原路徑已不存在。
+- 收據：`D:/code/stock_ai_bot/.worktrees/deepseek-unification/.codex-cleanup/ds/integrity-1103/retry-receipt.json`，狀態 `RECYCLED_VERIFIED`；收據 SHA-256：`919e03d6e58c5c5f1b3e983617be6b489ac11f934ae03b3948e2063391d6f85f`。原錯誤、計畫、收據、pytest 證據與空管理容器保留。
+- 原 ZIP、正式研究資料、其他任務暫存、備份及程式均未清理。回收可還原，不代表立即釋放同量磁碟空間；不需使用者另外手動刪檔。
+- 本次未啟停 Bot、未發 Telegram 訊息、未新增分析／搜尋。清理後讀回 Bot PID 31544、09:48:43 心跳及 JobQueue 可用；該程序啟動於 09:47:08，早於回收呼叫。前段 PID 17556 為上一輪當時證據，不冒稱同一程序延續或推測程序更替原因。

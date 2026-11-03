@@ -11,7 +11,7 @@ def build_source_events(request: CommandRequest, sources: list[SourceItem], stru
     target = _target_for_request(request, structured_data)
     events: list[dict[str, Any]] = []
     for source in sources:
-        published = source.published_date or (request.report_date.isoformat() if request.report_date else None)
+        published = source.published_date
         events.append(
             {
                 "event_type": _event_type_from_source(source),

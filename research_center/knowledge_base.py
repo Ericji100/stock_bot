@@ -110,6 +110,8 @@ def _normalize_company_knowledge(info: dict[str, Any]) -> dict[str, Any]:
         "auto_update": dict(info.get("auto_update") or {}),
         "updated_at": info.get("updated_at"),
         "confidence": info.get("confidence", "manual_review_required"),
+        "verification_status": info.get('verification_status', 'unverified_legacy'),
+        "usage_policy": 'hypothesis_only' if info.get('verification_status') == 'candidate' or info.get('confidence') == 'candidate' else 'requires_current_evidence',
     }
 
 

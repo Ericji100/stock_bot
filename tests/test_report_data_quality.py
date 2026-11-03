@@ -57,7 +57,7 @@ class ReportDataQualityTests(unittest.TestCase):
         from research_center import theme_radar_service as service
         from tests.test_theme_radar_feature import _prepared_library, _stock
         stocks = [_stock('0001','無關','水泥'), _stock('2330','台積電','半導體'), _stock('6415','矽力','電源')]
-        metrics = {'2330.TW': {'price':100, 'price_date':'2026-11-02', 'change_pct':-3}}
+        metrics = {'2330.TW': {'price':100, 'price_date':'2026-05-22', 'change_pct':-3}}
         with patch.object(service, 'load_stock_universe', return_value=stocks), \
              patch.object(service, '_load_topic_library', side_effect=_prepared_library), \
              patch.object(service, '_load_cached_market_movers_snapshot', return_value={}), \
@@ -65,11 +65,15 @@ class ReportDataQualityTests(unittest.TestCase):
              patch.object(service, 'load_price_metrics', return_value=metrics) as load, \
              patch.object(service, '_build_news_theme_stats', return_value=[]):
             result = service.build_theme_flow_data('AI伺服器', date(2026, 5, 22))
+            earlier = service.build_theme_flow_data('AI伺服器', date(2026, 5, 21))
         self.assertEqual({entry.code for entry in load.call_args.args[0]}, {'2330','6415'})
         self.assertEqual({row['code'] for row in result['related_stocks']}, {'2330','6415'})
         self.assertEqual(result['related_stocks'][0]['change_pct'], -3)
         self.assertEqual(result['data_quality']['quantitative_stock_count'], 1)
         self.assertIn('6415', result['data_quality']['quantitative_missing_codes'])
+        self.assertEqual(earlier['data_quality']['quantitative_stock_count'], 0)
+        self.assertEqual(earlier['other_session_related_stocks'][0]['code'], '2330')
+        self.assertEqual(earlier['other_session_related_stocks'][0]['price_date'], '2026-05-22')
 
     def test_verified_topic_company_needs_its_own_matching_body_quote(self):
         from tests.test_topic_citation_audit import TopicCitationAuditTests

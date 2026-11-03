@@ -73,6 +73,10 @@ def normalize_topic_detail_action(
         data.get("affected_companies") or fallback_candidate.get("candidate_companies")
     )
     company_relations = _normalize_company_relations(data.get("company_relations"), theme_id, evidence)
+    roles_by_code = {row['company_code']:row['role'] for row in affected_companies if row.get('company_code') and row.get('role') not in {'', '待補題材角色'}}
+    for relation in company_relations:
+        if relation.get('role') == '待補題材角色' and relation.get('company_code') in roles_by_code:
+            relation['role'] = roles_by_code[relation['company_code']]
     supply_chain_nodes = _normalize_supply_chain_nodes(data.get("supply_chain_nodes"), theme_id, evidence)
 
     if not supply_chain_nodes:
@@ -162,13 +166,14 @@ def _normalize_evidence(value: Any) -> list[TopicEvidence]:
             continue
         level = coerce_topic_source_level(item.get("source_level"))
         source = str(item.get("source") or item.get("source_title") or item.get("title") or "").strip()
-        content = str(item.get("content") or item.get("claim") or item.get("snippet") or "").strip()
+        content = str(item.get("content") or item.get("claim") or item.get("supports") or item.get("snippet") or item.get("supporting_quote") or "").strip()
         if not source and not content:
             continue
         result.append(TopicEvidence(
             source=source or "未命名來源",
             source_level=level,
             supporting_quote=str(item.get('supporting_quote') or '').strip() or None,
+            source_id=str(item.get('source_id') or '').strip() or None,
             content=to_traditional_text(content),
             url=item.get("url"),
             publish_date=item.get("publish_date") or item.get("published_date"),

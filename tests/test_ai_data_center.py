@@ -10,6 +10,17 @@ from research_center.models import CommandRequest, SourceItem
 
 
 class AiDataCenterTests(unittest.TestCase):
+    def test_guarded_prompt_inventory_is_not_capped_again(self):
+        request = CommandRequest(command='theme', raw_text='/theme AI電源', theme_scope='AI電源')
+        sources = [SourceItem(f'S{i:03}', f'來源{i}', f'https://example.com/{i}', 'L2_media')
+                   for i in range(1, 141)]
+        bundle = build_ai_data_center_bundle(request, {}, sources)
+        selection = bundle['source_selection']
+        self.assertEqual(selection['selected_source_count'], 140)
+        self.assertEqual(selection['omitted_source_count'], 0)
+        self.assertEqual(selection['admission_status'], 'prepared_not_sent')
+        self.assertEqual(bundle['ai_input_audit']['ai_received']['selected_source_count'], 140)
+
     def test_source_selection_keeps_official_and_risk_sources(self):
         request = CommandRequest(command="research", raw_text="/research 2330", target="2330", mode="deep")
         sources = [

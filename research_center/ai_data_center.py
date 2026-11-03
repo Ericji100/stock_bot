@@ -19,6 +19,13 @@ def attach_ai_data_center(
     structured_data: dict[str, Any],
     sources: list[SourceItem],
 ) -> dict[str, Any]:
+    from .source_snapshots import point_in_time_data
+    guarded = point_in_time_data(structured_data, request.report_date)
+    if guarded is not structured_data:
+        structured_data.clear()
+        structured_data.update(guarded)
+    from .evidence_governance import build_evidence_governance
+    structured_data["evidence_governance"] = build_evidence_governance(request.command, request.report_date, sources, structured_data)
     bundle = build_ai_data_center_bundle(request, structured_data, sources)
     structured_data["ai_data_center"] = bundle
     structured_data["ai_input_audit"] = bundle["ai_input_audit"]
@@ -32,7 +39,9 @@ def build_ai_data_center_bundle(
     structured_data: dict[str, Any],
     sources: list[SourceItem],
 ) -> dict[str, Any]:
-    source_selection = select_sources_for_ai_input(request, sources)
+    # The caller already supplied the guarded prompt inventory; rank, do not cap it again.
+    source_selection = select_sources_for_ai_input(request, sources, max_sources=max(1, len(sources)))
+    source_selection['admission_status'] = 'prepared_not_sent'
     raw_sources = [asdict(item) for item in sources]
     ai_prompt_context = build_ai_prompt_context(request, structured_data, source_selection)
     audit = build_ai_input_audit(
@@ -92,6 +101,7 @@ def build_ai_prompt_context(
         "結構化資料摘要": compact_structured,
         "資料覆蓋": structured_data.get("data_coverage"),
         "資料缺口": structured_data.get("data_gap_summary"),
+        "證據與日期檢核索引": "evidence_governance",
         "共用證據包摘要": _compact_evidence_pack(structured_data.get("unified_evidence_pack")),
     }
 

@@ -189,7 +189,19 @@ class NewsRepository:
 
     def query_pending_classification(self, limit: int = 6) -> list[NewsItem]:
         cutoff = (datetime.now() - timedelta(days=7)).isoformat()
-        return self._query("SELECT * FROM news_articles WHERE tags LIKE '%local_rule_fallback%' AND created_at>=? ORDER BY created_at LIMIT ?", (cutoff, limit))
+        # Rediscovery must not make old news fresh. Preserve older pending rows for audit.
+        return self._query("""SELECT * FROM news_articles WHERE tags LIKE '%local_rule_fallback%'
+            AND published_at>=? ORDER BY
+            CASE WHEN tags LIKE '%counter_evidence%' OR tags LIKE '%official_fact%' THEN 0 ELSE 1 END,
+            created_at, id LIMIT ?""", (cutoff[:10], limit))
+
+    def pending_classification_summary(self) -> dict[str, int]:
+        cutoff = (datetime.now() - timedelta(days=7)).date().isoformat()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            counts = conn.execute("""SELECT COUNT(*), SUM(CASE WHEN published_at>=? THEN 1 ELSE 0 END)
+                FROM news_articles WHERE tags LIKE '%local_rule_fallback%'""", (cutoff,)).fetchone()
+        total, eligible = counts[0], counts[1] or 0
+        return {'pending_total': total, 'eligible_recent': eligible, 'historical_or_date_unknown': total - eligible}
 
     def delete_by_urls(self, urls: list[str]) -> int:
         """Delete stored rows by URL; return deleted count."""

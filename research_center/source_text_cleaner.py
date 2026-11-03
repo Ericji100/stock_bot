@@ -7,6 +7,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+def article_text_sections(text: str) -> tuple[str, str]:
+    """Separate explicitly labelled related articles; retain both, never infer relevance."""
+    marker = re.search(r'(?m)^\s*(?:#{1,6}\s*)?(?:延伸閱讀|相關新聞|更多相關新聞|推薦閱讀|Related articles|Read next)\s*[:：]?\s*$', text, re.I)
+    return (text[:marker.start()].rstrip(), text[marker.start():]) if marker else (text, '')
+
+
 _MOJIBAKE_MARKERS = (
     "é",
     "è",

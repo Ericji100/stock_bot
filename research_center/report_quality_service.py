@@ -23,17 +23,21 @@ QUALITY_COMMANDS = (
 )
 
 
-def review_reader_content(markdown: str, sources: list[SourceItem]) -> dict[str, Any]:
+def review_reader_content(markdown: str, sources: list[SourceItem], structured_data=None) -> dict[str, Any]:
     """Mechanical diagnostics, not a claim of semantic accuracy or human review."""
     from .report_numeric_validation import validate_report_numbers
     refs = set(re.findall(r"\[(S\d+)\]", markdown))
     known = {item.source_id for item in sources}
     unknown = sorted(refs - known)
-    numeric = validate_report_numbers(markdown, sources)
+    numeric = validate_report_numbers(markdown, sources, structured_data)
+    from .evidence_governance import review_claim_evidence
+    claim_audit = review_claim_evidence(markdown, sources)
     errors = list(numeric['errors'])
     if unknown:
         errors.append('正文引用不存在的來源編號：' + '、'.join(unknown))
-    warnings = []
+    warnings = list(numeric.get('warnings') or [])
+    if claim_audit['flagged_count']:
+        warnings.append(f"{claim_audit['flagged_count']} 項引用主張有待核對內容或語意；詳見證據檢核底稿。")
     if sources and not refs:
         warnings.append('正文未使用可核對的來源編號；來源附錄不能證明重要結論有引用依據。')
     if re.search(r'<think>|</think>|\ufffd', markdown, re.I):
@@ -41,6 +45,7 @@ def review_reader_content(markdown: str, sources: list[SourceItem]) -> dict[str,
     return {'schema_version': 'reader_review_v1', 'mechanical_checks_passed': not errors,
             'errors': errors, 'warnings': warnings, 'cited_source_ids': sorted(refs),
             'unknown_source_ids': unknown, 'numeric_validation': numeric,
+            'claim_evidence_audit': claim_audit,
             'semantic_review_status': 'pending',
             'scope': '只驗算明確估值、引用金額的部分單位換算及來源編號存在性；未證明所有數值、引用語意、資料完整或預測正確。'}
 
@@ -51,6 +56,8 @@ def build_report_quality_layer(
     sources: list[SourceItem],
 ) -> dict[str, Any]:
     data = structured_data or {}
+    from .evidence_governance import build_evidence_governance
+    governance = build_evidence_governance(request.command, request.report_date, sources, data)
     evidence_pack = build_report_evidence_pack(request, data)
     completeness = build_data_completeness_matrix(request, data, evidence_pack)
     source_quality = build_source_quality_metadata(sources)
@@ -73,6 +80,7 @@ def build_report_quality_layer(
         "data_coverage_score": coverage_score,
         "source_coverage_summary": source_coverage,
         "source_quality": source_quality,
+        "evidence_governance": governance,
         "data_gap_summary": data.get("data_gap_summary"),
         "unified_evidence_pack": data.get("unified_evidence_pack"),
         "news_event_summary": data.get("news_event_summary"),
@@ -197,10 +205,11 @@ def build_source_coverage_summary(sources: list[SourceItem], source_quality: dic
         by_level[level] = by_level.get(level, 0) + 1
         if source.published_date:
             dated += 1
-            found_by = set(source.found_by or [])
-            if "source_date:explicit" in found_by:
+            from .source_date_normalizer import source_publication_status
+            status = source_publication_status(source)
+            if status == 'explicit':
                 explicit_dated += 1
-            elif "source_date:inferred" in found_by:
+            elif status == 'inferred':
                 inferred_dated += 1
     return {
         "total_sources": len(sources),

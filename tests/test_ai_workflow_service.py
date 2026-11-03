@@ -1115,6 +1115,25 @@ class HighModelInputPackageTests(unittest.TestCase):
         self.assertEqual(rows["theme_rankings"]["status"], "source_missing")
         self.assertEqual(rows["sector_rankings"]["status"], "source_missing")
 
+    def test_empty_features_do_not_hide_shared_sector_rankings(self) -> None:
+        rows = [{'sector': f'族群{i}', 'sector_score': i,
+                 'representative_stocks': [{'code': str(3000+i), 'name': f'公司{i}'}]}
+                for i in range(24)]
+        data = {'sector_rankings': None, 'feature_pack': {'sector_rankings': []},
+                'shared_data_layer': {'sector_strength': {'sector_rankings': rows}}}
+        package = build_high_model_input_package(_request_for('theme_radar'), data, _sources(),
+                                                  prompt_chars_estimate=1_000_000)
+        payload = package['command_specific_data']['payload']
+        self.assertEqual(len(payload['sector_rankings']), 24)
+        self.assertEqual(payload['sector_rankings'][-1]['sector'], '族群23')
+        self.assertEqual(payload['sector_rankings'][-1]['representative_stock_codes'], ['3023'])
+        self.assertIn('3023', [row['code'] for row in payload['stock_index']])
+        data['sector_strength'] = {'sector_rankings': rows}
+        data['shared_data_layer']['sector_strength']['sector_rankings'] = rows[:20]
+        refreshed = build_high_model_input_package(_request_for('theme_radar'), data, _sources(),
+                                                  prompt_chars_estimate=1_000_000)
+        self.assertEqual(len(refreshed['command_specific_data']['payload']['sector_rankings']), 24)
+
     def test_theme_radar_compact_package_preserves_core_topic_company_sector_data(self) -> None:
         stocks = [
             {

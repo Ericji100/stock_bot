@@ -3,6 +3,32 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Callable
+from contextlib import contextmanager
+from threading import Lock
+
+_KEY_LOCK = Lock()
+_KEY_REQUESTS: dict[str, list[Any]] = {}
+
+
+@contextmanager
+def keyed_request_lock(key: str, *, timeout: float = 30):
+    """Coalesce identical I/O without holding a global lock across the loader."""
+    with _KEY_LOCK:
+        state = _KEY_REQUESTS.setdefault(key, [Lock(), 0])
+        state[1] += 1
+    acquired = False
+    try:
+        acquired = state[0].acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError('相同資料請求仍在處理，已停止等待；沒有重送未知請求。')
+        yield
+    finally:
+        if acquired:
+            state[0].release()
+        with _KEY_LOCK:
+            state[1] -= 1
+            if not state[1]:
+                _KEY_REQUESTS.pop(key, None)
 
 from .error_classification_service import build_health_event
 

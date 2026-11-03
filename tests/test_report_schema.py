@@ -758,9 +758,12 @@ class ReportSchemaAndScoringTests(unittest.TestCase):
 
         self.assertIn("這不是正式 AI 完成報告", markdown)
         self.assertIn("共享資料層摘要", markdown)
-        self.assertIn("news_context", markdown)
-        self.assertIn("feature_pack", markdown)
-        self.assertIn("data_coverage", markdown)
+        self.assertIn("新聞脈絡：已保存", markdown)
+        self.assertIn("量化與市場底稿：已保存", markdown)
+        self.assertIn("資料覆蓋檢核：已保存", markdown)
+        self.assertNotIn('"news_context"', markdown)
+        self.assertNotIn('"feature_pack"', markdown)
+        self.assertIn("完整原始欄位及來源保留於 JSON", markdown)
 
     def test_value_scan_fallback_markdown_includes_market_imagination_sections(self):
         request = parse_command_text("/value_scan 精選選股 --deep")

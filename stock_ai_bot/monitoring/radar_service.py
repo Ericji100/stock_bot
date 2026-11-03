@@ -452,6 +452,7 @@ def format_radar_report(result: RadarResult, *, limit: int = 15) -> str:
     date_note = str((result.diagnostics or {}).get("date_note") or "")
     if date_note:
         lines.extend([f"提示：{date_note}", ""])
+    lines.extend(_radar_signal_date_lines(result, limit))
     evidence_status = (result.diagnostics or {}).get("evidence_pack_status") or {}
     if evidence_status.get("selected"):
         lines.extend(
@@ -515,7 +516,8 @@ def format_radar_report(result: RadarResult, *, limit: int = 15) -> str:
     if len(result.candidates) > limit:
         lines.append(f"完整名單共 {len(result.candidates)} 檔，可用 /radar_more 查看。")
     lines.append("資料來源：既有選股流程 / 本地新聞資料庫 / 外部搜尋來源（若已設定）")
-    return "\n".join(lines).strip()
+    from research_center.report_display_normalizer import normalize_report_text
+    return normalize_report_text("\n".join(lines).strip())
 
 
 def format_radar_push_summary(result: RadarResult, *, limit: int = 15) -> str:
@@ -527,6 +529,7 @@ def format_radar_push_summary(result: RadarResult, *, limit: int = 15) -> str:
         f"評分版本：{_scoring_version_label(result.request.scoring_version)}",
         "",
     ]
+    lines.extend(_radar_signal_date_lines(result, limit))
     evidence_status = (result.diagnostics or {}).get("evidence_pack_status") or {}
     if evidence_status.get("selected"):
         lines.append(
@@ -564,7 +567,19 @@ def format_radar_push_summary(result: RadarResult, *, limit: int = 15) -> str:
     if len(result.candidates) > top_limit:
         lines.append(f"完整名單共 {len(result.candidates)} 檔，請用 /radar_more 查看完整雷達報告。")
     lines.append("資料來源：既有選股流程 / 本地新聞資料庫 / 外部搜尋來源（若已設定）")
-    return "\n".join(lines).strip()
+    from research_center.report_display_normalizer import normalize_report_text
+    return normalize_report_text("\n".join(lines).strip())
+
+
+def _radar_signal_date_lines(result: RadarResult, limit: int) -> list[str]:
+    dates = sorted({str(row.get('signal_date') or row.get('date'))[:10]
+                    for item in result.candidates[:limit]
+                    for row in [*item.technical_signals, *item.dual_ma_signals, *item.kd_ma_signals]
+                    if _parse_signal_date(row.get('signal_date') or row.get('date'))})
+    if not dates:
+        return ['技術訊號日期：未確認；報告日不代表行情日。', '']
+    label = dates[0] if len(dates) == 1 else f'{dates[0]} 至 {dates[-1]}（不同日期）'
+    return [f'技術訊號日期：{label}；不代表報告日新訊號。', '']
 
 
 def format_radar_more(report_date: date | None = None) -> str:
@@ -2512,7 +2527,7 @@ def _build_radar_data_coverage(
     checks = {
         "technical": "ok" if item.technical_signals or item.dual_ma_signals or item.kd_ma_signals else "missing",
         "revenue": "ok" if item.revenue_history else "missing",
-        "chip": "ok" if item.chip_grades else "missing",
+        "chip": "ok" if item.chip_grades or structured.get('institutional_data') or structured.get('tdcc_data') else "missing",
         "local_news": "ok" if item.news_items else "missing",
         "external_sources": "ok" if (item.ai_sources or item.web_sources) else "missing",
         "source_sufficiency": "ok" if external_source_count >= RADAR_MIN_EXTERNAL_SOURCES else "insufficient",
@@ -3240,6 +3255,11 @@ def _build_technical_snapshot(item: RadarCandidate, analysis_date: date | None) 
     snapshot.update(
         {
             "status": "ok",
+            "price_metrics": {**snapshot['price_metrics'], 'price_date': str(current.get('date'))[:10],
+                              'price': close, 'close': close, 'volume_ratio': volume_ratio,
+                              'change_pct_20d': change20,
+                              **{f'above_{key}': close is not None and value is not None and close >= value for key,value in ma.items()},
+                              'metric_basis': 'same_session_daily_frame'},
             "last_date": str(current.get("date")),
             "row_count": len(frame),
             "open": open_price,
@@ -4794,7 +4814,8 @@ def _build_ai_comment_prompt(
 ) -> str:
     payloads = [_build_ai_comment_payload(item, analysis_date, compact_profile=compact_profile) for item in candidates]
     template = _read_radar_prompt("radar_ai_comment.md")
-    candidate_payload_json = json.dumps(_json_safe(payloads), ensure_ascii=False)
+    candidate_payload_json = json.dumps(_json_safe(payloads), ensure_ascii=False,
+        separators=(',', ':') if compact_profile != 'normal' else None)
     low_digest_json = json.dumps(
         _json_safe(_filter_low_model_digest_for_codes(low_model_digest or {}, [item.code for item in candidates])),
         ensure_ascii=False,

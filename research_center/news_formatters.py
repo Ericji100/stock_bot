@@ -27,7 +27,7 @@ def _news_id_label(item: NewsItem) -> str:
 
 
 def _tag_label_text(item: NewsItem) -> str:
-    labels = [NEWS_SIGNAL_TAGS.get(tag, "其他線索（待確認）") for tag in (item.tags or [])[:3]]
+    labels = list(dict.fromkeys(NEWS_SIGNAL_TAGS.get(tag, "其他線索（待確認）") for tag in (item.tags or [])[:3]))
     return " / ".join(labels)
 
 
@@ -172,7 +172,8 @@ def format_news_refresh_result(
             )
             summary = (item.summary or item.full_text or "").strip().replace("\n", " ")
             if summary:
-                lines.append(f"   摘要：{summary[:140]}")
+                preview = summary if len(summary) <= 140 else summary[:139].rstrip() + '…'
+                lines.append(f"   摘要：{preview}")
             risk = item.news_heat_risk_reason or ""
             signal = item.news_signal_reason or ""
             if signal:

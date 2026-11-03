@@ -25,6 +25,18 @@ def build_market_movers(
     force_refresh: bool = False,
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
+    from .data_source_gateway import keyed_request_lock
+    if universe is not None or price_metrics is not None:
+        return _build_market_movers(report_date, universe=universe, price_metrics=price_metrics, force_refresh=force_refresh, progress=progress)
+    target = report_date or datetime.now().date()
+    with keyed_request_lock(f'market_movers:{CACHE_DIR.resolve()}:{target}', timeout=60):
+        return _build_market_movers(report_date, force_refresh=force_refresh, progress=progress)
+
+
+def _build_market_movers(
+    report_date: date | None = None, *, universe=None, price_metrics=None,
+    force_refresh: bool = False, progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
     """Build a full-market mover snapshot without applying strategy hard filters.
 
     This service is intentionally independent from /scan hard filters. It
@@ -48,7 +60,7 @@ def build_market_movers(
     if price_metrics is None:
         if progress:
             progress(f"Market movers：抓取/讀取全市場價量資料 {len(universe)} 檔")
-        price_metrics = _safe_price_metrics(universe)
+        price_metrics = _safe_price_metrics(universe, report_date=target_date)
 
     rows = [_build_stock_mover_row(entry, price_metrics) for entry in universe]
     rows = [row for row in rows if row.get("has_price_metric")]
@@ -67,6 +79,9 @@ def rows_from_market_movers(market_movers: dict[str, Any], key: str = "active_mo
 
 
 def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    all_rows = rows
+    original_date_audit = _price_date_audit(rows, target_date)
+    rows, other_rows, ranking_date = separate_market_sessions(rows, target_date)
     top_gainers = _top_with_value(rows, "change_pct", reverse=True, positive_only=True)
     top_losers = _top_with_value(rows, "change_pct", reverse=False, negative_only=True)
     top_volume_surge = _top_with_value(rows, "volume_ratio", reverse=True, positive_only=True)
@@ -106,6 +121,7 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
         "source_mode": source_mode,
         "hard_filter_policy": "全市場上市櫃股票，不套用 /scan 股價、均量、營收等硬篩。",
         "mover_universe_count": len(rows),
+        "other_session_rows": other_rows,
         "active_movers": active,
         "downside_movers": downside,
         "top_gainers": top_gainers,
@@ -121,7 +137,8 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
         "sector_mover_rankings": sector_rankings,
         "data_quality": {
             "input_stock_count": len(rows),
-            "price_date_audit": date_audit,
+            "price_date_audit": original_date_audit,
+            "ranking_price_date": ranking_date,
             "missing_fields": missing_fields,
             "change_pct_coverage_pct": _coverage(rows, "change_pct"),
             "volume_ratio_coverage_pct": _coverage(rows, "volume_ratio"),
@@ -140,6 +157,18 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
             ],
         },
     }
+
+
+def separate_market_sessions(rows, target_date):
+    """Keep each session observable without mixing dated cross-sectional ranks."""
+    counts = _price_date_counts(rows)
+    eligible = [day for day in counts if day <= target_date.isoformat()]
+    day = max(eligible) if eligible else None
+    if not counts:
+        return rows, [], None
+    current = [row for row in rows if str(row.get('price_date') or '')[:10] == day]
+    other = [row for row in rows if str(row.get('price_date') or '')[:10] != day]
+    return current, other, day
 
 
 def _build_stock_mover_row(entry: Any, price_metrics: dict[str, Any]) -> dict[str, Any]:

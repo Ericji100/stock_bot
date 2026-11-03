@@ -59,7 +59,12 @@ def _add_index_facts(facts: list[dict[str, Any]], alerts: list[dict[str, Any]], 
     if not isinstance(metrics, dict):
         return
     if metrics.get("latest_close") is not None:
-        facts.append(_fact(label, "最新收盤", metrics.get("latest_close"), metrics.get("latest_date"), "市場行情資料"))
+        name='最新盤中／未確認快照' if metrics.get('session_status')=='intraday_or_unconfirmed' else '最新日線快照（非官方確認）' if metrics.get('session_status') else '最新收盤'
+        row=_fact(label,name,metrics.get('latest_close'),metrics.get('latest_date'),'市場行情資料')
+        for key in ('quote_observed_at','market_timezone','session_status'):
+            if metrics.get(key):
+                row[key]=metrics[key]
+        facts.append(row)
     for field, name in (
         ("one_day_change_points", "單日點數變化"),
         ("one_day_return_pct", "單日漲跌幅%"),

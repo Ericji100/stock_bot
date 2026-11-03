@@ -76,13 +76,16 @@ def _company_quote_matches(claim, catalogue):
         quote = _quote_text(item.get('supporting_quote'))
         url = _url(item.get('url') or item.get('source_url'))
         for doc in catalogue.get(url, []):
+            from .evidence_governance import official_evidence_status
+            if official_evidence_status(doc) == 'reference_only':
+                continue
             if len(quote) < 16 or quote not in _quote_text(_provided_body(doc)):
                 continue
             title = str(doc.get('title') or '')
             parts = urlsplit(url)
             official_identity = (parts.hostname in {'emops.twse.com.tw','mops.twse.com.tw'} and code and
                                  re.fullmatch(r'/nas/STR/' + re.escape(code) + r'\d{8}[A-Z]\d+\.pdf', parts.path, re.I))
-            if (code and code in quote) or (name and (name in quote or name in title)) or official_identity:
+            if (code and re.search(r'(?<!\d)' + re.escape(code) + r'(?!\d)', quote)) or (name and (name in quote or name in title)) or official_identity:
                 return True
     return False
 
@@ -115,20 +118,27 @@ def quarantine_unproven_company_claims(pack, data):
 
 def quarantine_topic_source_leads(pack, structured_data: dict[str, Any]) -> None:
     """Preserve weak top-level citations as leads, never as formal support."""
-    known = {_url(row.get('url')) for row in merge_topic_sources(structured_data)}
+    supplied = merge_topic_sources(structured_data)
+    known = {_url(row.get('url')) for row in supplied}
     for key in ('existing_topic_profiles','company_topic_map','company_knowledge','supply_chain_nodes'):
         known.update(_url(row.get('url') or row.get('source_url')) for _,row in _rows(structured_data.get(key)))
     known.discard('')
     for action in pack.actions:
         support = []
+        unverified_ids = set()
         for evidence in action.evidence:
             url = _url(evidence.url)
-            if url and url in known and not _non_document(url):
+            quote = _quote_text(evidence.supporting_quote)
+            quote_matches = not quote or (len(quote) >= 16 and any(
+                quote in _quote_text(_provided_body(row)) for row in supplied if _url(row.get('url')) == url))
+            if url and url in known and not _non_document(url) and quote_matches:
                 support.append(evidence)
                 continue
             lead = evidence.to_dict()
             lead.update(verification_status='candidate',evidence_role='unverified_lead',
-                        quarantine_reason='未取得可支持具體主張的獨立文件，僅保留待查線索')
+                        quarantine_reason='引句與提供正文未能逐字對照，僅保留待核線索' if not quote_matches else '未取得可支持具體主張的獨立文件，僅保留待查線索')
+            if not quote_matches and evidence.source_id:
+                unverified_ids.add(evidence.source_id)
             leads = action.extra.setdefault('unverified_source_leads', [])
             if lead not in leads:
                 leads.append(lead)
@@ -136,6 +146,21 @@ def quarantine_topic_source_leads(pack, structured_data: dict[str, Any]) -> None
             if warning not in action.missing_data:
                 action.missing_data.append(warning)
         action.evidence = support
+        if unverified_ids:
+            # Preserve the original sentences, but do not leave their apparent
+            # factual status intact after their supporting quote was rejected.
+            def mark(value):
+                if isinstance(value, list):
+                    return [mark(v) for v in value]
+                if isinstance(value, dict):
+                    return {k:mark(v) for k,v in value.items()}
+                if isinstance(value, str) and any(re.search(r'(?<![A-Za-z0-9])'+re.escape(ref)+r'(?!\d)',value) for ref in unverified_ids):
+                    if not value.startswith('待核線索（'):
+                        return '待核線索（引句與正文未對照，不作已確認事實）：'+value
+                return value
+            for field in ('risk_notes','counter_evidence','missing_data'):
+                setattr(action,field,mark(getattr(action,field)))
+            action.extra['unverified_quote_source_ids'] = sorted(set(action.extra.get('unverified_quote_source_ids') or []) | unverified_ids)
 
 
 def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, Any]:
@@ -161,7 +186,7 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
         if isinstance(value, dict):
             code = str(value.get('company_code') or value.get('code') or '')
             name = str(value.get('company_name') or value.get('name') or '')
-            if code and name:
+            if code and name and code not in (structured_data.get('authoritative_company_names') or {}):
                 company_names.setdefault(code, set()).add(name)
             for item in value.values():
                 company_rows(item)
@@ -239,6 +264,10 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
             counts["historical_context"] += 1
         if not flags and not is_lead:
             counts["traceable_url"] += 1
+        if is_lead:
+            for flag in flags:
+                counts['unverified_lead_' + flag] += 1
+            flags = []
         for flag in flags:
             counts[flag] += 1
             issues.append({"path": path, "url": str(raw_url), "reason": flag,

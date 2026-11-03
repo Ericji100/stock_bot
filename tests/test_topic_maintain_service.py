@@ -471,7 +471,25 @@ class TestTopicMaintainService(unittest.TestCase):
 
         self.assertEqual(pack.status, TopicChangeStatus.FAILED)
         self.assertTrue(any("candidate_extract" in warning for warning in pack.warnings))
+        self.assertTrue(pack.extra["report_metadata"]["ai_used"])
+        self.assertEqual(pack.extra["report_metadata"]["ai_status"], "partial_success")
         mock_save.assert_called_once()
+
+    def test_no_model_response_is_not_marked_ai_used(self):
+        self._mock_is_formal_library_empty(False)
+        center = self._mock_center()
+        center.gemini.generate_report.side_effect = RuntimeError("schedule_pacing")
+        self._mock_write_prompt_log("/logs/ai_prompts/test.json")
+        self._mock_raw_response_path(MagicMock())
+        self._mock_save_change_pack()
+        self._mock_collect_structured_data()
+        self._mock_web_fetch()
+        center._gemini_discovery_runner = MagicMock()
+        center._gemini_discovery_runner.run_discovery_flow.return_value = ([], False)
+        pack = run_topic_maintain(self._mock_request(), center=center, progress=None)
+        self.assertFalse(pack.extra["report_metadata"]["ai_used"])
+        self.assertEqual(pack.extra["report_metadata"]["ai_status"], "failed")
+        self.assertEqual(pack.extra["ai_response_count"], 0)
 
     def test_run_topic_maintain_progress_callback_fired(self):
         """Progress callback should be called at least once."""

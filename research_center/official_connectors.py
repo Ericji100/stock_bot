@@ -64,10 +64,16 @@ def fetch_taifex_futures_institutional(report_date: date | None = None) -> dict[
             rows = parse_taifex_futures_contracts_html(html)
             if rows:
                 tx_rows = [row for row in rows if _looks_like_taiex_future(row.get("product"))]
+                from .source_date_normalizer import normalize_published_date
+                actual_date = normalize_published_date(html[:html.lower().find('<table')] if '<table' in html.lower() else html[:3000])
+                if report_date and actual_date != report_date.isoformat():
+                    errors.append(f'{url}: 指定日期與來源資料日不符或未知，保留缺口')
+                    continue
                 return {
                     "status": "official_public",
                     "source": url,
-                    "report_date": report_date.isoformat() if report_date else None,
+                    "report_date": actual_date,
+                    "data_date": actual_date,
                     "tx_futures_rows": tx_rows[:6],
                     "all_rows_sample": rows[:20],
                     "note": "TAIFEX public three-institution futures table parsed best-effort.",
@@ -88,10 +94,15 @@ def fetch_twse_institutional_flow(report_date: date | None = None) -> dict[str, 
             payload = response.json()
         rows = parse_twse_institutional_json(payload)
         if rows:
+            from .source_date_normalizer import normalize_published_date
+            actual_date = normalize_published_date(payload.get('date'), payload.get('title'))
+            if report_date and actual_date != report_date.isoformat():
+                return {'status': 'date_mismatch', 'source': str(response.url), 'data_date': actual_date, 'requested_date': report_date.isoformat()}
             return {
                 "status": "official_public",
                 "source": str(response.url),
                 "title": payload.get("title"),
+                "data_date": actual_date,
                 "rows": rows,
                 "net_amount_total": _sum_net_amount(rows),
                 "note": "TWSE BFI82U three-institution buy/sell amount table.",

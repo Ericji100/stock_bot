@@ -1600,6 +1600,18 @@ def test_format_radar_report_shows_ai_comment():
     assert "觀察：觀察量能。" in text
 
 
+def test_radar_messages_disclose_signal_date_without_changing_scores():
+    candidate = radar.RadarCandidate(code='2330', name='台積電', total_score=70,
+        technical_signals=[{'signal_date':'2026-11-02'}], key_reasons=['收盤站回 MA21'])
+    result = radar.RadarResult(radar.RadarRequest(), date(2026,11,4), [candidate], [], {})
+    for formatter in (radar.format_radar_report, radar.format_radar_push_summary):
+        text = formatter(result)
+        assert '技術訊號日期：2026-11-02' in text
+        assert '不代表報告日新訊號' in text
+    assert candidate.total_score == 70
+    assert candidate.key_reasons == ['收盤站回 MA21']
+
+
 def test_legacy_radar_priority_is_not_misrepresented_as_confidence():
     candidate = radar.RadarCandidate(code='2330', name='台積電', ai_comment={'status':'ok','priority':'high'})
     assert radar._ai_badge(candidate) == '｜AI關注優先度：高'

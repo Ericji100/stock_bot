@@ -3,6 +3,17 @@ from research_center.report_numeric_validation import validate_valuation_tables
 
 
 class NumericValidationTests(unittest.TestCase):
+    def test_full_weighted_equation_is_not_last_term_equal_total(self):
+        from research_center.report_numeric_validation import validate_explicit_arithmetic
+        weighted='88.39×0.6 + 100×0.25 + 82×0.1 + 43×0.05 = 53.034 + 25 + 8.2 + 2.15 = **88.384**'
+        checked=validate_explicit_arithmetic(weighted)
+        self.assertTrue(checked['passed'])
+        self.assertEqual(checked['checked_formulas'],2)
+        self.assertFalse(validate_explicit_arithmetic(weighted.replace('88.384','98.384'))['passed'])
+        self.assertFalse(validate_explicit_arithmetic('35×0.10＝9.75')['passed'])
+        self.assertTrue(validate_explicit_arithmetic('2295÷2220－1＝+3.378%')['passed'])
+        self.assertFalse(validate_explicit_arithmetic('2295÷2220－1＝+30.378%')['passed'])
+
     def table(self, price):
         return '| 情境 | EPS 假設 | 本益比假設 | 合理股價 |\n|---|---|---|---|\n| 保守 | 2026E 100 元 | 18–20 倍 | '+price+' |'
 
@@ -49,6 +60,24 @@ class NumericValidationTests(unittest.TestCase):
 
 
 class ForbiddenClaimTests(unittest.TestCase):
+    def test_margin_is_not_a_money_amount(self):
+        from research_center.report_numeric_validation import validate_report_numbers
+        self.assertFalse(validate_report_numbers('毛利率 88,829 千元。')['passed'])
+        self.assertTrue(validate_report_numbers('營業毛利 88,829 千元，毛利率 68.66%。')['passed'])
+
+    def test_signed_capex_must_not_create_false_financial_difference(self):
+        from research_center.report_numeric_validation import validate_local_financial_claims
+        data={'financial_data':[{'Quarter':'2026Q1','Operating_Cash_Flow':-201533000,
+                'Capital_Expenditure':-7187000,'Free_Cash_Flow':-208720000}]}
+        wrong='具名原始欄位 2026Q1 營業現金流 -201,533 千元、資本支出 -7,187 千元、自由現金流 -208,720 千元；OCF－Capex 與原始值仍差 14,374 千元。'
+        checked=validate_local_financial_claims(wrong,data)
+        self.assertEqual(checked['checked_claims'],3)
+        self.assertFalse(checked['passed'])
+        self.assertTrue(validate_local_financial_claims(wrong.split('；')[0],data)['passed'])
+        correction=wrong.rstrip('。')+'係原稿重複相減負數所致，經核對後不存在該差額。應付帳款不是營業現金流，不能把 248,206 千元當成現金流。'
+        self.assertTrue(validate_local_financial_claims(correction,data)['passed'])
+        self.assertFalse(validate_local_financial_claims(wrong+'另一資料不存在該差額。',data)['passed'])
+
     def test_explicit_denial_is_not_a_guarantee(self):
         from research_center.report_validator import _forbidden_claims
         self.assertEqual(_forbidden_claims('題材強不等於「短線必漲」。不保證獲利。'),[])

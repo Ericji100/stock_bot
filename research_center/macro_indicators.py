@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
@@ -87,12 +88,26 @@ def _global_public_context(report_date: Any = None, progress: Callable[[str], No
             history = yf.Ticker(symbol).history(period="180d", interval="1d", auto_adjust=False).dropna(subset=["Close"])
             if report_date is not None and not history.empty:
                 cutoff = pd.to_datetime(report_date)
+                if label != 'USD/TWD':
+                    # A US calendar-day close occurs on the following Taiwan day.
+                    cutoff -= pd.Timedelta(days=1)
                 history = history[history.index.tz_localize(None) <= cutoff]
             result[label] = _index_metrics(history)
+            result[label].update(_quote_session_context(label,result[label].get('latest_date')))
         except Exception as exc:
             result[label] = {"status": f"取得失敗：{exc}", "symbol": symbol}
     result["policy"] = "使用 Yahoo Finance 公開市場 proxy；正式利率、匯率或商品資料可改接官方/付費資料源。"
     return result
+
+
+def _quote_session_context(label: str, latest_date: str | None, observed_at: datetime | None = None) -> dict[str, Any]:
+    observed=observed_at or datetime.now(ZoneInfo('UTC'))
+    ny=observed.astimezone(ZoneInfo('America/New_York'))
+    equity=label in {'NASDAQ','S&P500','SOX'}
+    provisional=not latest_date or latest_date>=ny.date().isoformat() and (ny.hour<16 or ny.weekday()>=5)
+    status='intraday_or_unconfirmed' if not equity or provisional else 'daily_bar_after_regular_close'
+    return {'quote_observed_at':observed.isoformat(),'market_timezone':'America/New_York' if equity else '供應商交易日；時段未核實',
+        'session_status':status,'quote_policy':'日線 Close 欄不保證當日已收盤；盤中／未確認快照不得寫成正式收盤，原數值保留。'}
 
 def _index_context(report_date: Any = None) -> dict[str, Any]:
     output: dict[str, Any] = {}

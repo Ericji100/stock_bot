@@ -82,19 +82,26 @@ def _enrich_sources_with_web_fetch(
                 continue
             if fetched.content:
                 enriched_count += 1
-                snippet = fetched.content
+                from .source_text_cleaner import article_text_sections
+                primary, related = article_text_sections(fetched.content)
+                snippet = primary
+                if source.snippet and source.snippet not in primary:
+                    snippet = '搜尋摘要（尚須原文核對）：\n' + source.snippet + '\n\n取得的本文：\n' + primary
             else:
                 snippet = source.snippet
             enriched_sources.append(
                 replace(
                     source,
                     title=fetched.title or source.title,
-                    published_date=fetched.published_date or source.published_date,
+                    published_date=(fetched.published_date if getattr(fetched, 'date_status', None) == 'explicit' else source.published_date or fetched.published_date),
                     snippet=snippet,
                     fetch_provider=fetched.fetch_provider,
                     fetch_status=fetched.content_status,
                     fetch_quality=fetched.fetch_quality,
                     failure_reason=fetched.failure_reason,
+                    date_status=(getattr(fetched, 'date_status', None) or 'inferred') if fetched.published_date and (getattr(fetched, 'date_status', None) == 'explicit' or not source.published_date) else source.date_status,
+                    updated_date=getattr(fetched, 'updated_date', None) or source.updated_date,
+                    document_kind='document_body' if fetched.content and source.document_kind not in {'reference_link', 'unavailable'} else source.document_kind,
                 )
             )
         sources[:] = enriched_sources
@@ -118,8 +125,11 @@ def _enrich_sources_with_web_fetch(
                 "fetch_quality": item.fetch_quality,
                 "failure_reason": item.failure_reason,
                 "published_date": item.published_date,
+                "date_status": getattr(item, 'date_status', None) or ('inferred' if item.published_date else 'unknown'),
+                "updated_date": getattr(item, 'updated_date', None),
                 "content_preview": item.content[:1200],
                 "content": item.content,
+                "content_scope": '完整擷取本文；延伸閱讀為其他文章，不可混作本公司主張',
             }
             for item in result.results
         ]

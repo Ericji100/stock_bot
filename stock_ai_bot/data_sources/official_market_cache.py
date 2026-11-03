@@ -16,9 +16,10 @@ class OfficialDailyCache:
         self.root=Path(root)
 
     def get(self,url,params,target_date,loader):
-        key=hashlib.sha256(json.dumps([url,params],sort_keys=True).encode()).hexdigest()
+        from research_center.data_source_gateway import keyed_request_lock
+        key=hashlib.sha256(json.dumps([url,params,target_date.isoformat()],sort_keys=True).encode()).hexdigest()
         day=target_date.strftime('%Y%m%d')
-        with _LOCK:
+        with keyed_request_lock(f'official:{self.root.resolve()}:{key}'):
             self.root.mkdir(parents=True,exist_ok=True)
             with closing(sqlite3.connect(self.root/'daily.sqlite3',timeout=15)) as conn,conn:
                 conn.execute('CREATE TABLE IF NOT EXISTS responses (key TEXT PRIMARY KEY, expires REAL, payload TEXT)')
@@ -27,11 +28,13 @@ class OfficialDailyCache:
                     payload=json.loads(row[0])
                     if self.valid(payload,day):
                         return payload
-                payload=loader()
-                if self.valid(payload,day):
+            # SQLite connections and the global DB lock must not span network I/O.
+            payload=loader()
+            if self.valid(payload,day):
+                with _LOCK, closing(sqlite3.connect(self.root/'daily.sqlite3',timeout=15)) as conn,conn:
                     ttl=300 if target_date==date.today() else 21600
                     conn.execute('INSERT OR REPLACE INTO responses VALUES (?,?,?)',(key,time.time()+ttl,json.dumps(payload,ensure_ascii=False)))
-                return payload
+            return payload
 
     @staticmethod
     def valid(payload,day):

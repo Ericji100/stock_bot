@@ -269,6 +269,7 @@ class ResearchCenter:
         sources, gemini_search_used = self._gemini_discovery_runner.run_discovery_flow(request, sources, structured_data, use_grounding, progress)
         prompt_sources = _select_sources_for_prompt(request, sources, structured_data, progress)
         _enrich_sources_with_web_fetch(request, prompt_sources, structured_data, progress)
+        prompt_sources = _guard_enriched_sources(request, prompt_sources, structured_data)
         persist_search_sources_to_news(request, structured_data, sources, progress=progress)
         attach_news_events(request, structured_data)
         attach_data_gap_summary(request, structured_data)
@@ -563,6 +564,7 @@ class ResearchCenter:
                 if not identity['passed']:
                     raise ValueError('來源編號對照不一致：' + '；'.join(identity['errors']))
                 _enrich_sources_with_web_fetch(request, prompt_sources, structured_data, progress)
+                prompt_sources = _guard_enriched_sources(request, prompt_sources, structured_data)
                 persist_search_sources_to_news(request, structured_data, sources, progress=progress)
                 attach_news_events(request, structured_data)
                 attach_data_gap_summary(request, structured_data)
@@ -764,7 +766,7 @@ class ResearchCenter:
 
         if ai_used and not fallback_reason and self.config.deepseek_only:
             from .report_numeric_validation import validate_report_numbers, validate_valuation_repair, numeric_repair_prompt
-            numeric = validate_report_numbers(markdown, sources)
+            numeric = validate_report_numbers(markdown, sources, structured_data)
             if not numeric["passed"]:
                 structured_data["numeric_validation_original"] = {**numeric, "markdown": markdown}
                 repair_prompt = numeric_repair_prompt(markdown, numeric['errors'])
@@ -772,6 +774,10 @@ class ResearchCenter:
                 try:
                     repaired = self.deepseek.with_output_limit(65536).with_timeout(900).generate_report(repair_prompt).markdown
                     revised = validate_valuation_repair(markdown, repaired, sources)
+                    bindings = validate_report_numbers(repaired, sources, structured_data)['financial_bindings']
+                    revised['financial_bindings'] = bindings
+                    revised['errors'].extend(bindings['errors'])
+                    revised['passed'] = not revised['errors']
                     if revised["passed"]:
                         markdown = repaired
                     else:
@@ -1320,13 +1326,17 @@ def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[Sour
                 existing_found_by = list(existing.found_by) if existing.found_by else []
                 item_found_by = list(item.found_by) if item.found_by else []
                 combined_found_by = list(set(existing_found_by + item_found_by))
-                merged_dict[item.url] = SourceItem(
+                body = existing.snippet or item.snippet
+                if existing.snippet and item.snippet and item.snippet not in existing.snippet:
+                    body = item.snippet if existing.snippet in item.snippet else existing.snippet + '\n\n' + item.snippet
+                parsed = item if item.document_kind == 'parsed_record' else existing
+                merged_dict[item.url] = replace(existing,
                     source_id=existing.source_id,
                     title=existing.title,
                     url=existing.url,
                     source_level=existing.source_level,
                     published_date=existing.published_date or item.published_date,
-                    snippet=existing.snippet or item.snippet,
+                    snippet=body,
                     used_in_section=list(set(existing.used_in_section + item.used_in_section)),
                     provider=existing.provider,
                     provider_detail=existing.provider_detail,
@@ -1335,10 +1345,18 @@ def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[Sour
                     fetch_quality=item.fetch_quality or existing.fetch_quality,
                     failure_reason=item.failure_reason or existing.failure_reason,
                     found_by=combined_found_by,
+                    date_status=existing.date_status if existing.published_date else item.date_status,
+                    event_date=existing.event_date or item.event_date,
+                    data_date=existing.data_date or item.data_date,
+                    period_start=existing.period_start or item.period_start,
+                    period_end=existing.period_end or item.period_end,
+                    fetched_at=item.fetched_at or existing.fetched_at,
+                    updated_date=item.updated_date or existing.updated_date,
+                    document_kind=parsed.document_kind or item.document_kind,
                 )
     merged: list[SourceItem] = []
     for url, item in merged_dict.items():
-        merged.append(SourceItem(
+        merged.append(replace(item,
             source_id=f"S{len(merged) + 1:03d}",
             title=item.title,
             url=item.url,
@@ -1392,9 +1410,40 @@ def _select_sources_for_prompt(
         max_sources=max_sources,
     )
     structured_data["theme_prompt_source_selection"] = diagnostics
-    if len(selected) < len(sources):
-        _emit_progress(progress, f"Theme source selection: prompt_sources={len(selected)}/{len(sources)}, relevant={diagnostics.get('theme_relevant_count')}")
-    return selected or sources
+    selected_ids = {source.source_id for source in selected}
+    complete = [*selected, *(source for source in sources if source.source_id not in selected_ids)]
+    diagnostics.update(admission_policy='rank_only_preserve_all_collected_text', admitted_source_count=len(complete))
+    _emit_progress(progress, f"題材來源排序：優先 {len(selected)} 筆，完整保留 {len(complete)}/{len(sources)} 筆，相關來源 {diagnostics.get('theme_relevant_count')} 筆；排序不代表刪除。")
+    return complete
+
+
+def _guard_enriched_sources(request, sources, data):
+    """Recheck newly fetched dynamic text, not only the pre-fetch metadata."""
+    if request.report_date is None:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from .source_date_normalizer import source_temporal_record
+        target = datetime.now(ZoneInfo('Asia/Taipei')).date()
+        kept, rejected = [], []
+        for source in sources:
+            temporal=source_temporal_record(source,target)
+            (rejected if temporal['available_by_report_date'] is False or temporal['content_updated_after_report_date'] or temporal['data_after_report_date'] else kept).append(source)
+        if rejected:
+            from dataclasses import asdict
+            from .source_snapshots import point_in_time_data
+            archived=point_in_time_data({'sources':[asdict(source) for source in rejected]},target)
+            data['post_fetch_date_guard']={'excluded_count':len(rejected),
+                'warnings':[f'{source.source_id} 日期或已實現數據晚於當次分析日，已保留原始證據但不入模。' for source in rejected],
+                'archive':archived.get('point_in_time_audit')}
+        return kept
+    from dataclasses import asdict
+    from .source_snapshots import point_in_time_data
+    guarded = point_in_time_data({'sources': [asdict(source) for source in sources]}, request.report_date)
+    filtered, warnings = filter_sources_for_report_date(sources, request.report_date)
+    if warnings:
+        data['post_fetch_date_guard'] = {'excluded_count': len(sources)-len(filtered),
+            'warnings': warnings, 'archive': guarded.get('point_in_time_audit')}
+    return filtered
 
 
 def _artifacts_from_row(row: dict[str, Any]) -> ReportArtifacts:

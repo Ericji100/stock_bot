@@ -755,7 +755,9 @@ class SegmentedAnalysisResilienceTests(unittest.TestCase):
 
         labels = [run.label for run in result.segment_runs]
         self.assertLessEqual(result.diagnostics["segment_count"], 8)
-        self.assertIn("local_core_packet_part_", "\n".join(client.prompts))
+        # Exact duplicate evidence may now fit without forced splitting. The
+        # core packet must remain present and calls must remain bounded.
+        self.assertIn("local_core_packet", "\n".join(client.prompts))
         self.assertLessEqual(max(len(prompt) for prompt in client.prompts[:-1]), 220_000)
         self.assertIn("核心資料必須保留", "\n".join(client.prompts))
 

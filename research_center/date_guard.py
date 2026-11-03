@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Iterable
 
 from .models import SourceItem
+from .source_date_normalizer import source_publication_status
 
 
 def filter_sources_for_report_date(sources: Iterable[SourceItem], report_date: date | None) -> tuple[list[SourceItem], list[str]]:
@@ -13,8 +14,13 @@ def filter_sources_for_report_date(sources: Iterable[SourceItem], report_date: d
     kept: list[SourceItem] = []
     dropped: list[str] = []
     for source in sources:
-        if not source.published_date:
+        if not source.published_date or source_publication_status(source) != 'explicit':
             dropped.append(f"{source.source_id} 無發布日期，已依 --date 保守排除。")
+            continue
+        from .source_date_normalizer import source_temporal_record
+        temporal = source_temporal_record(source, report_date)
+        if temporal['content_updated_after_report_date'] or temporal['data_after_report_date']:
+            dropped.append(f"{source.source_id} 正文更新或實績日期晚於報告日期，已排除。")
             continue
         try:
             published = datetime.strptime(source.published_date[:10], "%Y-%m-%d").date()
@@ -30,15 +36,4 @@ def filter_sources_for_report_date(sources: Iterable[SourceItem], report_date: d
 
 
 def _renumber_sources(sources: list[SourceItem]) -> list[SourceItem]:
-    return [
-        SourceItem(
-            source_id=f"S{index + 1:03d}",
-            title=source.title,
-            url=source.url,
-            source_level=source.source_level,
-            published_date=source.published_date,
-            snippet=source.snippet,
-            used_in_section=source.used_in_section,
-        )
-        for index, source in enumerate(sources)
-    ]
+    return list(sources)

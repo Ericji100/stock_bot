@@ -3,6 +3,67 @@
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any
+from datetime import date
+
+
+def point_in_time_data(data: dict[str, Any], report_date: date | None) -> dict[str, Any]:
+    """Quarantine explicitly ineligible dated records outside prompts, retaining originals."""
+    if report_date is None:
+        return data
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+    from .config import ROOT_DIR
+    from .source_date_normalizer import normalize_published_date, source_publication_status, source_temporal_record
+    excluded = []
+    target = report_date.isoformat()
+    historical = report_date < datetime.now(ZoneInfo('Asia/Taipei')).date()
+    def visit(value: Any, path: str, *, root: bool = False, forecast_scope: bool = False) -> Any:
+        if isinstance(value, dict):
+            forecast = forecast_scope or value.get('kind') in {'forecast', 'prediction', 'scenario'} or value.get('record_type') in {'forecast', 'prediction', 'scenario'}
+            reason = None
+            if not root and not forecast:
+                for key in ('data_date', 'price_date', 'market_data_date', 'as_of_date', 'period_end', 'announcement_date', 'Date'):
+                    day = normalize_published_date(value.get(key))
+                    if day and day > target:
+                        reason = f'{key} 晚於分析日'
+                        break
+                if value.get('url') or value.get('source_url'):
+                    updated = normalize_published_date(value.get('updated_date'))
+                    publication = normalize_published_date(value.get('published_date') or value.get('published_at'))
+                    if publication and publication > target:
+                        reason = '來源發布日晚於分析日'
+                    elif historical and updated and updated > target:
+                        reason = '目前正文在分析日後更新，不能當成當時快照'
+                    elif historical and source_publication_status(value) != 'explicit' and any(value.get(key) for key in ('content', 'snippet', 'summary')):
+                        reason = '歷史來源發布時間無法核對'
+                    elif historical and source_temporal_record(value, report_date)['embedded_future_actuals']:
+                        reason = '動態正文含分析日之後的實績，無可驗證歷史版本'
+            if reason:
+                excluded.append({'path': path, 'reason': reason, 'record': value})
+                return {'point_in_time_status': 'excluded', 'reason': reason, 'source_id': value.get('source_id')}
+            return {key: visit(item, f'{path}.{key}', forecast_scope=forecast) for key, item in value.items()}
+        if isinstance(value, list):
+            return [visit(item, f'{path}[{index}]', forecast_scope=forecast_scope) for index, item in enumerate(value)]
+        return value
+    result = visit(data, 'data', root=True)
+    if excluded:
+        serialized = json.dumps(excluded, ensure_ascii=False, sort_keys=True, default=str)
+        digest = hashlib.sha256(serialized.encode()).hexdigest()
+        test_root = os.environ.get('CODEX_TASK_TEST_ROOT')
+        folder = (Path(test_root) if test_root else ROOT_DIR / '.cache') / 'point_in_time_archives'
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f'{digest}.json'
+        if not path.exists():
+            path.write_text(serialized, encoding='utf-8')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError('歷史資料保存檔雜湊不符，停止建立可能失真的入模包。')
+        result['point_in_time_audit'] = {'report_date': target, 'excluded_record_count': len(excluded),
+            'archive_path': str(path), 'archive_sha256': digest,
+            'scope': '檢查明確日期欄位及可識別的正文實績期間；無日期的語意與未來預測仍須另行核對。'}
+    return result
 
 from .models import CommandRequest, SourceItem
 
@@ -42,7 +103,7 @@ def build_source_snapshots(request: CommandRequest, sources: list[SourceItem], s
                 "source_url": f"gemini://{request.command}/{now}",
                 "title": "Gemini raw grounding metadata",
                 "source_level": "Level 3",
-                "published_date": report_date,
+                "published_date": None,
                 "fetched_at": now,
                 "report_date": report_date,
                 "content_type": "gemini_raw",

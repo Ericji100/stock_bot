@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 from .models import CommandRequest, SourceItem
 from .news_models import NewsItem, apply_news_signal_tags
@@ -43,7 +44,7 @@ GENERAL_TAIWAN_MARKET_TERMS = (
 
 
 def analysis_date_for_request(request: CommandRequest) -> date:
-    return request.report_date or date.today()
+    return request.report_date or datetime.now(ZoneInfo('Asia/Taipei')).date()
 
 
 def policy_key_for_request(request: CommandRequest, structured_data: dict[str, Any] | None = None) -> str:
@@ -65,13 +66,13 @@ def parse_date_like(value: Any) -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.date()
+        return value.astimezone(ZoneInfo('Asia/Taipei')).date() if value.tzinfo else value.date()
     if isinstance(value, date):
         return value
     text = str(value).strip()
     if not text:
         return None
-    now = datetime.now()
+    now = datetime.now(ZoneInfo('Asia/Taipei'))
     relative = _parse_relative_date(text, now)
     if relative:
         return relative
@@ -390,6 +391,16 @@ def filter_and_sort_sources_for_analysis_date(
             dropped.append(source.source_id)
             continue
         published = parse_date_like(source.published_date)
+        if request.report_date is not None:
+            from .source_date_normalizer import source_publication_status
+            if not published or source_publication_status(source) != 'explicit':
+                dropped.append(source.source_id)
+                continue
+            from .source_date_normalizer import source_temporal_record
+            temporal = source_temporal_record(source, analysis_date)
+            if temporal['content_updated_after_report_date'] or temporal['data_after_report_date']:
+                dropped.append(source.source_id)
+                continue
         if published and published > analysis_date:
             dropped.append(source.source_id)
             continue
@@ -407,4 +418,4 @@ def _source_sort_key(source: SourceItem, analysis_date: date) -> tuple[int, int]
 
 
 def _renumber_source(source: SourceItem, index: int) -> SourceItem:
-    return replace(source, source_id=f"S{index + 1:03d}")
+    return replace(source, source_id=source.source_id or f"S{index + 1:03d}")

@@ -136,6 +136,7 @@ def run_topic_pipeline(
     call_ai_json: AiJsonCall,
     progress: Callable[[str], None] | None = None,
     require_full_ai: bool = False,
+    candidate_sink: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> tuple[TopicChangePack, list[dict[str, Any]]]:
     """Run staged topic maintenance and return (pack, stage_logs)."""
     stage_logs: list[dict[str, Any]] = []
@@ -161,8 +162,20 @@ def run_topic_pipeline(
             stage_logs.append({"stage": "candidate_fallback", "count": len(candidates)})
 
     target_count = 12 if mode == TopicChangeMode.INITIAL else 8
+    if require_full_ai:
+        pending = structured_data.get('topic_backlog_candidates') or []
+        by_id = {str(row.get('theme_id') or row.get('theme_name')): row for row in pending}
+        for row in candidates:
+            by_id[str(row.get('theme_id') or row.get('theme_name'))] = row
+        candidates = list(by_id.values())
+        structured_data['topic_backlog_loaded'] = len(pending)
+        if candidate_sink:
+            candidate_sink(candidates)
     max_count = 12 if mode == TopicChangeMode.INITIAL else 8
     selected = candidates[:max_count]
+    if require_full_ai:
+        structured_data['topic_backlog_all_candidates'] = candidates
+        structured_data['topic_backlog_selected'] = selected
     ai_detail_batch_limit = DETAIL_AI_BATCH_LIMITS[mode]
     if require_full_ai:
         ai_detail_batch_limit = 0 if any(log.get("error") for log in stage_logs) else len(selected)
@@ -256,9 +269,11 @@ def run_topic_pipeline(
             "candidate_count": len(candidates),
             "action_count": len(actions),
             "deferred_candidates": candidates[max_count:],
+            "backlog_loaded": structured_data.get('topic_backlog_loaded', 0),
             "input_scope": "完整去重來源萃取候選，逐題材提供相關完整證據；既有全庫在本地比對" if require_full_ai else "legacy_bounded_inputs",
         },
     )
+    _hydrate_topic_evidence(pack, structured_data)
     if not pack.actions:
         pack.status = TopicChangeStatus.FAILED
         pack.warnings.append("AI 未產生可套用的題材變更，請拒絕此變更包或重新執行 /topic_maintain。")
@@ -287,7 +302,9 @@ def _full_evidence_detail_batches(candidates, structured_data, prompt_variables,
             combined = [*batches[-1], candidate]
             variables = topic_stage_variables(structured_data, prompt_variables, combined)
             prompt = _full_detail_prompt(template, variables, render_prompt)
-            if len(prompt) <= 600000:
+            # Keep multi-candidate jobs small; a single complete candidate may
+            # exceed this scheduling target, but uses the provider byte guard.
+            if len(prompt) <= 600000 and _full_prompt_fits(prompt):
                 batches[-1] = combined
                 continue
         batches.append([candidate])
@@ -300,6 +317,47 @@ def _full_detail_prompt(template, variables, render_prompt):
     prompt = append_topic_shared_records(prompt, variables)
     return prompt + ('\n所有來源網址必須來自提供的完整證據，不得捏造或把資料不足當作已驗證。'
         '\n本批每個候選必須各回傳一筆 action，原樣保留候選 theme_id，不能漏項、合併或以其他題材替代。')
+
+
+def _full_prompt_fits(prompt):
+    from .deepseek_service import DeepSeekService
+    return DeepSeekService(None).prompt_capacity(prompt, output_tokens=65536)['fits']
+
+
+def _hydrate_topic_evidence(pack, data):
+    """Restore only supplied provenance; missing exact supporting quotes stay missing."""
+    from .topic_models import coerce_topic_source_level
+    by_url = {}
+    by_id = {}
+    for row in merge_topic_sources(data):
+        if row.get('source_id'):
+            by_id[row['source_id']] = row
+        if row.get('url'):
+            current = by_url.setdefault(row['url'], dict(row))
+            for key, value in row.items():
+                if not current.get(key) and value:
+                    current[key] = value
+    for action in pack.actions:
+        for item in action.evidence:
+            source = by_id.get(item.source_id)
+            if not source or source.get('url') != item.url:
+                source = by_url.get(item.url)
+            if not source:
+                continue
+            if not item.source_id:
+                item.source_id = source.get('source_id')
+            if item.source in {'', '未命名來源', 'unknown'}:
+                item.source = source.get('title') or item.source
+            if source.get('source_level'):
+                # coerce accepts the canonical Lx enum names, not a guessed level.
+                level = str(source['source_level'])
+                level = {'Level 1':'L1_official','Level 2':'L2_media','Level 3':'L3_community','Level 4':'L3_community'}.get(level,level)
+                item.source_level = coerce_topic_source_level(level)
+            if not item.publish_date and source.get('date_status') == 'explicit':
+                item.publish_date = source.get('published_date')
+            body = str(source.get('content') or source.get('snippet') or '')
+            if not item.supporting_quote and len(item.content or '') >= 16 and item.content in body:
+                item.supporting_quote = item.content
 
 
 def _stage_logs_expose_model_reasoning(stage_logs: list[dict[str, Any]]) -> bool:
@@ -540,7 +598,7 @@ def _expand_batch(
     )
     prompt_chars = len(prompt)
     emit(f"AI 補題材細節 batch {batch_index} prompt={prompt_chars} chars")
-    if prompt_chars > (600000 if full_evidence else DETAIL_STAGE_PROMPT_HARD_CHARS):
+    if (not _full_prompt_fits(prompt) if full_evidence else prompt_chars > DETAIL_STAGE_PROMPT_HARD_CHARS):
         stage_logs.append({
             "stage": f"detail_expand_{batch_index}",
             "error": f"prompt_too_large:{prompt_chars}",
@@ -616,7 +674,8 @@ def _detail_covers_batch(payload, batch):
 
 def _has_unresolved_topic_ref(value):
     if isinstance(value, dict):
-        return '$topic_ref' in value or any(_has_unresolved_topic_ref(item) for item in value.values())
+        import re
+        return '$topic_ref' in value or any(re.fullmatch(r'~+\d+', str(key)) for key in value) or any(_has_unresolved_topic_ref(item) for item in value.values())
     if isinstance(value, list):
         return any(_has_unresolved_topic_ref(item) for item in value)
     return False

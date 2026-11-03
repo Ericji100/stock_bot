@@ -67,7 +67,9 @@ class SearchSourceNormalizerTests(unittest.TestCase):
 
         normalized = normalize_source_items(sources, request, provider="tavily_search")
 
-        self.assertEqual([item.published_date for item in normalized], ["2026-05-24", "2026-05-25", "2026-05-26"])
+        self.assertEqual([item.published_date for item in normalized], [None, "2026-05-25", "2026-05-26"])
+        self.assertEqual(normalized[0].event_date, "2026-05-24")
+        self.assertEqual(normalized[2].date_status, "inferred")
 
     def test_extracts_roc_and_english_month_dates(self):
         request = CommandRequest(command="macro", raw_text="/macro")
@@ -78,7 +80,8 @@ class SearchSourceNormalizerTests(unittest.TestCase):
 
         normalized = normalize_source_items(sources, request, provider="gemini_grounding")
 
-        self.assertEqual([item.published_date for item in normalized], ["2023-05-24", "2026-06-05"])
+        self.assertEqual([item.published_date for item in normalized], [None, None])
+        self.assertEqual([item.event_date for item in normalized], ["2023-05-24", "2026-06-05"])
 
     def test_repairs_mojibake_source_title(self):
         request = CommandRequest(command="macro", raw_text="/macro")

@@ -129,6 +129,7 @@ def _source_item_to_dict(source: Any) -> dict[str, Any]:
         "found_by": list(getattr(source, 'found_by', []) or []),
         "fetch_status": getattr(source, 'fetch_status', None),
         "fetch_provider": getattr(source, 'fetch_provider', None),
+        **{key: getattr(source, key, None) for key in ('date_status', 'event_date', 'data_date', 'period_start', 'period_end', 'fetched_at', 'updated_date', 'document_kind')},
     }
 
 
@@ -496,7 +497,18 @@ def run_topic_maintain(
                 emit(f"WebFetch evidence candidates略過：{exc}")
                 structured_data["webfetch_evidence"] = {"mode": "rule_based", "items": [], "warnings": [str(exc)]}
 
+    if official:
+        from .analysis_followup_service import AnalysisFollowupStore
+        pending = AnalysisFollowupStore().pending('topic_maintain', limit=8)
+        structured_data['topic_backlog_candidates'] = pending
+        structured_data['report_date'] = report_date
+        for candidate in pending:
+            structured_data.setdefault('discovery_sources', []).extend(candidate.get('_backlog_sources') or [])
     workflow_account = center.deepseek.account if official else None
+    if official:
+        from .source_snapshots import point_in_time_data
+        from datetime import date
+        structured_data = point_in_time_data(structured_data, date.fromisoformat(report_date))
     workflow_key = None
     if workflow_account is not None:
         workflow_key = _topic_workflow_cache_key(mode, report_date, center.config.deepseek_model,
@@ -697,6 +709,14 @@ def run_topic_maintain(
             raise
 
     # Run staged AI pipeline. AI returns small JSON fragments; local code assembles the pack.
+    def remember_candidates(rows):
+        from .analysis_followup_service import AnalysisFollowupStore
+        from .topic_input_package import merge_topic_sources, referenced_topic_sources
+        supplied = merge_topic_sources(structured_data)
+        stored = []
+        for row in rows:
+            stored.append({**row, '_backlog_sources': referenced_topic_sources(row, supplied) or row.get('_backlog_sources') or []})
+        AnalysisFollowupStore().defer('topic_maintain', stored)
     pack, pipeline_logs = run_topic_pipeline(
         mode=mode,
         ai_model=ai_model,
@@ -709,6 +729,7 @@ def run_topic_maintain(
         call_ai_json=_call_ai_json,
         progress=emit,
         require_full_ai=official,
+        candidate_sink=remember_candidates if official else None,
     )
 
     if official:
@@ -745,6 +766,14 @@ def run_topic_maintain(
     pack.prompt_log_path = str(prompt_log_p)
     pack.company_knowledge_updates = _normalize_company_knowledge_updates(pack.company_knowledge_updates)
     pack.extra = dict(pack.extra or {})
+    response_count = sum(bool(str(stage.get("raw") or "").strip()) for stage in raw_stages)
+    parsed_count = sum(bool(str(stage.get("raw") or "").strip()) and not stage.get("error") for stage in raw_stages)
+    pack.extra["ai_response_count"] = response_count
+    pack.extra["ai_parsed_stage_count"] = parsed_count
+    if not response_count:
+        pack.extra["ai_status"] = "failed"
+    elif any(stage.get("error") for stage in raw_stages):
+        pack.extra["ai_status"] = "partial_success"
     try:
         from .convergence_service import build_data_source_summary, build_report_metadata
         from .models import CommandResult
@@ -752,11 +781,12 @@ def run_topic_maintain(
         pack.extra["report_metadata"] = build_report_metadata(
             request,
             structured_data,
-            ai_used=True,
-            fallback_reason=None,
+            ai_used=bool(response_count),
+            fallback_reason="AI 審核未完整完成，僅保存草稿與證據" if pack.extra.get("ai_status") in {"failed", "partial_success"} else None,
             report_id=change_id,
             report_variant=f"topic_maintain_{mode.value}",
         )
+        pack.extra["report_metadata"]["ai_status"] = pack.extra.get("ai_status", "ai_success" if response_count else "failed")
         if official:
             pack.extra["report_metadata"]["model"] = center.config.deepseek_model
             pack.extra["report_metadata"]["ai_status"] = pack.extra.get("ai_status", "partial_success")
@@ -830,6 +860,18 @@ def run_topic_maintain(
 
     # Save change pack
     save_change_pack(pack)
+    if official:
+        from .analysis_followup_service import AnalysisFollowupStore
+        followup = AnalysisFollowupStore()
+        ready = all(pack.extra.get(key) is True for key in ('ai_review_complete', 'evidence_review_complete', 'action_review_complete'))
+        from .topic_input_package import merge_topic_sources, referenced_topic_sources
+        supplied = merge_topic_sources(structured_data)
+        pending_rows = []
+        for row in structured_data.get('topic_backlog_all_candidates', []):
+            matching = referenced_topic_sources(row, supplied)
+            pending_rows.append({**row, '_backlog_sources': matching or row.get('_backlog_sources') or []})
+        followup.defer('topic_maintain', pending_rows)
+        followup.resolve('topic_maintain', structured_data.get('topic_backlog_selected', []), success=ready)
     if workflow_key and pack.status == TopicChangeStatus.PENDING and pack.extra.get('ai_review_complete') is True and pack.extra.get('evidence_review_complete') is True and pack.extra.get('action_review_complete') is True:
         workflow_account.cache(workflow_key,{'change_id':change_id},3*86400)
     emit(f"變更包已保存：{change_id}")

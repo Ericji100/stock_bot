@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 
 from .models import CommandRequest, SourceItem
-from .source_date_normalizer import normalize_published_date_with_status
+from .source_date_normalizer import normalize_published_date_with_status, source_publication_status, normalize_published_date, publication_metadata_date
 from .source_text_cleaner import clean_source_text, clean_source_title
 
 
@@ -55,16 +56,18 @@ def normalize_source_items(
             found_by.append("source_title:code_isolated")
         snippet = clean_source_text(source.snippet) if source.snippet else source.snippet
         published_date, date_status = normalize_published_date_with_status(
-            explicit_values=(source.published_date,),
-            inferred_values=(title, snippet, source.url),
+            explicit_values=(source.published_date, publication_metadata_date(source.snippet)),
+            inferred_values=(source.url,),
         )
+        if source.published_date:
+            date_status=source_publication_status(source)
         if date_status != "unknown":
             marker = f"source_date:{date_status}"
             if marker not in found_by:
                 found_by.append(marker)
 
         normalized.append(
-            SourceItem(
+            replace(source,
                 source_id=source.source_id or f"S{index:03d}",
                 title=title or source.title,
                 url=source.url,
@@ -79,6 +82,8 @@ def normalize_source_items(
                 fetch_quality=source.fetch_quality,
                 failure_reason=source.failure_reason,
                 found_by=found_by,
+                date_status=date_status,
+                event_date=source.event_date or normalize_published_date(title, snippet),
             )
         )
     return normalized

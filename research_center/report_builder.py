@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import html
+import sqlite3
 import json
 import re
 from dataclasses import asdict
@@ -236,8 +237,13 @@ def _market_movers_metadata_summary(data: dict[str, Any]) -> dict[str, Any]:
 def _shared_data_layer_markdown(structured_data: dict[str, Any]) -> str:
     summary = _shared_data_layer_summary(structured_data)
     if not summary:
-        return "- 本次 structured_data 未包含 news_context / feature_pack / data_coverage。"
-    return "```json\n" + json.dumps(summary, ensure_ascii=False, indent=2, default=str) + "\n```"
+        return "- 本次尚未取得可用的共用資料底稿。"
+    labels = {'news_context':'新聞脈絡', 'saved_news_context':'已存新聞', 'feature_pack':'量化與市場底稿',
+              'data_coverage':'資料覆蓋檢核', 'ai_data_center':'資料中心底稿',
+              'evidence_governance':'日期、公司與證據檢核'}
+    lines = [f'- {label}：已保存。' for key,label in labels.items() if summary.get(key)]
+    lines.append('- 完整原始欄位及來源保留於 JSON 與補充分頁；此處的資料已保存不代表 AI 正式分析已完成。')
+    return '\n'.join(lines)
 
 
 def write_report_artifacts(
@@ -258,7 +264,7 @@ def write_report_artifacts(
 
     markdown = normalize_report_text(sanitize_report_markdown(markdown))
     summary = normalize_report_text(sanitize_report_markdown(summary))
-    reader_review = review_reader_content(markdown, sources)
+    reader_review = review_reader_content(markdown, sources, structured_data)
     from .search_source_normalizer import validate_source_identity_map
     bound = (((structured_data or {}).get('high_model_input_package') or {}).get('complete_source_index') or {})
     bound = bound.get('sources', []) if isinstance(bound, dict) else bound
@@ -287,6 +293,21 @@ def write_report_artifacts(
     report_json["metadata"]["qa_validation"] = qa
     report_json["metadata"]["reader_content_review"] = reader_review
     report_json["metadata"]["source_identity_validation"] = identity
+    from .analysis_followup_service import AnalysisFollowupStore, explicit_prediction_records
+    prediction_rows = explicit_prediction_records(markdown)
+    known_ids = {source.source_id for source in sources}
+    rejected_predictions = [row for row in prediction_rows if not isinstance(row.get('source_ids'), list) or not set(row['source_ids']).issubset(known_ids)]
+    prediction_rows = [row for row in prediction_rows if row not in rejected_predictions]
+    if prediction_rows:
+        try:
+            report_json['metadata']['prediction_tracking'] = AnalysisFollowupStore().record_predictions(
+                report_id, request.report_date.isoformat() if request.report_date else datetime.now().date().isoformat(), prediction_rows)
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            report_json['metadata']['prediction_tracking'] = {'status': 'failed', 'reason': str(exc)}
+    else:
+        report_json['metadata']['prediction_tracking'] = {'status': 'not_provided', 'reason': '本報告未提供可機器追蹤的明確預測，不推測或補造。'}
+    if rejected_predictions:
+        report_json['metadata']['prediction_tracking']['rejected_unknown_sources'] = rejected_predictions
 
     markdown_path = output_dir / f"{report_id}.md" if "md" in request.output_formats else Path("__no_markdown_file__")
     html_path = output_dir / f"{report_id}.html" if "html" in request.output_formats else Path("__no_html_file__")
@@ -502,8 +523,21 @@ def _append_report_quality_summary(
         f"推測日期來源：{source_summary.get('inferred_dated_sources', 0)}；"
         f"日期不可驗證：{source_summary.get('undated_sources', 0)}"
     )
-    warnings = quality.get("qa_warnings") or []
+    governance = quality.get('evidence_governance') or {}
+    warnings = [*(quality.get("qa_warnings") or []), *(governance.get('warnings') or [])]
     lines.append("- QA 提醒：" + ("；".join(str(item) for item in warnings) if warnings else "無"))
+    lines.extend(['', '### 日期、官方證據與公司核對', '',
+                  '檢核僅提示可機械辨識的問題，不表示所有主張或預測已獲證實。',
+                  f"- 公司映射待核對：{len(governance.get('company_mapping_issues') or [])} 項。"])
+    if governance.get('sources'):
+        lines.extend(['', '| 來源 | 發布日期 | 事件日期 | 數據日期 | 所屬期間 | 發布日期依據 | 官方證據狀態 |', '|---|---|---|---|---|---|---|'])
+        date_labels = {'explicit': '明確標示', 'inferred': '推測，不能證明當時已知', 'unknown': '未確認'}
+        evidence_labels = {'non_official': '非官方來源', 'reference_only': '只有查詢入口', 'retrieved_requires_claim_check': '已取得內容，主張仍須核對', 'official_origin_unverified_content': '官方網域，內容未核對'}
+        for row in governance['sources'][:40]:
+            period = ' 至 '.join(str(row[key]) for key in ('period_start', 'period_end') if row.get(key)) or '未提供'
+            lines.append(f"| {row.get('source_id') or '未編號'} | {row.get('published_date') or '未確認'} | {row.get('event_date') or '未提供'} | {row.get('data_date') or '未提供'} | {period} | {date_labels.get(row.get('publication_status'), '未確認')} | {evidence_labels.get(row.get('official_evidence_status'), '未確認')} |")
+        if len(governance['sources']) > 40:
+            lines.append('日期對照表僅顯示前 40 筆；完整檢核仍保存在報告 JSON，所有來源仍保存在來源檔與完整來源分頁。')
     rows = quality.get("data_completeness_matrix") or []
     if rows:
         lines.extend(["", "| 欄位 | 狀態 | 數量 |", "|---|---:|---:|"])
@@ -532,6 +566,7 @@ def _structured_data_report_snapshot(
 ) -> dict[str, Any]:
     quality = report_quality or {}
     common = {
+        "evidence_governance": quality.get('evidence_governance'),
         "schema_version": quality.get("schema_version"),
         "evidence_pack": quality.get("evidence_pack"),
         "data_completeness_matrix": quality.get("data_completeness_matrix"),
@@ -1066,7 +1101,8 @@ def _metadata_summary(report_json: dict[str, Any]) -> dict[str, Any]:
 def summarize_for_telegram(markdown: str, limit: int = 1200) -> str:
     markdown = normalize_report_text(sanitize_report_markdown(markdown))
     title = _first_heading(markdown)
-    cleaned = re.sub(r"[#*_`>]+", "", markdown)
+    body = re.sub(r'^#\s+.*\n?', '', markdown, count=1)
+    cleaned = re.sub(r"[#*_`>]+", "", body)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     key_lines = _important_lines(cleaned)
     parts = [
@@ -1083,14 +1119,17 @@ def summarize_for_telegram(markdown: str, limit: int = 1200) -> str:
     ]
     summary = "\n".join(part for part in parts if part is not None).strip()
     if len(summary) > limit:
-        summary = summary[: limit - 24].rstrip() + "\n\n完整報告已附上。"
+        lines = summary.splitlines()
+        while lines and len('\n'.join(lines)) > max(0, limit - 24):
+            lines.pop()
+        summary = '\n'.join(lines).rstrip() + "\n\n完整報告已附上。"
     return summary
 
 
 def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], sources: list[SourceItem], reason: str | None = None) -> str:
     title = _report_title(request)
     source_lines = [f"- [{item.source_id}] {item.source_level} {item.title} {item.url}" for item in sources] or ["- 目前沒有外部來源。"]
-    data_block = json.dumps(structured_data, ensure_ascii=False, indent=2, default=str)[:12000]
+    data_block = '完整結構化資料、來源及已完成分段保留於本報告 JSON 與補充資料頁；主頁不以原始欄位堆疊冒充分析。'
     fallback_note = (f"\n\n本次 AI 正式分析未完成。已取得的外部來源與本地資料仍保留，"
                      f"但不代表已完成 AI 綜合判斷。原因：{reason}" if reason else "")
     if request.source_only:
@@ -1112,10 +1151,8 @@ def fallback_markdown(request: CommandRequest, structured_data: dict[str, Any], 
 
 {imagination_block}
 
-## 結構化資料
-```json
+## 已保存資料
 {data_block}
-```
 
 ## 共享資料層摘要
 {_shared_data_layer_markdown(structured_data)}
@@ -1321,8 +1358,15 @@ def _first_heading(markdown: str) -> str:
 def _first_paragraph(text: str) -> str:
     for block in text.split("\n\n"):
         clean = block.strip()
-        if clean and not clean.startswith("資料來源"):
-            return clean[:300]
+        if len(clean) >= 30 and not clean.startswith(("資料來源", '報告日期', '資料日期', '免責', '聲明', '本報告不構成')):
+            sentences = re.findall(r'[^。！？\n]+[。！？]?', clean)
+            chosen = []
+            for sentence in sentences:
+                if len(''.join(chosen) + sentence) > 360:
+                    break
+                chosen.append(sentence)
+            if chosen:
+                return ''.join(chosen).strip()
     return "資料不足，無法產生摘要。"
 
 

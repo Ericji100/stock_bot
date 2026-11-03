@@ -143,6 +143,11 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     else:
         return {"message": "report lookup does not collect structured market data"}, []
 
+    from .mops_sources import normalize_research_financial_periods
+    for row in [data, *(data.get('ai_candidates') or [])]:
+        if isinstance(row, dict) and isinstance(row.get('financial_data'), list):
+            row['financial_data'], row['financial_period_audit'] = normalize_research_financial_periods(row['financial_data'], request.report_date)
+
     from stock_ai_bot.data_sources.tdcc_distribution import validate_tdcc_snapshot
     for row in [data, *(data.get('ai_candidates') or [])]:
         if not isinstance(row, dict):
@@ -172,6 +177,8 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     sources = _official_sources()
     if request.command == "macro":
         sources.extend(_renumber_source_items(_macro_official_sources(), start=len(sources) + 1))
+        from .evidence_governance import parsed_official_sources
+        sources.extend(parsed_official_sources(data, start=len(sources) + 1))
     if request.command in {"theme_radar", "theme_flow", "sector_strength"}:
         data["forum_data"] = {
             "enabled": False,
@@ -179,6 +186,9 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
         }
         return data, sources
     forum_query = _forum_query_for_request(request, data)
+    if request.command == 'value_scan':
+        from .search_query_service import _target_label
+        forum_query = _target_label(request, data)
     if progress:
         progress(f"論壇來源搜尋開始：{forum_query}")
     forum_result = fetch_forum_sources(forum_query, request.report_date, request.mode == "deep", progress=progress)

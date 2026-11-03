@@ -848,6 +848,9 @@ def build_high_model_input_package(
     prompt_chars_estimate: int,
 ) -> dict[str, Any]:
     input_mode = _input_mode_for_prompt(prompt_chars_estimate)
+    from .evidence_governance import build_evidence_governance
+    governance = build_evidence_governance(request.command, request.report_date, sources, structured_data)
+    structured_data['evidence_governance'] = governance
     low_digest = structured_data.get("low_model_digest") or {
         "schema_version": LOW_MODEL_DIGEST_SCHEMA_VERSION,
         "status": "skipped",
@@ -889,6 +892,7 @@ def build_high_model_input_package(
         "ai_data_center": structured_data.get("ai_data_center") if include_full_context else None,
         "ai_data_center_summary": _ai_data_center_summary(structured_data.get("ai_data_center")),
         "financial_period_audit": structured_data.get("financial_period_audit"),
+        "evidence_governance": governance,
         "ai_prompt_context": structured_data.get("ai_prompt_context") if include_full_context else None,
         "ai_prompt_context_summary": _ai_prompt_context_summary(structured_data.get("ai_prompt_context")),
         "ai_input_audit": structured_data.get("ai_input_audit"),
@@ -906,11 +910,7 @@ def build_high_model_input_package(
         "low_model_skipped_structured_sections": structured_data.get("low_model_skipped_structured_sections"),
         "local_scoring": _complete_segment_value(structured_data.get("local_scoring"), input_mode=input_mode),
         "command_specific_data": command_slice,
-        "selected_sources": (
-            selected_sources[:excerpt_limit]
-            if include_full_context
-            else _source_index_summary(selected_sources, limit=excerpt_limit)
-        ),
+        "selected_sources": _source_index_summary(sources, limit=len(sources)),
         "required_original_excerpts": _source_excerpts(sources, limit=excerpt_limit),
         "complete_source_index": (
             _complete_segment_value([asdict(item) for item in sources], input_mode=input_mode)
@@ -928,6 +928,15 @@ def build_high_model_input_package(
             "source_count": len(sources),
             "selected_source_count": len(selected_sources),
         },
+    }
+    import hashlib
+    package['source_text_admission'] = {
+        'status': 'prepared_not_sent',
+        'scope': '完整文字已準備於入模封包；實際送出仍以成功請求紀錄為準，不以欄位存在當作模型已讀。',
+        'source_count': len(sources),
+        'rows': [{'source_id': item.source_id, 'text_chars': len(item.snippet or ''),
+                  'text_sha256': hashlib.sha256((item.snippet or '').encode()).hexdigest()}
+                 for item in sources],
     }
     coverage = build_ai_workflow_coverage(
         request.command,
@@ -1383,7 +1392,9 @@ def _source_excerpts(sources: list[SourceItem], *, limit: int) -> list[dict[str,
     excerpts: list[dict[str, Any]] = []
     # Required financial discovery is not necessarily in the first search rows.
     required = [item for item in sources if _required_financial_source(item) and item.snippet]
-    selected = list(sources[:limit])
+    # Every retrieved distinct text is eligible for evidence segments. A rank
+    # or preview limit must not silently erase a company or numeric fact.
+    selected = list(sources)
     selected_ids = {item.source_id for item in selected}
     selected.extend(item for item in required if item.source_id not in selected_ids)
     required_ids = {item.source_id for item in required}
@@ -1396,7 +1407,7 @@ def _source_excerpts(sources: list[SourceItem], *, limit: int) -> list[dict[str,
             "source_level": item.source_level,
             "published_date": item.published_date,
             "provider": item.provider,
-            "snippet": item.snippet if required_content else _truncate_text(item.snippet, 900),
+            "snippet": item.snippet,
             "core_evidence_required": required_content,
             "content_scope": "provider_supplied_text_not_full_statements" if required_content else "excerpt",
         })
@@ -1404,6 +1415,8 @@ def _source_excerpts(sources: list[SourceItem], *, limit: int) -> list[dict[str,
 
 
 def _required_financial_source(source: SourceItem) -> bool:
+    if source.provider == 'official_parsed':
+        return True
     if '最新官方季度財報' in str(source.provider_detail or ''):
         return True
     official = str(source.source_level).lower() in {'level 1', 'l1', 'l1_official'}
@@ -1440,6 +1453,7 @@ def _command_specific_slice(request: CommandRequest, structured_data: dict[str, 
         "input_mode": input_mode,
         "policy": "指令感知完整分段：核心資料不做語意壓縮，只做清洗、去重、來源標記與分段；高階模型必須閱讀所有入模段落後再產出結論。",
         "core_input_audit": core_audit,
+        "evidence_governance_ref": "high_model_input_package.evidence_governance",
         "payload": payload,
     }
 
@@ -1638,6 +1652,10 @@ def _value_scan_financial_key_metrics(value: Any) -> dict[str, Any]:
         return {"status": "unavailable"} if value in (None, "", [], {}) else {"summary": _truncate_text(value, 300)}
     keep_keys = [
         "status",
+        "latest_period",
+        "sample",
+        "fields",
+        "available_field_count",
         "revenue_yoy",
         "revenue_mom",
         "gross_margin",
@@ -1901,6 +1919,17 @@ def _dedupe_theme_radar_payload(payload: dict[str, Any], *, input_mode: str) -> 
     same stock object inside theme, sector, subsector, and strong-stock lists.
     """
 
+    # Relation builders consume rows, not the transport's chunk envelope.
+    def unwrap(value: Any) -> Any:
+        if isinstance(value, dict):
+            if value.get('資料型態') == '完整分段清單':
+                return [unwrap(row) for part in value.get('段落', []) for row in part.get('資料', [])]
+            return {key: unwrap(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [unwrap(item) for item in value]
+        return value
+
+    payload = unwrap(payload)
     stock_index: dict[str, dict[str, Any]] = {}
 
     def add_stock(row: Any) -> str | None:
@@ -2455,16 +2484,19 @@ def _compact_subsector_match(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_structured_value(structured_data: dict[str, Any], key: str) -> Any:
-    if key in structured_data:
+    if _has_semantic_value(structured_data.get(key)):
         return structured_data.get(key)
+    full_sector = structured_data.get('sector_strength')
+    if isinstance(full_sector, dict) and _has_semantic_value(full_sector.get(key)):
+        return full_sector[key]
     feature_pack = structured_data.get("feature_pack") if isinstance(structured_data.get("feature_pack"), dict) else {}
-    if key in feature_pack:
+    if _has_semantic_value(feature_pack.get(key)):
         return feature_pack.get(key)
     shared = structured_data.get("shared_data_layer") if isinstance(structured_data.get("shared_data_layer"), dict) else {}
-    if key in shared:
+    if _has_semantic_value(shared.get(key)):
         return shared.get(key)
     sector_strength = shared.get("sector_strength") if isinstance(shared.get("sector_strength"), dict) else {}
-    if key in sector_strength:
+    if _has_semantic_value(sector_strength.get(key)):
         return sector_strength.get(key)
     report_quality = structured_data.get("report_quality") if isinstance(structured_data.get("report_quality"), dict) else {}
     evidence_pack = report_quality.get("evidence_pack") if isinstance(report_quality.get("evidence_pack"), dict) else {}
@@ -2500,6 +2532,9 @@ def _build_core_input_audit(command: str, structured_data: dict[str, Any], paylo
                     note += ' 入模筆數按股票代號計算，完整股票欄位位於同包股票主檔，引用不代表刪除。'
                 elif not sent_value.get('資料未刪除'):
                     note += ' 物件計數為欄位數，與原始表示法不同時不能當成資料保留比例。'
+            if isinstance(raw_value, list) and isinstance(sent_value, list) and len(sent_value) < len(raw_value):
+                status = 'appendix_only'
+                note = '核心列數少於原始資料，不能宣稱完整入模；原始資料仍保留。'
         elif _has_semantic_value(raw_value):
             status = "appendix_only"
             note = "原始資料存在，但本次未直接送入高階模型。"
@@ -2514,6 +2549,7 @@ def _build_core_input_audit(command: str, structured_data: dict[str, Any], paylo
             "status": status,
             "raw_count": _semantic_count(raw_value),
             "sent_count": _semantic_count(sent_value),
+            'admission_status': 'prepared_not_sent',
             "note": note,
         })
     return {

@@ -342,6 +342,13 @@ def _group(title: str, items: list[str]) -> dict[str, list[str]]:
 
 
 def _target_label(request: CommandRequest, structured_data: dict[str, Any]) -> str:
+    if request.command == 'value_scan':
+        labels = _candidate_labels(structured_data.get('ai_candidates') or structured_data.get('candidates') or [], limit=10)
+        if labels:
+            return ' '.join(labels)
+        import re
+        codes = re.findall(r'(?<!\d)\d{4,6}(?!\d)', str(request.candidate_pool or request.target or ''))
+        return ' '.join(codes) or '台股企業價值重估'
     stock = structured_data.get("stock") or {}
     parts = [
         request.target or request.market_scope or request.theme_scope or request.candidate_pool or "",
@@ -375,8 +382,12 @@ def _value_scan_candidate_batches(rows: list[dict[str, Any]], *, pool: str, deep
     batch_size = 5 if deep else 4
     batches = _candidate_batches(rows, batch_size=batch_size, max_batches=max_batches)
     pool_text = str(pool or "").strip()
-    if pool_text and pool_text not in batches:
-        batches.append(f"{pool_text} 候選股集合")
+    if batches:
+        batches.append(' '.join(batches) + ' 候選股集合')
+    elif pool_text:
+        import re
+        codes = re.findall(r'(?<!\d)\d{4,6}(?!\d)', pool_text)
+        batches.append((' '.join(codes) if codes else '台股企業價值重估') + ' 候選股集合')
     return batches or [pool_text or "台股候選股"]
 
 

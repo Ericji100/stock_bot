@@ -1771,6 +1771,8 @@ class UserSubmittedNewsUrlTests(unittest.TestCase):
         self.assertEqual(item.summary, "台股半導體新聞摘要")
         self.assertEqual(repo.count_recent(hours=24), 1)
         self.assertEqual(item.news_origin, "manual")
+        self.assertEqual(item.published_at, "")
+        self.assertIn("publication_unknown", item.tags)
         self.assertEqual(repo.count_preferences(), 1)
         self.assertEqual(repo.preferences[0].normalized_category, "ai_semiconductor")
         self.assertIn(repo.preferences[0].news_type, {"supply_chain_benefit", "macro_market", "other"})

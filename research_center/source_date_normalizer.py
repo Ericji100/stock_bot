@@ -6,6 +6,7 @@ dates from fetch time or report time.
 from __future__ import annotations
 
 import re
+import calendar
 from datetime import date, datetime, timedelta
 from html import unescape
 from typing import Any
@@ -26,7 +27,7 @@ _EN_MONTH_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _META_DATE_RE = re.compile(
-    r"(?:datePublished|dateModified|article:published_time|pubdate|publishdate|published_time)"
+    r"(?:datePublished|article:published_time|pubdate|publishdate|published_time)"
     r"[^>]{0,160}?(20\d{2}-\d{1,2}-\d{1,2})",
     re.IGNORECASE,
 )
@@ -84,6 +85,87 @@ def normalize_published_date_with_status(
     return None, "unknown"
 
 
+def publication_metadata_date(value: Any) -> str | None:
+    """Read publication metadata only; an event or modification date is not publication."""
+    import json
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            if match := _META_DATE_RE.search(value):
+                return _valid_date(match.group(1))
+            return None
+    if isinstance(value, dict):
+        return normalize_published_date(*(value.get(key) for key in ('datePublished', 'article:published_time', 'published_date', 'published_at')))
+    return None
+
+
+def source_publication_status(source: Any) -> str:
+    get = source.get if isinstance(source, dict) else lambda key, default=None: getattr(source,key,default)
+    if get('document_kind') in {'reference_link','unavailable'}:
+        return 'unknown'
+    if not normalize_published_date(get('published_date') or get('published_at')):
+        return 'unknown'
+    status=get('date_status')
+    if status in {'explicit','inferred','unknown'}:
+        return status
+    markers=get('found_by',[]) or []
+    if 'source_date:inferred' in markers:
+        return 'inferred'
+    return 'explicit' if normalize_published_date(get('published_date') or get('published_at')) else 'unknown'
+
+
+def source_temporal_record(source: Any, report_date: date) -> dict[str, Any]:
+    get = source.get if isinstance(source,dict) else lambda key,default=None: getattr(source,key,default)
+    published=normalize_published_date(get('published_date') or get('published_at'))
+    status=source_publication_status(source)
+    data_date=normalize_published_date(get('data_date') or get('as_of_date'))
+    updated_date=normalize_published_date(get('updated_date'))
+    body_future = future_actual_periods(str(get('content') or get('snippet') or ''), report_date)
+    return {'source_id':get('source_id'), 'published_date':published,
+            'publication_status':status,'updated_date':updated_date,
+            'event_date':normalize_published_date(get('event_date')),'data_date':data_date,
+            'period_start':get('period_start'),'period_end':get('period_end'),'fetched_at':get('fetched_at'),
+            'available_by_report_date':published<=report_date.isoformat() if published and status=='explicit' else None,
+            'embedded_future_actuals': body_future,
+            'content_updated_after_report_date':bool((updated_date and updated_date>report_date.isoformat()) or body_future),
+            'data_after_report_date':bool((data_date and data_date>report_date.isoformat()) or
+                 ((end:=normalize_published_date(get('period_end'))) and end>report_date.isoformat()))}
+
+
+def future_actual_periods(text: str, report_date: date) -> list[str]:
+    """Detect dated realised figures in dynamic bodies, not forecast horizons.
+
+    Ambiguous future dated numeric rows are quarantined for historical requests;
+    original sources remain in the caller's archive. A publication date alone
+    cannot certify that a subsequently updated table was known at that time.
+    """
+    result = set()
+    for line in re.split(r'[\n\r]|(?<=[。；])', unescape(text)):
+        forecast = bool(re.search(r'預估|預測|預期|目標|展望|假設|情境|forecast|estimate|outlook|guidance|scenario', line, re.I))
+        actual = bool(re.search(r'實績|實際|已公布|公布.*營收|收盤|成交|actual|historical|\bclose\b|Schlusskurs|\bKurs\b', line, re.I))
+        if forecast and not actual:
+            continue
+        for match in re.finditer(r'(?<!\d)(20\d{2})[-/.年]\s*(0?[1-9]|1[0-2])(?:[-/.月]\s*([0-3]?\d)(?:日)?)?(?!\d)', line):
+            year, month, day = match.groups()
+            try:
+                period = date(int(year), int(month), int(day) if day else calendar.monthrange(int(year), int(month))[1])
+            except ValueError:
+                continue
+            tail = line[match.end():match.end()+100]
+            if period > report_date and (actual or re.search(r'\d[\d,.]*', tail)):
+                result.add(period.isoformat() if day else period.strftime('%Y-%m'))
+        for match in re.finditer(r'(?<!\d)([0-3]?\d)\.(0?[1-9]|1[0-2])\.(20\d{2})(?!\d)', line):
+            day, month, year = match.groups()
+            try:
+                period = date(int(year), int(month), int(day))
+            except ValueError:
+                continue
+            if period > report_date and (actual or re.search(r'\d', line[match.end():match.end()+100])):
+                result.add(period.isoformat())
+    return sorted(result)
+
+
 def _extract_date(value: Any) -> str | None:
     if value is None:
         return None
@@ -100,10 +182,8 @@ def _extract_date(value: Any) -> str | None:
             value.get("time"),
             value.get("datetime"),
             value.get("datePublished"),
-            value.get("dateModified"),
             value.get("article:published_time"),
             value.get("displayed_link"),
-            value.get("created_at") if value.get("news_origin") == "refresh" else None,
             value.get("title"),
             value.get("snippet"),
             value.get("summary"),
@@ -153,7 +233,7 @@ def _extract_date(value: Any) -> str | None:
 
 
 def _extract_relative_date(text: str) -> str | None:
-    now = datetime.now()
+    now = datetime.now(ZoneInfo('Asia/Taipei'))
     if match := _RELATIVE_TIME_RE.search(text):
         amount = int(match.group(1))
         unit = match.group(2).lower()

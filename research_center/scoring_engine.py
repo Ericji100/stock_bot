@@ -180,6 +180,8 @@ def _revenue_growth_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
 
 
 def _eps_score(rows: list[dict[str, Any]]) -> tuple[float, str, str]:
+    if any(row.get('EPS_Period_Basis') in {'unverified', 'annual', 'ytd', 'cumulative'} for row in rows[-4:]):
+        return 50, 'EPS 單季／累計口徑尚未對齊，暫不計算近四季合計；50 為中性占位，不是獲利品質結論。', '資料口徑待核，不得當成公司表現差或正式 AI 評分。'
     values = _series(rows, ("EPS", "eps", "每股盈餘"))[-4:]
     if not values:
         return 0, "缺少 EPS 資料。", "資料不足，無法評分。"

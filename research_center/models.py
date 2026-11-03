@@ -47,6 +47,14 @@ class SourceItem:
     fetch_quality: str | None = None
     failure_reason: str | None = None
     found_by: list[str] = field(default_factory=list)
+    date_status: str | None = None
+    event_date: str | None = None
+    data_date: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+    fetched_at: str | None = None
+    updated_date: str | None = None
+    document_kind: str | None = None
 
 
 @dataclass(frozen=True)

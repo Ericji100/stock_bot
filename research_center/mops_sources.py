@@ -29,8 +29,9 @@ def build_mops_reference_events(stock_code: str, report_date: date | None = None
             "title": f"MOPS重大訊息查詢入口 {stock_code}",
             "source_url": _mops_query_url(MATERIAL_EVENT_PAGE, stock_code, report_date),
             "source_level": "Level 1",
-            "published_date": target_date,
-            "payload": {"status": "reference_link", "kind": "material_event"},
+            "published_date": None,
+            "document_kind": "reference_link",
+            "payload": {"status": "reference_link", "kind": "material_event", "requested_date":target_date},
         },
         {
             "event_type": "mops_announcement_reference",
@@ -38,8 +39,9 @@ def build_mops_reference_events(stock_code: str, report_date: date | None = None
             "title": f"MOPS公告查詢入口 {stock_code}",
             "source_url": _mops_query_url(ANNOUNCEMENT_PAGE, stock_code, report_date),
             "source_level": "Level 1",
-            "published_date": target_date,
-            "payload": {"status": "reference_link", "kind": "announcement"},
+            "published_date": None,
+            "document_kind": "reference_link",
+            "payload": {"status": "reference_link", "kind": "announcement", "requested_date":target_date},
         },
     ]
     events.extend(_try_fetch_recent_material_events(stock_code, report_date))
@@ -55,9 +57,9 @@ def _try_fetch_announcement_rows(stock_code: str, report_date: date | None = Non
     ):
         try:
             rows = _fetch_mops_tables(page, stock_code, report_date)
-            for row in rows[:8]:
+            for row in rows:
                 title = _row_title(row, stock_code, kind)
-                published = _row_date(row) or (report_date.isoformat() if report_date else None)
+                published = _row_date(row)
                 events.append(
                     {
                         "event_type": event_type,
@@ -66,6 +68,7 @@ def _try_fetch_announcement_rows(stock_code: str, report_date: date | None = Non
                         "source_url": _mops_query_url(page, stock_code, report_date),
                         "source_level": "Level 1",
                         "published_date": published,
+                        "document_kind": "parsed_record",
                         "payload": {"status": "parsed", "kind": kind, "row": row},
                     }
                 )
@@ -77,7 +80,8 @@ def _try_fetch_announcement_rows(stock_code: str, report_date: date | None = Non
                     "title": f"MOPS {kind} parser unavailable",
                     "source_url": _mops_query_url(page, stock_code, report_date),
                     "source_level": "Level 1",
-                    "published_date": report_date.isoformat() if report_date else None,
+                    "published_date": None,
+                    "document_kind": "unavailable",
                     "payload": {"status": "unavailable", "error": str(exc)},
                 }
             )
@@ -101,8 +105,10 @@ def _fetch_mops_tables(page: str, stock_code: str, report_date: date | None = No
         frame.columns = [str(col).strip() for col in frame.columns]
         for _, raw in frame.iterrows():
             item = {str(key): _clean_cell(value) for key, value in raw.to_dict().items()}
-            text = " ".join(str(value) for value in item.values())
-            if stock_code not in text and len(rows) > 0:
+            identity_fields = [value for key, value in item.items() if any(label in key for label in ('公司代號', '股票代號', '公司代碼', 'co_id'))]
+            if not identity_fields:
+                identity_fields = list(item.values())
+            if not any(str(value).strip().removesuffix('.0') == stock_code for value in identity_fields):
                 continue
             if report_date:
                 parsed = _row_date(item)
@@ -134,7 +140,9 @@ def _row_date(row: dict[str, Any]) -> str | None:
             try:
                 year = int(parts[0]) + 1911
                 month = int(parts[1])
-                day = int(parts[2]) if len(parts) > 2 else 1
+                if len(parts) < 3:
+                    continue
+                day = int(parts[2])
                 return date(year, month, day).isoformat()
             except Exception:
                 pass
@@ -188,6 +196,43 @@ def financial_period_audit(financial_rows, report_date=None) -> dict[str, Any]:
             'policy': '官方新聞稿與結構化財報分開核對；日期、幣別、期間及單位未對齊不得互相替代。'}
 
 
+def normalize_research_financial_periods(financial_rows, report_date=None):
+    """Research-only projection; preserve raw figures, never infer EPS basis by size."""
+    from copy import deepcopy
+    rows = deepcopy(financial_rows)
+    originals = {str(r.get('Quarter') or ''): r for r in financial_rows if isinstance(r, dict)}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        quarter = str(row.get('Quarter') or '')
+        match = re.fullmatch(r'(\d{4})Q([1-4])', quarter)
+        if not match or row.get('EPS') is None:
+            continue
+        year, q = match.groups()
+        basis = row.get('EPS_Period_Basis') or row.get('eps_period_basis') or 'unverified'
+        row['EPS_Period_Basis'] = basis
+        row.setdefault('EPS_Raw', row['EPS'])
+        if basis not in {'annual', 'ytd', 'cumulative'} or q == '1':
+            continue
+        previous = originals.get(f'{year}Q{int(q)-1}')
+        try:
+            if previous and (previous.get('EPS_Period_Basis') or previous.get('eps_period_basis')) in {'ytd', 'cumulative'}:
+                previous_value = float(previous['EPS_Raw'] if 'EPS_Raw' in previous else previous['EPS'])
+            else:
+                prior = [originals.get(f'{year}Q{i}') for i in range(1, int(q))]
+                if not prior or any(not r or (r.get('EPS_Period_Basis') or r.get('eps_period_basis')) not in {'quarterly', 'single_quarter'} for r in prior):
+                    continue
+                previous_value = sum(float(r['EPS']) for r in prior)
+            row['EPS'] = round(float(row['EPS_Raw']) - previous_value, 6)
+            row['EPS_Period_Basis'] = 'quarterly'
+            row['EPS_Derivation'] = f'{quarter} 累計／全年減去同年先前期間；原值保留於 EPS_Raw'
+        except (ValueError, TypeError, KeyError):
+            continue
+    audit = financial_period_audit(rows, report_date)
+    audit['normalization_scope'] = '僅投研輸入副本，不改原始快取、交易規則或既有回測'
+    return rows, audit
+
+
 def _try_fetch_recent_material_events(stock_code: str, report_date: date | None = None) -> list[dict[str, Any]]:
     # Conservative placeholder for future parser work. MOPS anti-automation and
     # form token changes should not break report generation.
@@ -202,7 +247,8 @@ def _try_fetch_recent_material_events(stock_code: str, report_date: date | None 
                 "title": "MOPS重大訊息頁連線檢查",
                 "source_url": MATERIAL_EVENT_PAGE,
                 "source_level": "Level 1",
-                "published_date": report_date.isoformat() if report_date else None,
+                "published_date": None,
+                "document_kind": "reference_link",
                 "payload": {"status": "reachable", "http_status": response.status_code},
             }
         ]
@@ -214,7 +260,8 @@ def _try_fetch_recent_material_events(stock_code: str, report_date: date | None 
                 "title": "MOPS重大訊息頁連線檢查失敗",
                 "source_url": MATERIAL_EVENT_PAGE,
                 "source_level": "Level 1",
-                "published_date": report_date.isoformat() if report_date else None,
+                "published_date": None,
+                "document_kind": "unavailable",
                 "payload": {"status": "unavailable", "error": str(exc)},
             }
         ]

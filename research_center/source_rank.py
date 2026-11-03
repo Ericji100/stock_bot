@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 from .models import SourceItem
 from .preferred_sources import match_preferred_source, preferred_source_weight
-from .source_date_normalizer import normalize_published_date_with_status
+from .source_date_normalizer import normalize_published_date_with_status, normalize_published_date, publication_metadata_date
 from .source_text_cleaner import clean_source_text, clean_source_title
 
 LEVEL_1_DOMAINS = ("twse.com.tw", "tpex.org.tw", "mops.twse.com.tw", "mopsov.twse.com.tw")
@@ -27,8 +27,9 @@ LEVEL_4_DOMAINS = (
 
 
 def rank_source(url: str, title: str = "") -> str:
-    host = urlparse(url).netloc.lower()
-    if any(domain in host for domain in LEVEL_1_DOMAINS):
+    from .evidence_governance import is_official_url
+    host = (urlparse(url).hostname or '').lower()
+    if is_official_url(url):
         return "Level 1"
     if any(domain in host for domain in LEVEL_2_DOMAINS):
         return "Level 2"
@@ -59,11 +60,11 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
             explicit_values=(
                 raw.get("published_date"),
                 raw.get("published_at"),
-                raw.get("date"),
                 raw.get("datePublished"),
                 raw.get("article:published_time"),
+                publication_metadata_date(raw.get('snippet')),
             ),
-            inferred_values=(title, snippet, raw.get("summary"), raw.get("content"), url),
+            inferred_values=(raw.get("date"),url),
         )
         found_by = list(raw.get("found_by", []))
         if title != original_title:
@@ -88,6 +89,11 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
                 fetch_quality=raw.get("fetch_quality"),
                 failure_reason=raw.get("failure_reason"),
                 found_by=found_by,
+                date_status=raw.get('date_status') or date_status,
+                event_date=raw.get('event_date') or normalize_published_date(title,snippet,raw.get('content')),
+                data_date=raw.get('data_date'),period_start=raw.get('period_start'),period_end=raw.get('period_end'),
+                fetched_at=raw.get('fetched_at'),updated_date=raw.get('updated_date') or normalize_published_date(raw.get('dateModified')),
+                document_kind=raw.get('document_kind'),
             )
         )
     return items
@@ -232,25 +238,7 @@ def _theme_relevance_terms(theme: str, keywords: list[str], companies: list[dict
 
 
 def _renumber_sources(sources: list[SourceItem]) -> list[SourceItem]:
-    return [
-        SourceItem(
-            source_id=f"S{index + 1:03d}",
-            title=item.title,
-            url=item.url,
-            source_level=item.source_level,
-            published_date=item.published_date,
-            snippet=item.snippet,
-            used_in_section=item.used_in_section,
-            provider=item.provider,
-            provider_detail=item.provider_detail,
-            fetch_provider=item.fetch_provider,
-            fetch_status=item.fetch_status,
-            fetch_quality=item.fetch_quality,
-            failure_reason=item.failure_reason,
-            found_by=item.found_by,
-        )
-        for index, item in enumerate(sources)
-    ]
+    return list(sources)
 
 
 def _provider_counts(sources: list[SourceItem]) -> dict[str, int]:

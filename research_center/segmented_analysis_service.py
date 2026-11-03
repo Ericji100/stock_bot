@@ -129,6 +129,15 @@ def run_segmented_theme_analysis(
     if len(plans) > max_segments:
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u539f\u59cb\u5206\u6bb5 {len(plans)} \u6bb5\u8d85\u904e\u4e0a\u9650 {max_segments} \u6bb5\uff0c\u6539\u7528\u6574\u5408\u5206\u6bb5\u3002")
         plans = _bounded_integration_plans(request, structured_data, plans)
+    if getattr(ai_client, 'provider', '') == 'deepseek' and callable(getattr(ai_client, 'prompt_capacity', None)):
+        # A final core packet that cannot fit even without generated notes must
+        # not incur paid intermediate calls. No data is cut to pass this gate.
+        baseline = _build_final_prompt(request, structured_data, [], sources, complete_segment_notes=True)
+        capacity = ai_client.prompt_capacity(baseline, output_tokens=max(65536, ai_client.max_output_tokens))
+        if not capacity['fits']:
+            error = DeepSeekError('完整核心封包已超過最終整合容量；尚未啟動分段付費分析。', 'final_prompt_too_large')
+            error.diagnostics.update(capacity)
+            raise error
     segment_runs: list[SegmentRun] = []
     prompt_paths: list[str] = []
     outputs: list[dict[str, Any]] = []
@@ -136,8 +145,9 @@ def run_segmented_theme_analysis(
     _emit(progress, f"\u5206\u6bb5 AI\uff1a\u5c07\u4f9d\u5e8f\u5206\u6790 {len(plans)} \u6bb5\u8cc7\u6599\uff0cmodel={model_name}")
 
     def execute_segment(index: int, plan: dict[str, Any], prior_outputs: list[dict[str, Any]]) -> tuple[int, str, SegmentRun, dict[str, Any]]:
-        prompt = _build_segment_prompt(request, structured_data, plan, prior_outputs)
         segment_sources = _sources_for_segment_plan(plan, sources)
+        prompt = _build_segment_prompt(request, structured_data, plan, prior_outputs)
+        prompt += '\n\n本段唯一來源編號對照（不得重編；未提供編號的本地資料直接註明本地底稿，不可自創 S 編號）：\n' + json.dumps([{'source_id': item.source_id, 'url': item.url} for item in segment_sources], ensure_ascii=False, separators=(',', ':'))
         prompt_path = write_prompt_log(
             request,
             prompt,
@@ -262,7 +272,7 @@ def run_segmented_theme_analysis(
         },
     )
     prompt_paths.append(str(final_prompt_path))
-    _emit(progress, f"\u5206\u6bb5 AI\uff1a\u9001\u51fa\u6700\u7d42\u6574\u5408 prompt={len(final_prompt)} chars est_tokens={max(1, len(final_prompt) // 4)} sources={len(final_sources)} timeout={int(call_timeout_seconds)}s")
+    _emit(progress, f"分段 AI：最終整合容量{'未通過，未送出' if final_prompt_too_large else '通過，準備送出'}，prompt={len(final_prompt)} chars sources={len(final_sources)}")
     _emit(progress, f"\u5206\u6bb5 AI\uff1a\u6700\u7d42\u6574\u5408 prompt={len(final_prompt)} chars")
     final_started = time.monotonic()
     final_retry_diagnostics: dict[str, Any] | None = None
@@ -725,6 +735,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
             "no_auto_split": True,
             "payload": {
                 "unified_evidence_pack": package.get("unified_evidence_pack"),
+                "evidence_governance": package.get('evidence_governance'),
                 "low_model_digest": package.get("low_model_digest"),
                 "low_model_validation": package.get("low_model_validation"),
                 "low_model_input_policy": package.get("low_model_input_policy"),
@@ -785,6 +796,8 @@ def _build_segment_prompt(
     prior_outputs: list[dict[str, Any]],
 ) -> str:
     from .reader_quality_rules import reader_quality_rules
+    from .topic_input_package import lossless_evidence_json
+    from .report_numeric_validation import financial_fact_bindings
     payload = _compact_segment_payload(plan.get("payload") or {})
     prior_state = _prior_outputs_state(prior_outputs)
     return _sanitize_prompt_text("\n".join([
@@ -794,6 +807,9 @@ def _build_segment_prompt(
         f"Command: {request.command}",
         f"Data date: {data.get('report_date') or request.report_date or 'latest'}",
         f"Segment topic: {plan.get('title')}",
+        f"Analysis target: {request.target or request.theme_scope or request.market_scope or request.candidate_pool or 'market'}",
+        '公司期間具名數值對照（不是新增資料，也不替代完整封包）：',
+        _json(financial_fact_bindings(data)),
         "",
         "Task rules:",
         "- Organize verifiable observations from this segment only; do not make the final investment conclusion.",
@@ -805,7 +821,8 @@ def _build_segment_prompt(
         _json(prior_state),
         "",
         "Segment payload:",
-        _json(payload),
+        '完整無損封包：$topic_ref 展開 shared_records；field_names 展開原欄位名稱；$records 每列首項指定 record_schemas 的欄位順序，其餘項逐一對應欄位，缺欄與空值不混淆。若有 $keys，依序作為各列的原物件鍵；否則為原清單。正式輸出不得出現代碼。',
+        lossless_evidence_json(payload),
     ]))
 
 
@@ -818,10 +835,15 @@ def _build_final_prompt(
     complete_segment_notes: bool = False,
 ) -> str:
     from .reader_quality_rules import reader_quality_rules
+    from .report_numeric_validation import financial_fact_bindings
     command_specific_rules = _final_synthesis_command_rules(request.command)
     local_summary = _final_local_summary(data, complete_core=complete_segment_notes)
-    local_json = (json.dumps(local_summary, ensure_ascii=False, separators=(',', ':'), default=str)
-                  if 'complete_core_packet' in local_summary else _json(local_summary))
+    from .topic_input_package import lossless_evidence_json
+    evidence = lossless_evidence_json({
+        'local_core': local_summary,
+        'segment_notes': _segment_outputs_state(outputs, request.command, complete=complete_segment_notes),
+        'source_index': _source_refs(sources),
+    })
     return _sanitize_prompt_text("\n".join([
         "# Segmented AI final synthesis task",
         reader_quality_rules(),
@@ -840,17 +862,15 @@ def _build_final_prompt(
         "- Do not output source_id, rank_score, prompt_chars, coverage_pct, V/C or other internal field names in prose.",
         *command_specific_rules,
         "",
-        "Local core summary:",
-        local_json,
-        "",
-        "Segment analysis notes:",
-        _json(_segment_outputs_state(outputs, request.command, complete=complete_segment_notes)),
-        "",
-        "Source index:",
-        _json(_source_refs(sources)),
+        'Local core summary / Segment analysis notes / Source index:',
+        '以下為完整資料的無損去重封包；$topic_ref 指向 shared_records 的完整值，field_names 展開原欄位名。$records 每列首項指定 record_schemas 的欄位順序，其餘項逐一對應欄位；若有 $keys，依序作為各列的原物件鍵，否則為原清單。缺欄與空值不同，必須按各列 schema 解讀，正式報告不得輸出代碼。不是刪除或摘要，不同日期、數值、公司及反證均保留。',
+        'Evidence envelope:',
+        evidence,
         "",
         "交稿前檢查：重要事實及估值依據直接標示對應的 [S編號]，只用實際提供的編號；本地數值註明資料日期，不編造引用。",
         "必要來源摘錄中的明確數值優先於分段底稿所稱缺資料；供應商提供的官方新聞稿摘錄不等於已取得完整三張財務報表。",
+        '公司期間具名數值對照（正負號與原始欄位逐項綁定，不把應付帳款當營業現金流；不得捏造本地資料矛盾）：',
+        _json(financial_fact_bindings(data)),
     ]))
 
 
@@ -1064,15 +1084,15 @@ def _segment_local_fallback(plan: dict[str, Any], data: dict[str, Any], exc: Exc
 
 def _compose_segmented_fallback_report(request: CommandRequest, outputs: list[dict[str, Any]], exc: Exception) -> str:
     title = {
-        "theme_radar": "theme_radar fallback report",
-        "theme_flow": "theme_flow fallback report",
-        "sector_strength": "sector_strength fallback report",
-        "research": "research fallback report",
-    }.get(request.command, "segmented AI fallback report")
+        "theme_radar": "題材雷達未完成分析底稿",
+        "theme_flow": "題材流向未完成分析底稿",
+        "sector_strength": "族群強弱未完成分析底稿",
+        "research": "個股研究未完成分析底稿",
+    }.get(request.command, "未完成分析底稿")
     lines = [
         f"# {title}",
         "",
-        f"Final AI synthesis failed. The following content only aggregates segment outputs and local summaries; it is not a formal AI report. Error: {exc}",
+        f"最終 AI 整合未完成；以下保留分段底稿，不是正式 AI 報告，不可視為投資建議。原因：{exc}",
         "",
     ]
     for output in outputs:
@@ -1548,9 +1568,11 @@ def _final_local_summary(data: dict[str, Any], *, complete_core: bool = False) -
     if complete_core and payload.get('schema_version') in {'theme_radar_relation_payload_v1', 'sector_strength_relation_payload_v1'}:
         return {'command_role': command, 'report_date': data.get('report_date') or package.get('report_date'),
                 'required_financial_evidence': required_evidence, 'complete_core_packet': payload,
+                'evidence_governance': data.get('evidence_governance') or package.get('evidence_governance'),
                 'scope_note': '完整沿用已正規化的股票主檔、題材／族群／子族群排行及關聯，非僅前幾名。分段底稿不是另一套正式排行；逐項核對本封包，不把未在摘要重述的公司當成未收到。'}
     if command in {'research', 'value_scan'}:
         summary = {'command_role': command, 'report_date': data.get('report_date'),
+            'evidence_governance': data.get('evidence_governance') or package.get('evidence_governance'),
             'required_financial_evidence': required_evidence,
             'local_scoring': data.get('local_scoring') or payload.get('local_scoring'),
             'data_quality': data.get('data_quality') or {},
@@ -1566,6 +1588,7 @@ def _final_local_summary(data: dict[str, Any], *, complete_core: bool = False) -
     sector_data = data if data.get("command_role") == "sector_strength" else data.get("sector_strength") or {}
     summary = {
         "command_role": data.get("command_role") or command,
+        "evidence_governance": data.get('evidence_governance') or package.get('evidence_governance'),
         "required_financial_evidence": required_evidence,
         "report_date": data.get("report_date"),
         "market_data_date": data.get("market_data_date") or sector_data.get("market_data_date"),
@@ -1747,7 +1770,7 @@ def _stocks(rows: Any, limit: int) -> list[dict[str, Any]]:
 
 
 def _source_refs(sources: list[SourceItem]) -> list[dict[str, Any]]:
-    selected = sources[:60]
+    selected = sources
     return [
         {
             "source_id": source.source_id,
@@ -1755,6 +1778,10 @@ def _source_refs(sources: list[SourceItem]) -> list[dict[str, Any]]:
             "source_level": source.source_level,
             "published_date": source.published_date,
             "provider": source.provider,
+            "url": source.url,
+            "document_kind": source.document_kind,
+            "data_date": source.data_date,
+            "fetch_status": source.fetch_status,
         }
         for source in selected
     ]
@@ -1805,7 +1832,7 @@ def _final_compact(
 
 
 def _compact_segment_payload(payload: Any) -> Any:
-    return _compact(payload, depth=6, max_list=0, max_keys=0, max_string=1800)
+    return payload
 
 
 def _sources_for_segment_plan(plan: dict[str, Any], sources: list[SourceItem]) -> list[SourceItem]:
@@ -1826,12 +1853,8 @@ def _sources_for_segment_plan(plan: dict[str, Any], sources: list[SourceItem]) -
 def _sources_for_segment_outputs(outputs: list[dict[str, Any]], sources: list[SourceItem]) -> list[SourceItem]:
     if not sources:
         return []
-    text = _json(outputs)
-    ids = set(re.findall(r"S\d{3,}", text))
-    if ids:
-        matched = [item for item in sources if item.source_id in ids]
-        if matched:
-            return matched
+    # A model forgetting to cite a source cannot remove its canonical identity
+    # from final synthesis. The index is small and includes every collected row.
     return sources
 
 

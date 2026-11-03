@@ -91,15 +91,21 @@ def source_quality_score(source: Any) -> dict[str, Any]:
     if _is_low_quality_domain(domain) or any(token in provider.lower() for token in ("forum", "ptt", "dcard", "mobile01")):
         score -= 55
         reasons.append("low_quality_domain_or_forum")
-    if any(token in domain for token in ("twse.com.tw", "tpex.org.tw", "mops.twse.com.tw")):
+    if any(domain==token or domain.endswith('.'+token) for token in ("twse.com.tw", "tpex.org.tw")):
         score = max(score, 90)
         reasons.append("official_domain")
 
     score = max(0, min(100, score))
+    payload=item.get('payload') if isinstance(item.get('payload'),dict) else {}
+    kind=str(item.get('document_kind') or payload.get('status') or '')
+    query_only=kind in {'reference_link','reachable','unavailable'}
+    if query_only:
+        reasons.append('reference_or_failed_fetch_not_evidence')
     return {
         "score": score,
         "level": _quality_label(score),
-        "usable_for_company_knowledge": score >= MIN_KNOWLEDGE_SOURCE_SCORE,
+        "usable_for_company_knowledge": score >= MIN_KNOWLEDGE_SOURCE_SCORE and not query_only,
+        "evidence_status": 'reference_only' if query_only else 'requires_claim_verification',
         "reasons": reasons,
         "domain": domain,
     }
@@ -274,19 +280,21 @@ def _build_company_knowledge_entry(row: dict[str, Any], usable_sources: list[dic
         "supply_chain_roles": supply_roles,
         "evidence_sources": [_compact_source(src) for src in usable_sources[:6]],
         "missing_data": sorted(set(missing)),
-        "confidence": "auto_high" if best_score >= 85 else "auto_medium",
+        "confidence": "candidate",
+        "verification_status": "candidate",
         "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "auto_update": {
             "method": "deterministic_source_quality_rules",
             "source_count": len(usable_sources),
             "best_source_quality_score": best_score,
+            "claim_status": "unverified_extraction",
         },
     }
 
 
 def _merge_company_entry(existing: dict[str, Any], draft: dict[str, Any]) -> dict[str, Any]:
     merged = dict(existing or {})
-    for key in ("company_name", "updated_at", "confidence", "auto_update"):
+    for key in ("company_name", "updated_at", "confidence", "auto_update", "verification_status"):
         if not merged.get(key) and draft.get(key):
             merged[key] = draft[key]
     for key in ("product_lines", "customers", "revenue_exposure", "supply_chain_roles", "evidence_sources", "missing_data"):
@@ -340,7 +348,7 @@ def _source_dict(source: Any) -> dict[str, Any]:
     if isinstance(source, dict):
         item = dict(source)
     else:
-        item = {key: getattr(source, key) for key in ("title", "url", "source_level", "published_date", "snippet", "provider") if hasattr(source, key)}
+        item = {key: getattr(source, key) for key in ("source_id", "title", "url", "source_level", "published_date", "snippet", "provider", "document_kind", "date_status", "data_date", "event_date", "period_start", "period_end", "fetched_at") if hasattr(source, key)}
     if "url" not in item and "source_url" in item:
         item["url"] = item.get("source_url")
     if "source_url" not in item and "url" in item:
@@ -398,6 +406,7 @@ def _compact_source(source: dict[str, Any]) -> dict[str, Any]:
         "published_date": source.get("published_date"),
         "source_quality_score": source.get("source_quality_score"),
         "source_quality_level": source.get("source_quality_level"),
+        **{key: source.get(key) for key in ('source_id', 'date_status', 'event_date', 'data_date', 'period_start', 'period_end', 'fetched_at', 'updated_date', 'document_kind')},
     }
 
 

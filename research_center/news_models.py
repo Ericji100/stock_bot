@@ -11,7 +11,8 @@ NEWS_SIGNAL_TAGS = {
     "catalyst": "催化事件",
     "counter_evidence": "反證",
     "heat_risk": "過熱風險",
-    "official_fact": "公告／財報線索（須核對原文）",
+    "official_fact": "已取得官方原文（主張仍須核對）",
+    "disclosure_clue": "公告／財報線索（尚未官方確認）",
     "sentiment": "情緒/小道",
     "market_story": "市場敘事",
     "early_clue": "早期線索",
@@ -117,6 +118,8 @@ def apply_news_signal_tags(item: NewsItem) -> NewsItem:
     existing_signal_reason = item.news_signal_reason
     existing_heat_reason = item.news_heat_risk_reason
     result = classify_news_signal(item)
+    if 'official_fact' not in result['tags']:
+        existing_tags = [tag for tag in existing_tags if tag != 'official_fact']
     item.tags = list(dict.fromkeys([*existing_tags, *result["tags"]]))
     item.news_signal_score = max(existing_signal_score, result["news_signal_score"])
     item.news_heat_risk_score = max(existing_heat_score, result["news_heat_risk_score"])
@@ -150,10 +153,12 @@ def classify_news_signal(item: NewsItem) -> dict[str, Any]:
     sentiment_keywords = ("傳聞", "爆料", "市場傳出", "法人圈", "社群", "論壇", "ptt", "dcard", "mobile01")
     topic_keywords = ("ai", "gpu", "伺服器", "半導體", "高速傳輸", "電源", "散熱", "機器人", "電動車", "低軌", "資料中心", "供應鏈")
 
-    if any(k in text for k in official_keywords):
-        tags.append("official_fact")
+    from .evidence_governance import is_official_url
+    official_body = is_official_url(item.url) and 'official_body_retrieved' in item.tags and bool(item.full_text.strip())
+    if official_body or any(k in text for k in official_keywords):
+        tags.append('official_fact' if official_body else 'disclosure_clue')
         signal_score += 35
-        reasons.append("含公告、營收、財報或官方來源字眼")
+        reasons.append('已取得官方原文，仍須核對公司與期間' if official_body else '公告、營收或財報線索，不等於官方已確認')
     if any(k in text for k in catalyst_keywords):
         tags.append("catalyst")
         signal_score += 30

@@ -12,6 +12,18 @@ from research_center.report_numeric_validation import validate_valuation_tables
 
 
 class ReaderQualityTests(unittest.TestCase):
+    def test_scope_and_forecast_deadline_rules_are_shared(self):
+        rules = reader_quality_rules('theme_flow')
+        for text in ('年度結束與財報可得日', '無行情的公司', '來源優先閱讀數不等於實際送入數'):
+            self.assertIn(text, rules)
+        self.assertIn('技術訊號日可能早於報告日', reader_quality_rules('radar'))
+
+    def test_full_rules_bind_scenario_math_and_metric_identity(self):
+        rules=reader_quality_rules('research')
+        self.assertIn('營收乘匯率乘淨利率除股數',rules)
+        self.assertIn('不以營收成長率冒充',rules)
+        self.assertIn('毛利率、營益率是百分比',rules)
+
     def test_successful_news_reclassification_updates_existing_database_row(self):
         from research_center.news_models import NewsItem
         from research_center.news_repository import NewsRepository
@@ -88,7 +100,9 @@ class ReaderQualityTests(unittest.TestCase):
                 summary = _final_local_summary(data, complete_core=True)
                 self.assertEqual(summary['complete_core_packet'], payload)
                 prompt = _build_final_prompt(CommandRequest(command, '/'+command), data, [], [], complete_segment_notes=True)
-                sent = json.loads(prompt.split('Local core summary:\n')[1].split('\nSegment analysis notes:')[0])
+                from research_center.topic_input_package import expand_evidence_json
+                envelope = json.JSONDecoder().raw_decode(prompt.split('Evidence envelope:\n',1)[1])[0]
+                sent = expand_evidence_json(envelope)['local_core']
                 self.assertEqual(sent['complete_core_packet'], payload)
                 self.assertNotIn('omitted_count', prompt)
 
@@ -190,7 +204,7 @@ class ReaderQualityTests(unittest.TestCase):
         core = SourceItem('S050', '最新季度財報', 'https://example.com/earnings', 'Level 3',
                           snippet=body, provider_detail='最新官方季度財報')
         rows = _source_excerpts([*fillers, core], limit=2)
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 31)
         self.assertEqual(rows[-1]['snippet'], body)
         self.assertEqual(rows[-1]['source_level'], 'Level 3')
         self.assertIn('not_full_statements', rows[-1]['content_scope'])

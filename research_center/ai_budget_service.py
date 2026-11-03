@@ -133,17 +133,23 @@ class MonthlyBudget:
             conn.execute("BEGIN IMMEDIATE")
             previous = conn.execute("SELECT reason FROM incidents WHERE scope=?", (scope,)).fetchone()
             old = previous[0] if previous else ""
-            if preflight and not reason and old in {'rate_limited','transport_unknown','service_unavailable'}:
+            if preflight and not reason and old in {
+                'rate_limited', 'transport_unknown', 'service_unavailable',
+                'schedule_pacing', 'monthly_budget_exceeded', 'background_budget_exceeded',
+                'manual_budget_exceeded', 'job_budget_exceeded', 'low_balance',
+            }:
                 return
             reason = reason or ""
             if old == reason:
                 return
             conn.execute("INSERT OR REPLACE INTO incidents VALUES (?,?)", (scope,reason))
             if reason:
-                message = "AI 背景工作暫停：" + REASONS.get(reason, "AI 服務暫時不可用") + "。已完成資料已保留；其他非 AI 排程照常執行。"
+                message = ('AI 背景工作暫停：' if background else 'AI 手動工作暫停：') + REASONS.get(reason, "AI 服務暫時不可用") + "。已完成資料已保留；其他非 AI 排程照常執行。"
+                if reason == 'schedule_pacing':
+                    message += '這是本地排程費用進度護欄，不代表官方餘額用完；明日排程會重檢，足以預留本次費用才會執行 AI。'
                 kind = "blocked"
             else:
-                message = "AI 背景服務檢查已恢復，可繼續付費工作；先前待補工作不代表已自動完成。"
+                message = "AI 服務已有實際請求恢復成功；後續仍逐筆檢查預算與餘額，並非保證整項工作可完成。先前待補工作不代表已自動完成。"
                 kind = "recovered"
             conn.execute("INSERT INTO notices VALUES (?,?,?,?,?,?)", (uuid4().hex,scope,kind,reason,message,"pending"))
 

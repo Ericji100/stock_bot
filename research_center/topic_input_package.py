@@ -15,7 +15,7 @@ def intern_topic_payloads(payloads: dict[str, Any]) -> tuple[dict[str, Any], dic
         if not isinstance(value, (dict, list, str)):
             return None
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-        return encoded if len(encoded) >= 256 else None
+        return encoded if len(encoded) >= 128 else None
 
     def count(value):
         key = identity(value)
@@ -62,7 +62,121 @@ def intern_topic_payloads(payloads: dict[str, Any]) -> tuple[dict[str, Any], dic
     return {key: encode(value) for key, value in payloads.items()}, records
 
 
+def lossless_evidence_json(payload: dict[str, Any]) -> str:
+    """One reversible envelope shared by topic and report inputs, not a digest."""
+    values, records = intern_topic_payloads(payload)
+    base = {'values': values, 'shared_records': records}
+    def render(value, schemas=None):
+        envelope, names = intern_field_names(value)
+        envelope['field_names'] = names
+        envelope['references_enabled'] = bool(records)
+        if schemas:
+            envelope['record_schemas'] = schemas
+        return json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), default=str)
+    text = render(base)
+    tabular, schemas = intern_record_tables(base)
+    if schemas:
+        candidate = render(tabular, schemas)
+        if len(candidate.encode('utf-8')) < len(text.encode('utf-8')):
+            text = candidate
+    # Keep suspicious source glyphs reversible even when the instruction-text
+    # sanitizer removes such characters. This is JSON escaping, not repair.
+    return re.sub(r'[\ue000-\uf8ff\ufffd]', lambda m: '\\u%04x' % ord(m.group()), text)
+
+
+def intern_record_tables(payload):
+    """Store repeated record keys once; row values and missing/null stay distinct."""
+    def reserved(value):
+        if isinstance(value, dict):
+            return '$records' in value or any(reserved(v) for v in value.values())
+        return any(reserved(v) for v in value) if isinstance(value, list) else False
+    if reserved(payload):
+        return payload, {}
+    schemas, identities = {}, {}
+    def encode(value):
+        if isinstance(value, dict):
+            children = {k: encode(v) for k,v in value.items()}
+            rows, keys = list(children.values()), list(children)
+        elif isinstance(value, list):
+            children = [encode(v) for v in value]
+            rows, keys = children, None
+        else:
+            return value
+        if len(rows) < 3 or not all(isinstance(r,dict) and r and '$records' not in r for r in rows):
+            return children
+        proposed, encoded = {}, []
+        for row in rows:
+            fields = tuple(row)
+            schema = identities.get(fields) or proposed.get(fields)
+            if schema is None:
+                schema = f'Q{len(schemas)+len(proposed)+1:04d}'
+                proposed[fields] = schema
+            encoded.append([schema, *row.values()])
+        table = {'$records': encoded}
+        if keys is not None:
+            table['$keys'] = keys
+        serialize = lambda item: json.dumps(item,ensure_ascii=False,separators=(',', ':'),default=str).encode('utf-8')
+        overhead = {schema:list(fields) for fields,schema in proposed.items()}
+        if len(serialize(table)) + len(serialize(overhead)) + 32 >= len(serialize(children)):
+            return children
+        for fields, schema in proposed.items():
+            schemas[schema], identities[fields] = list(fields), schema
+        return table
+    return encode(payload), schemas
+
+
+def intern_field_names(payload):
+    """Reversible dictionary for repeated long JSON field names, not values."""
+    counts = Counter()
+    def visit(value):
+        if isinstance(value, dict):
+            counts.update(value.keys())
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+    visit(payload)
+    prefix = '~'
+    while any(str(key).startswith(prefix) for key in counts):
+        prefix += '~'
+    names, aliases = {}, {}
+    for key, count in sorted(counts.items()):
+        if key in {'values', 'shared_records', '$topic_ref', '$records', '$keys', 'source_id', 'company_code', 'stock_code', 'code', 'name', 'url', 'data_date', 'published_date', 'report_date'}:
+            continue
+        alias = prefix + str(len(names))
+        saved = (len(str(key).encode()) - len(alias)) * count
+        if count > 1 and saved > len(str(key).encode()) + len(alias) + 8:
+            names[alias], aliases[key] = key, alias
+    def encode(value):
+        if isinstance(value, dict):
+            return {aliases.get(k,k): encode(v) for k,v in value.items()}
+        return [encode(v) for v in value] if isinstance(value,list) else value
+    return encode(payload), names
+
+
+def expand_evidence_json(envelope):
+    """Used by audit/tests to prove exact value roundtrips, never to fabricate facts."""
+    def expand(value):
+        if isinstance(value, dict):
+            if set(value) == {'$topic_ref'} and envelope.get('references_enabled', True):
+                return expand(envelope['shared_records'][value['$topic_ref']])
+            if envelope.get('record_schemas') and set(value) in ({'$records'}, {'$records','$keys'}):
+                rows = [dict(zip(envelope['record_schemas'][row[0]], (expand(v) for v in row[1:]), strict=True))
+                        for row in value['$records']]
+                rows = [expand(row) if set(row) == {'$topic_ref'} else row for row in rows]
+                return dict(zip(value['$keys'], rows, strict=True)) if '$keys' in value else rows
+            return {envelope.get('field_names', {}).get(k,k): expand(v) for k,v in value.items()}
+        return [expand(v) for v in value] if isinstance(value,list) else value
+    return expand(envelope['values'])
+
+
 def append_topic_shared_records(prompt: str, variables: dict[str, str]) -> str:
+    from .reader_quality_rules import reader_quality_rules
+    prompt += '\n\n' + reader_quality_rules('topic_maintain')
+    if variables.get('topic_field_names_json'):
+        prompt += '\n全局欄位名稱字典：同代碼等於其原欄位名，閱讀時須展開，不可把代碼寫入正式輸出。\n' + variables['topic_field_names_json']
+    prompt += '\n\n本批日期與證據檢核：\n' + variables.get('evidence_governance_json', '{}')
     records = variables.get("topic_shared_records_json", "{}")
     if records == "{}":
         return prompt
@@ -76,23 +190,65 @@ def append_topic_shared_records(prompt: str, variables: dict[str, str]) -> str:
 
 
 def merge_topic_sources(data: dict[str, Any]) -> list[dict]:
-    merged={}
+    merged=[]
     for key in ('discovery_sources','base_sources','web_fetched_sources'):
         for row in data.get(key) or []:
             if not isinstance(row,dict):
                 continue
             identity=row.get('url') or row.get('source_id') or json.dumps(row,sort_keys=True,default=str)
-            previous=merged.setdefault(identity,{})
+            body=str(row.get('content') or row.get('snippet') or '')
+            def compatible(previous):
+                old_id=previous.get('url') or previous.get('source_id') or json.dumps(previous,sort_keys=True,default=str)
+                if old_id != identity:
+                    return False
+                if any(previous.get(key) and row.get(key) and previous[key] != row[key]
+                       for key in ('published_date','data_date','period_end','updated_date')):
+                    return False
+                old_body=str(previous.get('content') or previous.get('snippet') or '')
+                return not old_body or not body or old_body in body or body in old_body
+            previous=next((item for item in merged if compatible(item)), None)
+            if previous is None:
+                previous={}
+                merged.append(previous)
+            aliases=list(dict.fromkeys([*(previous.get('source_id_aliases') or []),
+                                      *(row.get('source_id_aliases') or []),
+                                      *([previous['source_id']] if previous.get('source_id') else []),
+                                      *([row['source_id']] if row.get('source_id') else [])]))
             for field,value in row.items():
                 if value is not None and value!='' and value!=[]:
                     if field in {'source_id','published_date','source_level'} and previous.get(field):
                         continue
+                    if field in {'snippet','content'} and previous.get(field) and str(value) in str(previous[field]):
+                        continue
                     previous[field]=value
-    for row in merged.values():
+            if aliases:
+                previous['source_id_aliases']=aliases
+    for row in merged:
         body=row.get('content')
         if isinstance(body,str) and isinstance(row.get('snippet'),str) and row['snippet'] in body:
             row['snippet']=None
-    return list(merged.values())
+    return merged
+
+
+def topic_source_references(value):
+    urls=set(_references(value))
+    ids=set()
+    def visit(item, reference=False):
+        if isinstance(item,dict):
+            for key,child in item.items():
+                visit(child, key in {'source_id','source_refs','evidence_source_ids','source_id_aliases'})
+        elif isinstance(item,list):
+            for child in item:
+                visit(child,reference)
+        elif reference and isinstance(item,str):
+            ids.update(re.findall(r'(?<![A-Za-z0-9])S\d+(?!\d)',item))
+    visit(value)
+    return urls,ids
+
+
+def referenced_topic_sources(candidates, sources):
+    urls,ids=topic_source_references(candidates)
+    return [row for row in sources if row.get('url') in urls or row.get('source_id') in ids or ids.intersection(row.get('source_id_aliases') or [])]
 
 
 def _references(value):
@@ -112,6 +268,13 @@ def _references(value):
 def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     result=dict(variables)
     sources=merge_topic_sources(data) if source_rows is None else source_rows
+    from datetime import date
+    from .evidence_governance import build_evidence_governance
+    raw_date = data.get('report_date')
+    try:
+        report_date = date.fromisoformat(str(raw_date)[:10]) if raw_date else None
+    except ValueError:
+        report_date = None
     profiles=data.get('existing_topic_profiles') or []
     evidence=data.get('webfetch_evidence') or {}
     if batch is None:
@@ -122,7 +285,7 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
         nodes=[]
         scan_rows=[{k:row.get(k) for k in ('code','name','scan_type','report_date','score','strategy_signals')} for row in data.get('recent_scan_candidates') or [] if isinstance(row,dict)]
     else:
-        urls=set(_references(batch))
+        urls,source_ids=topic_source_references(batch)
         codes=set()
         ids=set()
         terms=set()
@@ -136,6 +299,8 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
                     if company.get('company_name'): terms.add(str(company['company_name']))
         terms.update(codes)
         def related(row):
+            if isinstance(row, dict) and (row.get('source_id') in source_ids or source_ids.intersection(row.get('source_id_aliases') or [])):
+                return True
             if any(url in urls for url in _references(row)):
                 return True
             text=json.dumps(row,ensure_ascii=False,default=str)
@@ -162,7 +327,11 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     if batch is not None:
         payloads['web_fetched_sources_json']=payloads['discovery_sources_json']
         payloads['discovery_sources_json']=[]
+    payloads['evidence_governance_json'] = build_evidence_governance('topic_maintain', report_date, sources, data)
     payloads, records = intern_topic_payloads(payloads)
+    envelope, names = intern_field_names({'values': payloads, 'shared_records': records})
+    payloads, records = envelope['values'], envelope['shared_records']
+    result['topic_field_names_json'] = json.dumps(names, ensure_ascii=False, separators=(',', ':'))
     for key,value in payloads.items():
         result[key]=json.dumps(value,ensure_ascii=False,separators=(',', ':'),default=str)
     result['topic_shared_records_json']=json.dumps(records,ensure_ascii=False,separators=(',', ':'),default=str)

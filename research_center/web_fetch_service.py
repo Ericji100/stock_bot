@@ -45,6 +45,8 @@ class WebFetchResult:
     fetch_provider: str = "requests_bs4"  # "requests_bs4", "tavily_extract"
     fetch_quality: str = "high"  # "high", "medium", "low"
     failure_reason: str | None = None
+    date_status: str | None = None
+    updated_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -73,7 +75,7 @@ def fetch_web_content(
         from dataclasses import asdict
         import hashlib
         client = configured_client()
-        cache_key = "page:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
+        cache_key = "page:publication-v2:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
         cached = client.account.cached(cache_key)
         if cached is not None:
             if cached.get("title"):
@@ -234,7 +236,7 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
     for tag in soup.find_all(["script", "style", "nav", "header", "footer", "aside"]):
         tag.decompose()
 
-    main = soup.find("main") or soup.find("article") or soup.find("div", class_=re.compile(r"content|article|post|entry", re.I)) or soup
+    main = soup.find("article") or soup.find("main") or soup.find("div", class_=re.compile(r"content|article|post|entry", re.I)) or soup
 
     text = main.get_text(separator="\n", strip=True)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -251,6 +253,8 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
             title=title_text,
             content=text[:15000],
             published_date=published_date,
+            date_status=_html_date_status(soup, published_date),
+            updated_date=_html_updated_date(soup),
             content_status="success" if quality != "low" else "partial",
             fetch_provider="requests_bs4",
             fetch_quality=quality,
@@ -264,6 +268,8 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
             title=title_text,
             content=text[:5000],
             published_date=published_date,
+            date_status=_html_date_status(soup, published_date),
+            updated_date=_html_updated_date(soup),
             content_status="partial",
             fetch_provider="requests_bs4",
             fetch_quality="low" if quality == "low" else "medium",
@@ -454,13 +460,11 @@ def _extract_html_published_date(soup: bs4.BeautifulSoup, raw_html: str, url: st
     candidates: list[str] = []
     meta_selectors = [
         ("property", "article:published_time"),
-        ("property", "article:modified_time"),
         ("name", "date"),
         ("name", "pubdate"),
         ("name", "publishdate"),
         ("name", "published_time"),
         ("itemprop", "datePublished"),
-        ("itemprop", "dateModified"),
     ]
     for attr, value in meta_selectors:
         for tag in soup.find_all("meta", attrs={attr: value}):
@@ -478,18 +482,42 @@ def _extract_html_published_date(soup: bs4.BeautifulSoup, raw_html: str, url: st
     for script in soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)}):
         text = script.get_text(" ", strip=True)
         if text:
-            candidates.append(text[:20000])
+            from .source_date_normalizer import publication_metadata_date
+            if published := publication_metadata_date(text):
+                candidates.append(published)
     page_text = soup.get_text(" ", strip=True)
     for pattern in (
-        r"(?:發布時間|更新時間|發稿時間|刊登時間|出版時間|記者|中央社)\s*[:：]?\s*([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
-        r"([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?\s+\d{1,2}:\d{2}(?::\d{2})?)",
+        r"(?:發布時間|發稿時間|刊登時間|出版時間|中央社)\s*[:：]?\s*([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
     ):
         for match in re.finditer(pattern, page_text):
             candidates.append(match.group(1))
-    candidates.append(raw_html[:50000])
     if published_date := normalize_published_date(*candidates):
         return published_date
     return _extract_site_specific_published_date(soup, raw_html, url)
+
+
+def _html_updated_date(soup) -> str | None:
+    for attr, value in (('property', 'article:modified_time'), ('itemprop', 'dateModified')):
+        tag = soup.find('meta', attrs={attr: value})
+        if tag and (day := normalize_published_date(tag.get('content'))):
+            return day
+    return None
+
+
+def _html_date_status(soup, published: str | None) -> str:
+    if not published:
+        return 'unknown'
+    for attr, value in (('property', 'article:published_time'), ('name', 'pubdate'), ('name', 'publishdate'), ('name', 'published_time'), ('itemprop', 'datePublished')):
+        tag = soup.find('meta', attrs={attr: value})
+        if tag and normalize_published_date(tag.get('content')) == published:
+            return 'explicit'
+    from .source_date_normalizer import publication_metadata_date
+    for script in soup.find_all('script', attrs={'type': re.compile(r'ld\+json', re.I)}):
+        if publication_metadata_date(script.get_text(' ', strip=True)) == published:
+            return 'explicit'
+    if re.search(r'(發布|發稿|刊登|出版)時間', soup.get_text(' ', strip=True)):
+        return 'explicit'
+    return 'inferred'
 
 
 _SITE_DATE_CONTEXT_RE = re.compile(
@@ -577,6 +605,8 @@ def _merge_fetch_results(primary: WebFetchResult, fallback: WebFetchResult) -> W
         fetch_provider=fallback.fetch_provider,
         fetch_quality=fallback.fetch_quality,
         failure_reason=fallback.failure_reason,
+        date_status=fallback.date_status if fallback.published_date else primary.date_status,
+        updated_date=fallback.updated_date or primary.updated_date,
     )
 
 

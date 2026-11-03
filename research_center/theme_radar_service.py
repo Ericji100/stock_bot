@@ -12,7 +12,7 @@ from stock_ai_bot.scanning.stock_scanner import load_price_metrics, load_stock_u
 
 from .config import ROOT_DIR
 from .knowledge_base import find_theme_company_candidates, load_company_knowledge
-from .market_movers_service import _price_date_audit, _safe_price_metrics as _shared_market_price_metrics, build_market_movers, rows_from_market_movers
+from .market_movers_service import _price_date_audit, _safe_price_metrics as _shared_market_price_metrics, build_market_movers, rows_from_market_movers, separate_market_sessions
 from .news_repository import NewsRepository
 from .recent_scans import load_recent_scan_results
 from .sector_alias_service import (
@@ -197,14 +197,15 @@ def build_theme_flow_data(
         or (query and query in json.dumps(row.get("theme_matches", []), ensure_ascii=False))
     ]
     related = list({str(row.get('code')): row for row in related}.values())
-    usable = [row for row in related if row.get('price') is not None and row.get('price_date')]
-    flow_date_audit = _price_date_audit(usable, target_date)
+    current_related, older_related, ranking_date = separate_market_sessions(related, target_date)
+    usable = [row for row in current_related if row.get('price') is not None and row.get('price_date')]
+    flow_date_audit = _price_date_audit(related, target_date)
     if preloaded is not None and "news_stats" in preloaded:
         news_stats = preloaded.get("news_stats") or []
     else:
         news_stats = _build_news_theme_stats(topic_library, lookback_days)
     nodes = _nodes_for_theme(theme_id, topic_library)
-    layers = _build_layers(theme, nodes, related)
+    layers = _build_layers(theme, nodes, current_related)
     layer_market_validation = _layer_market_validation(layers)
     return {
         "command_role": "theme_flow",
@@ -216,6 +217,7 @@ def build_theme_flow_data(
         "theme": theme or {"theme_id": "", "theme_name": query, "status": "not_found"},
         "related_stock_count": len(related),
         "related_stocks": related,
+        "other_session_related_stocks": older_related,
         "layers": layers,
         "layer_market_validation": layer_market_validation,
         "next_layer_candidates": _next_layer_candidates(layers),
@@ -228,6 +230,7 @@ def build_theme_flow_data(
             "flow_evidence_basis": "price_volume_proxy",
             "quantitative_missing_codes": [row['code'] for row in related if row not in usable],
             "price_date_audit": flow_date_audit,
+            "ranking_price_date": ranking_date,
             "warnings": (["關聯公司量價覆蓋不足，不能推論完整族群資金流。"] if len(usable) < 2 or len(usable) < len(related) else []) + flow_date_audit['warnings'],
             "market_data_date": _market_data_date_from(market_movers),
             "stock_rows_source": stock_rows_source,
@@ -269,6 +272,7 @@ def build_sector_strength_data(
     elif market_movers is None:
         market_movers = {"status": "provided_strong_rows", "active_movers": strong_rows, "data_quality": {}}
 
+    strong_rows, older_strong_rows, ranking_date = separate_market_sessions(strong_rows, target_date)
     strong_rows = annotate_rows_with_subsectors(strong_rows)
     subsector_rankings = build_subsector_rankings(strong_rows)
 
@@ -353,11 +357,13 @@ def build_sector_strength_data(
             "sector_mover_rankings": (market_movers or {}).get("sector_mover_rankings", [])[:20],
             "data_quality": (market_movers or {}).get("data_quality", {}),
         },
-        "sector_rankings": rankings[:20],
-        "subsector_rankings": subsector_rankings[:30],
+        "sector_rankings": rankings,
+        "other_session_strong_rows": older_strong_rows,
+        "subsector_rankings": subsector_rankings,
         "data_quality": {
             "input_stock_count": len(strong_rows),
             "sector_count": len(rankings),
+            "ranking_price_date": ranking_date,
             "subsector_count": len(subsector_rankings),
             "market_data_date": _market_data_date_from(market_movers),
             "market_movers_data_quality": (market_movers or {}).get("data_quality", {}),

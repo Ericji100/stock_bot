@@ -325,12 +325,15 @@ def _sources_to_news_items(sources: list[SourceItem]) -> list[NewsItem]:
         source_name = matched.get("name") if matched else (src.provider or "")
         summary = src.snippet or ""
         title = _normalize_news_title(src.title or "", summary)
+        from .source_date_normalizer import source_publication_status
         items.append(apply_news_signal_tags(NewsItem(
             id=str(uuid.uuid4())[:8],
             title=title,
             url=url,
             source=source_name,
             published_at=src.published_date or "",
+            tags=['publication_' + source_publication_status(src)] +
+                 (['official_body_retrieved'] if src.document_kind in {'document_body','parsed_record'} and src.fetch_status == 'success' else []),
             summary=summary,
             full_text=summary,
             news_origin="refresh",
@@ -365,14 +368,12 @@ def _backfill_refresh_item_dates(items: list[NewsItem]) -> list[NewsItem]:
             if normalized:
                 item.published_at = normalized
             continue
-        inferred = normalize_published_date(
-            item.title,
-            item.summary,
-            item.full_text,
-            item.url,
-        )
+        from .source_date_normalizer import publication_metadata_date
+        explicit = publication_metadata_date(item.full_text) or publication_metadata_date(item.summary)
+        inferred = explicit or normalize_published_date(item.url)
         if inferred:
             item.published_at = inferred
+            item.tags.append('publication_explicit' if explicit else 'publication_inferred')
     return items
 
 
@@ -676,6 +677,8 @@ def _filter_by_published_window(items: list[NewsItem], hours: int, keep_unknown_
     result: list[NewsItem] = []
     for item in items:
         published_text = (item.published_at or "").strip().lower()
+        if not keep_unknown_date and any(tag in item.tags for tag in ('publication_inferred', 'publication_unknown')):
+            continue
         if hours <= 48 and re.search(r"\b(?:2|[3-9]|\d{2,})\s*days?\b", published_text):
             continue
         if hours <= 48 and re.search(r"(?:2|[3-9]|\d{2,})\s*天前", published_text):
@@ -686,6 +689,8 @@ def _filter_by_published_window(items: list[NewsItem], hours: int, keep_unknown_
                 result.append(item)
             continue
         if published >= cutoff:
+            if published.date() > datetime.now().date():
+                continue
             result.append(item)
     return result
 
@@ -992,6 +997,7 @@ def run_news_refresh(
             "classification_status": "partial_success" if local_fallback_count else "ai_success",
             "deferred_classification_count": len(deferred),
             "analysis_coverage_status": "partial" if deferred or local_fallback_count else "complete",
+            "pending_classification_summary": repository.pending_classification_summary() if official and hasattr(repository, 'pending_classification_summary') else {},
             "analysis_coverage_note": "待補新聞已保存，但未經 AI 判讀；不作為已完成的利多利空結論。" if deferred else "",
             "deferred_urls": [item.url for item in deferred],
             "minimax_diagnostics": minimax_diag,
@@ -1199,13 +1205,24 @@ def _classification_payload(items: list[NewsItem], text_limit: int, lightweight:
             "url": item.url,
             "source": item.source,
             "published_at": item.published_at,
+            "date_audit": _news_temporal_record(item),
             "snippet": _truncate_for_ai(item.summary, snippet_limit),
         }
         if not lightweight:
-            body = item.full_text or item.summary
+            from .source_text_cleaner import article_text_sections
+            primary, related = article_text_sections(item.full_text or item.summary)
+            body = primary + ('\n\n【其他文章的延伸閱讀，非本文公司證據；勿把其數字歸給本文公司】\n' + related if related else '')
             row["text"] = _truncate_for_ai(body, text_limit)
         payload.append(row)
     return payload
+
+
+def _news_temporal_record(item: NewsItem) -> dict[str, Any]:
+    from .source_date_normalizer import source_temporal_record
+    from zoneinfo import ZoneInfo
+    status = 'inferred' if 'publication_inferred' in item.tags else 'unknown' if 'publication_unknown' in item.tags else None
+    return source_temporal_record({"source_id": item.id, "published_at": item.published_at, "date_status": status,
+                                   "fetched_at": item.created_at}, datetime.now(ZoneInfo('Asia/Taipei')).date())
 
 
 def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) -> list[NewsItem]:
@@ -1223,7 +1240,8 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
             it.importance_score = meta.get("importance_score", 0) or 0
             it.impact_direction = meta.get("impact_direction", "") or ""
             if isinstance(meta.get("tags"), list):
-                it.tags = [str(tag) for tag in meta.get("tags") or [] if tag]
+                provenance = [tag for tag in it.tags if tag.startswith('publication_') or tag == 'official_body_retrieved']
+                it.tags = list(dict.fromkeys([*provenance, *(str(tag) for tag in meta.get("tags") or [] if tag)]))
             if 'ai_classified' not in it.tags:
                 it.tags.append('ai_classified')
             it.news_signal_score = int(meta.get("news_signal_score", it.news_signal_score) or 0)
@@ -2717,7 +2735,9 @@ def save_user_submitted_news_url(
         title=title,
         url=clean_url,
         source=source_name,
-        published_at=datetime.now().isoformat(timespec="seconds"),
+        published_at=fetched.published_date or '',
+        tags=['publication_' + (fetched.date_status or 'unknown')] +
+             (['official_body_retrieved'] if fetched.content_status == 'success' else []),
         summary=summary,
         full_text=full_text,
         news_origin="manual",

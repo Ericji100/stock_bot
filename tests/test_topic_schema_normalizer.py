@@ -46,6 +46,26 @@ class TopicSchemaNormalizerTests(unittest.TestCase):
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0].action_type, TopicActionType.UPDATE_THEME)
 
+    def test_evidence_supports_alias_preserves_real_source_identity(self):
+        action = normalize_topic_detail_action({'theme_id':'ai_materials','theme_name':'AI材料',
+            'evidence':[{'source_id':'S093','url':'https://example.com/article',
+                         'supports':'媒體點名，仍待公司確認','supporting_quote':'來源原句不可遺失'}]})
+        self.assertEqual(len(action.evidence), 1)
+        self.assertEqual(action.evidence[0].source_id, 'S093')
+        self.assertEqual(action.evidence[0].content, '媒體點名，仍待公司確認')
+        self.assertEqual(action.evidence[0].supporting_quote, '來源原句不可遺失')
+        from research_center.topic_models import TopicEvidence
+        self.assertEqual(TopicEvidence.from_dict(action.evidence[0].to_dict()), action.evidence[0])
+
+    def test_same_code_role_is_not_lost_between_candidate_and_relation(self):
+        action = normalize_topic_detail_action({'theme_id':'ai_materials','theme_name':'AI材料',
+            'affected_companies':[{'company_code':'2330','company_name':'台積電','role':'模型原有角色，待核'}],
+            'company_relations':[{'company_code':'2330','company_name':'台積電'},
+                                 {'company_code':'2241','company_name':'艾姆勒'}]})
+        self.assertEqual(action.company_relations[0]['role'],'模型原有角色，待核')
+        self.assertEqual(action.company_relations[0]['verification_status'],'candidate')
+        self.assertEqual(action.company_relations[1]['role'],'待補題材角色')
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,3 +9,8 @@ docs/research/README.md text eol=lf
 docs/research/dual_ma/** -text
 docs/research/stock_data/** -text
 scripts/restore_curated_research_archive.py text eol=lf
+# Manifest hashes pin the original bytes, including historical mixed newlines.
+trade_monitor/rules/versions/**/prompt.md -text
+trade_monitor/rules/versions/**/automation.toml -text
+trade_monitor/rules/versions/**/analysis-schema.json -text
+trade_monitor/schemas/*.json -text

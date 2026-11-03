@@ -19,7 +19,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from scripts.dual_ma_etf_0050_ten_year_package_v1 import technical_rows_as_of
+from scripts.dual_ma_etf_0050_ten_year_package_v1 import CONTRACT, technical_rows_as_of
 from stock_ai_bot.data_sources.causal_price_contract import (
     ActionKind,
     CorporateActionEvent,
@@ -56,7 +56,7 @@ from .etf_0050_long_term_monitor_v1 import (
 from .fugle_source import sha256_file
 from .h2_ma144_upward_entry_2022h2 import GateEvaluation, build_ma144_gate_map
 from .models import Bar
-from .paths import REPOSITORY_ROOT, dev_run, report_path
+from .paths import dev_run, report_path
 
 
 PACKAGE_ROOT = dev_run("04-etf-0050-research-package-2016-2026-v1")
@@ -67,7 +67,6 @@ V1_REPORT_ROOT = report_path("etf", "0050", "2017-2026-base-v1")
 BASE_V4_ROOT = report_path("etf", "0050", "base-v4")
 OLD_RUN_ROOT = dev_run("02-etf-0050-long-term-monitor-v1")
 OLD_V3_PACKAGE_ROOT = dev_run("03-etf-research-package-v3")
-CONTRACT = REPOSITORY_ROOT / "docs/strategies/dual_ma/0050-2017-2026-ten-year-same-method-v1.md"
 REPORT_TEMPLATE = Path(__file__).resolve().parents[2] / "docs/strategies/dual_ma/standard-backtest-report-v2.md"
 EXPECTED = {
     "contract": "B1A30A8E57025007FAD59E6578C4F408C020AAA03AA27673842A1C2F7828E663",

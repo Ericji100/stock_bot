@@ -37,6 +37,19 @@ def test_contract_and_adopted_package_pins_are_exact():
     assert pkg.file_sha256(pkg.ADOPTED / "artifact_manifest.json") == pkg.ADOPTED_MANIFEST_SHA256
 
 
+def test_contract_uses_immutable_snapshot_not_navigation_document():
+    assert pkg.CONTRACT == ROOT / "docs/research/dual_ma/0050/contracts/2006-2026-data-and-backtest-v1.md"
+    assert pkg.file_sha256(pkg.CONTRACT) == pkg.CONTRACT_SHA256
+
+
+def test_changed_contract_still_fails_closed(tmp_path, monkeypatch):
+    changed = tmp_path / "contract.md"
+    changed.write_bytes(pkg.CONTRACT.read_bytes() + b"\nchanged\n")
+    monkeypatch.setattr(pkg, "CONTRACT", changed)
+    with pytest.raises(ValueError, match="^CONTRACT_SHA_MISMATCH$"):
+        pkg._assert_pins()
+
+
 def test_validate_only_is_network_free_and_passes():
     result = pkg.validate_only()
     assert result["status"] == "PASS"

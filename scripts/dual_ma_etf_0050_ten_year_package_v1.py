@@ -52,7 +52,7 @@ OUT = Path(
 )
 V3 = WORKDATA / "03-etf-research-package-v3"
 SECRETS = Path(os.environ.get("STOCK_AI_BOT_SECRETS_PATH", ROOT / "config" / "secrets.json"))
-CONTRACT = ROOT / "docs/strategies/dual_ma/0050-2017-2026-ten-year-same-method-v1.md"
+CONTRACT = ROOT / "docs/research/dual_ma/0050/contracts/2017-2026-ten-year-same-method-v1.md"
 
 SCHEMA = "dual-ma-etf-0050-research-package-2016-2026-v1"
 CONTRACT_SHA256 = "B1A30A8E57025007FAD59E6578C4F408C020AAA03AA27673842A1C2F7828E663"

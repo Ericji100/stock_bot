@@ -20,6 +20,8 @@ README 只保留專案入口、啟動方式、常用指令與維護索引；完�
 
 日常使用可以從 `/start` 或 `/help` 進入互動選單；工程維護則先看本 README，再依需求進入 `docs/`。
 
+既有 ETF 契約與台指版本檔完整性修正、完整 pytest 結果及運作中 Bot 保護範圍，見[驗證報告](docs/test-integrity-verification-20261103.md)。
+
 ## 目前狀態
 
 | 模組 | 狀態 | 備註 |

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import asyncio
+import inspect
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -1072,12 +1073,15 @@ class ScanMenuTests(unittest.TestCase):
         self.assertIn('CallbackQueryHandler(handle_radar_date_callback', content)
         self.assertIn("resolve_radar_report_date", content)
 
-    def test_scheduled_radar_uses_minimax_comment(self):
-        content = Path("d:/code/stock_ai_bot/main.py").read_text(encoding="utf-8")
+    def test_scheduled_radar_uses_deepseek_comment(self):
+        from main import _scheduled_radar_push
+
+        content = inspect.getsource(_scheduled_radar_push)
         self.assertIn('source="technical"', content)
-        self.assertIn("ai_top=15", content)
-        self.assertIn('model="minimax"', content)
-        self.assertIn("ai_comment_enabled=True", content)
+        self.assertIn("ai_top=0 if blocked else 15", content)
+        self.assertIn('model="deepseek"', content)
+        self.assertIn("ai_comment_enabled=not blocked", content)
+        self.assertNotIn('model="minimax"', content)
 
 
 # ------------------------------------------------------------------
@@ -1162,12 +1166,12 @@ class NewsMenuTests(unittest.TestCase):
         self.assertIn('CommandHandler("news_detail"', content)
         self.assertIn('CommandHandler("news_save"', content)
 
-    def test_scheduled_news_refresh_uses_minimax(self):
-        """Scheduled news refresh should default to MiniMax M3 via the minimax model key."""
-        main_path = "d:/code/stock_ai_bot/main.py"
-        content = Path(main_path).read_text(encoding="utf-8")
-        self.assertIn('run_news_refresh, center, repository, progress, ai_model="minimax"', content)
-        self.assertNotIn('run_news_refresh, center, repository, progress, ai_model="deepseek"', content)
+    def test_scheduled_news_refresh_uses_deepseek(self):
+        from main import _scheduled_news_refresh
+
+        content = inspect.getsource(_scheduled_news_refresh)
+        self.assertIn('run_news_refresh, center, repository, progress, ai_model="deepseek"', content)
+        self.assertNotIn('ai_model="minimax"', content)
 
     def test_main_py_news_url_handler_before_generic_text_handlers(self):
         """Pasted news URLs must be handled before generic text handlers."""

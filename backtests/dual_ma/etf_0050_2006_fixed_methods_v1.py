@@ -36,7 +36,7 @@ from . import etf_0050_ma21_fixed_stop_v1 as fixed
 from . import etf_0050_ma21_macd_v2 as moving
 from . import etf_0050_standard_report_v3 as standard
 from .contracts import COST_MODEL, EXECUTION_MODEL, SPEC_SHA256, STRATEGY_VERSION, RunManifest
-from .etf_0050_2006_data_package_v1 import file_sha256
+from .etf_0050_2006_data_package_v1 import CONTRACT, file_sha256
 from .etf_0050_base_v1 import (
     MAIN_SCENARIO_BPS,
     SLIPPAGE_SCENARIOS_BPS,
@@ -64,7 +64,7 @@ from .h2_ma144_upward_entry_2022h2 import (
     _evaluate_ma144_gate,
 )
 from .models import Bar
-from .paths import REPOSITORY_ROOT, dev_run, report_path
+from .paths import dev_run, report_path
 
 
 try:
@@ -80,7 +80,6 @@ ACCEPTED_RUN_ROOT = dev_run("02-etf-0050-2017-2026-ma21-fixed-stop-macd-v1-1")
 ACCEPTED_REPORT_ROOT = report_path("etf", "0050", "experiments", "2017-2026-ma21-fixed-stop-macd-v1-1")
 ADOPTED_DATA_ROOT = dev_run("04-etf-0050-research-package-2016-2026-v1")
 ACCEPTED_BENCHMARK_RAW_ROOT = dev_run("02-etf-0050-2017-2026-same-method-v2") / "benchmark-raw"
-CONTRACT = REPOSITORY_ROOT / "docs/strategies/dual_ma/0050-2006-2026-data-and-backtest-v1.md"
 REPORT_TEMPLATE = Path(__file__).resolve().parents[2] / "docs/strategies/dual_ma/standard-backtest-report-v2.md"
 
 FORMAL_START = date(2006, 1, 2)

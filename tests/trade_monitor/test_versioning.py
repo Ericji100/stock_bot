@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from trade_monitor import versioning
 
 
@@ -20,6 +22,28 @@ def test_all_manifest_versions_verify() -> None:
 
     assert results
     assert all(result["ok"] for result in results)
+
+
+@pytest.mark.parametrize("change", ["content", "newlines", "size"])
+def test_modified_prompt_bytes_still_fail_verification(tmp_path, monkeypatch, change) -> None:
+    raw = b"accepted\r\nrule\n"
+    record = {
+        "prompt_sha256": hashlib.sha256(raw).hexdigest(),
+        "prompt_utf8_bytes": len(raw),
+    }
+    prompt = tmp_path / "versions" / "fixture" / "prompt.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_bytes(raw)
+    monkeypatch.setattr(versioning, "RULES_ROOT", tmp_path)
+    monkeypatch.setattr(versioning, "version_record", lambda version_id: record)
+    assert versioning.verify_version("fixture")["ok"] is True
+    changed = {
+        "content": raw.replace(b"rule", b"fake"),
+        "newlines": raw.replace(b"\r\n", b"\n"),
+        "size": raw + b" ",
+    }[change]
+    prompt.write_bytes(changed)
+    assert versioning.verify_version("fixture")["ok"] is False
 
 
 def test_v19_xprocess_rc_is_integrated_isolated_and_preserved_after_formal_promotion() -> None:

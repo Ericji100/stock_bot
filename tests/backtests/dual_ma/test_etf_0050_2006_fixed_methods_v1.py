@@ -11,6 +11,13 @@ from backtests.dual_ma import etf_0050_2006_fixed_methods_v1 as study
 from backtests.dual_ma import etf_0050_ma21_fixed_stop_v1 as fixed
 
 
+def test_legacy_consumer_uses_accepted_contract_snapshot() -> None:
+    from backtests.dual_ma import etf_0050_ten_year_same_method_v1 as legacy
+
+    assert legacy.CONTRACT.parent.name == "contracts"
+    assert legacy._sha(legacy.CONTRACT) == legacy.EXPECTED["contract"]
+
+
 def test_all_locked_inputs_are_exact() -> None:
     study.validate_inputs()
     assert study.file_sha256(study.CONTRACT) == study.EXPECTED["contract"]

@@ -50,7 +50,8 @@ OUT = Path(
     )
 )
 ADOPTED = WORKDATA / "04-etf-0050-research-package-2016-2026-v1"
-CONTRACT = ROOT / "docs" / "strategies" / "dual_ma" / "0050-2006-2026-data-and-backtest-v1.md"
+# Pin the accepted snapshot; navigation links in the living document may change.
+CONTRACT = ROOT / "docs" / "research" / "dual_ma" / "0050" / "contracts" / "2006-2026-data-and-backtest-v1.md"
 
 SCHEMA = "dual-ma-etf-0050-research-package-2005-2026-v1"
 CONTRACT_SHA256 = "5103731DBAC279202C0D2D8018BD35AD048900192A3BCA5796D7F4572686FAFA"

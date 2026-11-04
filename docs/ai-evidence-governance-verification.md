@@ -1,8 +1,24 @@
 # AI 證據治理六項驗證
 
+## 2026-11-04 正式合併與部署
+
+本節為最新狀態，取代下方歷史作業當時的「未部署」結論；不改寫原測試失敗或隔離驗證紀錄。
+
+- 使用者授權完成後合併 `main`、推送 Git 及部署。來源提交為 `954f06adb071e1c0ea1b638a5399eed6afa5a21d`，65 檔；先保留本機回復分支 `codex/pre-governance-deploy-20261104`，指向原 `d4cf149`。沒有強制覆寫、重置或暫存使用者修改。
+- 正式工作樹原有 26 個未提交／設定檔在合併後及啟動前逐一雜湊相同，原未追蹤資料夾仍在。使用者既有 ETF 修改未納入本次 AI 提交；交易規則與回測來源未修改。金鑰、私密設定、帳本、報告及暫存未提交。
+- 合併後在正式工作樹執行完整離線 `pytest tests`：**2,774 passed、1 skipped、268 subtests passed，回傳 0，402.46 秒**。使用既有虛擬環境、阻擋測試外部 HTTP、帳本／資料導向本次 owned 暫存；包含正式工作樹既有 ETF 測試。唯一略過為未指定 `STOCK_AI_BOT_ETF_FROZEN_MARKET_DATA_ROOT` 的正式全歷史重播，不以其他回測通過替代該案例。見 [測試結果](../logs/evidence_governance/20261104/deployment/full-session.json)。
+- 透過原 `啟動機器人.bat` 啟動，不另建服務或第二個輪詢器。實際 Bot PID 2616，排程佇列可用，ETF 監控為 `READY`／既有 `shadow` 模式。Telegram 原帳號查詢、無 webhook 衝突、43 項指令註冊均成功。部署診斷只呼叫唯讀 API，未送測試訊息或付費模型／搜尋；Bot 的既有正常啟動與排程行為保留。
+- 連續兩次觀察同一實際存活程序，心跳從 07:58:52 更新到 07:59:51，不以舊 PID 或舊心跳認定啟動成功。[心跳進展](../logs/evidence_governance/20261104/deployment/heartbeat-progression.json) 保存比較結果。
+- 正式帳本以唯讀備份做相容性預檢：本月總上限 US$12（原月額 US$10 加既有 11 月追加 US$2）、背景 US$7、手動 US$4、保留 US$1、單次 US$0.30 不變；測試費用豁免不部署。手動已用／預留 US$4.759706940，會明確拒絕新增手動 AI；背景 US$1.199492280，啟動時預檢允許下一筆搜尋預留。舊未知費用保留，不清帳換成功。官方免費查詢餘額 USD 1.82 可用，與本地分額超限是不同原因。
+- 今日 18:00 新聞及 21:30 Radar 尚未實際觸發；本次不冒稱未來排程已跑通、不保證剩餘費用足以完成全部 AI 短評。新聞仍每日背景更新、不正常推播，題材庫仍週二／五 22:30。手動 AI 額度限制仍是明確交付邊界，未擅自加額。
+
+[合併保護證據](../logs/evidence_governance/20261104/deployment/production-preservation.json)、[預算相容性](../logs/evidence_governance/20261104/deployment/production-budget-compatibility.json)、[原連線及程序驗證](../logs/evidence_governance/20261104/deployment/runtime-verification.json) 保留在正式專案。前輪付費 Live 原稿與修正證據保留於 `D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/`，未因合併複製私密設定或大型帳本。
+
+部署診斷四個腳本已封存並核對內容雜湊；既有 fixture 原始封存與因果映射依賴保留，沒有刪正式資料。停止本次寫入者、查證引用後，僅 owned 暫存 4,365 檔、441,049,923 bytes 依計畫 SHA-256 透過 Windows `ITransferSource.RecycleItem` 回收，收據狀態 `RECYCLED_VERIFIED`。計畫與回收位置保存在 `.codex-cleanup/ds/governance-deploy-1104/`；不永久刪除、不清空回收筒，不代表立即釋放同量空間。
+
 ## 2026-11-04 接續修正與交付驗證
 
-本節為最新作業狀態。下方 11/3 Live 缺口與費用是原始失敗證據，不覆寫、不改稱已通過。本輪不部署、不重啟正式 Bot、不發 Telegram、不套用正式題材庫、不改交易規則或既有回測結果。
+本節保存部署前的隔離作業狀態。下方 11/3 Live 缺口與費用是原始失敗證據，不覆寫、不改稱已通過。該階段未部署、未重啟正式 Bot、未發 Telegram、未套用正式題材庫，未改交易規則或既有回測結果。
 
 使用者重開機後先要求完成離線驗證，隨後另行授權暫停開發／測試的 DeepSeek 本地費用限制，直接完成必要 Live 複驗。授權只作用在隔離測試程序與獨立測試帳本；保留官方餘額、容量、限流與未知費用停止保護。原共用帳本不歸零、不刪除，正式 Bot 的設定與預算不變。新費用另行累計，不混入原本 US$1.019308182。
 
@@ -54,32 +70,32 @@
 
 | 入口／案例 | 最終可閱產物 | 原流程秒／費用約 US$ | 內容驗收 |
 |---|---|---:|---|
-| research 3550，2026-06-04 | [完整稿](../logs/evidence_governance/20261104/live_fixes/research_historical_repaired_repaired_verified/output.md) | 436／0.0828 | 歷史資料隔離、現金流／增資期別修正；四項評分與估值保留 |
-| research 2330 深度 | [完整稿](../logs/evidence_governance/20261104/live_fixes/research_2330_repaired_verified/output.md) | 1,832／0.3980 | 均線、盈餘情境、成長比與來源層級修正，全部細項與情境保留 |
-| research 2241 深度 | [完整稿](../logs/evidence_governance/20261104/live_fixes/research_2241_repaired_verified/output.md) | 1,382／0.2643 | 月營收單位、全年預測驗證日及第三方公告轉錄修正，虧損不硬套正本益比 |
-| value_scan 自訂兩檔、深度 | [完整稿](../logs/evidence_governance/20261104/live_fixes/value_scan_repaired_verified/output.md) | 1,840／0.3333 | 本地／AI 分數分開、兩檔估值敏感度、假說與反證；不憑缺資料判蹭題材 |
-| macro 台股 | [完整稿](../logs/evidence_governance/20261104/live_fixes/macro_repaired_verified/output.md) | 1,558／0.2962 | 官方值優先；盤中／收盤、海外投票及不同油種時點分開；完整宏觀框架 |
-| theme AI電源 | [完整稿](../logs/evidence_governance/20261104/live_fixes/theme_repaired_verified/output.md) | 1,112／0.1971 | 系統端與上游、核心／次受惠、供應鏈、逐檔評分及三情境；來源占比與名稱誤判修正 |
-| theme_flow AI電源 | [完整稿](../logs/evidence_governance/20261104/live_fixes/theme_flow_repaired_verified/output.md) | 1,216／0.1808 | 11 檔量價與無行情候選分開；量增價跌不當資金進駐，分層零計數不當全市場零活動 |
-| sector_strength | [完整稿](../logs/evidence_governance/20261104/live_fixes/sector_strength_repaired_verified/output.md) | 520／0.1540 | 家數／比例／新高分開、正確母體與假說方向；集中度、代表股及反證保留 |
-| theme_radar | [完整稿](../logs/evidence_governance/20261104/live_fixes/theme_radar_core_repaired_repaired_verified/output.md) | 原八段 548／0.2114，最終另續送 | 最終正式 AI 成功；20 題材、24 族群、23 子族群、107 股票、181 來源；核心還原一致 |
-| news refresh | [訊息](../logs/evidence_governance/20261104/live_fixes/news_verified/output.md)／[16 則完整 JSON](../logs/evidence_governance/20261104/live_fixes/news_verified/result.json) | 95／0.0446 | 16 則全文已讀，日期、分類、推論、反證及缺口保留；234 則待 AI 複核未冒充完成 |
-| radar | [完整訊息](../logs/evidence_governance/20261104/live_fixes/radar_verified/output.md)／[排程格式](../logs/evidence_governance/20261104/live_fixes/radar_verified/scheduled-push.md) | 449／0.0296 | 真實 AI 三檔為 2610／2609／8069，不是排名前三；103 檔分數未變，訊號日 11/2 明示 |
-| topic_maintain 深度 | [完整動作／訊息](../logs/evidence_governance/20261104/live_fixes/topic_reparsed/output.md)／[變更包](../logs/evidence_governance/20261104/live_fixes/topic_reparsed/change_20261104_001915.json) | 758／0.3809 | 八動作、47 正式證據、另 2 待查線索；167 引用核對、165 可追溯。狀態待審核，未套用 |
+| research 3550，2026-06-04 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/research_historical_repaired_repaired_verified/output.md) | 436／0.0828 | 歷史資料隔離、現金流／增資期別修正；四項評分與估值保留 |
+| research 2330 深度 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/research_2330_repaired_verified/output.md) | 1,832／0.3980 | 均線、盈餘情境、成長比與來源層級修正，全部細項與情境保留 |
+| research 2241 深度 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/research_2241_repaired_verified/output.md) | 1,382／0.2643 | 月營收單位、全年預測驗證日及第三方公告轉錄修正，虧損不硬套正本益比 |
+| value_scan 自訂兩檔、深度 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/value_scan_repaired_verified/output.md) | 1,840／0.3333 | 本地／AI 分數分開、兩檔估值敏感度、假說與反證；不憑缺資料判蹭題材 |
+| macro 台股 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/macro_repaired_verified/output.md) | 1,558／0.2962 | 官方值優先；盤中／收盤、海外投票及不同油種時點分開；完整宏觀框架 |
+| theme AI電源 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/theme_repaired_verified/output.md) | 1,112／0.1971 | 系統端與上游、核心／次受惠、供應鏈、逐檔評分及三情境；來源占比與名稱誤判修正 |
+| theme_flow AI電源 | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/theme_flow_repaired_verified/output.md) | 1,216／0.1808 | 11 檔量價與無行情候選分開；量增價跌不當資金進駐，分層零計數不當全市場零活動 |
+| sector_strength | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/sector_strength_repaired_verified/output.md) | 520／0.1540 | 家數／比例／新高分開、正確母體與假說方向；集中度、代表股及反證保留 |
+| theme_radar | [完整稿](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/theme_radar_core_repaired_repaired_verified/output.md) | 原八段 548／0.2114，最終另續送 | 最終正式 AI 成功；20 題材、24 族群、23 子族群、107 股票、181 來源；核心還原一致 |
+| news refresh | [訊息](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/news_verified/output.md)／[16 則完整 JSON](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/news_verified/result.json) | 95／0.0446 | 16 則全文已讀，日期、分類、推論、反證及缺口保留；234 則待 AI 複核未冒充完成 |
+| radar | [完整訊息](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/radar_verified/output.md)／[排程格式](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/radar_verified/scheduled-push.md) | 449／0.0296 | 真實 AI 三檔為 2610／2609／8069，不是排名前三；103 檔分數未變，訊號日 11/2 明示 |
+| topic_maintain 深度 | [完整動作／訊息](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/topic_reparsed/output.md)／[變更包](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/topic_reparsed/change_20261104_001915.json) | 758／0.3809 | 八動作、47 正式證據、另 2 待查線索；167 引用核對、165 可追溯。狀態待審核，未套用 |
 
 原稿已逐份完整閱讀，修正版再讀全部差異與重要主張；全部十六則新聞、八項題材動作與公司角色也已閱讀。外部來源、原始附錄及數值以結構化核對和重要引用回查，不假稱逐字讀完／獨立證實每一網頁，也不保證投資回報或預測命中。
 
 保留的真實資料限制：最新完整公司財報／訂單／客戶曝險未必可取得；官方網址不等於完整正文；未知日期、題材候選、兩筆不匹配引用及未完成新聞分類如實顯示。這些不是程式未修而隱藏的成功，也不應以編造內容填滿。
 
-九份報告皆有原生 HTML、Markdown、JSON、sources；[產物清單](../logs/evidence_governance/20261104/live_fixes/artifact-manifest.json) 有確切路徑。[逐案人工檢閱](../logs/evidence_governance/20261104/live_fixes/manual-reviews.json)、[數值／產檔檢核](../logs/evidence_governance/20261104/live_fixes/delivery-check.json)、[真實來源送入對照](../logs/evidence_governance/20261104/live_fixes/source-presence-proof.json) 分開保存。HTML 已檢查主內容非空、來源及稽核分頁存在，**未冒稱另做瀏覽器互動／視覺驗收**。
+九份報告皆有原生 HTML、Markdown、JSON、sources；[產物清單](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/artifact-manifest.json) 有確切路徑。[逐案人工檢閱](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/manual-reviews.json)、[數值／產檔檢核](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/delivery-check.json)、[真實來源送入對照](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/source-presence-proof.json) 分開保存。HTML 已檢查主內容非空、來源及稽核分頁存在，**未冒稱另做瀏覽器互動／視覺驗收**。
 
 ### 測試、費用與交付邊界
 
 - 完整 `pytest tests` 經隔離離線執行器執行，阻擋外部 HTTP、測試資料及假帳本導向 owned 暫存：**2,756 passed、2 skipped、268 subtests passed，回傳 0，392.986 秒**。未為測試安裝工具或複製正式私密設定。兩項略過為隔離 checkout 無正式凍結 ETF registry、未複製私密 config.json；不可算作已測通過。ETF 合成完整回測與既有資料完整性測試其餘均通過，交易規則未改。
-- 收尾相關回歸：211 項及 76 個子測試通過；最終完整測試前凍結 **450 個來源檔**，測後 SHA-256 無差異。`git diff --check` 通過。結果在 [full-session](../logs/evidence_governance/20261103/offline_fixes/full-session.json)、[full-details](../logs/evidence_governance/20261103/offline_fixes/full-details.json) 及 [版本一致性](../logs/evidence_governance/20261104/live_fixes/source-freeze-verification.json)。
-- 新帳本共 **437 筆操作、431 成功、6 次外部正文補取失敗**（5 次 404、1 次 504，原錯誤保留），無進行中／未知狀態；其中模型 96、搜尋 319、補正文 22。費用 US$2.914747326 為回傳 usage／費率估算，含失敗補取的保守估計，不是供應商發票。定點修正只重送必要原稿，不重搜、不讓高階失敗後偷偷變備援成功。[費用對帳](../logs/evidence_governance/20261104/live_fixes/cost-reconciliation.json)
-- 官方免費餘額查詢在 11/4 07:19 左右仍顯示 **USD 1.82、可用**；沒有自動加值。實際使用後以供應商餘額為準，不把本地進度護欄當官方沒錢。[官方餘額](../logs/evidence_governance/20261104/live_fixes/balance-final.json)
-- 正式專案追蹤檔案 SHA 與 HEAD 無變，本任務未部署、重啟、傳 TG 或套用題材；保留既有未提交內容。**心跳 PID 相同不代表程序存活**：OS 查無 PID 18128／Bot 程序，最後心跳停在 11/4 00:00:38，故目前不能說正式 Bot 正在運作；本任務不擅自啟動。若未啟動，今晚新聞／Radar 不執行也無通知。[正式檔案保護](../logs/evidence_governance/20261104/live_fixes/production-protection-final.json)／[程序檢查](../logs/evidence_governance/20261104/live_fixes/production-runtime-state.json)
+- 收尾相關回歸：211 項及 76 個子測試通過；最終完整測試前凍結 **450 個來源檔**，測後 SHA-256 無差異。`git diff --check` 通過。結果在 [full-session](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/offline_fixes/full-session.json)、[full-details](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/offline_fixes/full-details.json) 及 [版本一致性](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/source-freeze-verification.json)。
+- 新帳本共 **437 筆操作、431 成功、6 次外部正文補取失敗**（5 次 404、1 次 504，原錯誤保留），無進行中／未知狀態；其中模型 96、搜尋 319、補正文 22。費用 US$2.914747326 為回傳 usage／費率估算，含失敗補取的保守估計，不是供應商發票。定點修正只重送必要原稿，不重搜、不讓高階失敗後偷偷變備援成功。[費用對帳](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/cost-reconciliation.json)
+- 官方免費餘額查詢在 11/4 07:19 左右仍顯示 **USD 1.82、可用**；沒有自動加值。實際使用後以供應商餘額為準，不把本地進度護欄當官方沒錢。[官方餘額](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/balance-final.json)
+- 正式專案追蹤檔案 SHA 與 HEAD 無變，本任務未部署、重啟、傳 TG 或套用題材；保留既有未提交內容。**心跳 PID 相同不代表程序存活**：OS 查無 PID 18128／Bot 程序，最後心跳停在 11/4 00:00:38，故目前不能說正式 Bot 正在運作；本任務不擅自啟動。若未啟動，今晚新聞／Radar 不執行也無通知。[正式檔案保護](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/production-protection-final.json)／[程序檢查](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/production-runtime-state.json)
 - Live 代表案例不是所有參數組合；使用正常快取與真實搜尋／補正文，不是假稱全部強制重新下載。三研究、六其他報告及特殊三入口均已走真實 AI 流程，最後部分是原流程續送、原 AI 回應重解析或原稿定點修復，並未假稱全部從頭重跑最新版本。Radar Top15 只驗證相同三檔 AI 的格式與分段，未另跑十五檔付費 AI，也沒有正式 TG 原連線驗收。
 - 正式 Bot 原本單次／月費用護欄仍在，本輪大資料案例有超過 US$0.30 者；不能把隔離豁免測試成功等同正式帳本一定允許執行。正式排程通知／執行影響以本節前述條件為準。
 
@@ -87,7 +103,7 @@
 
 ### 收尾紀錄
 
-必要診斷工具、人工修正條件與原因果映射依賴共 24 檔已封存並逐檔 SHA-256／Python AST 核對；[封存收據](../logs/evidence_governance/20261104/live_fixes/diagnostic-archive.json) 記錄 ZIP SHA-256 `1ba5207ba4afe410117e4e8edee0deb938bc0e10aef677498581b6789ba834ab`。原始 fixture 封存檔仍保留，未刪正式依賴或原始資料。
+必要診斷工具、人工修正條件與原因果映射依賴共 24 檔已封存並逐檔 SHA-256／Python AST 核對；[封存收據](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261104/live_fixes/diagnostic-archive.json) 記錄 ZIP SHA-256 `1ba5207ba4afe410117e4e8edee0deb938bc0e10aef677498581b6789ba834ab`。原始 fixture 封存檔仍保留，未刪正式依賴或原始資料。
 
 本任務寫入者已結束。ownership nonce、確切路徑、引用、17,448 檔共 1,403,024,294 bytes 與逐檔 snapshot 查證後，僅本輪 owned 暫存透過 Windows `ITransferSource.RecycleItem` 回收，**RECYCLED_VERIFIED**，原路徑已不存在，回收內容雜湊核對通過；沒有永久刪除／清空回收筒。計畫與收據保留在 `.codex-cleanup/ds/governance-fixes-1103/`；Live 證據、報告、原始失敗、正式快取、其他任務與工具依賴全部保留。回收不等於立即釋放同量磁碟空間。
 
@@ -117,20 +133,20 @@
 
 | 入口／案例與實際輸出 | 最終狀態 | 費用 US$ | 秒 | 人工內容驗收 |
 |---|---|---:|---:|---|
-| [research 2330 深度](../logs/evidence_governance/20261103/live_2030/research_2330_resume/output.md) | 正式 AI 成功 | 0.154355286 | 919.086 | 部分符合；估值敘述與公式不一致、財報期間口徑待修 |
-| [research 2241 深度](../logs/evidence_governance/20261103/live_2030/research_2241/output.md) | 正式 AI 成功 | 0.100034238 | 670.092 | 部分符合；年度 EPS 情境漏 7 月、引用與比率來源不符 |
-| [research 3550，2026-06-04](../logs/evidence_governance/20261103/live_2030/research_historical/output.md) | 正式 AI 成功 | 0.074506458 | 390.822 | **歷史時點未通過**；動態網頁後續實績進入提示詞 |
-| [value_scan 自訂兩檔，深度](../logs/evidence_governance/20261103/live_2030/value_scan/output.md) | 正式 AI 成功 | 0.078739608 | 405.964 | 部分符合；候選財務投影、期間、搜尋實體與引文待修 |
-| [theme AI電源](../logs/evidence_governance/20261103/live_2030/theme/output.md) | 正式 AI 成功 | 0.048337908 | 280.759 | **核心證據入模未通過**；康舒代號／占比已取得卻漏送 |
-| [theme_flow AI電源](../logs/evidence_governance/20261103/live_2030/theme_flow/output.md) | 正式 AI 成功 | 0.077049762 | 503.117 | 部分符合；11 檔當日價量有用，背景混日與舊標籤待修 |
-| [macro 台股](../logs/evidence_governance/20261103/live_2030/macro/output.md) | 正式 AI 成功 | 0.107173128 | 658.610 | 部分符合；官方資料已入模但成稿降為未核、媒體數字優先 |
-| [news refresh](../logs/evidence_governance/20261103/live_2030/news/output.md) | AI 分類成功，覆蓋部分 | 0.037335300 | 93.901 | 部分符合；日期篩選有效，關鍵字「官方事實」標籤仍誤導 |
-| [radar 技術來源、前三檔短評](../logs/evidence_governance/20261103/live_2030/radar/output.md) | 正式 AI 短評成功 | 0.033030408 | 427.296 | 部分符合；兩檔把速動比率誤寫為流動比率，日內快取不一致 |
-| [sector_strength](../logs/evidence_governance/20261103/live_2030/sector_strength/output.md) | 正式 AI 成功 | 0.109581366 | 697.743 | 部分符合；集中度分析有用，混合日期、產品映射與排行範圍待修 |
-| [theme_radar](../logs/evidence_governance/20261103/live_2030/theme_radar/output.md) | **備援，不是正式 AI 報告** | 0.095886216 | 413.396 | **未通過**；最終包被本地容量預檢拒絕 |
-| [topic_maintain 深度](../logs/evidence_governance/20261103/live_2030/topic_maintain/output.md)／[完整變更包](../logs/evidence_governance/20261103/live_2030/topic/change_packs/change_20261103_224241.json) | **部分成功、變更包審核失敗** | 0.103278504 | 170.648 | **未通過／不可套用**；未做完 AI 細節，風險多為待補占位文字 |
+| [research 2330 深度](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/research_2330_resume/output.md) | 正式 AI 成功 | 0.154355286 | 919.086 | 部分符合；估值敘述與公式不一致、財報期間口徑待修 |
+| [research 2241 深度](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/research_2241/output.md) | 正式 AI 成功 | 0.100034238 | 670.092 | 部分符合；年度 EPS 情境漏 7 月、引用與比率來源不符 |
+| [research 3550，2026-06-04](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/research_historical/output.md) | 正式 AI 成功 | 0.074506458 | 390.822 | **歷史時點未通過**；動態網頁後續實績進入提示詞 |
+| [value_scan 自訂兩檔，深度](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/value_scan/output.md) | 正式 AI 成功 | 0.078739608 | 405.964 | 部分符合；候選財務投影、期間、搜尋實體與引文待修 |
+| [theme AI電源](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/theme/output.md) | 正式 AI 成功 | 0.048337908 | 280.759 | **核心證據入模未通過**；康舒代號／占比已取得卻漏送 |
+| [theme_flow AI電源](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/theme_flow/output.md) | 正式 AI 成功 | 0.077049762 | 503.117 | 部分符合；11 檔當日價量有用，背景混日與舊標籤待修 |
+| [macro 台股](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/macro/output.md) | 正式 AI 成功 | 0.107173128 | 658.610 | 部分符合；官方資料已入模但成稿降為未核、媒體數字優先 |
+| [news refresh](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/news/output.md) | AI 分類成功，覆蓋部分 | 0.037335300 | 93.901 | 部分符合；日期篩選有效，關鍵字「官方事實」標籤仍誤導 |
+| [radar 技術來源、前三檔短評](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/radar/output.md) | 正式 AI 短評成功 | 0.033030408 | 427.296 | 部分符合；兩檔把速動比率誤寫為流動比率，日內快取不一致 |
+| [sector_strength](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/sector_strength/output.md) | 正式 AI 成功 | 0.109581366 | 697.743 | 部分符合；集中度分析有用，混合日期、產品映射與排行範圍待修 |
+| [theme_radar](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/theme_radar/output.md) | **備援，不是正式 AI 報告** | 0.095886216 | 413.396 | **未通過**；最終包被本地容量預檢拒絕 |
+| [topic_maintain 深度](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/topic_maintain/output.md)／[完整變更包](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/topic/change_packs/change_20261103_224241.json) | **部分成功、變更包審核失敗** | 0.103278504 | 170.648 | **未通過／不可套用**；未做完 AI 細節，風險多為待補占位文字 |
 
-這是核准計畫的代表案例，不代表所有參數笛卡兒組合、所有歷史日期或正式定時推播均已驗收。HTML、JSON、來源檔、提示詞與實際請求對照的確切位置，見 [Live 完整性對帳](../logs/evidence_governance/20261103/live_2030/live-integrity-check.json)；逐案人工判斷見 [檢閱紀錄](../logs/evidence_governance/20261103/live_2030/manual-reviews.json)。
+這是核准計畫的代表案例，不代表所有參數笛卡兒組合、所有歷史日期或正式定時推播均已驗收。HTML、JSON、來源檔、提示詞與實際請求對照的確切位置，見 [Live 完整性對帳](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/live-integrity-check.json)；逐案人工判斷見 [檢閱紀錄](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/manual-reviews.json)。
 
 ### 優先修正的實際缺口（尚未實作）
 
@@ -173,7 +189,7 @@
 
 22:53 只讀複核另見 `docs/strategies/dual_ma/0050-live-monitor-integration.md` 變動，Bot PID 由 36140 變為 32108；HEAD 仍為 `d4cf1495644cc01a4761199e617d4b9fe83be893`。**本輪沒有對上述檔案發出編輯、部署或重啟操作，也沒有回復這些並行變動；不在未鑑識寫入者前斷言來源。** 本輪應用程式的資料路徑由隔離 worktree 的 `__file__` 解析，正式與開發共用的是已核准的費用帳本。正式股票清單可能屬原排程更新，但只憑時間不能當作寫入者證明。
 
-因此可確認本輪未部署／未發正式訊息／未套用題材更新，**不能聲稱正式環境從頭到尾完全不變、其他修改已測試或原連線已重新驗收**。原始保護失敗證據保留在 [production-protection.json](../logs/evidence_governance/20261103/live_2030/production-protection.json)，後續只讀狀態在 Live 完整性對帳。
+因此可確認本輪未部署／未發正式訊息／未套用題材更新，**不能聲稱正式環境從頭到尾完全不變、其他修改已測試或原連線已重新驗收**。原始保護失敗證據保留在 [production-protection.json](D:/code/stock_ai_bot/.worktrees/deepseek-unification/logs/evidence_governance/20261103/live_2030/production-protection.json)，後續只讀狀態在 Live 完整性對帳。
 
 ### 產物保存
 

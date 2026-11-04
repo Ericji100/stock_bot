@@ -24,6 +24,17 @@ from .ai_budget_service import MonthlyBudget, BudgetBlocked, REASONS
 
 TASK = ContextVar("deepseek_task", default=("interactive", False, ""))
 RUN_ID = ContextVar("deepseek_run_id", default="")
+DEVELOPMENT_ACCOUNTING = ContextVar('deepseek_development_accounting', default=False)
+
+
+@contextmanager
+def development_accounting():
+    """Validation entrypoints must never inherit the production spending scope."""
+    token = DEVELOPMENT_ACCOUNTING.set(True)
+    try:
+        yield
+    finally:
+        DEVELOPMENT_ACCOUNTING.reset(token)
 
 
 @contextmanager
@@ -82,7 +93,7 @@ class DeepSeekAccount:
 
     @classmethod
     def shared(cls, key: str | None, root: Path, **kwargs):
-        identity = (str(root.resolve()), hashlib.sha256((key or "").encode()).hexdigest())
+        identity = (str(Path(kwargs.get('usage_root') or root).resolve()) + '|' + str(Path(kwargs.get('budget_root') or root).resolve()), hashlib.sha256((key or "").encode()).hexdigest())
         with cls._instances_lock:
             if identity not in cls._instances:
                 cls._instances[identity] = cls(key, root, **kwargs)
@@ -94,9 +105,10 @@ class DeepSeekAccount:
                  budget_root=None, monthly_limit_usd=10, background_monthly_usd=7,
                  manual_monthly_usd=2, monthly_reserve_usd=1, job_limit_usd=.30, schedule_pacing=True,
                  manual_allowances=None,
+                 usage_root=None, development=False,
                  transport=None):
         self.key = key
-        self.root = Path(root)
+        self.root = Path(usage_root or root)
         self.balance_ttl = balance_ttl
         self.background_reserve = Decimal(str(background_reserve_usd))
         self.daily_limit = Decimal(str(daily_limit_usd))
@@ -104,8 +116,10 @@ class DeepSeekAccount:
         self.transport = transport
         self.budget = MonthlyBudget(budget_root or self.root, total=monthly_limit_usd,
             background=background_monthly_usd, manual=manual_monthly_usd, reserve=monthly_reserve_usd,
-            job_limit=job_limit_usd, pacing=schedule_pacing, manual_allowances=manual_allowances)
-        self.budget.import_legacy(self.root / "usage.sqlite3")
+            job_limit=job_limit_usd, pacing=schedule_pacing, manual_allowances=manual_allowances,
+            enforce_limits=not development)
+        if not development:
+            self.budget.import_legacy(self.root / "usage.sqlite3")
         self.lock = threading.RLock()
         self.balance_checked_at = 0.0
         self.available: bool | None = None
@@ -488,9 +502,24 @@ class DisabledProvider:
 
 def account_options(config, root):
     from .ai_budget_service import shared_budget_root
+    root = Path(root).resolve()
+    production_budget = shared_budget_root(root)
+    common = production_budget.parent.parent
+    test_root = os.environ.get('DEEPSEEK_BUDGET_TEST_ROOT')
+    profile = os.environ.get('STOCK_AI_BOT_WORKDATA_PROFILE', 'prod')
+    development = DEVELOPMENT_ACCOUNTING.get() or bool(test_root) or (root / '.git').is_file() or profile != 'prod'
+    if test_root:
+        budget_root = Path(test_root).resolve()
+        protected = (production_budget, common / '.cache' / 'deepseek')
+        if any(budget_root == p or budget_root in p.parents or p in budget_root.parents for p in protected):
+            raise ValueError('開發測試帳本不可使用或包覆正式帳本路徑。')
+    else:
+        budget_root = common / '.workdata' / 'ai_development' / 'budget' if development else production_budget
     return dict(background_reserve_usd=config.deepseek_background_reserve_usd,
         usd_cny_budget_rate=config.deepseek_usd_cny_budget_rate,
-        budget_root=Path(os.environ["DEEPSEEK_BUDGET_TEST_ROOT"]) if os.environ.get("DEEPSEEK_BUDGET_TEST_ROOT") else shared_budget_root(root),
+        budget_root=budget_root,
+        usage_root=budget_root / 'account' if development else root / '.cache' / 'deepseek',
+        development=development,
         monthly_limit_usd=config.deepseek_monthly_limit_usd,
         background_monthly_usd=config.deepseek_background_monthly_usd,
         manual_monthly_usd=config.deepseek_manual_monthly_usd,

@@ -1472,6 +1472,10 @@ def _parameter_matrix_markdown(matrix: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+from research_center.deepseek_service import development_accounting
+
+
+@development_accounting()
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run real MiniMax M3 validation for AI commands.")
     parser.add_argument("--command", action="append", help="Command text to run. Can be repeated.")

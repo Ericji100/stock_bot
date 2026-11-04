@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 
 import main as bot_main
-from research_center.deepseek_service import configured_client
+from research_center.deepseek_service import configured_client, development_accounting
 from research_center.orchestrator import ResearchCenter
 from tools.deepseek_live_validation import input_and_usage_audit
 
@@ -33,6 +33,7 @@ class LocalTelegramSink:
         self.messages.append({'kind':'document','filename':str(getattr(document,'name','')),'caption':kwargs.get('caption','')})
 
 
+@development_accounting()
 def main(argv=None):
     parser=argparse.ArgumentParser(description='會消耗官方額度；不啟動 Bot、不連 Telegram、不套用題材更新。')
     parser.add_argument('--case',choices=['radar','news','topic_maintain'],required=True)

@@ -23,6 +23,10 @@ def _pack_ids() -> set[str]:
     return {pack.change_id for pack in list_change_packs()}
 
 
+from research_center.deepseek_service import development_accounting
+
+
+@development_accounting()
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the real /topic_maintain flow once.")
     parser.add_argument("--command", default="/topic_maintain --model minimax")

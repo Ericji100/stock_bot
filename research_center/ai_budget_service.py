@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 import sqlite3
 import re
+import hashlib
+import json
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -52,11 +54,12 @@ def shared_budget_root(root: Path) -> Path:
 
 
 class MonthlyBudget:
-    def __init__(self, root, *, total=10, background=7, manual=2, reserve=1, job_limit=.30, pacing=True, manual_allowances=None):
+    def __init__(self, root, *, total=10, background=7, manual=2, reserve=1, job_limit=.30, pacing=True, manual_allowances=None, enforce_limits=True):
         self.root = Path(root)
         self.total, self.background, self.manual, self.reserve = map(lambda x: Decimal(str(x)), (total, background, manual, reserve))
         self.job_limit = Decimal(str(job_limit))
         self.pacing = pacing
+        self.enforce_limits = enforce_limits
         self.manual_allowances = {str(month): Decimal(str(amount)) for month, amount in (manual_allowances or {}).items()}
         if any(not re.fullmatch(r'\d{4}-(?:0[1-9]|1[0-2])', month) or not amount.is_finite() or amount < 0
                for month, amount in self.manual_allowances.items()):
@@ -74,6 +77,7 @@ class MonthlyBudget:
             conn.execute("CREATE TABLE IF NOT EXISTS spending (id TEXT PRIMARY KEY, day TEXT, background INTEGER, command TEXT, run_id TEXT, status TEXT, estimate TEXT, actual TEXT)")
             conn.execute("CREATE TABLE IF NOT EXISTS incidents (scope TEXT PRIMARY KEY, reason TEXT)")
             conn.execute("CREATE TABLE IF NOT EXISTS notices (id TEXT PRIMARY KEY, scope TEXT, kind TEXT, reason TEXT, message TEXT, state TEXT)")
+            conn.execute("CREATE TABLE IF NOT EXISTS spending_attribution (request_id TEXT PRIMARY KEY REFERENCES spending(id), purpose TEXT NOT NULL CHECK(purpose='development'), evidence TEXT NOT NULL, reason TEXT NOT NULL, applied_at TEXT NOT NULL)")
             with conn:
                 yield conn
         finally:
@@ -90,9 +94,11 @@ class MonthlyBudget:
                 [(i,d,b,c,"legacy:"+i,s,e,a) for i,d,b,c,s,e,a in rows])
 
     def _check(self, conn, estimate, background, run_id, now):
+        if not self.enforce_limits:
+            return
         month = now.strftime("%Y-%m")
         total_limit, manual_limit = self._limits(now)
-        rows = conn.execute("SELECT background,run_id,status,estimate,actual FROM spending WHERE day LIKE ?", (month+"-%",)).fetchall()
+        rows = conn.execute("SELECT s.background,s.run_id,s.status,s.estimate,s.actual FROM spending s LEFT JOIN spending_attribution a ON a.request_id=s.id WHERE s.day LIKE ? AND a.request_id IS NULL", (month+"-%",)).fetchall()
         values = [(b,r,Decimal(a if a is not None else e)) for b,r,s,e,a in rows if s not in ("failed", "rejected")]
         total = sum((v for _,_,v in values), Decimal(0))
         used = sum((v for b,_,v in values if bool(b) == bool(background)), Decimal(0))
@@ -169,14 +175,45 @@ class MonthlyBudget:
         now = now or datetime.now(ZoneInfo("Asia/Taipei"))
         total_limit, manual_limit = self._limits(now)
         with self.db() as conn:
-            rows = conn.execute("SELECT background,status,estimate,actual FROM spending WHERE day LIKE ?", (now.strftime("%Y-%m")+"-%",)).fetchall()
+            rows = conn.execute("SELECT s.background,s.status,s.estimate,s.actual FROM spending s LEFT JOIN spending_attribution a ON a.request_id=s.id WHERE s.day LIKE ? AND a.request_id IS NULL", (now.strftime("%Y-%m")+"-%",)).fetchall()
+            development = conn.execute("SELECT s.status,s.estimate,s.actual FROM spending s JOIN spending_attribution a ON a.request_id=s.id WHERE s.day LIKE ?", (now.strftime("%Y-%m")+"-%",)).fetchall()
         charged = [(bool(b),Decimal(a if a is not None else e)) for b,s,e,a in rows if s not in ("failed","rejected")]
         return {"month":now.strftime("%Y-%m"),"total_limit":str(total_limit),"reserve":str(self.reserve),
                 "background_limit":str(self.background),"manual_limit":str(manual_limit),
                 "used_or_reserved":str(sum((v for _,v in charged),Decimal(0))),
                 "background_used":str(sum((v for b,v in charged if b),Decimal(0))),
                 "manual_used":str(sum((v for b,v in charged if not b),Decimal(0))),
-                "unknown_or_pending":sum(s in ("unknown","pending") for _,s,_,_ in rows)}
+                "unknown_or_pending":sum(s in ("unknown","pending") for _,s,_,_ in rows),
+                "limits_enforced":self.enforce_limits,
+                "development_excluded":str(sum((Decimal(a if a is not None else e) for s,e,a in development if s not in ('failed','rejected')),Decimal(0))),
+                "development_unknown_or_pending":sum(s in ('unknown','pending') for s,_,_ in development)}
+
+    @staticmethod
+    def spending_fingerprint(row):
+        return hashlib.sha256(json.dumps(list(row), ensure_ascii=False, separators=(',', ':')).encode('utf-8')).hexdigest()
+
+    def attribute_development(self, entries, *, now=None):
+        """Append evidence-bound corrections without rewriting historical charges."""
+        now = now or datetime.now(ZoneInfo('Asia/Taipei'))
+        changed = 0
+        with self.db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            for item in entries:
+                if not item.get('evidence') or not item.get('reason'):
+                    raise ValueError('測試歸類必須附證據與原因。')
+                row = conn.execute('SELECT id,day,background,command,run_id,status,estimate,actual FROM spending WHERE id=?', (item['request_id'],)).fetchone()
+                if row is None or self.spending_fingerprint(row) != item['fingerprint']:
+                    raise ValueError('費用紀錄已變更或不存在，停止整批歸類。')
+                if row[5] in ('pending', 'unknown'):
+                    raise ValueError('進行中或費用未知的請求須先核對，不自動排除。')
+                old = conn.execute('SELECT evidence,reason FROM spending_attribution WHERE request_id=?', (row[0],)).fetchone()
+                if old:
+                    if old != (item['evidence'], item['reason']):
+                        raise ValueError('已存在不同歸類證據，不覆寫。')
+                    continue
+                conn.execute('INSERT INTO spending_attribution VALUES (?,?,?,?,?)', (row[0], 'development', item['evidence'], item['reason'], now.isoformat()))
+                changed += 1
+        return changed
 
     def _limits(self, now):
         extra = self.manual_allowances.get(now.strftime('%Y-%m'), Decimal(0))

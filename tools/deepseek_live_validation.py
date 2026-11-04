@@ -168,6 +168,10 @@ def input_and_usage_audit(account, before_usage, before_activity, result_json, *
         'coverage_caveat':'實際入模只計成功請求對應內容，快取另列；未確認的準備檔不計入。舊紀錄僅在字元數唯一時對照，仍不等於雜湊證明。網址或欄位出現不代表全部正文與數值已完整分析。'}
 
 
+from research_center.deepseek_service import development_accounting
+
+
+@development_accounting()
 def main(argv=None):
     parser = argparse.ArgumentParser(description="官方 DeepSeek 真實測試；會消耗搜尋與模型額度，不發 Telegram、不套用題材變更。")
     parser.add_argument("--case", choices=list(COMMANDS), action="append")

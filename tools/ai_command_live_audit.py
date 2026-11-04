@@ -1907,6 +1907,10 @@ def _write_goal_completion_check(run_dir: Path, summary: list[dict[str, Any]]) -
     _write_markdown(run_dir / "codex_goal_completion_check.md", "\n".join(lines))
 
 
+from research_center.deepseek_service import development_accounting
+
+
+@development_accounting()
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run live audit for AI commands without final high-model calls.")
     parser.add_argument("--batch", choices=["all"], default="all")

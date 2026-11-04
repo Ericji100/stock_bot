@@ -1,5 +1,7 @@
 # 開發測試帳務隔離驗證
 
+後續備份驗收（2026-11-04）已完成：新證據改由無連結的 `verification/backup-acceptance/` 產生；另經使用者授權最小修正共用管理器跨專案相對路徑計算，82 項安全與回歸測試通過，原管理器已對帳本副本回覆 `COMPLETED`。副本仍需保留，原拒絕紀錄未改寫，帳本與 Bot 未動。詳見[備份驗收修正報告](D:/workspace/projects/infrastructure/system_management/docs/backup-acceptance-cross-project-verification-20261104.md)。下方的 pending_review 說明是當時歷史狀態，不代表最新結果。
+
 日期：2026-11-04。來源提交：`72ad4c0`。本文件為本任務主要驗證報告。
 
 ## 結果

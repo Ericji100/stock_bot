@@ -4,6 +4,8 @@
 
 README 只保留專案入口、啟動方式、常用指令與維護索引；完整歷史內容已保留在 [docs/legacy-readme-full.md](docs/legacy-readme-full.md)，後續細節文件集中在 [docs/](docs/)。
 
+備份驗收證據使用專案無連結的 `verification/backup-acceptance/`，由 `tools/prepare_backup_acceptance.py` 準備並交原管理器審核，不使用 `logs` junction、不自動執行還原或回收。跨專案最小修正與原生驗收結果見[驗證報告](D:/workspace/projects/infrastructure/system_management/docs/backup-acceptance-cross-project-verification-20261104.md)。
+
 本分支的模型與搜尋設定以「DeepSeek 費用與失敗保護」及遷移驗證文件為準。下方有日期的 MiniMax / Gemini / Tavily 優化與 Live 結果是歷史紀錄，不代表本次 DeepSeek 已經真實驗收；舊模型參數與搜尋輪替在 DeepSeek-only 模式不再啟用。
 
 2026-11-04 證據治理修正集中在共用日期閘門、官方正文來源狀態、公司代號核對、完整來源文字入模與可逆去重封包。日期不符的原始資料保留供追查，但不混入當期排行或歷史事實；可逆去重不刪核心事實。測試狀態、兩個容量案例、實際報告及排程通知說明，統一見 [AI 證據治理驗證](docs/ai-evidence-governance-verification.md)。

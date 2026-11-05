@@ -5,6 +5,7 @@ from typing import Any
 
 from .topic_models import TopicApplyResult, TopicChangePack, TopicChangeStatus
 from .topic_repository import load_topic_profiles
+from .report_display_normalizer import display_value, normalize_report_text
 
 
 def _mode_label(value: Any) -> str:
@@ -127,23 +128,29 @@ def _pack_meta_lines(pack: TopicChangePack) -> list[str]:
     return lines
 
 
+def _readable_note(item: Any) -> str:
+    if not isinstance(item, dict):
+        return display_value(item)
+    primary = next((key for key in ("content", "text", "reason", "claim") if item.get(key)), None)
+    if primary is None:
+        return display_value(item)
+    text = display_value(item[primary])
+    details = {key: value for key, value in item.items() if key != primary}
+    return text + (f"（{display_value(details)}）" if details else "")
+
+
 def _action_quality_lines(action: TopicChangeAction) -> list[str]:
     lines: list[str] = []
     if action.risk_notes:
-        lines.append("   風險：" + "；".join(str(item) for item in action.risk_notes[:2]))
+        lines.append("   風險：" + "；".join(_readable_note(item) for item in action.risk_notes[:2]))
     if action.counter_evidence:
-        readable = []
-        for item in action.counter_evidence[:2]:
-            if isinstance(item, dict):
-                readable.append(str(item.get("content") or item.get("text") or item.get("reason") or item))
-            else:
-                readable.append(str(item))
+        readable = [_readable_note(item) for item in action.counter_evidence[:2]]
         lines.append("   反證：" + "；".join(readable))
     if action.missing_data:
-        lines.append("   資料缺口：" + "；".join(str(item) for item in action.missing_data[:2]))
+        lines.append("   資料缺口：" + "；".join(_readable_note(item) for item in action.missing_data[:2]))
     follow_up = action.extra.get("follow_up") if isinstance(action.extra, dict) else None
     if follow_up:
-        lines.append(f"   後續推演：{follow_up}")
+        lines.append(f"   後續推演：{_readable_note(follow_up)}")
     return lines
 
 
@@ -203,7 +210,7 @@ def format_change_pack_detail(pack: TopicChangePack) -> str:
         lines.append(f"{i}. 【{_action_label(action.action_type)}】{action.theme_name} ({conf_icon}{_confidence_label(action.confidence)})")
         lines.append(f"   題材代號：{action.theme_id}")
         if action.reason:
-            lines.append(f"   原因：{action.reason}")
+            lines.append(f"   原因：{normalize_report_text(action.reason)}")
         if action.evidence:
             ev = action.evidence[0]
             lines.append(f"   證據：{ev.source} ({_source_level_label(ev.source_level)})")

@@ -816,7 +816,7 @@ class HighModelInputPackageTests(unittest.TestCase):
         self.assertLess(len(str(evidence_pack)), 10000)
         self.assertEqual(evidence_pack["item_count"], 50)
 
-    def test_value_scan_high_payload_uses_evidence_summary_not_full_raw_pack(self) -> None:
+    def test_value_scan_high_payload_keeps_complete_evidence_alongside_navigation_summary(self) -> None:
         long_note = "long raw detail " * 500
         data = {
             "ai_candidates": [
@@ -882,7 +882,7 @@ class HighModelInputPackageTests(unittest.TestCase):
         self.assertEqual(candidate["financial_key_metrics"]["revenue_yoy"], 12.5)
         self.assertIn("company_knowledge_summary", candidate)
         self.assertIn("raw_candidate_location", candidate)
-        self.assertNotIn("ai_candidate_evidence_pack", payload)
+        self.assertIn("ai_candidate_evidence_pack", payload)
         self.assertEqual(evidence_summary["schema_version"], "value_scan_evidence_summary_v1")
         self.assertEqual(evidence_summary["candidate_count"], 1)
         self.assertEqual(evidence_summary["candidates"][0]["cross_validation"]["status"], "partial")
@@ -893,9 +893,13 @@ class HighModelInputPackageTests(unittest.TestCase):
         self.assertIn("S001", evidence_summary["candidates"][0]["source_ids"])
         self.assertEqual(evidence_summary["candidates"][0]["local_score_summary"]["rerating_score"], 91)
         self.assertIn("raw_evidence_location", evidence_summary["candidates"][0])
-        self.assertNotIn("raw_blob", payload_text)
-        self.assertNotIn(long_note, payload_text)
-        self.assertLess(len(payload_text), 12000)
+        full_evidence = payload["ai_candidate_evidence_pack"][0]
+        self.assertEqual(''.join(part['文字'] for part in full_evidence['raw_blob']['段落']), long_note)
+        self.assertEqual(full_evidence['cross_validation']['status'], 'partial')
+        audit = package['command_specific_data']['core_input_audit']
+        section = next(row for row in audit['sections'] if row['section'] == 'ai_candidate_evidence_pack')
+        self.assertEqual(section['status'], 'direct')
+        self.assertEqual(section['sent_count'], 1)
 
     def test_input_quality_gate_ok_when_research_has_enough_sources(self) -> None:
         sources = [

@@ -18,6 +18,17 @@ from research_center.topic_models import (
 
 
 class TestTopicEvidence(unittest.TestCase):
+    def test_summary_and_date_aliases_do_not_become_original_quotes(self):
+        evidence = TopicEvidence.from_dict({
+            'source_id': 'S148', 'summary': 'Model summary, not an original quote',
+            'published_date': '2026-10-14', 'source_level': 'L2_media',
+        })
+        self.assertEqual(evidence.content, 'Model summary, not an original quote')
+        self.assertEqual(evidence.publish_date, '2026-10-14')
+        self.assertIsNone(evidence.supporting_quote)
+        self.assertEqual(evidence.source_level, TopicSourceLevel.L2_MEDIA)
+        self.assertEqual(TopicEvidence.from_dict(evidence.to_dict()), evidence)
+
     def test_to_dict(self):
         ev = TopicEvidence(
             source="DIGITIMES",

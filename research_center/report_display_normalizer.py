@@ -48,6 +48,17 @@ def normalize_report_text(text: str) -> str:
     return normalized
 
 
+def normalize_direction_labels(text: str) -> str:
+    """Translate classification values in Chinese prose, not commands or URLs."""
+    protected, placeholders = _protect_urls(str(text or ""))
+    terms = _string_map(load_report_display_terms().get("terms"))
+    labels = {key: terms.get(key, fallback) for key, fallback in
+              (("positive", "利多"), ("negative", "利空"), ("neutral", "中性"))}
+    pattern = r"(?<![A-Za-z0-9_])(positive|negative|neutral)(?![A-Za-z0-9_])(?=\s*(?:[\u3400-\u9fff。；，、：／（）「」『』]|$))"
+    value = re.sub(pattern, lambda match: labels[match[1].lower()], protected, flags=re.I)
+    return _restore_placeholders(value, placeholders)
+
+
 def display_term(raw: str) -> str:
     key = str(raw or "").strip()
     terms = _string_map(load_report_display_terms().get("terms"))

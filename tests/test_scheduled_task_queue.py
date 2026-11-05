@@ -266,7 +266,8 @@ class ScheduledTaskQueueTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("scheduled_topic_maintain", source)
         self.assertIn("time(hour=22, minute=30, tzinfo=tw_tz)", source)
-        self.assertIn('name="22:30 AI題材庫維護（DeepSeek Flash）"', source)
+        self.assertIn('name="22:30 AI題材庫維護"', source)
+        self.assertNotIn('name="22:30 AI題材庫維護（DeepSeek Flash）"', source)
 
     def test_registered_scheduled_jobs_summary_covers_expected_jobs(self):
         from research_center.scheduled_task_service import format_registered_scheduled_jobs

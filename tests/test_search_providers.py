@@ -134,7 +134,8 @@ class SearchProviderTests(unittest.TestCase):
     def test_source_quality_summary_counts_provider_and_risk(self):
         request = CommandRequest(command="research", raw_text="/research 2330 --deep", mode="deep")
         sources = [
-            SourceItem("S001", "MOPS", "https://mops.twse.com.tw/a", "Level 1", provider="official_connector"),
+            SourceItem("S001", "MOPS", "https://mops.twse.com.tw/a", "Level 1", provider="official_connector",
+                       document_kind="document_body", snippet="測試公告正文：公司當期營收。"),
             SourceItem("S002", "新聞 風險", "https://news.example/a", "Level 2", snippet="庫存風險", provider="tavily_extract"),
             SourceItem("S003", "產業", "https://industry.example/a", "Level 3", provider="tavily_search"),
         ]
@@ -182,12 +183,19 @@ class SearchProviderTests(unittest.TestCase):
                 }
             },
         )
-        sources = [SourceItem("S001", "MOPS", "https://mops.twse.com.tw/a", "Level 1", provider="official_connector")]
+        sources = [SourceItem("S001", "MOPS", "https://mops.twse.com.tw/a", "Level 1", provider="official_connector",
+                              document_kind="document_body", snippet="測試公告正文：公司當期營收。")]
         for i in range(2, 22):
             title = "風險 新聞" if i in {2, 3} else "產業新聞"
             snippet = "庫存風險" if i in {2, 3} else "一般產業資料"
             sources.append(SourceItem(f"S{i:03d}", title, f"https://news.example/{i}", "Level 2", snippet=snippet, provider="tavily_extract"))
         self.assertFalse(_should_run_gemini_search_fallback(request, sources, config))
+
+        # The same source volume cannot hide an official-content gap.
+        from dataclasses import replace
+        sources[0] = replace(sources[0], document_kind="reference_link")
+        self.assertTrue(_should_run_gemini_search_fallback(request, sources, config))
+        self.assertEqual(_source_quality_summary(sources, request)['level1'], 0)
 
 
     def test_should_run_gemini_fallback_when_social_ratio_too_high(self):

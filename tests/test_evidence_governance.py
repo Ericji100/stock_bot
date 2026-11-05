@@ -69,6 +69,74 @@ def test_company_mapping_conflict_and_candidate_preserved():
     assert data['claims'][1]['verification_status'] == 'candidate'
 
 
+def test_company_source_keeps_ky_suffix_without_hiding_real_conflict():
+    from research_center.evidence_governance import source_company_conflicts
+    data = {'authoritative_company_names': {'6862': '三集瑞-KY', '6781': 'AES-KY'}}
+    good = source(snippet='三集瑞-KY（6862）及AES-KY(6781)為本次查詢線索。')
+    original = good.snippet
+    assert source_company_conflicts(good, data) == []
+    assert good.snippet == original
+    bad = source(snippet='AES-KY（6862）')
+    assert source_company_conflicts(bad, data)[0]['kind'] == 'name_mismatch'
+
+
+def test_repeated_web_fetch_does_not_append_identical_body_or_discard_new_body():
+    from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
+    from research_center.web_fetch_service import WebFetchResult, WebFetchServiceResult
+    body = '公司揭露產品甲營收 100；訂單仍待驗證。'
+    item = source(url='https://example.com/news/20260515', snippet='原始搜尋摘要及反證，不能移除。')
+    sources = [item]
+    data = {}
+    fetched = WebFetchResult(item.url, '公司原始資料', body, published_date='2026-05-15', date_status='explicit')
+    result = WebFetchServiceResult([fetched], 1, 1, 0, {})
+    request = CommandRequest(command='theme', raw_text='/theme 合成', target='合成', report_date=date(2026, 5, 15))
+    with patch('research_center.web_fetch_enrichment.WebFetchService.fetch_many', return_value=result):
+        _enrich_sources_with_web_fetch(request, sources, data)
+        first = sources[0]
+        _enrich_sources_with_web_fetch(request, sources, data)
+    assert sources[0].snippet == first.snippet
+    assert sources[0].snippet.count(body) == 1
+    assert item.snippet in sources[0].snippet
+    assert data['web_fetched_sources'][0]['content'] == body
+    assert sources[0].source_id == item.source_id
+    newer = replace(fetched, content='更新後營收 200；新增另一項風險。')
+    with patch('research_center.web_fetch_enrichment.WebFetchService.fetch_many',
+               return_value=WebFetchServiceResult([newer], 1, 1, 0, {})):
+        _enrich_sources_with_web_fetch(request, sources, data)
+    assert body in sources[0].snippet
+    assert newer.content in sources[0].snippet
+
+
+def test_webfetch_success_counts_unique_urls_and_keeps_duplicate_citation_records():
+    from research_center.web_fetch_enrichment import _enrich_sources_with_web_fetch
+    from research_center.web_fetch_service import WebFetchResult, WebFetchServiceResult
+    first = source(url='https://example.com/news/20260515', snippet='第一個搜尋摘要')
+    second = replace(first, source_id='S002', snippet='另一個搜尋摘要')
+    body = '公司原始本文及反證均保留。'
+    fetched = WebFetchResult(first.url, '公司原始資料', body, published_date='2026-05-15', date_status='explicit')
+    sources, data = [first, second], {}
+    request = CommandRequest(command='theme', raw_text='/theme 合成', target='合成', report_date=date(2026,5,15))
+    with patch('research_center.web_fetch_enrichment.WebFetchService.fetch_many',
+               return_value=WebFetchServiceResult([fetched], 1, 1, 0, {})):
+        _enrich_sources_with_web_fetch(request, sources, data)
+    assert len(sources) == 2
+    assert [item.source_id for item in sources] == [first.source_id, second.source_id]
+    assert first.snippet in sources[0].snippet and second.snippet in sources[1].snippet
+    assert all(body in item.snippet for item in sources)
+    assert data['web_fetch_diagnostics']['selected_url_count'] == 1
+    assert data['web_fetch_diagnostics']['enriched_source_count'] == 1
+    assert data['web_fetch_diagnostics']['success_ratio'] == 1.0
+
+
+@pytest.mark.parametrize('known,stated', [('世界', '世界先進'), ('世界先進', '世界')])
+def test_name_prefix_is_pending_abbreviation_not_confirmed_wrong_company(known, stated):
+    from research_center.evidence_governance import source_company_conflicts, audit_company_mappings
+    data = {'authoritative_company_names': {'5347': known}, 'claims': [{'code': '5347', 'name': stated}]}
+    issue = source_company_conflicts(source(snippet=f'{stated}（5347）'), data)[0]
+    assert issue['kind'] == 'possible_abbreviation'
+    assert '尚待核對' in audit_company_mappings(data)[0]['reason']
+
+
 def test_claim_audit_flags_reference_and_opposite_without_claiming_truth():
     audit = review_claim_evidence('營收明顯成長 [S018]\n預期訂單恢復 [S018]', [source(document_kind='reference_link')])
     assert audit['flagged_count'] == 2
@@ -119,6 +187,48 @@ def test_html_modification_date_not_publication():
     soup = bs4.BeautifulSoup(html, 'html.parser')
     assert _extract_html_published_date(soup, html) is None
     assert _html_updated_date(soup) == '2026-05-16'
+
+
+def test_official_visible_publication_label_is_explicit_and_date_bound():
+    from research_center.web_fetch_service import _extract_html_published_date, _html_date_status
+    for label in ['發佈日期', '發布日期', '發稿時間', '刊登日期']:
+        html = f'<article><span>{label} :</span><time>2026/10/15</time><p>2027年為營運展望。</p></article>'
+        soup = bs4.BeautifulSoup(html, 'html.parser')
+        assert _extract_html_published_date(soup, html) == '2026-10-15'
+        assert _html_date_status(soup, '2026-10-15') == 'explicit'
+        assert _html_date_status(soup, '2027-01-01') == 'inferred'
+    soup = bs4.BeautifulSoup('<p>更新日期：2026/10/15</p><p>發布時間不詳</p>', 'html.parser')
+    assert _html_date_status(soup, '2026-10-15') == 'inferred'
+
+
+def test_article_publication_time_not_related_or_event_time():
+    from research_center.web_fetch_service import _html_date_status
+    for html in ['<time class="article-body__time">2026/10/15 14:40:45</time>',
+                 '<time datetime="2026-10-15T14:23" pubdate></time>',
+                 '<span id="MainContent_Contents_lbDate">2026/10/15 14:23</span>']:
+        soup = bs4.BeautifulSoup(html, 'html.parser')
+        assert _html_date_status(soup, '2026-10-15') == 'explicit'
+        assert _html_date_status(soup, '2026-11-04') == 'inferred'
+    soup = bs4.BeautifulSoup('<aside><time datetime="2026-10-15">活動日</time></aside>', 'html.parser')
+    assert _html_date_status(soup, '2026-10-15') == 'inferred'
+
+
+def test_fallback_fetch_keeps_verified_original_publication_metadata():
+    from research_center.web_fetch_service import fetch_web_content, WebFetchResult
+    from research_center.deepseek_search_service import DeepSeekSearchService
+    local = WebFetchResult(url='https://example.com/article', title='官方公司財報', content='原文',
+        content_status='partial', fetch_provider='requests_bs4', published_date='2026-10-15',
+        date_status='explicit', updated_date='2026-10-16')
+    client = SimpleNamespace(account=MagicMock())
+    client.account.cached.return_value = None
+    with patch('research_center.config.load_research_config', return_value=SimpleNamespace(deepseek_only=True)), \
+         patch('research_center.deepseek_service.configured_client', return_value=client), \
+         patch('research_center.web_fetch_service._fetch_with_requests', return_value=local), \
+         patch.object(DeepSeekSearchService, 'fetch', return_value={'title':'官方公司財報', 'content':'完整原文', 'date':'2099-01-01'}):
+        result = fetch_web_content(local.url, expected_terms=['2330'])
+    assert result.published_date == '2026-10-15'
+    assert result.date_status == 'explicit'
+    assert result.updated_date == '2026-10-16'
 
 
 def test_pending_preserved_dedup_and_completed_not_requeued(tmp_path):

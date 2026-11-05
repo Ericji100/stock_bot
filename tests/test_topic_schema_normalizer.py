@@ -10,6 +10,30 @@ from research_center.topic_schema_normalizer import (
 
 
 class TopicSchemaNormalizerTests(unittest.TestCase):
+    def test_summary_alias_retains_evidence_without_inventing_a_quote(self):
+        action = normalize_topic_detail_action({
+            'theme_id': 'grid', 'theme_name': 'Grid',
+            'evidence': [{'source_id': 'S148', 'url': 'https://example.com/grid',
+                          'summary': 'Reported orders, not recognized revenue',
+                          'published_date': '2026-10-14', 'source_level': 'L2_media'}],
+        })
+        self.assertEqual(len(action.evidence), 1)
+        evidence = action.evidence[0]
+        self.assertEqual(evidence.content, 'Reported orders, not recognized revenue')
+        self.assertEqual(evidence.publish_date, '2026-10-14')
+        self.assertEqual(evidence.source_id, 'S148')
+        self.assertIsNone(evidence.supporting_quote)
+        self.assertEqual(evidence.source_level.value, 'L2_media')
+
+    def test_source_reference_only_is_retained_without_fabricated_content(self):
+        action = normalize_topic_detail_action({
+            'theme_id': 'grid', 'theme_name': 'Grid',
+            'evidence': [{'source_id': 'S148', 'url': 'https://example.com/grid'}, {}],
+        })
+        self.assertEqual(len(action.evidence), 1)
+        self.assertEqual(action.evidence[0].content, '')
+        self.assertIsNone(action.evidence[0].supporting_quote)
+
     def test_slugify_theme_id(self):
         self.assertEqual(slugify_theme_id("AI Server Cooling"), "ai_server_cooling")
 

@@ -16,6 +16,15 @@ from research_center.prompt_registry import (
 
 
 class PromptContractTests(unittest.TestCase):
+    def test_dated_reports_do_not_falsely_claim_external_search_is_disabled(self):
+        for command in ['/research 2330 --deep', '/value_scan 2330', '/macro 台股',
+                        '/theme AI電源', '/theme_flow AI電源', '/theme_radar', '/sector_strength']:
+            with self.subTest(command=command):
+                prompt = build_prompt(parse_command_text(command+' --date 2026-11-04'),
+                    structured_data={}, source_list=[])
+                self.assertIn('以本次搜尋紀錄與入模來源為準', prompt)
+                self.assertNotIn('現在網路搜尋已由程式停用', prompt)
+
     def test_research_score_prompt_loads_split_scoring_rules(self):
         request = parse_command_text('/research 2330 --score')
         prompt = build_prompt(

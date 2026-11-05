@@ -74,7 +74,7 @@ def should_use_segmented_analysis(
 
 
 def _call_ai_with_timeout_setting(ai_client: ReportGenerator, prompt: str, timeout_seconds: float, *, progress=None, final_output=False) -> Any:
-    if getattr(ai_client, "provider", "") == "deepseek":
+    if getattr(ai_client, "provider", "") in {"deepseek", "openai_router"}:
         if (final_output or len(prompt) >= 100_000) and 0 < getattr(ai_client, 'max_output_tokens', 0) < 65536:
             # Final reports include reasoning and all required chapters. Reserve
             # existing retry headroom up front instead of paying for truncation.
@@ -123,13 +123,13 @@ def run_segmented_theme_analysis(
 
     base_plans = _segment_plans(request, structured_data)
     plans = _split_oversized_plans(request, structured_data, base_plans)
-    if getattr(ai_client, "provider", "") == "deepseek":
+    if getattr(ai_client, "provider", "") in {"deepseek", "openai_router"}:
         plans = _merge_small_segment_plans(request, structured_data, plans, target_chars=140_000)
     max_segments = _max_segment_plan_count(request)
     if len(plans) > max_segments:
         _emit(progress, f"\u5206\u6bb5 AI\uff1a\u539f\u59cb\u5206\u6bb5 {len(plans)} \u6bb5\u8d85\u904e\u4e0a\u9650 {max_segments} \u6bb5\uff0c\u6539\u7528\u6574\u5408\u5206\u6bb5\u3002")
         plans = _bounded_integration_plans(request, structured_data, plans)
-    if getattr(ai_client, 'provider', '') == 'deepseek' and callable(getattr(ai_client, 'prompt_capacity', None)):
+    if getattr(ai_client, 'provider', '') in {'deepseek', 'openai_router'} and callable(getattr(ai_client, 'prompt_capacity', None)):
         # A final core packet that cannot fit even without generated notes must
         # not incur paid intermediate calls. No data is cut to pass this gate.
         baseline = _build_final_prompt(request, structured_data, [], sources, complete_segment_notes=True)
@@ -138,6 +138,10 @@ def run_segmented_theme_analysis(
             error = DeepSeekError('完整核心封包已超過最終整合容量；尚未啟動分段付費分析。', 'final_prompt_too_large')
             error.diagnostics.update(capacity)
             raise error
+        if getattr(ai_client, 'provider', '') == 'openai_router':
+            known_prompts = [_build_segment_prompt(request, structured_data, plan, []) for plan in plans]
+            estimate = ai_client.with_output_limit(max(65536, ai_client.max_output_tokens)).preflight_workflow([*known_prompts, baseline])
+            _emit(progress, f"分段 AI：已知階段費用預檢 {estimate['provider']}，保守預估 US${estimate['estimated_usd']}；生成中的新增資料仍逐階段重檢。")
     segment_runs: list[SegmentRun] = []
     prompt_paths: list[str] = []
     outputs: list[dict[str, Any]] = []
@@ -248,9 +252,9 @@ def run_segmented_theme_analysis(
 
     final_sources = _sources_for_segment_outputs(outputs, sources)
     final_prompt = _build_final_prompt(request, structured_data, outputs, final_sources,
-        complete_segment_notes=getattr(ai_client, 'provider', '') == 'deepseek')
+        complete_segment_notes=getattr(ai_client, 'provider', '') in {'deepseek', 'openai_router'})
     final_capacity = None
-    if getattr(ai_client, 'provider', '') == 'deepseek' and callable(getattr(ai_client, 'prompt_capacity', None)):
+    if getattr(ai_client, 'provider', '') in {'deepseek', 'openai_router'} and callable(getattr(ai_client, 'prompt_capacity', None)):
         final_capacity = ai_client.prompt_capacity(final_prompt, output_tokens=max(65536, ai_client.max_output_tokens))
     final_prompt_too_large = (not final_capacity['fits'] if final_capacity is not None
                               else len(final_prompt) > SEGMENTED_ANALYSIS_FINAL_HARD_CHARS)
@@ -278,7 +282,7 @@ def run_segmented_theme_analysis(
     final_retry_diagnostics: dict[str, Any] | None = None
     try:
         if final_prompt_too_large:
-            if getattr(ai_client, 'provider', '') == 'deepseek':
+            if getattr(ai_client, 'provider', '') in {'deepseek', 'openai_router'}:
                 raise DeepSeekError('最終整合資料超過請求界線；保留分段成果，不以刪減資料重試。', 'final_prompt_too_large')
             raise ValueError(
                 f"segmented final prompt too large: {len(final_prompt)} chars "
@@ -300,7 +304,7 @@ def run_segmented_theme_analysis(
     except DeepSeekError as exc:
         # Never turn an official-provider failure into an unannounced compact
         # prompt. Preserve the work, but do not call it a completed AI report.
-        if getattr(ai_client, 'provider', '') != 'deepseek':
+        if getattr(ai_client, 'provider', '') not in {'deepseek', 'openai_router'}:
             raise
         markdown = _compose_segmented_fallback_report(request, outputs, exc)
         final_elapsed = time.monotonic() - final_started
@@ -712,7 +716,9 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(command_specific, dict):
         return []
     command_payload = command_specific.get("payload")
-    if not isinstance(command_payload, dict) or not command_payload:
+    if not isinstance(command_payload, dict):
+        return []
+    if not command_payload and not (package.get('search_context_notes') or package.get('search_source_events')):
         return []
     plans = [
         {
@@ -742,6 +748,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "low_model_text_evidence_count": package.get("low_model_text_evidence_count"),
                 "low_model_skipped_structured_sections": package.get("low_model_skipped_structured_sections"),
                 "data_gap_summary": package.get("data_gap_summary"),
+                "search_context_notes": package.get("search_context_notes"),
                 "report_confidence": package.get("report_confidence"),
             },
         },
@@ -752,6 +759,7 @@ def _high_model_packet_plans(data: dict[str, Any]) -> list[dict[str, Any]]:
             "payload": {
                 "selected_sources": package.get("selected_sources"),
                 "required_original_excerpts": package.get("required_original_excerpts"),
+                "search_source_events": package.get("search_source_events"),
                 "complete_source_index": package.get("complete_source_index"),
                 "full_data_locations": package.get("full_data_locations"),
             },
@@ -841,6 +849,7 @@ def _build_final_prompt(
     from .topic_input_package import lossless_evidence_json
     evidence = lossless_evidence_json({
         'local_core': local_summary,
+        'search_context_notes': (data.get('high_model_input_package') or {}).get('search_context_notes'),
         'segment_notes': _segment_outputs_state(outputs, request.command, complete=complete_segment_notes),
         'source_index': _source_refs(sources),
     })
@@ -861,6 +870,7 @@ def _build_final_prompt(
         "- You may provide reality-based scenario thinking, but cite the evidence and failure conditions.",
         "- Do not output source_id, rank_score, prompt_chars, coverage_pct, V/C or other internal field names in prose.",
         *command_specific_rules,
+        _final_scoring_context(request),
         "",
         'Local core summary / Segment analysis notes / Source index:',
         '以下為完整資料的無損去重封包；$topic_ref 指向 shared_records 的完整值，field_names 展開原欄位名。$records 每列首項指定 record_schemas 的欄位順序，其餘項逐一對應欄位；若有 $keys，依序作為各列的原物件鍵，否則為原清單。缺欄與空值不同，必須按各列 schema 解讀，正式報告不得輸出代碼。不是刪除或摘要，不同日期、數值、公司及反證均保留。',
@@ -872,6 +882,19 @@ def _build_final_prompt(
         '公司期間具名數值對照（正負號與原始欄位逐項綁定，不把應付帳款當營業現金流；不得捏造本地資料矛盾）：',
         _json(financial_fact_bindings(data)),
     ]))
+
+
+def _final_scoring_context(request: CommandRequest) -> str:
+    if request.command != 'value_scan':
+        return ''
+    from .prompt_registry import _mode_supplement, _scoring_rules_for_request, _template_for_request
+    return '\n\n'.join([
+        '正式評分與報告規格（優先於分段底稿；下列內容沿用本次指令的既有文件）：',
+        '不得自行創造新的正式評分權重或 A/B/C/D 等級。既有文件未指定數字權重時，逐面向說明證據、反證與缺口，再按既有總分分級整體判斷，不自訂權重表。',
+        _scoring_rules_for_request(request),
+        _template_for_request(request),
+        _mode_supplement(request),
+    ])
 
 
 def _final_synthesis_command_rules(command: str) -> list[str]:
@@ -939,6 +962,7 @@ def _build_compact_final_retry_prompt(
         "- Keep the key conclusions, risks, counter-evidence, missing data and source references.",
         "- Use concise Traditional Chinese and avoid exposing internal field names.",
         "- If the evidence is insufficient, state the confidence limit clearly.",
+        _final_scoring_context(request),
         "",
         "Compact local core summary:",
         _json(_compact(_final_local_summary(data), depth=3, max_list=8, max_keys=40, max_string=800)),

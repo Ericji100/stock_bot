@@ -1,7 +1,7 @@
 """Shared official DeepSeek Search/Fetch adapters with date-aware cache keys."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 import hashlib
 import json
@@ -16,6 +16,7 @@ from .models import SourceItem
 from .source_rank import make_source_items
 from .source_text_cleaner import clean_source_title
 from .preferred_sources import match_preferred_source
+from .search_transmission import source_events_packet
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,30 @@ def _safe_result_title(row: dict, url: str = "") -> dict:
     return row
 
 
+def _recover_news_quality_dates(request, rows, attempted, diagnostics, progress):
+    from .web_fetch_enrichment import recover_search_publication_dates
+    from .source_date_normalizer import source_publication_status
+
+    remaining = max(0, 12 - len(attempted))
+    candidates = [item for item in make_source_items(rows)
+                  if item.url not in attempted and source_publication_status(item) != 'explicit'][:min(4, remaining)]
+    if not candidates:
+        return
+    attempted.update(item.url for item in candidates)
+    receipt = {}
+    recover_search_publication_dates(request, candidates, receipt, progress)
+    by_url = {item.url: item for item in candidates}
+    for row in rows:
+        fetched = by_url.get(row.get('url'))
+        if fetched:
+            row.update(asdict(fetched))
+    diagnostics['quality_date_recovery'] = {
+        'unique_urls_attempted': len(attempted), 'max_urls_per_category': 12,
+        'latest': receipt.get('publication_date_recovery'),
+        'policy': '品質檢查前補原文日期；未知不造日期，既有來源與正文保留。',
+    }
+
+
 def _stock_table_excerpt(text, request):
     """Project all-market API rows onto an explicit single-stock request; raw cache is unchanged."""
     if request.command not in {"research", "value_scan"}:
@@ -96,16 +121,28 @@ class DeepSeekSearchService:
 
     def __init__(self, client: DeepSeekService):
         self.client = client
+        if getattr(client, 'provider', '') == 'openai_router':
+            self.provider = 'openai_router_search'
         self.max_queries_per_task = 0
 
     def is_configured(self):
         return self.client.is_configured()
 
     def search(self, query: str, *, report_date: str = "") -> dict:
+        from .search_routing import SEARCH_ROUTE, search_route
+        if self.provider == 'openai_router_search' and SEARCH_ROUTE.get() is None:
+            with search_route(TASK.get()[0]):
+                return self.search(query, report_date=report_date)
         if not query.strip() or len(query) > 128:
             raise ValueError("搜尋查詢必須介於 1 至 128 字，請拆成具體問題。")
         body = {"query": query, "count": 10, "need_content": True}
-        key = "search:" + hashlib.sha256(json.dumps([body, report_date], sort_keys=True).encode()).hexdigest()
+        identity = [body, report_date]
+        if getattr(self.client, 'provider', '') == 'openai_router':
+            # The Responses cache keeps the raw reply; this processed cache
+            # must not reuse pre-fix URL/summary matching from the old adapter.
+            identity.extend(['openai-search-events-v4', SEARCH_ROUTE.get(),
+                             getattr(self.client, 'model', 'unconfigured_adapter'), TASK.get()[1]])
+        key = "search:" + hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.client.account.singleflight(key):
             data = self.client.account.cached(key)
             cached = data is not None
@@ -113,8 +150,14 @@ class DeepSeekSearchService:
                 data = self.client._post("v1/tools/search", body, Decimal("0.00075"))
                 if data.get("results"):
                     self.client.account.cache(key, data, 900)
-        self.client.account.activity("search", cached, {"query":query,"result_count":len(data.get("results") or []),"report_date":report_date})
-        return {**data, "results": [_safe_result_title(row) for row in data.get("results") or []], "cache_hit": cached}
+        effective_cached = cached or (data.get('diagnostics') or {}).get('cache_hit') is True
+        self.client.account.activity("search", effective_cached, {"query":query,"result_count":len(data.get("results") or []),"report_date":report_date,
+            **{key: (data.get('diagnostics') or {}).get(key) for key in
+               ('workflow_stage', 'search_reason', 'search_command', 'actual_model')},
+            'incremental_cost_usd': '0' if effective_cached else (data.get('diagnostics') or {}).get('cost_estimate_usd'),
+            'cache_scope': (data.get('diagnostics') or {}).get('cache_scope'),
+            'original_request_id': (data.get('diagnostics') or {}).get('original_request_id')})
+        return {**data, "results": [_safe_result_title(row) for row in data.get("results") or []], "cache_hit": effective_cached}
 
     def fetch(self, url: str) -> dict:
         key = "fetch:" + hashlib.sha256(url.encode()).hexdigest()
@@ -130,18 +173,31 @@ class DeepSeekSearchService:
             return {**_safe_result_title(data, url), "cache_hit": False}
 
     def discover(self, request, tasks, progress=None) -> DiscoveryResult:
+        from .search_routing import (HYBRID_COMMANDS, GAP_LABELS, discovery_command, search_route,
+                                     important_search_gaps, gap_query)
+        command = discovery_command(request)
+        hybrid = self.provider == 'openai_router_search' and command in HYBRID_COMMANDS
         report_day = request.report_date.isoformat() if request.report_date else TASK.get()[2]
         as_of = date.fromisoformat(report_day) if report_day else datetime.now(ZoneInfo('Asia/Taipei')).date()
         raw_sources = []
         seen_queries = set()
         runs = []
+        context_notes = []
+        initial_groups = []
         for task in tasks:
             queries = []
             for group in task.get("queries") or []:
                 queries.extend(group.get("items", []) if isinstance(group, dict) else [str(group)])
             run = {"label": task.get("label"), "query_count": 0, "cache_hit_count": 0, "error_count": 0, "title_code_isolated_count": 0, "nonmatching_table_count": 0}
             task_sources = []
+            quality_date_attempts = set()
+            source_keys = set()
+            no_new_source_streak = 0
             policy = task.get('news_quality_policy') if request.command == 'news' else None
+            radar_gap = task.get('label') == 'radar_evidence_gap'
+            stage = task.get('search_stage', 'critical_gap_search' if radar_gap else 'initial_search') if hybrid else 'initial_search'
+            reason = str(task.get('search_reason') or ('official_document_or_counter_evidence' if radar_gap else ''))
+            run.update(workflow_stage=stage, search_reason=reason)
             for query in queries:
                 if query in seen_queries:
                     continue
@@ -149,11 +205,15 @@ class DeepSeekSearchService:
                     break
                 seen_queries.add(query)
                 if progress:
-                    progress(f"DeepSeek 搜尋：{task.get('label', '')}｜查詢 {run['query_count'] + 1}")
+                    progress(f"AI 搜尋：{task.get('label', '')}｜查詢 {run['query_count'] + 1}")
                 try:
-                    result = self.search(query, report_date=report_day)
+                    with search_route(command, stage, reason):
+                        result = self.search(query, report_date=report_day)
                     run["query_count"] += 1
                     run["cache_hit_count"] += bool(result.get("cache_hit"))
+                    context_notes.extend({**note, 'query': query, 'task_label': task.get('label', '')}
+                                         for note in result.get('search_context_notes') or [])
+                    new_source_keys = set()
                     for row in result.get("results") or []:
                         isolated = row.get("title_normalization") == "code_isolated"
                         run["title_code_isolated_count"] += int(isolated)
@@ -172,13 +232,22 @@ class DeepSeekSearchService:
                                 except ValueError:
                                     pass
                         source = {"title": row.get("title"), "url": row.get("url"),
+                            "search_summary_events": row.get('summary_events') or [],
                             "snippet": text,
-                            "published_date": published_date, "provider": self.provider,
+                            "published_date": published_date, "provider": row.get('provider') or result.get('provider') or self.provider,
                             "found_by": [query, *(["source_text:provided_content"] if row.get('content') else []), *(["source_title:code_isolated"] if isolated else []), *(["source_table:stock_projection"] if projected else [])],
-                            "provider_detail": task.get("label", "") + ("；標題程式碼已隔離，原始回應保留" if isolated else "")}
+                            "provider_detail": task.get("label", "") + str(row.get('provider_detail') or '') + ("；標題程式碼已隔離，原始回應保留" if isolated else "")}
                         raw_sources.append(source)
                         task_sources.append(source)
+                        new_source_keys.add((str(source.get('url') or ''), str(source.get('published_date') or '')))
+                    if new_source_keys - source_keys:
+                        no_new_source_streak = 0
+                    else:
+                        no_new_source_streak += 1
+                    source_keys.update(new_source_keys)
                     if policy and run['query_count'] >= 2:
+                        if self.provider == 'openai_router_search':
+                            _recover_news_quality_dates(request, task_sources, quality_date_attempts, run, progress)
                         quality = _news_task_quality(task_sources, policy, as_of)
                         run['quality'] = quality
                         if quality['passed']:
@@ -187,10 +256,96 @@ class DeepSeekSearchService:
                             if progress:
                                 progress(f"新聞搜尋品質達標：{task.get('label', '')}；保留全部已取得來源，略過重複補搜")
                             break
-                except DeepSeekUnavailable:
+                        if no_new_source_streak >= 2:
+                            run['early_stop'] = 'no_new_sources_quality_insufficient'
+                            run['unexecuted_query_count'] = sum(q not in seen_queries for q in queries)
+                            if progress:
+                                progress(f"新聞補搜停止：{task.get('label', '')} 連續兩次未新增來源／發布日期線索；品質仍不足，保留全部資料及缺口")
+                            break
+                except DeepSeekUnavailable as exc:
+                    exc.partial_discovery_sources = make_source_items(raw_sources)
+                    exc.partial_discovery_diagnostics = {
+                        'enabled': True, 'provider': self.provider, 'status': 'partial_stopped',
+                        'stop_reason': exc.status, 'runs': [*runs, run],
+                        'query_count': sum(row['query_count'] for row in [*runs, run]),
+                        'source_count': len(exc.partial_discovery_sources),
+                        'complete': False,
+                        'search_context_notes': context_notes,
+                        'search_event_inventory': source_events_packet(exc.partial_discovery_sources),
+                    }
                     raise
                 except Exception:
                     run["error_count"] += 1
             runs.append(run)
-        return DiscoveryResult(make_source_items(raw_sources), {"enabled": True, "provider": self.provider,
-            "query_count": sum(r["query_count"] for r in runs), "source_count": len(raw_sources), "runs": runs})
+            if hybrid:
+                initial_groups.append((task, {row.get('url') for row in task_sources}, stage))
+        items = make_source_items(raw_sources)
+        diagnostics = {"enabled": True, "provider": self.provider,
+            "query_count": sum(r["query_count"] for r in runs), "source_count": len(items),
+            "raw_source_count": len(raw_sources), "runs": runs, 'search_context_notes': context_notes,
+            'search_event_inventory': source_events_packet(items)}
+        if self.provider == 'openai_router_search':
+            from .web_fetch_enrichment import recover_search_publication_dates
+            recover_search_publication_dates(request, items, diagnostics, progress)
+        if hybrid and initial_groups:
+            checks = []
+            for task, urls, stage in initial_groups:
+                records = [asdict(item) for item in items if item.url in urls]
+                gaps = important_search_gaps(request, task, records, as_of, command)
+                checks.append({'task': task, 'urls': urls, 'before': gaps, 'stage': stage})
+            checks.sort(key=lambda row: (not any(gap in row['before'] for gap in
+                                                ('company_mapping', 'official_document')), not bool(row['before'])))
+            supplements = []
+            supplemented = set()
+            extra_raw_count = 0
+            for check in checks:
+                task, gaps = check['task'], check['before']
+                receipt = {'label': task.get('label'), 'before': gaps,
+                           'attempted': check['stage'] == 'critical_gap_search'}
+                if gaps and check['stage'] == 'initial_search' and len(supplemented) < 3:
+                    query = gap_query(request, task, gaps, as_of)
+                    if query not in supplemented:
+                        supplemented.add(query)
+                        receipt.update(attempted=True, query=query)
+                        if progress:
+                            progress(f"Terra 定向補查：{task.get('label', '')}；缺口：{'、'.join(GAP_LABELS.get(gap, gap) for gap in gaps)}")
+                        follow_task = {**task, 'queries': [query], 'search_stage': 'critical_gap_search',
+                                       'search_reason': ','.join(gaps)}
+                        try:
+                            extra = self.discover(request, [follow_task], progress)
+                        except DeepSeekUnavailable as exc:
+                            exc.partial_discovery_sources = make_source_items([
+                                *[asdict(item) for item in items],
+                                *[asdict(item) for item in getattr(exc, 'partial_discovery_sources', [])]])
+                            stopped = dict(getattr(exc, 'partial_discovery_diagnostics', {}) or {})
+                            exc.partial_discovery_diagnostics = {**diagnostics, 'complete': False,
+                                'status': 'partial_stopped', 'stop_reason': exc.status,
+                                'runs': [*runs, *stopped.get('runs', [])],
+                                'search_context_notes': [*context_notes, *stopped.get('search_context_notes', [])],
+                                'critical_gap_checks': [*supplements, receipt],
+                                'search_event_inventory': source_events_packet(exc.partial_discovery_sources)}
+                            raise
+                        items = make_source_items([*[asdict(item) for item in items], *[asdict(item) for item in extra.sources]])
+                        check['urls'].update(item.url for item in extra.sources)
+                        runs.extend(extra.diagnostics['runs'])
+                        extra_raw_count += extra.diagnostics['raw_source_count']
+                        context_notes.extend(extra.diagnostics.get('search_context_notes') or [])
+                receipt['remaining'] = important_search_gaps(request, task,
+                    [asdict(item) for item in items if item.url in check['urls']], as_of, command)
+                receipt['status'] = 'coverage_checked_not_fact_verified' if not receipt['remaining'] else 'unresolved'
+                if receipt['remaining'] and not receipt['attempted']:
+                    receipt['deferred_reason'] = 'bounded_followup_or_duplicate_query'
+                supplements.append(receipt)
+            diagnostics.update(critical_gap_checks=supplements, critical_followup_limit=3,
+                complete=not any(row['remaining'] for row in supplements),
+                status='coverage_checked_not_fact_verified' if not any(row['remaining'] for row in supplements) else 'evidence_incomplete',
+                policy='Luna 初搜；獨立日期／官方正文／公司映射／反證檢查後 Terra 定向補查。保留全部初搜來源與未解缺口，不宣稱語意已驗證。')
+            diagnostics.update(query_count=sum(row['query_count'] for row in runs), source_count=len(items),
+                raw_source_count=len(raw_sources)+extra_raw_count,
+                search_event_inventory=source_events_packet(items))
+            remaining = [row for row in supplements if row['remaining']]
+            if remaining:
+                context_notes.append({'kind': 'unresolved_critical_search_gaps', 'verified': False,
+                    'reason': '重要搜尋缺口仍未補齊；不得宣稱官方證據、日期或公司映射已驗證。保留條件式推論，不冒充已核實事實。',
+                    'checks': remaining})
+        return DiscoveryResult(items, diagnostics)

@@ -795,6 +795,11 @@ def run_news_refresh(
             all_sources.extend(sources_out)
             minimax_diag = structured_data_discovery.get("deepseek_search_discovery", structured_data_discovery.get("minimax_search_discovery", {}))
         except Exception as exc:
+            partial = getattr(exc, 'partial_discovery_sources', None)
+            if partial:
+                all_sources.extend(partial)
+                minimax_diag = getattr(exc, 'partial_discovery_diagnostics', {})
+                emit(f"搜尋中止前已取得 {len(partial)} 筆來源，保留待補，不重抓或冒稱完整搜尋。")
             emit(f"Discovery 搜尋略過：{exc}")
 
         holding_sources = _collect_holding_news_sources(
@@ -908,7 +913,13 @@ def run_news_refresh(
 
         # Batch classify with AI
         primary_classifier = _primary_news_classifier_model(center, ai_model)
-        classified = _batch_classify_news(items, center, emit, ai_model=ai_model)
+        from .search_transmission import collect_search_context, source_events_packet
+        classified_urls = {item.url for item in items}
+        search_notes = collect_search_context({'minimax_diagnostics': minimax_diag},
+                                             [source for source in sorted_sources if source.url in classified_urls],
+                                             datetime.now().astimezone().date())
+        classified = _batch_classify_news(items, center, emit, ai_model=ai_model,
+                                         search_context_notes=search_notes, search_source_events=source_events_packet(sorted_sources))
         classified = _tag_portfolio_news_items(classified, portfolio)
 
         for item in classified:
@@ -955,7 +966,8 @@ def run_news_refresh(
                 if local_fallback_count
                 else ("success" if primary_classifier == "minimax_low" else "skipped")
             ),
-            "model": "deepseek-flash",
+            "model": getattr(getattr(center, 'deepseek_organizer', None), 'actual_model', 'deepseek-flash'),
+            "routing_history": getattr(getattr(center, 'deepseek_organizer', None), 'routing_history', []),
             "reason": "news_general_classification" if primary_classifier == "minimax_low" else "low_model_news_classifier_not_used",
         }
         ai_workflow_coverage = build_ai_workflow_coverage(
@@ -1021,6 +1033,9 @@ def _batch_classify_news(
     center: Any,
     emit: Callable[[str], None],
     ai_model: str = "gemini",
+    *,
+    search_context_notes: list[dict[str, Any]] | None = None,
+    search_source_events: list[dict[str, Any]] | None = None,
 ) -> list[NewsItem]:
     """Batch classify and summarize news via AI.
     
@@ -1045,6 +1060,8 @@ def _batch_classify_news(
 
     from .reader_quality_rules import reader_quality_rules
     prompt_text += "\n\n" + reader_quality_rules()
+    from .search_transmission import search_context_prompt
+    prompt_text += search_context_prompt(search_context_notes)
 
     primary_model = _primary_news_classifier_model(center, ai_model)
     if primary_model != ai_model:
@@ -1056,6 +1073,7 @@ def _batch_classify_news(
         ai_model=primary_model,
         prompt_text=prompt_text,
         label="DeepSeek Flash 一般新聞分類" if primary_model != ai_model else "AI 分類",
+        search_source_events=search_source_events,
     )
     if primary_model == ai_model:
         return result_items
@@ -1072,6 +1090,7 @@ def _batch_classify_news(
         ai_model=ai_model,
         prompt_text=prompt_text,
         label="高階新聞複核",
+        search_source_events=search_source_events,
     )
     return _merge_reviewed_news_items(result_items, reviewed)
 
@@ -1110,6 +1129,7 @@ def _classify_news_batches(
     ai_model: str,
     prompt_text: str,
     label: str,
+    search_source_events: list[dict[str, Any]] | None = None,
 ) -> list[NewsItem]:
     batch_size = _classify_batch_size()
     timeout_seconds = _classify_timeout_seconds()
@@ -1119,17 +1139,20 @@ def _classify_news_batches(
     result_items: list[NewsItem] = []
     official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
     article_cache = center.deepseek_organizer.account if official else None
+    events_by_url = {row['url']: row for row in search_source_events or []}
     def article_key(item):
         import hashlib
-        value = json.dumps([prompt_text, center.config.deepseek_model, item.url, item.title,
-                            item.full_text or item.summary, item.published_at], ensure_ascii=False, sort_keys=True)
+        value = json.dumps([prompt_text, getattr(center.deepseek_organizer, 'model', center.config.deepseek_model), events_by_url.get(item.url), item.url, item.title,
+                            item.full_text or item.summary, item.published_at,
+                            _news_temporal_record(item)['analysis_date']], ensure_ascii=False, sort_keys=True)
         return "news-classification:" + hashlib.sha256(value.encode()).hexdigest()
     if article_cache is not None:
         uncached = []
         for item in items:
             cached = article_cache.cached(article_key(item))
             if cached is not None:
-                result_items.extend(_apply_classification_meta([item], {"0": cached}))
+                classification = cached.get('classification', cached)
+                result_items.extend(_apply_classification_meta([item], {"0": classification}))
             else:
                 uncached.append(item)
         items = uncached
@@ -1141,6 +1164,10 @@ def _classify_news_batches(
         emit(f"{label} {batch_no}/{total_batches} 開始：{len(batch)} 則")
         batch_json = json.dumps(_classification_payload(batch, text_limit), ensure_ascii=False)
         full_prompt = prompt_text.replace("{news_batch_json}", batch_json)
+        from .search_transmission import search_context_prompt
+        batch_events = [events_by_url[item.url] for item in batch if item.url in events_by_url]
+        events_prompt = search_context_prompt(batch_events)
+        full_prompt += events_prompt
         emit(f"{label} {batch_no}/{total_batches} prompt={len(full_prompt)} chars est_tokens={max(1, len(full_prompt) // 4)} items={len(batch)}")
 
         try:
@@ -1151,7 +1178,10 @@ def _classify_news_batches(
                 for index, item in enumerate(batch):
                     classification = parsed.get(item.id) or parsed.get(item.url) or parsed.get(str(index))
                     if isinstance(classification, dict):
-                        article_cache.cache(article_key(item), classification, 7 * 86400)
+                        article_cache.cache(article_key(item), {
+                            'classification': classification,
+                            'model': (getattr(ai_result, 'diagnostics', {}) or {}).get('actual_model'),
+                        }, 7 * 86400)
             result_items.extend(_apply_classification_meta(batch, parsed))
             emit(f"{label} {batch_no}/{total_batches} 完成")
         except DeepSeekUnavailable as exc:
@@ -1162,6 +1192,7 @@ def _classify_news_batches(
             emit(f"{label} {batch_no}/{total_batches} failed: {exc}; retrying with lightweight payload")
             retry_json = json.dumps(_classification_payload(batch, retry_text_limit, lightweight=True), ensure_ascii=False)
             retry_prompt = prompt_text.replace("{news_batch_json}", retry_json)
+            retry_prompt += events_prompt
             emit(f"{label} {batch_no}/{total_batches} retry_prompt={len(retry_prompt)} chars est_tokens={max(1, len(retry_prompt) // 4)} items={len(batch)}")
             try:
                 ai_result = _call_news_classifier(center, ai_model, retry_prompt, retry_timeout_seconds)
@@ -1221,8 +1252,10 @@ def _news_temporal_record(item: NewsItem) -> dict[str, Any]:
     from .source_date_normalizer import source_temporal_record
     from zoneinfo import ZoneInfo
     status = 'inferred' if 'publication_inferred' in item.tags else 'unknown' if 'publication_unknown' in item.tags else None
-    return source_temporal_record({"source_id": item.id, "published_at": item.published_at, "date_status": status,
-                                   "fetched_at": item.created_at}, datetime.now(ZoneInfo('Asia/Taipei')).date())
+    report_date = datetime.now(ZoneInfo('Asia/Taipei')).date()
+    return {"analysis_date": report_date.isoformat(), **source_temporal_record(
+        {"source_id": item.id, "published_at": item.published_at, "date_status": status,
+         "fetched_at": item.created_at}, report_date)}
 
 
 def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) -> list[NewsItem]:

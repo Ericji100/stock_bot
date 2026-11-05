@@ -20,6 +20,10 @@ DEFAULT_OPENCODE_REASONING_EFFORT = "medium"
 
 @dataclass(frozen=True)
 class ResearchCenterConfig:
+    openai_primary_enabled: bool = False
+    openai_api_keys: dict[str, str] = field(default_factory=dict, repr=False)
+    openai_credit_grants: tuple[dict[str, Any], ...] = ()
+    openai_job_limit_usd: float = 5.0
     deepseek_only: bool = False
     deepseek_api_key: str | None = None
     deepseek_model: str = "deepseek-flash"
@@ -135,6 +139,14 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
     api_token = secrets.get("research_api_token") or public_config.get("api_token")
 
     return ResearchCenterConfig(
+        openai_primary_enabled=bool(public_config.get('openai_primary_enabled', False)),
+        openai_api_keys={str(k): str(v).strip() for k, v in {
+            **(secrets.get('openai_api_keys') or {}),
+            **({'primary': os.environ['OPENAI_API_KEY']} if os.environ.get('OPENAI_API_KEY') else {}),
+            **({'secondary': os.environ['OPENAI_SECONDARY_API_KEY']} if os.environ.get('OPENAI_SECONDARY_API_KEY') else {}),
+        }.items() if v and str(v).strip()},
+        openai_credit_grants=tuple(public_config.get('openai_credit_grants') or []),
+        openai_job_limit_usd=float(public_config.get('openai_job_limit_usd', 5)),
         deepseek_only=bool(public_config.get("deepseek_only", True)),
         deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY") or secrets.get("deepseek_api_key"),
         deepseek_model=str(public_config.get("deepseek_model") or "deepseek-flash"),

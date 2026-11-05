@@ -14,6 +14,28 @@ from research_center import topic_formatters as formatters
 
 
 class TestTopicFormatters(unittest.TestCase):
+    def test_structured_notes_keep_claim_and_complete_citation_without_dict_repr(self):
+        import copy
+        note = {"claim": "需求仍待驗證", "source_id": "S043",
+                "url": "https://example.com/claim?source_id=S043",
+                "published_date": "2026-11-03", "supporting_quote": "尚未量產",
+                "implication": "2027年出貨假說須追蹤"}
+        before = copy.deepcopy(note)
+        text = formatters._readable_note(note)
+        for phrase in ("需求仍待驗證", "來源編號：S043", "2026-11-03", "來源引句：尚未量產",
+                       "影響說明：2027年出貨假說須追蹤", note["url"]):
+            self.assertIn(phrase, text)
+        self.assertNotIn("{'claim'", text)
+        self.assertNotIn("supporting_quote", text)
+        self.assertEqual(note, before)
+
+    def test_note_content_does_not_hide_additional_claim_or_unknown_details(self):
+        text = formatters._readable_note({"content": "反證內容", "claim": "另一個主張",
+                                         "日期": "2026-11-03", "說明": {"數值": -3.5}})
+        self.assertTrue(text.startswith("反證內容"))
+        self.assertIn("證據主張：另一個主張", text)
+        self.assertIn("數值：-3.5", text)
+
     def test_format_change_pack_list_empty(self):
         result = formatters.format_change_pack_list([])
         self.assertIn("沒有變更包", result)

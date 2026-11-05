@@ -219,6 +219,12 @@ class TestFugleRateLimiter(unittest.TestCase):
     def tearDownClass(cls):
         _PerClassCache.teardown()
 
+    def setUp(self):
+        clock = patch.object(data_source_manager.FugleRateLimiter, '_now',
+                             return_value=datetime(2026, 11, 4, 12, 0, 30))
+        self.clock = clock.start()
+        self.addCleanup(clock.stop)
+
     def test_historical_under_limit(self):
         fl = _fresh(data_source_manager.FugleRateLimiter)
         for _ in range(60):
@@ -265,6 +271,18 @@ class TestFugleRateLimiter(unittest.TestCase):
         self.assertEqual(fl.remaining_quota("historical"), 60)
         fl.record_use("historical", cost=10)
         self.assertEqual(fl.remaining_quota("historical"), 50)
+
+    def test_minute_rollover_resets_rest_but_preserves_websocket_usage(self):
+        fl = _fresh(data_source_manager.FugleRateLimiter)
+        fl.record_use('historical', cost=60)
+        fl.record_use('intraday', cost=60)
+        fl.record_use('websocket_connection')
+        self.assertFalse(fl.can_use('historical'))
+        self.assertFalse(fl.can_use('intraday'))
+        self.clock.return_value += timedelta(minutes=1)
+        self.assertEqual(fl.remaining_quota('historical'), 60)
+        self.assertEqual(fl.remaining_quota('intraday'), 60)
+        self.assertFalse(fl.can_use('websocket_connection'))
 
 
 if __name__ == "__main__":

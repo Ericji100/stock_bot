@@ -11,6 +11,19 @@ from .config import ROOT_DIR
 ENTITY_RESOLVER_SCHEMA_VERSION = "entity_resolver_v1"
 
 
+def exact_company_identity(name: str, code: str, names: dict[str, str]) -> dict[str, Any]:
+    """Resolve identity only; never infer a subsidiary, business role or relationship."""
+    name, code = str(name or '').strip(), str(code or '').strip()
+    matches = sorted(str(key) for key, value in names.items() if name and str(value).strip() == name)
+    if code:
+        if code not in names or (name and str(names[code]).strip() != name):
+            return {'status': 'unresolved' if code not in names else 'conflict', 'candidate_codes': matches}
+        return {'status': 'exact', 'company_code': code, 'company_name': names[code]}
+    if len(matches) == 1:
+        return {'status': 'exact', 'company_code': matches[0], 'company_name': names[matches[0]]}
+    return {'status': 'ambiguous' if matches else 'unresolved', 'candidate_codes': matches}
+
+
 @dataclass(frozen=True)
 class ResolvedEntity:
     query: str

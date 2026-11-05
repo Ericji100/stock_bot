@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from io import StringIO
 import re
@@ -231,6 +231,62 @@ def normalize_research_financial_periods(financial_rows, report_date=None):
     audit = financial_period_audit(rows, report_date)
     audit['normalization_scope'] = '僅投研輸入副本，不改原始快取、交易規則或既有回測'
     return rows, audit
+
+
+def financial_prompt_context(financial_rows, report_date):
+    """Lossless report-only projection; do not change cache values or scoring."""
+    from copy import deepcopy
+    from .source_date_normalizer import normalize_published_date
+
+    rows, unverified, excluded, aliases, conflicts = [], [], [], {}, []
+    def deadline(year, quarter):
+        return {1: date(year, 5, 15), 2: date(year, 8, 14),
+                3: date(year, 11, 14), 4: date(year + 1, 3, 31)}[quarter]
+    for original in financial_rows if isinstance(financial_rows, list) else []:
+        if not isinstance(original, dict):
+            unverified.append(deepcopy(original))
+            continue
+        row, seen = {}, {}
+        for key, value in original.items():
+            identity = str(key).casefold()
+            previous = seen.get(identity)
+            if previous is not None and original[previous] == value:
+                aliases[key] = previous
+                continue
+            if previous is not None:
+                conflicts.append({'period': original.get('Quarter'), 'fields': [previous, key]})
+            row[key] = deepcopy(value)
+            seen[identity] = key
+        period = str(row.get('Quarter') or row.get('quarter') or row.get('period') or '')
+        match = re.fullmatch(r'(\d{4})Q([1-4])', period)
+        if not match:
+            unverified.append(row)
+            continue
+        year, quarter = map(int, match.groups())
+        if year < 1900:
+            unverified.append(row)
+            continue
+        if year > report_date.year:
+            excluded.append({'period': period, 'available_at': None, 'reason': '數據所屬年度晚於分析日，原值保留在原始證據包'})
+            continue
+        published = [normalize_published_date(original.get(key)) for key in ('published_at', 'Published_At')]
+        published = [value for value in published if value]
+        available = max(published) if published else deadline(year, quarter).isoformat()
+        period_end = (date(year + 1, 1, 1) if quarter == 4 else date(year, quarter * 3 + 1, 1)) - timedelta(days=1)
+        # Unknown release time falls back conservatively; actual known time wins.
+        if available > report_date.isoformat() or period_end > report_date:
+            excluded.append({'period': period, 'available_at': available, 'reason': '晚於分析日，原值保留在原始證據包'})
+            continue
+        rows.append(row)
+    rows.sort(key=lambda row: str(row.get('Quarter') or row.get('quarter') or row.get('period')), reverse=True)
+    latest = str(rows[0].get('Quarter') or rows[0].get('quarter') or rows[0].get('period')) if rows else None
+    expected = max((f'{year}Q{q}' for year in (report_date.year - 1, report_date.year)
+                    for q in range(1, 5) if deadline(year, q) <= report_date), default=None)
+    return {'rows': rows, 'unverified_rows': unverified, 'excluded_after_date': excluded,
+            'field_aliases': aliases, 'alias_conflicts': conflicts, 'latest_period': latest,
+            'expected_statutory_period': expected, 'stale_or_missing': not latest or bool(expected and latest < expected),
+            'period_audit': financial_period_audit(rows, report_date),
+            'policy': '所有日期合格期間及獨有欄位完整保留；相同值的大小寫別名只送一次，衝突值均保留；不改原始快取或評分。'}
 
 
 def _try_fetch_recent_material_events(stock_code: str, report_date: date | None = None) -> list[dict[str, Any]]:

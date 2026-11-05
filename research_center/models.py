@@ -55,6 +55,8 @@ class SourceItem:
     fetched_at: str | None = None
     updated_date: str | None = None
     document_kind: str | None = None
+    search_summary_events: list[dict[str, Any]] = field(default_factory=list)
+    content: str | None = None
 
 
 @dataclass(frozen=True)

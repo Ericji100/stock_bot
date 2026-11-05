@@ -17,6 +17,109 @@ from stock_ai_bot.telegram.telegram_stock_formatting import STOCK_MARK_START, st
 
 
 class RadarDataMaximizationTests(unittest.TestCase):
+    def test_report_labels_do_not_confuse_packet_creation_with_verified_evidence(self):
+        request = radar.RadarRequest(source='combined', report_date=date(2026,11,4), ai_top=15,
+            model='deepseek', ai_comment_enabled=True)
+        candidate = radar.RadarCandidate(code='2330', name='台積電', total_score=30,
+            ai_comment={'status': 'ok', 'model': 'gpt-6.1-terra'})
+        result = radar.RadarResult(request, date(2026,11,4), [candidate], ['2330'],
+            {'evidence_pack_status': {'selected': 15, 'success': 15}})
+        for text in (radar.format_radar_report(result), radar.format_radar_push_summary(result)):
+            self.assertIn('資料證據包建立：15/15 成功', text)
+            self.assertIn('建立成功不代表來源完整或主張已核實', text)
+            self.assertIn('AI補強初評候選 15 檔', text)
+            self.assertNotIn('外部證據：15/15 成功', text)
+            self.assertNotIn('AI補強 Top', text)
+        self.assertEqual(candidate.total_score, 30)
+
+    def test_followup_keeps_one_date_bounded_query_and_all_existing_sources(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電",
+            web_sources=[{"title": "existing", "url": "https://example.com/existing"}])
+        empty_candidate = radar.RadarCandidate(code="2345", name="測試公司")
+        source = SourceItem("S002", "台積電 2330 公告", "https://mops.twse.com.tw/article",
+            "Level 1", published_date="2026-05-21", date_status="explicit",
+            document_kind="document_body", snippet="台積電 2330 官方正文")
+        service = SimpleNamespace(is_configured=lambda: True)
+        calls = []
+        def discover(request, tasks, progress=None):
+            calls.append((request, tasks))
+            return SimpleNamespace(sources=[source])
+        service.discover = discover
+        with patch.object(radar, "load_research_config", return_value=SimpleNamespace(deepseek_only=True)), \
+             patch("research_center.deepseek_service.configured_client"), \
+             patch("research_center.deepseek_search_service.DeepSeekSearchService", return_value=service):
+            radar._attach_web_sources([candidate, empty_candidate], ["2330", "2345"], date(2026, 5, 22), None, evidence_gap=True)
+        task = calls[0][1][0]
+        self.assertEqual(len(task["queries"]), 1)
+        self.assertEqual(len(calls[1][1][0]["queries"]), 1)
+        self.assertIn("site:mops.twse.com.tw", task["queries"][0])
+        self.assertIn("2026-05-22", task["objective"])
+        self.assertEqual(len(candidate.web_sources), 2)
+        self.assertEqual(candidate.web_sources[0]["title"], "existing")
+        self.assertEqual(candidate.web_sources[1]["document_kind"], "document_body")
+        self.assertEqual(candidate.web_sources[1]["date_status"], "explicit")
+
+    def test_followup_official_origin_alone_does_not_satisfy_document_gap(self):
+        row = {"title": "台積電 2330", "url": "https://mops.twse.com.tw/",
+               "snippet": "台積電 2330", "published_date": "2026-05-21", "date_status": "explicit"}
+        for extra in ({}, {"document_kind": "reference_link"},
+                      {"document_kind": "document_body", "date_status": "inferred"},
+                      {"document_kind": "document_body", "published_date": "2026-05-23"},
+                      {"document_kind": "document_body", "updated_date": "2026-05-23"},
+                      {"document_kind": "document_body", "data_date": "2026-05-23"},
+                      {"document_kind": "document_body", "title": "另一公司", "snippet": "另一公司正文"}):
+            with self.subTest(extra=extra):
+                candidate = radar.RadarCandidate(code="2330", name="台積電", ai_sources=[{**row, **extra}])
+                task = radar._radar_source_followup_task(candidate, date(2026, 5, 22))
+                self.assertIn("site:mops.twse.com.tw", task["queries"][0])
+
+    def test_followup_retrieved_same_company_official_body_prioritizes_counter_evidence(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電", ai_sources=[{
+            "title": "台積電 2330", "url": "https://mops.twse.com.tw/article", "snippet": "公司正文",
+            "document_kind": "document_body", "published_date": "2026-05-21", "date_status": "explicit"}])
+        task = radar._radar_source_followup_task(candidate, date(2026, 5, 22))
+        self.assertEqual(len(task["queries"]), 1)
+        self.assertIn("反證", task["queries"][0])
+        self.assertNotIn("site:", task["queries"][0])
+
+    def test_media_count_does_not_satisfy_official_evidence_gap(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電", ai_sources=[{
+            "title": "台積電 新聞", "url": f"https://example.com/{index}"} for index in range(8)])
+        with patch.object(radar, "_attach_web_sources") as attach:
+            radar._ensure_radar_source_sufficiency([candidate], ["2330"], date(2026, 5, 22), None)
+        attach.assert_called_once_with([candidate], ["2330"], date(2026, 5, 22), None, evidence_gap=True)
+
+    def test_ai_payload_exposes_official_document_gap_without_calling_reference_verified(self):
+        candidate = radar.RadarCandidate(code="2330", name="台積電", ai_sources=[{
+            "title": "台積電 2330", "url": "https://mops.twse.com.tw/article", "snippet": "公司正文",
+            "document_kind": "reference_link", "published_date": "2026-05-21", "date_status": "explicit"}])
+        with patch.object(radar, "_build_radar_ai_compact_pack", return_value={}):
+            payload = radar._build_ai_comment_payload(candidate, date(2026, 5, 22))
+            self.assertFalse(payload["官方證據狀態"]["同公司且日期合格的官方正文已取得"])
+            candidate.ai_sources[0]["document_kind"] = "document_body"
+            payload = radar._build_ai_comment_payload(candidate, date(2026, 5, 22))
+            self.assertTrue(payload["官方證據狀態"]["同公司且日期合格的官方正文已取得"])
+            self.assertIn("仍須核對主張", payload["官方證據狀態"]["限制"])
+
+    def test_official_document_company_prefix_or_other_issuer_is_not_confirmed(self):
+        row = {"title": "長榮航空 2618", "url": "https://mops.twse.com.tw/article", "snippet": "長榮航空正文",
+               "document_kind": "document_body", "published_date": "2026-05-21", "date_status": "explicit"}
+        candidate = radar.RadarCandidate(code="2603", name="長榮")
+        for extra in ({}, {"title": "12603", "snippet": "相似數字不是股號"},
+                      {"title": "長榮 2603 同業比較", "url": "https://mops.twse.com.tw/STR/2618"}):
+            with self.subTest(extra=extra):
+                candidate.ai_sources = [{**row, **extra}]
+                self.assertFalse(radar._candidate_has_official_document(candidate, date(2026, 5, 22)))
+
+    def test_radar_source_serialization_preserves_temporal_and_document_provenance(self):
+        source = SourceItem("S001", "原文", "https://example.com/article", "Level 3",
+            published_date="2026-05-21", snippet="完整原文", document_kind="document_body",
+            date_status="explicit", updated_date="2026-05-22", data_date="2026-04-30",
+            period_start="2026-04-01", period_end="2026-04-30", fetched_at="2026-05-22T12:00:00+08:00")
+        for row in (radar._source_to_dict(source), radar._normalise_ai_sources([source], {})[0]):
+            for field in ("date_status", "document_kind", "data_date", "period_start", "period_end", "fetched_at", "updated_date", "snippet"):
+                self.assertEqual(row[field], getattr(source, field))
+
     def test_normalise_ai_sources_preserves_all_sources_and_fetch_details_unittest(self):
         sources = [
             SourceItem(
@@ -82,8 +185,9 @@ class RadarDataMaximizationTests(unittest.TestCase):
             ai_sources=[{"title": "existing", "url": "https://example.com/existing"}],
         )
 
-        def fake_attach(candidates, ai_codes, analysis_date, progress):
+        def fake_attach(candidates, ai_codes, analysis_date, progress, *, evidence_gap=False):
             self.assertEqual(ai_codes, ["2330"])
+            self.assertTrue(evidence_gap)
             candidates[0].web_sources.extend(
                 [
                     {"title": f"extra {i}", "url": f"https://example.com/extra-{i}"}
@@ -332,7 +436,7 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
             ],
             evidence_pack={
                 "research_structured_data": {
-                    "financial_data": [{"Quarter": f"2026Q{i}", "note": "y" * 800} for i in range(8)],
+                    "financial_data": [{"Quarter": f"{2023+i//4}Q{i%4+1}", "note": "y" * 800} for i in range(8)],
                 },
                 "research_sources": [
                     {"title": f"research {i}", "url": f"https://research.example.com/{i}", "snippet": "r" * 500}
@@ -347,7 +451,8 @@ class RadarAiBudgetAndStabilityTests(unittest.TestCase):
         self.assertIn("ai_compact_pack", payload)
         compact_payload = payload["ai_compact_pack"]["payload"]
         self.assertLessEqual(len(compact_payload["news"]["ai_sources"]), radar.RADAR_AI_COMPACT_SOURCE_LIMIT)
-        self.assertLessEqual(len(compact_payload["research_summary"]["financial_data"]), 4)
+        self.assertEqual(len(compact_payload["research_summary"]["financial_data"]), 8)
+        self.assertEqual(compact_payload["research_summary"]["financial_data"][0]["Quarter"], "2024Q4")
 
     def test_ai_comment_payload_replaces_internal_truncation_markers_unittest(self):
         candidate = radar.RadarCandidate(

@@ -524,6 +524,13 @@ def _append_report_quality_summary(
         f"日期不可驗證：{source_summary.get('undated_sources', 0)}"
     )
     governance = quality.get('evidence_governance') or {}
+    official = governance.get('official_evidence_coverage') or {}
+    lines.append(f"- 官方正文或解析數值：{official.get('retrieved_unique_urls', 0)} 個唯一網址；只有查詢入口：{official.get('reference_only_unique_urls', 0)} 個。已取內容仍不代表所有主張已證實。")
+    movers = (structured_data or {}).get('market_movers') or {}
+    from .market_movers_service import market_population_summary
+    population = market_population_summary(movers)
+    if population:
+        lines.append(f"- 同日排行樣本：{population.get('price_date') or '日期未確認'}，{population.get('stock_count', 0)} 檔；原始資料共 {population.get('raw_stock_count', 0)} 檔，其他日期 {population.get('other_session_stock_count', 0)} 檔另存，不混算為本日排行。")
     warnings = [*(quality.get("qa_warnings") or []), *(governance.get('warnings') or [])]
     lines.append("- QA 提醒：" + ("；".join(str(item) for item in warnings) if warnings else "無"))
     lines.extend(['', '### 日期、官方證據與公司核對', '',
@@ -831,8 +838,8 @@ def _append_complete_source_appendix(markdown: str, sources: list[SourceItem]) -
     lines.append("| ID | 層級 | 來源 | 日期 | 標題 | URL |")
     lines.append("|---|---|---|---|---|---|")
     for item in sources[:max_markdown_sources]:
-        title = _truncate_source_text(_source_display_title(item.title, item.url), 90)
-        provider = _truncate_source_text(_source_display_provider(item.provider), 32)
+        title = _truncate_source_text(_source_display_title(item.title, item.url), 90).replace("|", "&#124;")
+        provider = _truncate_source_text(_source_display_provider(item.provider), 32).replace("|", "&#124;")
         date_part = item.published_date or "-"
         lines.append(
             f"| {item.source_id} | {item.source_level} | {provider} | {date_part} | {title} | {item.url} |"

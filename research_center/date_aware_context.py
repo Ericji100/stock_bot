@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import math
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -41,6 +42,53 @@ GENERAL_TAIWAN_MARKET_TERMS = (
     "資金",
     "題材",
 )
+
+
+def report_quote_context(snapshot: dict[str, Any], report_date: date) -> dict[str, Any]:
+    """A report-only coherent view; never rewrite cached quotes or scoring inputs."""
+    from copy import deepcopy
+    def number(value):
+        try:
+            result = float(value)
+            return result if math.isfinite(result) else None
+        except (ValueError, TypeError):
+            return None
+    cached = deepcopy(snapshot.get('price_metrics') or {})
+    day = parse_date_like(snapshot.get('last_date'))
+    prior_day = parse_date_like(snapshot.get('previous_date'))
+    close, prior = number(snapshot.get('close')), number(snapshot.get('previous_close'))
+    eligible = day is not None and day <= report_date and close is not None
+    can_derive = eligible and prior is not None and prior > 0 and int(snapshot.get('row_count') or 0) >= 2
+    if prior_day is not None and (day is None or prior_day >= day):
+        can_derive = False
+    derived = (close / prior - 1) * 100 if can_derive else None
+    view = {'price_date': day.isoformat() if eligible else None, 'close': close if eligible else None,
+            'previous_date': prior_day.isoformat() if prior_day and can_derive else None,
+            'previous_close': prior if can_derive else None, 'change_pct': derived}
+    conflicts = []
+    for key, target in (('price', view['close']), ('close', view['close']),
+                        ('previous_close', view['previous_close']), ('change_pct', derived)):
+        original = number(cached.get(key))
+        if original is not None and target is not None and not math.isclose(original, target, abs_tol=.01, rel_tol=.00001):
+            conflicts.append({'field': key, 'original_value': cached[key], 'same_frame_value': target})
+    cached_day = parse_date_like(cached.get('price_date'))
+    if cached_day and day and cached_day != day:
+        conflicts.append({'field': 'price_date', 'original_value': cached.get('price_date'), 'same_frame_value': day.isoformat()})
+    warnings = []
+    if conflicts:
+        warnings.append('原快取與日資料視圖有衝突，不可混用前收盤與漲跌幅；原值保留供追查。')
+    if not eligible:
+        warnings.append('日資料日期或收盤價不可用，不能當成報告日行情。')
+    if not can_derive:
+        warnings.append('缺有效前收盤或先後日期，未計算漲跌幅。')
+    elif prior_day is None:
+        warnings.append('前收盤日期未保存在舊快照；計算值只供一致性核對，尚非官方日漲跌幅驗證。')
+    if day and day < report_date:
+        warnings.append('行情早於分析日，不是分析日即時或收盤數值。')
+    return {'view': view, 'original_cached_metrics': cached, 'conflicts': conflicts, 'warnings': warnings,
+            'status': 'same_frame_consistency_only' if eligible else 'unverified',
+            'official_verified': False,
+            'policy': '報告應分開引用同日視圖與原始衝突值；本地分數不重算，原快取不覆寫，未來資料不作歷史結論。'}
 
 
 def analysis_date_for_request(request: CommandRequest) -> date:
@@ -244,9 +292,13 @@ def build_saved_news_context(
 
 def extract_target_terms(request: CommandRequest, structured_data: dict[str, Any]) -> list[str]:
     terms: list[str] = []
-    for value in (request.target, request.market_scope, request.theme_scope, request.candidate_pool):
-        if value:
-            terms.extend(_split_terms(str(value)))
+    if request.command == 'value_scan':
+        from .search_query_service import _target_label
+        terms.extend(_split_terms(_target_label(request, structured_data)))
+    else:
+        for value in (request.target, request.market_scope, request.theme_scope, request.candidate_pool):
+            if value:
+                terms.extend(_split_terms(str(value)))
     stock = structured_data.get("stock") or {}
     if isinstance(stock, dict):
         terms.extend(_split_terms(str(stock.get("code") or "")))
@@ -372,6 +424,9 @@ def _date_query_tokens(analysis_date: date) -> list[str]:
 
 
 def _date_context_base_terms(request: CommandRequest, structured_data: dict[str, Any]) -> list[str]:
+    if request.command == 'value_scan':
+        from .search_query_service import _target_label
+        return [_target_label(request, structured_data)]
     if request.command == "theme_radar":
         return ["台股 題材 輪動", "上市櫃 漲停 量增 族群"]
     if request.command == "sector_strength":

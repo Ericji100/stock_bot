@@ -347,7 +347,8 @@ def _target_label(request: CommandRequest, structured_data: dict[str, Any]) -> s
         if labels:
             return ' '.join(labels)
         import re
-        codes = re.findall(r'(?<!\d)\d{4,6}(?!\d)', str(request.candidate_pool or request.target or ''))
+        context = ' '.join(str(value or '') for value in (request.candidate_pool, request.target))
+        codes = list(dict.fromkeys(re.findall(r'(?<!\d)\d{4,6}(?!\d)', context)))
         return ' '.join(codes) or '台股企業價值重估'
     stock = structured_data.get("stock") or {}
     parts = [

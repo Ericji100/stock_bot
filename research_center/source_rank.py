@@ -1,11 +1,13 @@
 ﻿from __future__ import annotations
 
+from dataclasses import replace
 from urllib.parse import urlparse
 
 from .models import SourceItem
 from .preferred_sources import match_preferred_source, preferred_source_weight
 from .source_date_normalizer import normalize_published_date_with_status, normalize_published_date, publication_metadata_date
-from .source_text_cleaner import clean_source_text, clean_source_title
+from .source_text_cleaner import clean_source_text, clean_source_title, source_body_text
+from .search_transmission import merge_search_text, merge_search_records
 
 LEVEL_1_DOMAINS = ("twse.com.tw", "tpex.org.tw", "mops.twse.com.tw", "mopsov.twse.com.tw")
 LEVEL_2_DOMAINS = ("moneydj.com", "cnyes.com", "ctee.com.tw", "udn.com", "digitimes.com", "trendforce.com", "cna.com.tw")
@@ -42,15 +44,24 @@ def rank_source(url: str, title: str = "") -> str:
 
 def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
     items: list[SourceItem] = []
-    seen: set[str] = set()
+    seen: dict[str, int] = {}
     for raw in raw_sources:
         url = str(raw.get("url") or "").strip()
         original_title = clean_source_text(raw.get("title") or url or "未命名來源")
         title = clean_source_title(original_title, url)
         snippet = clean_source_text(raw.get("snippet")) if raw.get("snippet") else raw.get("snippet")
-        if not url or url in seen:
+        content = source_body_text(raw) or None
+        if not url:
             continue
-        seen.add(url)
+        if url in seen:
+            index = seen[url]
+            existing = items[index]
+            items[index] = replace(existing, snippet=merge_search_text(existing.snippet, snippet),
+                                   content=merge_search_text(existing.content, content) or None,
+                                   search_summary_events=merge_search_records(existing.search_summary_events, raw.get('search_summary_events')),
+                                   found_by=list(dict.fromkeys([*existing.found_by, *raw.get('found_by', [])])))
+            continue
+        seen[url] = len(items)
         preferred = match_preferred_source(url)
         source_level = str(preferred.get("level")) if preferred else rank_source(url, title)
         provider_detail = raw.get("provider_detail") or ""
@@ -94,6 +105,8 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
                 data_date=raw.get('data_date'),period_start=raw.get('period_start'),period_end=raw.get('period_end'),
                 fetched_at=raw.get('fetched_at'),updated_date=raw.get('updated_date') or normalize_published_date(raw.get('dateModified')),
                 document_kind=raw.get('document_kind'),
+                search_summary_events=raw.get('search_summary_events') or [],
+                content=content,
             )
         )
     return items

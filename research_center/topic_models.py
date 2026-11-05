@@ -86,9 +86,9 @@ class TopicEvidence:
         return cls(
             source=data.get("source", ""),
             source_level=level,
-            content=data.get("content", ""),
+            content=data.get("content") or data.get("summary") or data.get("claim") or "",
             url=data.get("url"),
-            publish_date=data.get("publish_date"),
+            publish_date=data.get("publish_date") or data.get("published_date"),
             score_contribution=float(data.get("score_contribution", 0.0)),
             supporting_quote=data.get('supporting_quote'),
             source_id=data.get('source_id'),

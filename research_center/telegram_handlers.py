@@ -15,7 +15,7 @@ from .recent_scans import load_recent_scan_results
 
 RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 
-所有 AI 分析與搜尋統一使用 DeepSeek 官方 API，不需選擇模型。
+AI 分析與搜尋依系統設定，GPT-6.1 Terra 加強推理優先、額度不足採 DeepSeek 備援，不需選擇模型。
 
 選股與雷達
 /scan - 開啟選股掃描選單
@@ -32,7 +32,7 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 /research 2330 --score - 個股評分研究
 /research 2330 --deep - 深度個股研究
 /research 2330 --date 2026-05-22 - 指定日期研究
-/research 2330 --deep - DeepSeek 深度研究
+/research 2330 --deep - AI 深度研究
 /value_scan - 開啟價值重估掃描選單
 /value_scan 精選選股 - 掃描精選選股
 /value_scan 我的持股 - 掃描持股
@@ -59,7 +59,7 @@ RESEARCH_HELP_TEXT = """台股 AI 助理完整指令
 /sector_strength [--date 2026-05-22] [--model deepseek] - 族群強弱排行
 
 題材庫維護
-/topic_maintain - 使用 DeepSeek 完整維護題材庫
+/topic_maintain - 使用 AI 完整維護題材庫
 /topic_seed_prompt - 產生外部高階 AI 題材庫提示詞
 /topic_import - 匯入外部 AI JSON（本地轉成變更包，不呼叫 AI）
 /topic_source_sync - 同步 TPEx/UDN 外部來源並套用正式題材庫
@@ -147,7 +147,7 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
         state = context.user_data.setdefault("ai_menu", {})
         if data.startswith(("analysis_model:", "news_model:", "topic_maintain:model:")):
             state.clear()
-            await query.edit_message_text("模型選單已停用，目前統一使用 DeepSeek Flash，請重新輸入指令。")
+            await query.edit_message_text("模型由系統統一設定並依額度備援，請重新輸入指令。")
             return
 
         if data.startswith("research_mode:"):
@@ -262,7 +262,7 @@ def build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_
             action = data.split(":", 1)[1]  # "latest", "7d", "refresh"
             if action == "refresh":
                 state.clear()
-                await query.edit_message_text("開始以 DeepSeek 更新新聞資料庫。")
+                await query.edit_message_text("開始以系統 AI 模型更新新聞資料庫。")
                 await _execute_raw_command(update, context, center, "/news refresh", safe_send_reply, safe_reply_document)
                 return
             raw = _compose_news_command("gemini", action)
@@ -989,9 +989,10 @@ def _telegram_status_note(result) -> str:
 
 def _fallback_model_label(result) -> str:
     model = (
-        getattr(getattr(result, "request", None), "ai_model", None)
+        getattr(result, "ai_model", None)
+        or (getattr(result, "report_json", {}) or {}).get("metadata", {}).get("analysis_model")
+        or getattr(getattr(result, "request", None), "ai_model", None)
         or (getattr(result, "report_json", {}) or {}).get("metadata", {}).get("analysis_model_choice")
-        or getattr(result, "ai_model", None)
         or "AI"
     )
     labels = {

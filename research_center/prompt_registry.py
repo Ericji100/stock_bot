@@ -482,6 +482,15 @@ def build_prompt_from_request(
     # report context template (from prompt/rules/report_context.md)
     # Build command-aware structured prompt pack for the shared report context.
     structured_data_json = _prompt_structured_data(request, structured_data)
+    from .search_transmission import collect_search_context, search_context_prompt, source_events_packet
+    # Keep unverified gaps outside command-specific projections and truncation.
+    package = structured_data.get('high_model_input_package') or {}
+    if not package.get('search_context_notes'):
+        structured_data_json += search_context_prompt(collect_search_context(structured_data, source_list, request.report_date))
+    if not package.get('search_source_events'):
+        events = source_events_packet(source_list)
+        if events:
+            structured_data_json += '\n\n搜尋模型事件底稿（非原文，日期與主張仍須查證）：\n' + _json(events)
     report_context = _read_rule_prompt("report_context.md").format(
         request_json=_json(asdict(request)),
         structured_data_json=structured_data_json,

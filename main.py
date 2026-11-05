@@ -130,7 +130,7 @@ SCHEDULED_TASK_TIMEOUT_SECONDS = {
 SCHEDULED_JOB_REGISTRATIONS: tuple[ScheduledJobRegistration, ...] = (
     ScheduledJobRegistration("scheduled:monitor_scan:1230", "12:30 監控掃描", "每日 12:30", parameters="build_monitor_scan_report(title=12:30 監控掃描, empty_message=無突破訊號)"),
     ScheduledJobRegistration("scheduled:noon_market:1350", "13:50 午報", "每日 13:50", parameters="build_noon_market_report(), retry=6, retry_delay=30m"),
-    ScheduledJobRegistration("scheduled:topic_maintain:2230", "22:30 AI 題材庫維護（DeepSeek Flash）", "週二、週五 22:30", parameters="/topic_maintain --deep, changed evidence only"),
+    ScheduledJobRegistration("scheduled:topic_maintain:2230", "22:30 AI 題材庫維護", "週二、週五 22:30", parameters="/topic_maintain --deep, changed evidence only"),
     ScheduledJobRegistration("scheduled:portfolio:1745", "17:45 持股報告", "每日 17:45", parameters="build_portfolio_report(), retry=portfolio default"),
     ScheduledJobRegistration("scheduled:news:1800", "18:00 定時新聞整理", "每日 18:00", parameters="refresh model=deepseek, scheduled_latest, lightweight_refill=auto, push=false"),
     ScheduledJobRegistration("scheduled:all_scan:2030", "20:30 全部選股", "每日 20:30", parameters="/scan selection=7(all), date=today if trading day"),
@@ -1624,7 +1624,7 @@ async def handle_radar_model_callback(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     await query.answer()
     context.user_data.pop("pending_radar_args", None)
-    await query.edit_message_text("模型選單已停用，目前統一使用 DeepSeek Flash，請重新輸入 /radar。")
+    await query.edit_message_text("模型由系統設定並依額度備援，請重新輸入 /radar。")
     return
     model = query.data.replace(RADAR_MODEL_CALLBACK_PREFIX, "", 1)
     args = list(context.user_data.pop("pending_radar_args", []))
@@ -1881,7 +1881,7 @@ async def _scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
-    await enqueue_scheduled_task(context, "21:30 Radar 推播（DeepSeek Flash 短評）", lambda: _scheduled_radar_push(context))
+    await enqueue_scheduled_task(context, "21:30 Radar 推播（AI 短評）", lambda: _scheduled_radar_push(context))
 
 
 async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
@@ -1891,7 +1891,7 @@ async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
 async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     await enqueue_scheduled_task(
         context,
-        "22:30 AI題材庫維護（DeepSeek Flash）",
+        "22:30 AI題材庫維護",
         lambda: _scheduled_topic_maintain(context),
     )
 
@@ -1935,7 +1935,7 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
     raw_command = "/topic_maintain --deep"
     print(
         format_cmd_message(
-            f"22:30 AI題材庫維護（DeepSeek Flash）開始：{raw_command}",
+            f"22:30 AI題材庫維護開始：{raw_command}",
             "定時任務",
         ),
         flush=True,
@@ -1967,13 +1967,13 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
             return {"status": result.status, "reason": reason}
         await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
-            format_cmd_message("22:30 AI題材庫維護（DeepSeek Flash）完成", "定時任務"),
+            format_cmd_message("22:30 AI題材庫維護完成", "定時任務"),
             flush=True,
         )
     except Exception as exc:
         await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(
-            format_cmd_message(f"22:30 AI題材庫維護（DeepSeek Flash）失敗：{exc}", "定時任務"),
+            format_cmd_message(f"22:30 AI題材庫維護失敗：{exc}", "定時任務"),
             flush=True,
         )
         traceback.print_exc()
@@ -2620,7 +2620,7 @@ def main():
         app.job_queue.run_daily(
             scheduled_topic_maintain,
             time=time(hour=22, minute=30, tzinfo=tw_tz),
-            name="22:30 AI題材庫維護（DeepSeek Flash）",
+            name="22:30 AI題材庫維護",
             days=(2, 5),
             job_kwargs=SCHEDULED_JOB_KWARGS,
         )

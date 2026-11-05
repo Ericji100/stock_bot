@@ -34,10 +34,12 @@ class ResearchCenterNewFeatureTests(unittest.TestCase):
     def test_mops_table_parser_is_available_for_html_shape(self):
         # Parser internals are covered by syntax/import here; network is intentionally not used.
         self.assertTrue(callable(_fetch_mops_tables))
-    def test_historical_prompt_disables_live_search_by_instruction(self):
+    def test_historical_prompt_keeps_date_guard_without_false_search_disabled_claim(self):
         request = parse_command_text('/research 2330 --date 2026-01-01')
         prompt = build_prompt(request, structured_data={'historical_snapshots': {'status': 'no_historical_snapshots', 'snapshot_count': 0}}, source_list=[])
-        self.assertIn('Gemini Search / 現在網路搜尋已由程式停用', prompt)
+        self.assertIn('以本次搜尋紀錄與入模來源為準', prompt)
+        self.assertIn('重新抓取的內容不等於當時可見的歷史快照', prompt)
+        self.assertNotIn('現在網路搜尋已由程式停用', prompt)
         self.assertIn('不得使用該日期之後', prompt)
 
 

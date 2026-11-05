@@ -26,16 +26,21 @@ QUALITY_COMMANDS = (
 def review_reader_content(markdown: str, sources: list[SourceItem], structured_data=None) -> dict[str, Any]:
     """Mechanical diagnostics, not a claim of semantic accuracy or human review."""
     from .report_numeric_validation import validate_report_numbers
-    refs = set(re.findall(r"\[(S\d+)\]", markdown))
+    refs = {ref for bracket in re.findall(r"\[([^\]\n]+)\]", markdown)
+            for ref in re.findall(r"\bS\d+\b", bracket)}
     known = {item.source_id for item in sources}
     unknown = sorted(refs - known)
     numeric = validate_report_numbers(markdown, sources, structured_data)
     from .evidence_governance import review_claim_evidence
     claim_audit = review_claim_evidence(markdown, sources)
     errors = list(numeric['errors'])
+    company_review = _review_company_names(markdown, structured_data or {})
+    errors.extend(company_review['errors'])
     if unknown:
         errors.append('正文引用不存在的來源編號：' + '、'.join(unknown))
     warnings = list(numeric.get('warnings') or [])
+    if re.search(r"\[[^\]\n]*(?:前段|上文|片段\s*\d+)[^\]\n]*\]", markdown):
+        warnings.append('正文仍有「前段／上文／片段」等不明引用；須對應本次來源編號，或標示本地底稿的指標與資料日，不可視為已核實證據。')
     if claim_audit['flagged_count']:
         warnings.append(f"{claim_audit['flagged_count']} 項引用主張有待核對內容或語意；詳見證據檢核底稿。")
     if sources and not refs:
@@ -46,8 +51,56 @@ def review_reader_content(markdown: str, sources: list[SourceItem], structured_d
             'errors': errors, 'warnings': warnings, 'cited_source_ids': sorted(refs),
             'unknown_source_ids': unknown, 'numeric_validation': numeric,
             'claim_evidence_audit': claim_audit,
+            'company_name_review': company_review,
             'semantic_review_status': 'pending',
             'scope': '只驗算明確估值、引用金額的部分單位換算及來源編號存在性；未證明所有數值、引用語意、資料完整或預測正確。'}
+
+
+def _review_company_names(markdown: str, data: dict[str, Any]) -> dict[str, Any]:
+    from .evidence_governance import source_company_conflicts
+    names = dict(data.get('authoritative_company_names') or {})
+    master = data.get('stock_index') or {}
+    entries = [{**row, 'code': str(code)} for code, row in master.items() if isinstance(row, dict)] if isinstance(master, dict) else list(master)
+    entries += [data.get('stock'), *(data.get('ai_candidates') or []),
+                *(data.get('ai_candidate_evidence_pack') or [])]
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry = entry.get('stock') or entry
+        if not isinstance(entry, dict):
+            continue
+        code, name = str(entry.get('code') or ''), entry.get('name') or entry.get('stock_name')
+        if code and name:
+            names.setdefault(code, str(name))
+    issues = source_company_conflicts({'content': markdown}, {'authoritative_company_names': names})
+    issues = [row for row in issues if row.get('kind') == 'name_mismatch']
+    column = None
+    for line in markdown.splitlines():
+        if not line.strip().startswith('|'):
+            column = None
+            continue
+        cells = [cell.strip().strip('*` ') for cell in line.strip().strip('|').split('|')]
+        header = next((i for i, cell in enumerate(cells) if cell in {'公司', '公司名稱', '股票', '標的', '標的名稱'}), None)
+        if header is not None:
+            column = header
+            continue
+        if column is None or len(cells) <= column:
+            continue
+        stated = cells[column]
+        bound = re.fullmatch(r'(\d{4,6})\s*[:：、 -]*\s*([\u4e00-\u9fffA-Za-z-]+)', stated)
+        if bound and bound[1] in names:
+            expected = names[bound[1]]
+            if not (stated.endswith(expected) or expected.startswith(bound[2]) or bound[2].startswith(expected)):
+                issues.append({'code': bound[1], 'stated_name': bound[2], 'expected_name': expected, 'kind': 'name_mismatch'})
+        # Only diagnose an unambiguous transposition; never silently rewrite a guessed name.
+        if len(stated) >= 3 and re.fullmatch(r'[\u4e00-\u9fff]+', stated) and stated not in names.values():
+            matches = [(code, name) for code, name in names.items() if sorted(stated) == sorted(name)]
+            if len(matches) == 1:
+                code, expected = matches[0]
+                issues.append({'code': code, 'stated_name': stated, 'expected_name': expected, 'kind': 'possible_transposition'})
+    errors = list(dict.fromkeys(f"公司名稱待修正：{row['stated_name']}，本次主檔為 {row['code']} {row['expected_name']}；正文與表格須一致，其他位置的更正註記不代表原錯字已修復。" for row in issues))
+    return {'issues': issues, 'errors': errors, 'auto_rewritten': False,
+            'scope': '核對本次已提供的主檔與候選；未猜測未知公司，不驗證供應關係。'}
 
 
 def build_report_quality_layer(

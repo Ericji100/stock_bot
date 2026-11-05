@@ -13,11 +13,29 @@ from .web_fetch_service import WebFetchService
 ProgressCallback = Callable[[str], None]
 
 
+def recover_search_publication_dates(request, sources, diagnostics, progress=None):
+    """Fetch real article metadata before dated reports reject unknown dates."""
+    from .source_date_normalizer import source_publication_status
+    candidates = [source for source in sources if (source.snippet or source.source_level in {'Level 1', 'L1_official'}) and
+                  source_publication_status(source) != 'explicit' and source.fetch_status != 'success']
+    if not candidates:
+        return
+    _enrich_sources_with_web_fetch(request, candidates, diagnostics, progress, prefer_official=True)
+    by_url = {source.url: source for source in candidates}
+    sources[:] = [by_url.get(source.url, source) for source in sources]
+    diagnostics['publication_date_recovery'] = {
+        'candidate_count': len(candidates),
+        'explicit_dates_recovered': sum(source_publication_status(source) == 'explicit' for source in candidates),
+        'policy': '只採原文擷取結果，不把模型摘要日期或事件日期當作已核實發布日；未確定者仍受日期過濾。'}
+
+
 def _enrich_sources_with_web_fetch(
     request: CommandRequest,
     sources: list[SourceItem],
     structured_data: dict[str, Any],
     progress: ProgressCallback | None = None,
+    *,
+    prefer_official: bool = False,
 ) -> None:
     """Best-effort page-content enrichment; failures must never block AI analysis."""
     if not sources:
@@ -52,7 +70,16 @@ def _enrich_sources_with_web_fetch(
             continue
         candidates.append(source)
         seen.add(url)
-    selected = sorted(candidates, key=_web_fetch_source_priority, reverse=True)[:max_urls]
+    ranked = sorted(candidates, key=_web_fetch_source_priority, reverse=True)
+    selected = []
+    if prefer_official:
+        official = [source for source in ranked if source.source_level in {'Level 1', 'L1_official'}
+                    and not _looks_like_non_article_fetch_url(source.url.lower())]
+        # Reserve original documents without displacing all media counter-evidence.
+        selected = official[:max(1, max_urls // 4)]
+    selected_urls = {source.url for source in selected}
+    selected.extend(source for source in ranked if source.url not in selected_urls)
+    selected = selected[:max_urls]
 
     if not selected:
         structured_data["web_fetch_diagnostics"] = {
@@ -74,18 +101,20 @@ def _enrich_sources_with_web_fetch(
         )
         by_url = {item.url: item for item in result.results}
         enriched_sources: list[SourceItem] = []
-        enriched_count = 0
+        enriched_urls: set[str] = set()
         for source in sources:
             fetched = by_url.get(source.url)
             if not fetched:
                 enriched_sources.append(source)
                 continue
             if fetched.content:
-                enriched_count += 1
+                enriched_urls.add(source.url)
                 from .source_text_cleaner import article_text_sections
                 primary, related = article_text_sections(fetched.content)
                 snippet = primary
-                if source.snippet and source.snippet not in primary:
+                if primary and primary in (source.snippet or ''):
+                    snippet = source.snippet
+                elif source.snippet and source.snippet not in primary:
                     snippet = '搜尋摘要（尚須原文核對）：\n' + source.snippet + '\n\n取得的本文：\n' + primary
             else:
                 snippet = source.snippet
@@ -95,6 +124,7 @@ def _enrich_sources_with_web_fetch(
                     title=fetched.title or source.title,
                     published_date=(fetched.published_date if getattr(fetched, 'date_status', None) == 'explicit' else source.published_date or fetched.published_date),
                     snippet=snippet,
+                    content=fetched.content or source.content,
                     fetch_provider=fetched.fetch_provider,
                     fetch_status=fetched.content_status,
                     fetch_quality=fetched.fetch_quality,
@@ -105,6 +135,7 @@ def _enrich_sources_with_web_fetch(
                 )
             )
         sources[:] = enriched_sources
+        enriched_count = len(enriched_urls)
         success_ratio = round(enriched_count / len(selected), 4) if selected else 0
         structured_data["web_fetch_diagnostics"] = {
             **result.diagnostics,

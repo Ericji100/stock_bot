@@ -18,10 +18,9 @@ def _mock_entry(code="2330", name="測試股票", symbol="2330", industry="半�
 
 
 def _mock_revenue_point(revenue=1000000.0, yoy=20.0):
-    p = MagicMock()
-    p.revenue = revenue
-    p.yoy = yoy
-    return p
+    from stock_ai_bot.scanning.stock_scanner import RevenuePoint
+    return RevenuePoint(month='2026-04', revenue=revenue, yoy=yoy,
+                        published_at='2026-05-08', published_at_source='synthetic_fixture')
 
 
 class ValueScanEvidencePackTests(unittest.TestCase):
@@ -315,9 +314,13 @@ class ValueScanEvidencePackTests(unittest.TestCase):
             "symbol": "2330",
             "industry": "半導體",
             "price": 100.0,
+            "price_date": "2026-11-03",
+            "price_metrics": {"price_date": "2026-11-03", "ma21": 95.5},
             "avg_volume_20d": 5000.0,
             "latest_monthly_revenue": 2000000.0,
             "revenue_yoy": 15.0,
+            "revenue_history": [{"month": "2026-09", "revenue": 2000000.0,
+                                 "published_at": "2026-10-08", "published_at_source": "official"}],
             "old_market_label": "低價",
             "new_market_label": "中高價",
             "rerating_score": 85.0,
@@ -345,6 +348,9 @@ class ValueScanEvidencePackTests(unittest.TestCase):
 
         self.assertEqual(len(pack), 1)
         item = pack[0]
+        self.assertEqual(item['price_date'], row['price_date'])
+        self.assertEqual(item['price_metrics'], row['price_metrics'])
+        self.assertEqual(item['revenue_history'], row['revenue_history'])
 
         required_fields = [
             "code", "name", "symbol", "industry", "price", "avg_volume_20d",
@@ -477,6 +483,37 @@ class ValueScanEvidencePackTests(unittest.TestCase):
         composite_zero = pack_zero[0]["local_rerating_composite_score"]
 
         self.assertEqual(composite_zero, 0.0)
+
+    def test_evidence_components_match_existing_local_scores_without_changing_candidate(self):
+        from copy import deepcopy
+        from research_center.data_services import _build_ai_candidate_evidence_pack
+        from research_center.scoring_engine import build_local_scores
+        row = {"code": "TEST", "name": "測試公司", "rerating_score": 88.39, "verification_score": 100,
+               "cross_validation": {"tdcc_score": 0, "valuation_score": 0},
+               "tdcc_data": {"status": "covered", "concentration_signal": "high_concentration",
+                             "large_holder_pct": 84.38, "retail_holder_pct": 9.13},
+               "valuation_data": {"status": "official_public", "latest":
+                                  {"pe_ratio": 26.2, "pb_ratio": 9.11, "dividend_yield_pct": .97}}}
+        before = deepcopy(row)
+        request = SimpleNamespace(command="value_scan", source_only=False)
+        scores_before = build_local_scores(request, {"ai_candidates": [row]})
+        packet = _build_ai_candidate_evidence_pack([row])[0]
+        self.assertEqual(packet["tdcc_score"], 82)
+        self.assertEqual(packet["valuation_score"], 43)
+        self.assertEqual(packet["local_rerating_composite_score"], 88.38)
+        self.assertEqual(round(packet["local_rerating_composite_score"], 1), scores_before[-1]["score_value"])
+        self.assertEqual(row, before)
+        self.assertEqual(build_local_scores(request, {"ai_candidates": [row]}), scores_before)
+
+    def test_empty_raw_component_data_uses_existing_neutral_score_not_zero(self):
+        from research_center.data_services import _build_ai_candidate_evidence_pack
+        row = {"code": "TEST", "rerating_score": 80, "verification_score": 60,
+               "tdcc_data": {}, "valuation_data": {},
+               "cross_validation": {"tdcc_score": 0, "valuation_score": 0}}
+        packet = _build_ai_candidate_evidence_pack([row])[0]
+        self.assertEqual(packet["tdcc_score"], 50)
+        self.assertEqual(packet["valuation_score"], 50)
+        self.assertEqual(packet["local_rerating_composite_score"], 70.5)
 
     def test_value_scan_universe_uses_latest_radar_cache(self):
         from research_center.command_parser import parse_command_text

@@ -210,8 +210,29 @@ class NewsSearchQualityGateTests(unittest.TestCase):
         for kwargs in [{'day':'2026-10-26'},{'short':True},{'require_official':True}]:
             with self.subTest(kwargs=kwargs):
                 count,result=self.run_search(**kwargs)
-                self.assertEqual(count,6)
-                self.assertNotIn('early_stop',result.diagnostics['runs'][0])
+                self.assertEqual(count,3)
+                run = result.diagnostics['runs'][0]
+                self.assertFalse(run['quality']['passed'])
+                self.assertEqual(run['early_stop'], 'no_new_sources_quality_insufficient')
+                self.assertEqual(run['unexecuted_query_count'], 3)
+                self.assertEqual(len(result.sources), 4)
+
+    def test_insufficient_quality_continues_when_queries_add_sources(self):
+        from datetime import date
+        from types import SimpleNamespace
+        from research_center.deepseek_search_service import DeepSeekSearchService
+        service = DeepSeekSearchService(SimpleNamespace())
+        tasks = [{'label': '官方缺口', 'queries': [f'query{i}' for i in range(6)],
+                  'news_quality_policy': {'terms': ['台股'], 'require_official': True}}]
+        def search(query, **kwargs):
+            return {'results': [{'title': '台股新聞', 'url': f'https://example.test/{query}',
+                                 'date': '2026-11-02', 'summary': '台股需求與庫存風險。' * 20}]}
+        with patch.object(service, 'search', side_effect=search) as called:
+            result = service.discover(SimpleNamespace(command='news', report_date=date(2026,11,2)), tasks)
+        self.assertEqual(called.call_count, 6)
+        self.assertFalse(result.diagnostics['runs'][0]['quality']['passed'])
+        self.assertNotIn('early_stop', result.diagnostics['runs'][0])
+        self.assertEqual(len(result.sources), 6)
 
     def test_other_commands_are_not_limited_by_news_gate(self):
         count,result=self.run_search(command='macro')

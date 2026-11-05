@@ -7,6 +7,24 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+def source_body_text(row: dict[str, Any]) -> str:
+    """Decode supplied content or the old, explicitly labelled WebFetch envelope."""
+    if isinstance(row.get('content'), str) and row['content']:
+        return row['content']
+    snippet = str(row.get('snippet') or '')
+    if 'source_text:provided_content' in (row.get('found_by') or []):
+        return snippet
+    # A success flag or a long search summary alone never establishes a body.
+    prefix = '搜尋摘要（尚須原文核對）：'
+    marker = '取得的本文：'
+    if (row.get('document_kind') == 'document_body'
+            and row.get('fetch_status') == 'success'
+            and row.get('fetch_provider') in {'requests_bs4', 'tavily_extract', 'deepseek_fetch'}
+            and snippet.startswith(prefix) and snippet.count(marker) == 1):
+        return snippet.split(marker, 1)[1].lstrip()
+    return ''
+
+
 def article_text_sections(text: str) -> tuple[str, str]:
     """Separate explicitly labelled related articles; retain both, never infer relevance."""
     marker = re.search(r'(?m)^\s*(?:#{1,6}\s*)?(?:延伸閱讀|相關新聞|更多相關新聞|推薦閱讀|Related articles|Read next)\s*[:：]?\s*$', text, re.I)

@@ -43,6 +43,30 @@ from tests.test_cache_utils import ensure_test_cache_dir, safe_remove_test_cache
 
 
 class NewsRepositoryTests(unittest.TestCase):
+    def test_refresh_keeps_partial_discovery_sources_without_fallback_research(self):
+        from research_center.models import SourceItem
+        from research_center.deepseek_service import DeepSeekUnavailable
+        from research_center.news_service import run_news_refresh
+        from unittest.mock import Mock
+        error = DeepSeekUnavailable('合成護欄停止', 'fixture_limit')
+        source = SourceItem('S001', '台股原始新聞', 'https://example.test/article', 'Level 3',
+                            snippet='中止前取得的完整摘要')
+        error.partial_discovery_sources = [source]
+        error.partial_discovery_diagnostics = {'status': 'partial_stopped', 'complete': False}
+        center = SimpleNamespace(config=SimpleNamespace(deepseek_only=True), minimax_search=Mock())
+        def capture(rows):
+            self.assertEqual(rows, [source])
+            raise RuntimeError('stop_after_source_capture')
+        with patch('research_center.orchestrator._GeminiDiscoveryRunner') as runner, \
+                patch('stock_ai_bot.portfolio.portfolio_manager.load_portfolio', return_value={}), \
+                patch('research_center.news_service._collect_holding_news_sources', return_value=[]), \
+                patch('research_center.news_service._enrich_sources_with_web_fetch'), \
+                patch('research_center.news_service._sources_to_news_items', side_effect=capture):
+            runner.return_value.run_discovery_flow.side_effect = error
+            with self.assertRaisesRegex(RuntimeError, 'stop_after_source_capture'):
+                run_news_refresh(center, Mock())
+        center.minimax_search.search.assert_not_called()
+
     def tearDown(self):
         safe_remove_test_cache("news_repository")
 
@@ -1436,6 +1460,25 @@ class NewsQueryDisplayFilterTests(unittest.TestCase):
 
 
 class NewsFormatterTests(unittest.TestCase):
+    def test_news_display_translates_internal_direction_values_preserves_raw_and_urls(self):
+        item = NewsItem(id="readable", title="測試新聞", source="中央社", published_at="2026-11-04",
+                        url="https://example.com/negative/neutral?positive=1", summary="neutral反映雙向證據",
+                        news_signal_reason="positive條件仍待驗證", news_heat_risk_reason="negative描述既有盤勢")
+        before = item.to_dict()
+        for text in (format_news_detail(item), format_news_refresh_result(1, 0, 1, [item], {})):
+            with self.subTest(text=text[:20]):
+                self.assertIn("中性反映雙向證據", text)
+                self.assertIn("利多條件仍待驗證", text)
+                self.assertIn("利空描述既有盤勢", text)
+                self.assertNotIn("negative描述", text)
+        self.assertIn(item.url, format_news_detail(item))
+        self.assertEqual(item.to_dict(), before)
+
+    def test_direction_value_display_keeps_english_prose_and_command_names(self):
+        from research_center.report_display_normalizer import normalize_direction_labels
+        text = 'negative charge; Positive Technologies; /news_detail; positive_score; neutral反映雙向證據'
+        self.assertEqual(normalize_direction_labels(text), text.replace('neutral反映', '中性反映'))
+
     def test_format_news_digest_is_title_first_without_summary(self):
         item = NewsItem(
             id="123",
@@ -1617,6 +1660,44 @@ class NewsAIClassificationBatchTests(unittest.TestCase):
         self.assertEqual(len(payload), 1)
         self.assertLessEqual(len(payload[0]["text"]), 83)
         self.assertTrue(payload[0]["text"].endswith("..."))
+
+    def test_classification_payload_has_analysis_date_without_invented_fetch_time(self):
+        item = self._items(1)[0]
+        item.published_at = "2026-11-03"
+        item.created_at = ""
+        with patch("research_center.news_service.datetime") as clock:
+            clock.now.return_value = datetime(2026, 11, 4, 21, 30)
+            audit = _classification_payload([item], 80)[0]["date_audit"]
+        self.assertEqual(audit["analysis_date"], "2026-11-04")
+        self.assertEqual(audit["published_date"], "2026-11-03")
+        self.assertEqual(audit["fetched_at"], "")
+        self.assertTrue(audit["available_by_report_date"])
+
+    def test_article_classification_cache_reuses_same_day_not_previous_analysis_date(self):
+        from research_center.news_service import _classify_news_batches
+        stored, calls = {}, []
+        account = SimpleNamespace(
+            cached=lambda key: stored.get(key),
+            cache=lambda key, value, ttl: stored.__setitem__(key, value),
+        )
+
+        def generate(prompt):
+            calls.append(prompt)
+            return SimpleNamespace(raw=json.dumps({"0": {"category": "個股利多", "summary": "已分類"}}))
+
+        center = SimpleNamespace(
+            config=SimpleNamespace(deepseek_only=True, deepseek_model="test-model"),
+            deepseek_organizer=SimpleNamespace(account=account, model="test-model", generate_json=generate),
+        )
+        for day in (4, 4, 5):
+            with patch("research_center.news_service.datetime") as clock:
+                clock.now.return_value = datetime(2026, 11, day, 21, 30)
+                _classify_news_batches(self._items(1), center, lambda _: None,
+                    ai_model="deepseek", prompt_text="{news_batch_json}", label="分類")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(stored), 2)
+        self.assertIn('"analysis_date": "2026-11-04"', calls[0])
+        self.assertIn('"analysis_date": "2026-11-05"', calls[1])
 
     def test_failed_batch_falls_back_without_stopping_remaining_batches(self):
         gemini = self.FailingOnceGemini()

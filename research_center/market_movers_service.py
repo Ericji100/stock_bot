@@ -49,6 +49,8 @@ def _build_market_movers(
     if not force_refresh and universe is None and price_metrics is None:
         cached = _read_snapshot(cache_path)
         audited = bool(((cached or {}).get('data_quality') or {}).get('price_date_audit'))
+        if cached and audited:
+            cached = _annotate_cached_population(cached)
         if cached and audited and _snapshot_is_fresh(cached, target_date):
             return cached
         if cached and audited:
@@ -138,6 +140,13 @@ def _assemble_market_movers(target_date: date, rows: list[dict[str, Any]]) -> di
         "data_quality": {
             "input_stock_count": len(rows),
             "price_date_audit": original_date_audit,
+            "raw_price_date_audit": original_date_audit,
+            "ranking_price_date_audit": date_audit,
+            "ranking_population": {
+                "price_date": ranking_date, "stock_count": len(rows),
+                "other_session_stock_count": len(other_rows), "raw_stock_count": len(all_rows),
+                "scope": "同日排行樣本；其他日期原始列另行保留，不混入本日統計。",
+            },
             "ranking_price_date": ranking_date,
             "missing_fields": missing_fields,
             "change_pct_coverage_pct": _coverage(rows, "change_pct"),
@@ -169,6 +178,37 @@ def separate_market_sessions(rows, target_date):
     current = [row for row in rows if str(row.get('price_date') or '')[:10] == day]
     other = [row for row in rows if str(row.get('price_date') or '')[:10] != day]
     return current, other, day
+
+
+def market_population_summary(movers: dict[str, Any]) -> dict[str, Any]:
+    quality = movers.get('data_quality') or {}
+    if quality.get('ranking_population'):
+        return dict(quality['ranking_population'])
+    raw = quality.get('price_date_audit') or {}
+    day = quality.get('ranking_price_date')
+    count = quality.get('input_stock_count')
+    counts = raw.get('date_counts') or {}
+    # Old snapshots already separated sessions. Only explain counts that reconcile.
+    if not day or not isinstance(count, int) or counts.get(day) != count:
+        return {}
+    total = sum(counts.values()) + raw.get('undated_stock_count', 0)
+    return {'price_date': day, 'stock_count': count, 'raw_stock_count': total,
+            'other_session_stock_count': total - count,
+            'scope': '同日排行樣本；其他日期原始列另行保留，不混入本日統計。'}
+
+
+def _annotate_cached_population(cached: dict[str, Any]) -> dict[str, Any]:
+    population = market_population_summary(cached)
+    if not population or (cached.get('data_quality') or {}).get('ranking_population'):
+        return cached
+    day, count = population['price_date'], population['stock_count']
+    quality = dict(cached['data_quality'])
+    quality.update(raw_price_date_audit=quality['price_date_audit'], ranking_population=population,
+                   ranking_price_date_audit={'schema_version': 1, 'date_counts': {day: count},
+                       'dominant_price_date': day, 'latest_price_date': day,
+                       'latest_date_stock_count': count, 'undated_stock_count': 0,
+                       'mixed_dates': False, 'warnings': []})
+    return {**cached, 'data_quality': quality}
 
 
 def _build_stock_mover_row(entry: Any, price_metrics: dict[str, Any]) -> dict[str, Any]:

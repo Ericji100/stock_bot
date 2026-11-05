@@ -1,4 +1,7 @@
 {
+  "openai_primary_enabled": true,
+  "openai_credit_grants": [],
+  "openai_job_limit_usd": 5.0,
   "deepseek_only": true,
   "deepseek_model": "deepseek-flash",
   "deepseek_monthly_limit_usd": 10.0,

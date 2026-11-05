@@ -177,8 +177,8 @@ def collect_structured_data(request: CommandRequest, progress: Callable[[str], N
     sources = _official_sources()
     if request.command == "macro":
         sources.extend(_renumber_source_items(_macro_official_sources(), start=len(sources) + 1))
-        from .evidence_governance import parsed_official_sources
-        sources.extend(parsed_official_sources(data, start=len(sources) + 1))
+    from .evidence_governance import parsed_official_sources
+    sources.extend(parsed_official_sources(data, start=len(sources) + 1))
     if request.command in {"theme_radar", "theme_flow", "sector_strength"}:
         data["forum_data"] = {
             "enabled": False,
@@ -1139,9 +1139,12 @@ def collect_value_scan_data(request: CommandRequest, progress: Callable[[str], N
                 "symbol": entry.symbol,
                 "industry": entry.industry,
                 "price": price,
+                "price_date": metric.get("price_date"),
+                "price_metrics": dict(metric),
                 "avg_volume_20d": avg_volume,
                 "latest_monthly_revenue": revenue_value,
                 "revenue_yoy": revenue_yoy,
+                "revenue_history": [asdict(point) for point in revenue_points],
                 "old_market_label": score_detail["old_market_label"],
                 "new_market_label": score_detail["new_market_label"],
                 "rerating_evidence": [*score_detail["evidence"], *([] if price is not None else ["價量資料缺漏，保守處理"]), *([] if latest_revenue is not None else ["最近月營收資料缺漏，保守處理"])],
@@ -1513,6 +1516,8 @@ def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[
     source_events, company_knowledge, source_coverage,
     missing_data_status
     """
+    from .scoring_engine import _tdcc_score, _valuation_score
+
     pack: list[dict[str, Any]] = []
     for row in candidates:
         code = str(row.get("code") or "")
@@ -1554,6 +1559,12 @@ def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[
         cross_val = row.get("cross_validation") or {}
         tdcc_score = cross_val.get("tdcc_score") if cross_val.get("tdcc_score") is not None else 0.0
         valuation_score = cross_val.get("valuation_score") if cross_val.get("valuation_score") is not None else 0.0
+        # Use the same raw-data components as the local scoring engine. Legacy
+        # explicit scores remain compatible only when that raw field is absent.
+        if "tdcc_data" in row:
+            tdcc_score = _tdcc_score(row.get("tdcc_data") or {})[0]
+        if "valuation_data" in row:
+            valuation_score = _valuation_score(row.get("valuation_data") or {})[0]
         rerating_s = row.get("rerating_score") or 0.0
         verification_s = row.get("verification_score") or 0.0
         composite = round(rerating_s * 0.6 + verification_s * 0.25 + tdcc_score * 0.1 + valuation_score * 0.05, 2)
@@ -1566,10 +1577,13 @@ def _build_ai_candidate_evidence_pack(candidates: list[dict[str, Any]]) -> list[
             "industry": row.get("industry"),
             # 價量
             "price": row.get("price"),
+            "price_date": row.get("price_date"),
+            "price_metrics": row.get("price_metrics") or {},
             "avg_volume_20d": row.get("avg_volume_20d"),
             # 營收
             "latest_monthly_revenue": row.get("latest_monthly_revenue"),
             "revenue_yoy": row.get("revenue_yoy"),
+            "revenue_history": row.get("revenue_history") or [],
             # 標籤
             "old_market_label": row.get("old_market_label"),
             "new_market_label": row.get("new_market_label"),

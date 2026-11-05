@@ -82,11 +82,14 @@ class _GeminiSegmentedClient:
 
 from .deepseek_service import DeepSeekAccount, DeepSeekService, DeepSeekUnavailable, DisabledProvider, task_context, account_options
 from .deepseek_search_service import DeepSeekSearchService
+from .ai_provider_service import resolved_model
 
 
 class ResearchCenter:
     def __init__(self, config: ResearchCenterConfig | None = None):
         self.config = config or load_research_config()
+        if getattr(self.config, 'openai_primary_enabled', False) is True:
+            self.config = replace(self.config, deepseek_only=True)
         self.database = ResearchDatabase(self.config.database_path)
         if not self.config.deepseek_only:
             self.gemini = GeminiService(api_key=self.config.api_key, model=self.config.model,
@@ -114,6 +117,10 @@ class ResearchCenter:
             )
             self.deepseek = DeepSeekService(account, model=self.config.deepseek_model)
             self.deepseek_organizer = DeepSeekService(account, model=self.config.deepseek_model, organizer=True, max_output_tokens=8192)
+            if getattr(self.config, 'openai_primary_enabled', False) is True:
+                from .ai_provider_service import create_ai_client
+                self.deepseek = create_ai_client(self.config, ROOT_DIR)
+                self.deepseek_organizer = create_ai_client(self.config, ROOT_DIR, organizer=True)
             self.deepseek_search = DeepSeekSearchService(self.deepseek)
             # Internal compatibility handles keep existing workflow contracts reusable.
             self.opencode = self.deepseek
@@ -148,7 +155,7 @@ class ResearchCenter:
 
     def _segmented_provider_key_for(self, selected_ai_model: str) -> str:
         if self.config.deepseek_only:
-            return "deepseek_segmented"
+            return getattr(self.deepseek, 'provider', 'deepseek') + '_segmented'
         if selected_ai_model == "deepseek":
             return "opencode_go_segmented"
         if selected_ai_model == "minimax":
@@ -244,7 +251,7 @@ class ResearchCenter:
             snapshot_target = target_for_snapshots(request, structured_data)
             snapshots = self.database.query_snapshots_before(snapshot_target, request.report_date.isoformat(), command=request.command)
             structured_data["historical_snapshots"] = snapshots_to_structured_context(snapshots)
-            _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；Gemini Search 將停用，只整理快照與本地資料")
+            _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；外部搜尋來源仍須通過日期治理，重新抓取不等於當時快照")
         structured_data["historical_data_policy"] = historical_policy(request, dropped_sources)
         structured_data["prompt_policy"] = prompt_metadata(request)
         scores = build_local_scores(request, structured_data)
@@ -503,13 +510,13 @@ class ResearchCenter:
             snapshot_target = target_for_snapshots(request, structured_data)
             snapshots = self.database.query_snapshots_before(snapshot_target, request.report_date.isoformat(), command=request.command)
             structured_data["historical_snapshots"] = snapshots_to_structured_context(snapshots)
-            _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；Gemini Search 將停用，只整理快照與本地資料")
+            _emit_progress(progress, f"歷史快照載入：{len(snapshots)} 筆；外部搜尋來源仍須通過日期治理，重新抓取不等於當時快照")
         structured_data["historical_data_policy"] = historical_policy(request, dropped_sources)
         structured_data["prompt_policy"] = prompt_metadata(request)
         selected_ai_model = "deepseek" if self.config.deepseek_only else request.ai_model or "gemini"
         structured_data["analysis_model_choice"] = selected_ai_model
         if selected_ai_model == "deepseek":
-            structured_data["analysis_model"] = self.config.deepseek_model if self.config.deepseek_only else self.config.opencode_model
+            structured_data["analysis_model"] = self.deepseek.model if self.config.deepseek_only else self.config.opencode_model
         elif selected_ai_model == "minimax":
             structured_data["analysis_model"] = self.config.minimax_model
         else:
@@ -552,11 +559,23 @@ class ResearchCenter:
                 allow_discovery = True
                 use_grounding = self.config.enable_grounding and allow_discovery
                 sources, gemini_search_used = self._gemini_discovery_runner.run_discovery_flow(request, sources, structured_data, use_grounding, progress)
+                discovered_source_count = len(sources)
                 sources, dropped_discovery_sources = filter_and_sort_sources_for_analysis_date(sources, request)
+                discovery = structured_data.get('deepseek_search_discovery') or {}
+                structured_data['search_execution_summary'] = {
+                    'provider': discovery.get('provider'),
+                    'query_count': discovery.get('query_count'),
+                    'cache_hit_count': sum(int(row.get('cache_hit_count') or 0) for row in discovery.get('runs', []) if isinstance(row, dict)),
+                    'sources_before_date_filter': discovered_source_count,
+                    'sources_after_date_filter': len(sources),
+                    'policy': '依本次實際搜尋紀錄判斷新搜尋或快取重用；指定日期不等於停止外部搜尋，也不保證重抓內容就是當時可見版本。',
+                }
                 if dropped_discovery_sources:
                     structured_data["date_aware_source_filter"] = {
                         "dropped_after_analysis_date_count": len(dropped_discovery_sources),
                     }
+                if getattr(self.config, 'openai_primary_enabled', False) and discovered_source_count and not sources:
+                    raise ValueError('已取得的外部來源全數未通過日期或相關性閘門；保留原始搜尋回應，停止後續付費分析，不能視為完整 AI 驗收。')
                 prompt_sources = _select_sources_for_prompt(request, sources, structured_data, progress)
                 from .search_source_normalizer import validate_source_identity_map
                 identity = validate_source_identity_map(sources, prompt_sources)
@@ -579,7 +598,7 @@ class ResearchCenter:
                     progress=progress,
                 )
                 if selected_ai_model == "deepseek":
-                    final_model_name = self.config.deepseek_model if self.config.deepseek_only else self.config.opencode_model
+                    final_model_name = self.deepseek.model if self.config.deepseek_only else self.config.opencode_model
                 elif selected_ai_model == "minimax":
                     final_model_name = self.config.minimax_model
                 else:
@@ -645,7 +664,7 @@ class ResearchCenter:
                         gemini_raw = opencode_result.raw
                         actual_gemini_model = str(opencode_result.diagnostics.get("actual_model") or self.config.opencode_model)
                         structured_data["analysis_model"] = actual_gemini_model
-                        structured_data["analysis_provider"] = "deepseek" if self.config.deepseek_only else "opencode_go"
+                        structured_data["analysis_provider"] = opencode_result.diagnostics.get('provider') or ("deepseek" if self.config.deepseek_only else "opencode_go")
                         structured_data["deepseek_diagnostics" if self.config.deepseek_only else "opencode_diagnostics"] = opencode_result.diagnostics
                         gemini_discovery_count = _gemini_discovery_source_count(structured_data)
                         if gemini_discovery_count:
@@ -770,7 +789,7 @@ class ResearchCenter:
             if not numeric["passed"]:
                 structured_data["numeric_validation_original"] = {**numeric, "markdown": markdown}
                 repair_prompt = numeric_repair_prompt(markdown, numeric['errors'])
-                write_prompt_log(request, repair_prompt, self.config.deepseek_model, False, sources, {"purpose":"numeric_consistency_repair"})
+                write_prompt_log(request, repair_prompt, self.deepseek.model, False, sources, {"purpose":"numeric_consistency_repair"})
                 try:
                     repaired = self.deepseek.with_output_limit(65536).with_timeout(900).generate_report(repair_prompt).markdown
                     revised = validate_valuation_repair(markdown, repaired, sources)
@@ -789,6 +808,9 @@ class ResearchCenter:
                     structured_data["ai_status"] = "partial_success"
             structured_data["numeric_validation"] = numeric
 
+        if getattr(self.config, 'openai_primary_enabled', False):
+            from .ai_provider_service import current_routing_metadata
+            structured_data['ai_routing'] = current_routing_metadata()
         _emit_progress(progress, "整理 Telegram 摘要與報告檔案")
         summary = summarize_for_telegram(markdown)
         draft_path = write_knowledge_draft(request, markdown, sources, structured_data)
@@ -1047,7 +1069,7 @@ class ResearchCenter:
             sources=[],
             artifacts=artifacts,
             ai_used=topic_ai_used,
-            ai_model=self.config.deepseek_model if topic_ai_used else None,
+            ai_model=getattr(self.deepseek, 'actual_model', self.config.deepseek_model) if topic_ai_used else None,
             runtime_context=(
                 {
                     "telegram_document": {
@@ -1115,7 +1137,8 @@ class ResearchCenter:
                 },
                 sources=news_sources, artifacts=ReportArtifacts("news", "refresh", Path("__no_md__"), Path("__no_html__"), Path("__no_json__"), Path("__no_sources__")),
                 ai_used=ai_used,
-                ai_model=self.config.deepseek_model if self.config.deepseek_only and ai_used else ai_model,
+                ai_model=(resolved_model(self.deepseek_organizer, self.config.deepseek_model)
+                          if self.config.deepseek_only and ai_used else ai_model),
             )
 
         if action == "7d":
@@ -1309,10 +1332,9 @@ def _with_output_formats(request: CommandRequest, formats: tuple[str, ...]) -> C
 
 
 def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[SourceItem]:
+    from .search_transmission import merge_search_text, merge_search_records
     merged_dict: dict[str, SourceItem] = {}
-    for item in base:
-        merged_dict[item.url] = item
-    for item in extra:
+    for item in [*base, *extra]:
         existing = merged_dict.get(item.url)
         if existing is None:
             merged_dict[item.url] = item
@@ -1320,15 +1342,18 @@ def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[Sour
             existing_priority = PROVIDER_PRIORITY.get(existing.provider, 0)
             new_priority = PROVIDER_PRIORITY.get(item.provider, 0)
             if new_priority > existing_priority:
-                merged_dict[item.url] = item
+                merged_dict[item.url] = replace(item,
+                    snippet=merge_search_text(existing.snippet, item.snippet),
+                    search_summary_events=merge_search_records(existing.search_summary_events, item.search_summary_events),
+                    found_by=list(dict.fromkeys([*existing.found_by, *item.found_by])),
+                    used_in_section=list(dict.fromkeys([*existing.used_in_section, *item.used_in_section])),
+                )
             else:
                 # Merge fields when same priority or new priority lower
                 existing_found_by = list(existing.found_by) if existing.found_by else []
                 item_found_by = list(item.found_by) if item.found_by else []
                 combined_found_by = list(set(existing_found_by + item_found_by))
-                body = existing.snippet or item.snippet
-                if existing.snippet and item.snippet and item.snippet not in existing.snippet:
-                    body = item.snippet if existing.snippet in item.snippet else existing.snippet + '\n\n' + item.snippet
+                body = merge_search_text(existing.snippet, item.snippet)
                 parsed = item if item.document_kind == 'parsed_record' else existing
                 merged_dict[item.url] = replace(existing,
                     source_id=existing.source_id,
@@ -1337,6 +1362,7 @@ def _merge_sources(base: list[SourceItem], extra: list[SourceItem]) -> list[Sour
                     source_level=existing.source_level,
                     published_date=existing.published_date or item.published_date,
                     snippet=body,
+                    search_summary_events=merge_search_records(existing.search_summary_events, item.search_summary_events),
                     used_in_section=list(set(existing.used_in_section + item.used_in_section)),
                     provider=existing.provider,
                     provider_detail=existing.provider_detail,
@@ -1574,13 +1600,42 @@ class _GeminiDiscoveryRunner:
         return sources, gemini_search_used
 
     def _run_deepseek(self, request, tasks, sources, structured_data, progress, gap_fill=False):
-        result = self._center.deepseek_search.discover(request, tasks, progress=progress)
-        additions = normalize_source_items(result.sources, request, provider="deepseek_search", query_intent="required_data_gap_fill" if gap_fill else "discovery")
+        from .deepseek_service import DeepSeekUnavailable
+        if gap_fill:
+            # Reuse the existing quality/required-gap planner; do not rebill the
+            # task as manual merely to select the stronger search model.
+            tasks = [{**task, **({'search_stage': 'critical_gap_search',
+                'search_reason': str(task.get('gap_field') or task.get('label') or 'source_quality_gap')}
+                if task.get('gap_tier') == 'hard' or task.get('label') == 'source_quality_gap' else {})}
+                for task in tasks]
+        try:
+            result = self._center.deepseek_search.discover(request, tasks, progress=progress)
+        except DeepSeekUnavailable as exc:
+            partial = getattr(exc, 'partial_discovery_sources', []) or []
+            diagnostics = dict(getattr(exc, 'partial_discovery_diagnostics', {}) or {})
+            diagnostics.update(status='partial_stopped', complete=False, stop_reason=exc.status)
+            provider = diagnostics.get('provider') or getattr(self._center.deepseek_search, 'provider', 'deepseek_search')
+            additions = normalize_source_items(partial, request, provider=provider,
+                query_intent='required_data_gap_fill' if gap_fill else 'discovery')
+            diagnostics['raw_source_records'] = [asdict(item) for item in partial]
+            additions, quarantined = filter_and_sort_sources_for_analysis_date(additions, request)
+            diagnostics['quarantined_source_ids'] = quarantined
+            diagnostics['qualified_source_count'] = len(additions)
+            if gap_fill:
+                additions = _mark_gap_fill_sources(additions)
+            sources[:] = _merge_sources(sources, additions)
+            key = 'required_gap_deepseek_discovery' if gap_fill else 'deepseek_search_discovery'
+            structured_data[key] = diagnostics
+            _append_search_provider_log(structured_data, provider=provider, source_count=len(additions), diagnostics=diagnostics)
+            _emit_progress(progress, f'搜尋已停止，已保存原始來源 {len(partial)} 筆；日期／相關性合格 {len(additions)} 筆，未啟動後續付費分析。')
+            raise
+        search_provider = result.diagnostics.get('provider') or 'deepseek_search'
+        additions = normalize_source_items(result.sources, request, provider=search_provider, query_intent="required_data_gap_fill" if gap_fill else "discovery")
         if gap_fill:
             additions = _mark_gap_fill_sources(additions)
         sources[:] = _merge_sources(sources, additions)
         structured_data["required_gap_deepseek_discovery" if gap_fill else "deepseek_search_discovery"] = result.diagnostics
-        _append_search_provider_log(structured_data, provider="deepseek_search", source_count=len(additions), diagnostics=result.diagnostics)
+        _append_search_provider_log(structured_data, provider=search_provider, source_count=len(additions), diagnostics=result.diagnostics)
 
     def _run_required_data_gap_fill(self, request, sources, structured_data, progress):
         before_summary = build_required_data_gap_summary(request, sources, structured_data)
@@ -2022,6 +2077,11 @@ def _append_search_provider_log(
     source_count: int,
     diagnostics: dict[str, Any] | None,
 ) -> None:
+    from .search_transmission import merge_search_records
+    notes = (diagnostics or {}).get('search_context_notes') or []
+    if notes:
+        structured_data['search_context_notes'] = merge_search_records(
+            structured_data.get('search_context_notes'), notes)
     log = structured_data.setdefault("search_query_log", {"schema_version": SEARCH_QUERY_TEMPLATE_VERSION, "tasks": [], "providers": []})
     log.setdefault("schema_version", SEARCH_QUERY_TEMPLATE_VERSION)
     providers = log.setdefault("providers", [])
@@ -2061,7 +2121,9 @@ def _source_quality_summary(
     structured_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     total = len(sources)
-    level1 = sum(1 for s in sources if s.source_level in {"Level 1", "L1_official"})
+    from .evidence_governance import official_evidence_coverage
+    official = official_evidence_coverage(sources)
+    level1 = official['retrieved_unique_urls']
     level2 = sum(1 for s in sources if s.source_level in {"Level 2", "L2_media", "L2_industry"})
     level3 = sum(1 for s in sources if s.source_level in {"Level 3", "L3_media", "L3_other"})
     level23 = level2 + level3
@@ -2107,6 +2169,7 @@ def _source_quality_summary(
     summary = {
         "total": total,
         "level1": level1,
+        "official_evidence_coverage": official,
         "level2": level2,
         "level3": level3,
         "level2_or_3": level23,

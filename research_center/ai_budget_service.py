@@ -23,7 +23,7 @@ class BudgetBlocked(RuntimeError):
 REASONS = {
     "monthly_budget_exceeded": "本月 AI 總預算已用完或不足以預留本次費用",
     "background_budget_exceeded": "本月排程預算已用完或不足以預留本次費用",
-    "manual_budget_exceeded": "本月手動與測試預算不足",
+    "manual_budget_exceeded": "本月正式手動 AI 預算不足，開發測試另行記帳",
     "schedule_pacing": "排程已達本月目前進度的費用保護額度，後續日期會重新檢查",
     "job_budget_exceeded": "本次工作預估費用超過單次保護值，請先確認費用再調整設定",
     "insufficient_balance": "DeepSeek 官方餘額不足，請儲值",

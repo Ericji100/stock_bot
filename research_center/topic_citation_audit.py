@@ -59,7 +59,8 @@ def _id_only_rows(value, path=''):
 def _provided_body(row):
     # Search API content and fetched HTML are both supplied text. A plain search
     # snippet is not promoted without provenance, regardless of its length.
-    return str(row.get('content') or (row.get('snippet') if 'source_text:provided_content' in (row.get('found_by') or []) else '') or '')
+    from .source_text_cleaner import source_body_text
+    return source_body_text(row)
 
 
 def _quote_text(value):

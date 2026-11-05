@@ -20,6 +20,99 @@ from research_center.command_parser import parse_command_text, validate_deepseek
 
 
 class DeepSeekServiceTests(unittest.TestCase):
+    def test_openai_news_recovers_dates_before_quality_stop_and_preserves_body(self):
+        from dataclasses import replace
+        from research_center.models import CommandRequest
+        request = CommandRequest(command='news', raw_text='/news refresh', target='台股新聞')
+        service = DeepSeekSearchService(self.client)
+        service.provider = 'openai_router_search'
+        task = {'label': '台股', 'queries': ['one', 'two', 'should-not-run'],
+                'news_quality_policy': {'terms': ['台股']}}
+        def recover(request, sources, diagnostics, progress=None):
+            sources[:] = [replace(item, published_date='2026-11-04', date_status='explicit',
+                snippet='已抓原文與原摘要都保留 ' + (item.snippet or ''), document_kind='document_body') for item in sources]
+        def quality(rows, policy, as_of):
+            self.assertTrue(all(row['date_status'] == 'explicit' for row in rows))
+            self.assertTrue(all(row['published_date'] == '2026-11-04' for row in rows))
+            return {'passed': True}
+        with ai_task('news', report_date='2026-11-04'), \
+                patch.object(service, 'search', side_effect=lambda query, **kw: {'results': [{
+                    'title': '台股新聞', 'url': f'https://money.udn.com/money/story/1/{query}', 'summary': '完整摘要'}]}) as search, \
+                patch('research_center.web_fetch_enrichment.recover_search_publication_dates', side_effect=recover), \
+                patch('research_center.deepseek_search_service._news_task_quality', side_effect=quality):
+            result = service.discover(request, [task])
+        self.assertEqual(search.call_count, 2)
+        self.assertEqual(len(result.sources), 2)
+        self.assertTrue(all('完整摘要' in source.snippet and '已抓原文' in source.snippet for source in result.sources))
+        self.assertEqual(result.diagnostics['runs'][0]['early_stop'], 'quality_satisfied')
+
+    def test_news_date_recovery_bounded_and_does_not_make_up_dates(self):
+        from research_center.deepseek_search_service import _recover_news_quality_dates
+        from research_center.models import CommandRequest
+        request = CommandRequest(command='news', raw_text='/news refresh', target='台股新聞')
+        rows = [{'title': '台股', 'url': f'https://example.test/{i}', 'snippet': '完整摘要'} for i in range(20)]
+        attempted, diagnostics = set(), {}
+        original = json.loads(json.dumps(rows))
+        with patch('research_center.web_fetch_enrichment.recover_search_publication_dates') as recover:
+            for _ in range(10):
+                _recover_news_quality_dates(request, rows, attempted, diagnostics, None)
+        self.assertEqual(recover.call_count, 3)
+        self.assertEqual(len(attempted), 12)
+        self.assertEqual(len(rows), len(original))
+        self.assertTrue(all(row['snippet'] == '完整摘要' and not row.get('published_date') for row in rows))
+        self.assertEqual(diagnostics['quality_date_recovery']['max_urls_per_category'], 12)
+
+    def test_news_no_new_sources_stops_without_claiming_quality_pass(self):
+        from research_center.models import CommandRequest
+        service = DeepSeekSearchService(self.client)
+        request = CommandRequest(command='news', raw_text='/news refresh', target='台股新聞')
+        task = {'label': '台股', 'queries': ['one', 'two', 'three', 'four'],
+                'news_quality_policy': {'terms': ['台股']}}
+        with ai_task('news', report_date='2026-11-04'), \
+                patch.object(service, 'search', return_value={'results': [{
+                    'title': '台股新聞', 'url': 'https://example.test/same', 'summary': '全部摘要'}]}) as search, \
+                patch('research_center.deepseek_search_service._news_task_quality', return_value={'passed': False}):
+            result = service.discover(request, [task])
+        self.assertEqual(search.call_count, 3)
+        self.assertEqual(len(result.sources), 1)
+        self.assertEqual(result.sources[0].snippet, '全部摘要')
+        run = result.diagnostics['runs'][0]
+        self.assertFalse(run['quality']['passed'])
+        self.assertEqual(run['early_stop'], 'no_new_sources_quality_insufficient')
+        self.assertEqual(run['unexecuted_query_count'], 1)
+
+    def test_news_new_publication_date_counts_as_new_line_of_evidence(self):
+        from research_center.models import CommandRequest
+        service = DeepSeekSearchService(self.client)
+        request = CommandRequest(command='news', raw_text='/news refresh', target='台股新聞')
+        task = {'label': '台股', 'queries': ['one', 'two', 'three', 'four'],
+                'news_quality_policy': {'terms': ['台股']}}
+        def result(query, **kw):
+            return {'results': [{'title': '台股新聞', 'url': 'https://example.test/same',
+                                 'date': '2026-11-04' if query == 'three' else None, 'summary': query}]}
+        with ai_task('news', report_date='2026-11-04'), \
+                patch.object(service, 'search', side_effect=result) as search, \
+                patch('research_center.deepseek_search_service._news_task_quality', return_value={'passed': False}):
+            service.discover(request, [task])
+        self.assertEqual(search.call_count, 4)
+
+    def test_discovery_stop_preserves_already_retrieved_sources_and_failure_reason(self):
+        from research_center.models import CommandRequest
+        service = DeepSeekSearchService(self.client)
+        request = CommandRequest(command='news', raw_text='/news refresh', target='台股新聞')
+        error = DeepSeekUnavailable('合成預算停止', 'fixture_limit')
+        task = {'label': '台股', 'queries': ['one', 'blocked']}
+        first = {'results': [{'title': '已取得新聞', 'url': 'https://example.test/article',
+                              'date': '2026-11-04', 'summary': '完整原摘要與風險證據'}]}
+        with ai_task('news', report_date='2026-11-04'), patch.object(service, 'search', side_effect=[first, error]):
+            with self.assertRaises(DeepSeekUnavailable) as stopped:
+                service.discover(request, [task])
+        self.assertIs(stopped.exception, error)
+        self.assertEqual(error.partial_discovery_sources[0].snippet, '完整原摘要與風險證據')
+        self.assertEqual(error.partial_discovery_diagnostics['query_count'], 1)
+        self.assertEqual(error.partial_discovery_diagnostics['stop_reason'], 'fixture_limit')
+        self.assertFalse(error.partial_discovery_diagnostics['complete'])
+
     def test_live_audit_excludes_prepared_budget_blocked_prompt_and_separates_cache(self):
         from research_center.deepseek_service import RUN_ID
         from tools.deepseek_live_validation import input_and_usage_audit

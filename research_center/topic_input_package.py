@@ -195,6 +195,11 @@ def merge_topic_sources(data: dict[str, Any]) -> list[dict]:
         for row in data.get(key) or []:
             if not isinstance(row,dict):
                 continue
+            from .source_text_cleaner import source_body_text
+            row = dict(row)
+            body_text = source_body_text(row)
+            if body_text:
+                row['content'] = body_text
             identity=row.get('url') or row.get('source_id') or json.dumps(row,sort_keys=True,default=str)
             body=str(row.get('content') or row.get('snippet') or '')
             def compatible(previous):
@@ -297,6 +302,23 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
                 if isinstance(company,dict):
                     if company.get('company_code'): codes.add(str(company['company_code']))
                     if company.get('company_name'): terms.add(str(company['company_name']))
+        profiles=[p for p in profiles if p.get('theme_id') in ids or p.get('theme_name') in terms]
+        from .entity_resolver import exact_company_identity
+        names = data.get('authoritative_company_names') or {}
+        identities = []
+        queries = [(company.get('company_name'), company.get('company_code'))
+                   for candidate in batch for company in candidate.get('candidate_companies') or []
+                   if isinstance(company, dict)]
+        queries.extend((keyword, '') for profile in profiles for keyword in profile.get('keywords') or []
+                       if keyword in names.values())
+        queries.extend((node.get('company_name'), node.get('company_code'))
+                       for node in data.get('supply_chain_nodes') or [] if node.get('theme_id') in ids)
+        for name, code in queries:
+            identity = exact_company_identity(name, code, names)
+            identities.append({'query_name': name, 'query_code': code, **identity})
+            if identity['status'] == 'exact':
+                codes.add(identity['company_code'])
+                terms.add(identity['company_name'])
         terms.update(codes)
         def related(row):
             if isinstance(row, dict) and (row.get('source_id') in source_ids or source_ids.intersection(row.get('source_id_aliases') or [])):
@@ -306,12 +328,13 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
             text=json.dumps(row,ensure_ascii=False,default=str)
             return any(term and term in text for term in terms)
         sources=[row for row in sources if related(row)]
-        profiles=[p for p in profiles if p.get('theme_id') in ids or p.get('theme_name') in terms]
         if isinstance(evidence,dict) and isinstance(evidence.get('items'),list):
             evidence={**evidence,'items':[row for row in evidence['items'] if related(row)]}
         raw_knowledge=data.get('company_knowledge') or {}
         companies=raw_knowledge.get('companies') or {}
-        knowledge={'companies':{code:info for code,info in companies.items() if str(code) in codes or info.get('company_name') in terms}}
+        knowledge={'companies':{code:info for code,info in companies.items() if str(code) in codes or info.get('company_name') in terms},
+                   'identity_mapping': identities,
+                   'identity_scope': '代號與名稱對應僅確認主檔身分，不代表供應鏈或營收主張已驗證。'}
         company_map=data.get('company_topic_map') or {}
         company_map={code:row for code,row in company_map.items() if str(code) in codes} if isinstance(company_map,dict) else [row for row in company_map if related(row)]
         nodes=[row for row in data.get('supply_chain_nodes') or [] if row.get('theme_id') in ids or str(row.get('company_code')) in codes]

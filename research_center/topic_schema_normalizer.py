@@ -2,10 +2,89 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from typing import Any
 
 from .topic_data_normalizer import normalize_string_list, normalize_text_tree, to_traditional_text
 from .topic_models import TopicActionType, TopicChangeAction, TopicConfidence, TopicEvidence, TopicSourceLevel, coerce_topic_source_level
+
+
+def repair_topic_detail_structure(payload: Any, batch: list[dict]) -> tuple[Any, list[dict]]:
+    """Reparent an evidence continuation only when its explicit node owner is unique."""
+    if not isinstance(payload, dict) or not isinstance(payload.get('actions'), list):
+        return payload, []
+    result = deepcopy(payload)
+    expected = {row.get('theme_id') for row in batch}
+    continuation = {'affected_companies', 'company_relations', 'supply_chain_nodes',
+                    'risk_notes', 'missing_data', 'counter_evidence'}
+    evidence_fields = {'source_id', 'url', 'published_date', 'publish_date', 'source_level',
+                       'claim', 'content', 'source', 'title', 'supporting_quote'}
+    root_fields = {key: result[key] for key in continuation & result.keys()}
+    root_owner_index = None
+    if root_fields:
+        nodes = root_fields.get('supply_chain_nodes')
+        owners = {node.get('theme_id') for node in nodes if isinstance(node, dict)} if isinstance(nodes, list) else set()
+        matches = [i for i, row in enumerate(result['actions']) if isinstance(row, dict)
+                   and row.get('theme_id') in expected and row.get('theme_id') in owners]
+        if (len(owners) == len(matches) == 1 and nodes
+                and all(isinstance(node, dict) and node.get('theme_id') for node in nodes)):
+            index = matches[0] + 1
+            if index < len(result['actions']):
+                orphan = result['actions'][index]
+                if isinstance(orphan, dict) and set(orphan) <= evidence_fields:
+                    result['actions'][index] = {**orphan, **root_fields}
+                    root_owner_index = index
+    rows, repairs = [], []
+    for index, row in enumerate(result['actions']):
+        if not isinstance(row, dict) or row.get('theme_id') or not rows:
+            rows.append(row)
+            continue
+        previous = rows[-1]
+        nodes = row.get('supply_chain_nodes')
+        owners = {node.get('theme_id') for node in nodes if isinstance(node, dict)} if isinstance(nodes, list) else set()
+        if (not isinstance(previous, dict) or previous.get('theme_id') not in expected
+                or not nodes or owners != {previous['theme_id']}
+                or not all(isinstance(node, dict) and node.get('theme_id') for node in nodes)
+                or not row.get('url') or not row.get('supporting_quote')
+                or set(row) - continuation - evidence_fields
+                or any(previous.get(key) and previous[key] != row[key] for key in continuation & row.keys())
+                or not isinstance(previous.get('evidence'), list)):
+            rows.append(row)
+            continue
+        evidence = {key: value for key, value in row.items() if key in evidence_fields}
+        previous['evidence'].append(evidence)
+        for key in continuation & row.keys():
+            previous[key] = row[key]
+        repairs.append({'original_index': index, 'owner_theme_id': previous['theme_id'],
+                        'reason': 'explicit_supply_chain_node_owner',
+                        'original_row': deepcopy(payload['actions'][index])})
+        if index == root_owner_index:
+            repairs[-1]['original_root_fields'] = deepcopy(root_fields)
+            for key in root_fields:
+                del result[key]
+    if root_owner_index is not None and not any(repair['original_index'] == root_owner_index for repair in repairs):
+        return payload, []
+    result['actions'] = rows
+    return result, repairs
+
+
+def resolve_topic_company_identities(actions, names):
+    from .entity_resolver import exact_company_identity
+    checks = []
+    for action in actions:
+        for kind in ('affected_companies', 'company_relations', 'supply_chain_nodes'):
+            for row in getattr(action, kind) or []:
+                name, code = row.get('company_name') or '', row.get('company_code') or ''
+                if not name and not code:
+                    continue
+                identity = exact_company_identity(name, code, names)
+                checks.append({'theme_id': action.theme_id, 'kind': kind, 'original_name': name,
+                               'original_code': code, **identity})
+                row['identity_mapping'] = identity
+                if identity['status'] == 'exact':
+                    row['company_code'] = identity['company_code']
+                    row['company_name'] = identity['company_name']
+    return checks
 
 
 def slugify_theme_id(value: str) -> str:
@@ -166,8 +245,8 @@ def _normalize_evidence(value: Any) -> list[TopicEvidence]:
             continue
         level = coerce_topic_source_level(item.get("source_level"))
         source = str(item.get("source") or item.get("source_title") or item.get("title") or "").strip()
-        content = str(item.get("content") or item.get("claim") or item.get("supports") or item.get("snippet") or item.get("supporting_quote") or "").strip()
-        if not source and not content:
+        content = str(item.get("content") or item.get("summary") or item.get("claim") or item.get("supports") or item.get("snippet") or item.get("supporting_quote") or "").strip()
+        if not source and not content and not item.get("source_id") and not item.get("url"):
             continue
         result.append(TopicEvidence(
             source=source or "未命名來源",

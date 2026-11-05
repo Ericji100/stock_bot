@@ -531,6 +531,9 @@ def account_options(config, root):
 def configured_client(*, organizer=False):
     from .config import ROOT_DIR, load_research_config
     config = load_research_config()
+    if getattr(config, 'openai_primary_enabled', False):
+        from .ai_provider_service import create_ai_client
+        return create_ai_client(config, ROOT_DIR, organizer=organizer)
     account = DeepSeekAccount.shared(config.deepseek_api_key, ROOT_DIR / ".cache" / "deepseek", **account_options(config, ROOT_DIR))
     return DeepSeekService(account, model=config.deepseek_model, organizer=organizer,
         max_output_tokens=8192 if organizer else 32768)

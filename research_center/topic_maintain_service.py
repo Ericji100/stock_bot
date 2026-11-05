@@ -39,13 +39,41 @@ from .models import CandidateSnapshot
 
 TOPIC_AI_STAGE_TIMEOUT_SECONDS = 120.0
 TOPIC_CANDIDATE_OUTPUT_TOKENS = 32768
+TOPIC_LARGE_OPENAI_STAGE_TIMEOUT_SECONDS = 600
+TOPIC_LARGE_STAGE_CHARS = 100000
+
+
+def _topic_stage_client(center, stage_name, prompt_chars):
+    from .ai_provider_service import RoutedAIService
+    client = center.deepseek_organizer if stage_name.startswith('candidate') else center.deepseek
+    if isinstance(client, RoutedAIService) and prompt_chars >= TOPIC_LARGE_STAGE_CHARS:
+        client = RoutedAIService(client.primary.with_timeout(TOPIC_LARGE_OPENAI_STAGE_TIMEOUT_SECONDS), client.fallback)
+    if stage_name.startswith('candidate') and callable(getattr(client, 'with_output_limit', None)):
+        client = client.with_output_limit(max(TOPIC_CANDIDATE_OUTPUT_TOKENS, client.max_output_tokens))
+    return client
+
+
+def _completed_topic_model(stages):
+    for stage in reversed(stages):
+        if not stage.get('raw') or stage.get('error'):
+            continue
+        diagnostics = stage.get('diagnostics') or {}
+        model = diagnostics.get('actual_model') or stage.get('requested_model')
+        if isinstance(model, str) and model:
+            return model
+    return None
+
+
+def _record_topic_models(pack, stages):
+    pack.model = _completed_topic_model(stages) or '未完成'
+    pack.extra['requested_models'] = list(dict.fromkeys(stage['requested_model'] for stage in stages if stage.get('requested_model')))
 
 
 def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources, prompts):
     payload={"mode":mode.value,"report_date":report_date,"model":model,
              "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
     stable=_stable_fingerprint_payload(payload)
-    return 'topic-workflow-v5:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
+    return 'topic-workflow-v6:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -122,6 +150,8 @@ def _source_item_to_dict(source: Any) -> dict[str, Any]:
         "title": getattr(source, "title", "") or "",
         "url": getattr(source, "url", "") or "",
         "snippet": getattr(source, "snippet", "") or "",
+        "content": getattr(source, "content", None),
+        "search_summary_events": list(getattr(source, "search_summary_events", []) or []),
         "published_date": str(getattr(source, "published_date", "") or ""),
         "source_level": str(getattr(source, "source_level", "") or ""),
         "provider": str(getattr(source, "provider", "") or ""),
@@ -162,6 +192,7 @@ def _build_topic_low_model_payload(
     discovery_sources: list[Any],
 ) -> dict[str, Any]:
     profiles = structured_data.get("existing_topic_profiles", [])
+    from .search_transmission import collect_search_context, source_events_packet
     company_topic_map = structured_data.get("company_topic_map", {})
     supply_chain_nodes = structured_data.get("supply_chain_nodes", [])
     external_caches = structured_data.get("external_topic_source_caches", {})
@@ -176,6 +207,8 @@ def _build_topic_low_model_payload(
             "supply_chain_node_count": len(supply_chain_nodes) if isinstance(supply_chain_nodes, list) else 0,
         },
         "discovery_sources": _bounded_topic_items(discovery_sources, limit=80),
+        "search_context_notes": collect_search_context(structured_data, discovery_sources, report_date),
+        "search_source_events": source_events_packet(discovery_sources),
         "webfetch_evidence": _bounded_topic_items((structured_data.get("webfetch_evidence") or {}).get("items", []), limit=80),
         "web_fetch_diagnostics": structured_data.get("web_fetch_diagnostics", {}),
         "candidate_companies": _bounded_topic_items(structured_data.get("candidate_companies", []), limit=100),
@@ -470,6 +503,7 @@ def run_topic_maintain(
                 emit("WebFetch enrichment 開始")
                 from .web_fetch_enrichment import _enrich_sources_with_web_fetch
                 _enrich_sources_with_web_fetch(request, discovery_sources, structured_data, progress)
+                structured_data["discovery_sources"] = [_source_item_to_dict(source) for source in discovery_sources]
                 emit(f"WebFetch完成")
             except Exception as exc:
                 emit(f"WebFetch略過：{exc}")
@@ -511,7 +545,8 @@ def run_topic_maintain(
         structured_data = point_in_time_data(structured_data, date.fromisoformat(report_date))
     workflow_key = None
     if workflow_account is not None:
-        workflow_key = _topic_workflow_cache_key(mode, report_date, center.config.deepseek_model,
+        from .ai_provider_service import resolved_model
+        workflow_key = _topic_workflow_cache_key(mode, report_date, resolved_model(center.deepseek, center.config.deepseek_model),
             {**structured_data,"company_knowledge":load_company_knowledge_data()},discovery_sources,
             [template,_load_prompt('topic_candidate_extract'),_load_prompt('topic_detail_expand')])
         cached = workflow_account.cached(workflow_key)
@@ -633,6 +668,9 @@ def run_topic_maintain(
         "search_diagnostics_json": diag_json,
     }
     prompt = _render_prompt(template, variables)
+    from .search_transmission import collect_search_context, search_context_prompt, source_events_packet
+    search_notes_prompt = search_context_prompt([*collect_search_context(structured_data, discovery_sources, report_date), *source_events_packet(discovery_sources)])
+    prompt += search_notes_prompt
 
     # Save prompt log
     from .prompt_logging import write_prompt_log
@@ -646,13 +684,17 @@ def run_topic_maintain(
     raw_stages: list[dict[str, Any]] = []
 
     def _call_ai_json(stage_prompt: str, stage_name: str) -> dict[str, Any] | list[Any]:
+        stage_prompt += search_notes_prompt
         emit(f"呼叫 AI：{ai_model} / {stage_name}")
         raw_text = ""
+        requested_model = ''
         try:
             if official:
-                client = center.deepseek_organizer if stage_name.startswith("candidate") else center.deepseek
-                if stage_name.startswith("candidate") and callable(getattr(client, "with_output_limit", None)):
-                    client = client.with_output_limit(max(TOPIC_CANDIDATE_OUTPUT_TOKENS, client.max_output_tokens))
+                client = _topic_stage_client(center, stage_name, len(stage_prompt))
+                model = getattr(client, 'model', None)
+                configured_model = getattr(center.config, 'deepseek_model', '')
+                requested_model = model if isinstance(model, str) else configured_model if isinstance(configured_model, str) else ''
+                emit(f"AI階段 {stage_name}：模型={requested_model}，輸入={len(stage_prompt)}字元，等待上限={client.timeout_seconds}秒")
                 result = client.generate_json(stage_prompt)
                 raw_text = _ai_response_to_text(result)
             elif ai_model == "deepseek":
@@ -686,7 +728,7 @@ def run_topic_maintain(
                 raw_text = _ai_response_to_text(result)
             cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
             parsed = _parse_ai_json_response(cleaned_raw_text)
-            stage_log = {"stage": stage_name, "raw": cleaned_raw_text}
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "requested_model": requested_model}
             if official:
                 stage_log["diagnostics"] = result.diagnostics
             if reasoning_stripped:
@@ -695,14 +737,16 @@ def run_topic_maintain(
             return parsed
         except json.JSONDecodeError as exc:
             cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
-            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc)}
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc), "requested_model": requested_model}
             if reasoning_stripped:
                 stage_log["model_reasoning_stripped"] = True
             raw_stages.append(stage_log)
             raise
         except Exception as exc:
             cleaned_raw_text, reasoning_stripped = _strip_model_reasoning_text(raw_text)
-            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc)}
+            stage_log = {"stage": stage_name, "raw": cleaned_raw_text, "error": str(exc), "requested_model": requested_model}
+            if isinstance(getattr(exc, 'diagnostics', None), dict):
+                stage_log['diagnostics'] = exc.diagnostics
             if reasoning_stripped:
                 stage_log["model_reasoning_stripped"] = True
             raw_stages.append(stage_log)
@@ -733,7 +777,9 @@ def run_topic_maintain(
     )
 
     if official:
-        pack.model = center.config.deepseek_model
+        from .ai_provider_service import current_routing_metadata
+        _record_topic_models(pack, raw_stages)
+        pack.extra['routing_history'] = current_routing_metadata()['routing_history']
         quarantine_topic_source_leads(pack, structured_data)
         from .topic_citation_audit import quarantine_unproven_company_claims
         quarantined = quarantine_unproven_company_claims(pack, structured_data)
@@ -788,7 +834,7 @@ def run_topic_maintain(
         )
         pack.extra["report_metadata"]["ai_status"] = pack.extra.get("ai_status", "ai_success" if response_count else "failed")
         if official:
-            pack.extra["report_metadata"]["model"] = center.config.deepseek_model
+            pack.extra["report_metadata"]["model"] = _completed_topic_model(raw_stages)
             pack.extra["report_metadata"]["ai_status"] = pack.extra.get("ai_status", "partial_success")
         pack.extra["data_source_summary"] = build_data_source_summary(request, structured_data, list(discovery_sources or []))
         pack.extra["command_result"] = asdict(

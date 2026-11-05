@@ -75,7 +75,7 @@ def fetch_web_content(
         from dataclasses import asdict
         import hashlib
         client = configured_client()
-        cache_key = "page:publication-v2:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
+        cache_key = "page:publication-v3:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
         cached = client.account.cached(cache_key)
         if cached is not None:
             if cached.get("title"):
@@ -95,7 +95,9 @@ def fetch_web_content(
             quality, reason = _assess_fetch_quality(url, content, fetched.get("title"), published_date, expected_terms)
             result = WebFetchResult(url=url, title=fetched.get("title"), content=content,
                 published_date=published_date, fetch_quality=quality, failure_reason=reason,
-                content_status=("success" if quality != "low" else "partial") if content else "failed", fetch_provider="deepseek_fetch")
+                date_status=local_result.date_status if local_result else None,
+                updated_date=local_result.updated_date if local_result else None,
+                content_status=("success" if quality != "low" else "partial") if content else "failed", fetch_provider=fetched.get('provider') or "deepseek_fetch")
             if result.content_status == "success":
                 client.account.cache(cache_key, asdict(result), 3600)
             return result
@@ -230,8 +232,16 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
             failure_reason=reason,
         )
 
-    soup = bs4.BeautifulSoup(response.text, "html.parser")
-    published_date = _extract_html_published_date(soup, response.text, getattr(response, "url", None) or url)
+    # requests defaults charset-less HTML to Latin-1, ignoring its HTML meta tag.
+    raw = getattr(response, 'content', None)
+    if isinstance(raw, bytes) and raw:
+        declared = re.search(r"charset\s*=\s*['\"]?([\w.-]+)", content_type, re.I)
+        soup = bs4.BeautifulSoup(raw, "html.parser", from_encoding=declared.group(1) if declared else None)
+        html = str(soup)
+    else:
+        html = response.text
+        soup = bs4.BeautifulSoup(html, "html.parser")
+    published_date = _extract_html_published_date(soup, html, getattr(response, "url", None) or url)
 
     for tag in soup.find_all(["script", "style", "nav", "header", "footer", "aside"]):
         tag.decompose()
@@ -487,7 +497,7 @@ def _extract_html_published_date(soup: bs4.BeautifulSoup, raw_html: str, url: st
                 candidates.append(published)
     page_text = soup.get_text(" ", strip=True)
     for pattern in (
-        r"(?:發布時間|發稿時間|刊登時間|出版時間|中央社)\s*[:：]?\s*([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
+        r"(?:發[布佈](?:日期|時間)|發稿(?:日期|時間)|刊登(?:日期|時間)|出版(?:日期|時間)|中央社)\s*[:：]?\s*([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
     ):
         for match in re.finditer(pattern, page_text):
             candidates.append(match.group(1))
@@ -515,8 +525,16 @@ def _html_date_status(soup, published: str | None) -> str:
     for script in soup.find_all('script', attrs={'type': re.compile(r'ld\+json', re.I)}):
         if publication_metadata_date(script.get_text(' ', strip=True)) == published:
             return 'explicit'
-    if re.search(r'(發布|發稿|刊登|出版)時間', soup.get_text(' ', strip=True)):
-        return 'explicit'
+    for selector in ('time[pubdate]', 'time[itemprop="datePublished"]',
+                     'time.article-body__time', 'time.article-content__time', '#MainContent_Contents_lbDate'):
+        for tag in soup.select(selector):
+            if normalize_published_date(tag.get('datetime'), tag.get('content'), tag.get_text(' ', strip=True)) == published:
+                return 'explicit'
+    page_text = soup.get_text(' ', strip=True)
+    for match in re.finditer(r'(?:發[布佈]|發稿|刊登|出版)(?:日期|時間)\s*[:：]?\s*'
+                             r'([12]\d{3}[年/-]\d{1,2}[月/-]\d{1,2}(?:日)?)', page_text):
+        if normalize_published_date(match.group(1)) == published:
+            return 'explicit'
     return 'inferred'
 
 

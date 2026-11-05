@@ -6,6 +6,7 @@ from html import escape
 
 from .news_categories import news_category_label
 from .news_models import NEWS_SIGNAL_TAGS, HoldingNewsGroup, NewsDigest, NewsItem
+from .report_display_normalizer import normalize_direction_labels
 
 
 def _html_link(title: str, url: str) -> str:
@@ -92,7 +93,7 @@ def format_news_digest(digests: list[NewsDigest], period_label: str = "最新") 
             lines.append(f"  <i>{_html_text(item.source)} {_html_text(pub)}</i>")
         if len(digest.items) > 8:
             lines.append(f"  另有 {len(digest.items) - 8} 則")
-    return "\n".join(lines)
+    return normalize_direction_labels("\n".join(lines))
 
 
 def format_holding_news(groups: list[HoldingNewsGroup]) -> str:
@@ -111,7 +112,7 @@ def format_holding_news(groups: list[HoldingNewsGroup]) -> str:
         if len(group.items) > 5:
             lines.append(f"  另有 {len(group.items) - 5} 則")
 
-    return "\n".join(lines)
+    return normalize_direction_labels("\n".join(lines))
 
 
 def format_news_refresh_result(
@@ -185,7 +186,7 @@ def format_news_refresh_result(
     if int(meta.get("webfetch_success", 0) or 0) == 0 and int(meta.get("search_sources", 0) or 0) > 0:
         lines.append("")
         lines.append("限制：本次多數來源只有搜尋摘要，缺少正文補取，分類可作快訊參考，重要結論仍需搭配來源原文確認。")
-    return "\n".join(lines)
+    return normalize_direction_labels("\n".join(lines))
 
 
 def format_news_detail(item: NewsItem | None) -> str:
@@ -225,4 +226,4 @@ def format_news_detail(item: NewsItem | None) -> str:
     summary = (item.summary or item.full_text or "").strip().replace("\n", " ")
     if summary:
         lines.extend(["", _html_text(summary[:500])])
-    return "\n".join(lines)
+    return normalize_direction_labels("\n".join(lines))

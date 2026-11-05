@@ -15,6 +15,40 @@ def test_display_terms_translate_common_internal_codes():
     assert display_term("ai_power_semiconductor_mosfet") == "AI 電源與功率半導體 MOSFET"
 
 
+def test_observed_simplified_product_word_is_display_only():
+    raw = '产品展示不等於出貨；數值 30，來源 https://example.com/产品/30'
+    assert normalize_report_text(raw) == '產品展示不等於出貨；數值 30，來源 https://example.com/产品/30'
+    assert raw.startswith('产品')
+
+
+def test_live_research_coverage_labels_are_chinese_without_changing_values_or_urls():
+    raw = ('stock | price data 30 | institutional data 0 | revenue_data 19 | '
+           'financial_data 12 | local rerating snapshot 20 | chip 摘要 9 | '
+           'https://example.com/stock?price_data=30')
+    text = normalize_report_text(raw)
+    for label in ['股票基本資料', '價量資料 30', '法人籌碼資料 0', '營收資料 19',
+                  '財務資料 12', '本地價值重估底稿 20', '籌碼摘要 9']:
+        assert label in text
+    assert 'https://example.com/stock?price_data=30' in text
+
+
+def test_source_appendix_title_pipe_does_not_create_extra_columns():
+    from research_center.report_builder import _append_complete_source_appendix
+    source = SourceItem('S001', '官方公告 | 第三季營運', 'https://example.com/report', 'L1_official')
+    text = _append_complete_source_appendix('# 報告', [source])
+    row = next(line for line in text.splitlines() if line.startswith('| S001'))
+    assert '官方公告 &#124; 第三季營運' in row
+    assert row.count('|') == 7
+
+
+def test_unverified_label_is_readable_but_never_upgraded_to_verified():
+    raw = '每股盈餘期間為 unverified；2026Q3 EPS -0.27 元 [S020]。'
+    text = normalize_report_text(raw)
+    assert '尚未核實' in text
+    assert '2026Q3 EPS -0.27 元 [S020]' in text
+    assert '已驗證' not in text
+
+
 def test_normalize_report_text_rewrites_key_value_and_snake_case():
     raw = (
         "`ai_power_semiconductor_mosfet`\n"

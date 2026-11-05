@@ -18,6 +18,8 @@ from .topic_input_package import append_topic_shared_records, merge_topic_source
 from .topic_schema_normalizer import (
     normalize_topic_candidate,
     normalize_topic_detail_actions,
+    repair_topic_detail_structure,
+    resolve_topic_company_identities,
 )
 
 
@@ -274,6 +276,8 @@ def run_topic_pipeline(
         },
     )
     _hydrate_topic_evidence(pack, structured_data)
+    pack.extra['company_identity_audit'] = resolve_topic_company_identities(
+        pack.actions, structured_data.get('authoritative_company_names') or {})
     if not pack.actions:
         pack.status = TopicChangeStatus.FAILED
         pack.warnings.append("AI 未產生可套用的題材變更，請拒絕此變更包或重新執行 /topic_maintain。")
@@ -608,6 +612,11 @@ def _expand_batch(
         return {}
     try:
         payload = call_ai_json(prompt, f"detail_expand_{batch_index}")
+        if full_evidence:
+            payload, repairs = repair_topic_detail_structure(payload, batch)
+            if repairs:
+                stage_logs.append({'stage': f'detail_expand_{batch_index}_structure_repair',
+                                   'repairs': repairs, 'policy': 'Only explicit unique owners; original output retained.'})
         if full_evidence and _has_unresolved_topic_ref(payload):
             stage_logs.append({'stage':f'detail_expand_{batch_index}','error':'unresolved_topic_reference'})
             return {}
@@ -663,6 +672,9 @@ def _expand_batch(
 
 
 def _detail_covers_batch(payload, batch):
+    if isinstance(payload, dict) and set(payload) & {'affected_companies', 'company_relations',
+            'supply_chain_nodes', 'risk_notes', 'missing_data', 'counter_evidence'}:
+        return False
     actions = payload.get('actions', []) if isinstance(payload, dict) else payload
     if not isinstance(actions, list) or len(actions) != len(batch):
         return False

@@ -339,6 +339,7 @@ def _build_low_model_digest_payload(
     structured_data: dict[str, Any],
     sources: list[SourceItem],
 ) -> dict[str, Any]:
+    from .search_transmission import collect_search_context, source_events_packet
     target = request.target or request.market_scope or request.theme_scope or request.candidate_pool
     evidence = _collect_low_model_text_evidence(structured_data, sources)
     skipped_sections = _low_model_skipped_structured_sections(request.command, structured_data)
@@ -359,6 +360,9 @@ def _build_low_model_digest_payload(
         "data_gap_summary": structured_data.get("data_gap_summary"),
         "report_confidence": structured_data.get("report_confidence"),
         "financial_period_audit": structured_data.get("financial_period_audit"),
+        "search_execution_summary": structured_data.get("search_execution_summary"),
+        "search_context_notes": collect_search_context(structured_data, sources, request.report_date),
+        "search_source_events": source_events_packet(sources),
         "ai_input_audit": structured_data.get("ai_input_audit"),
     }
 
@@ -610,7 +614,7 @@ def run_low_model_digest_for_payload(
     try:
         result = minimax.generate_json(prompt)
         parsed = _parse_json_object(result.markdown)
-        digest = _normalize_digest(parsed, model_name=model_name)
+        digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
         digest["prompt_path"] = str(prompt_path)
         digest["diagnostics"] = result.diagnostics
         digest["fingerprint"] = fingerprint
@@ -849,6 +853,7 @@ def build_high_model_input_package(
 ) -> dict[str, Any]:
     input_mode = _input_mode_for_prompt(prompt_chars_estimate)
     from .evidence_governance import build_evidence_governance
+    from .search_transmission import collect_search_context, source_events_packet
     governance = build_evidence_governance(request.command, request.report_date, sources, structured_data)
     structured_data['evidence_governance'] = governance
     low_digest = structured_data.get("low_model_digest") or {
@@ -893,6 +898,8 @@ def build_high_model_input_package(
         "ai_data_center_summary": _ai_data_center_summary(structured_data.get("ai_data_center")),
         "financial_period_audit": structured_data.get("financial_period_audit"),
         "evidence_governance": governance,
+        "search_context_notes": collect_search_context(structured_data, sources, request.report_date),
+        "search_source_events": source_events_packet(sources),
         "ai_prompt_context": structured_data.get("ai_prompt_context") if include_full_context else None,
         "ai_prompt_context_summary": _ai_prompt_context_summary(structured_data.get("ai_prompt_context")),
         "ai_input_audit": structured_data.get("ai_input_audit"),
@@ -1587,6 +1594,7 @@ def _value_scan_semantic_payload(structured_data: dict[str, Any], *, input_mode:
         "total_candidate_count": structured_data.get("total_candidate_count"),
         "ai_candidate_limit": structured_data.get("ai_candidate_limit"),
         "ai_candidates": candidate_summary,
+        "ai_candidate_evidence_pack": _semantic_compact(evidence_pack, input_mode=input_mode, max_list=30, depth=8),
         "ai_candidate_evidence_summary": _value_scan_evidence_pack_summary(evidence_pack),
         "local_ranking": _semantic_compact(structured_data.get("local_ranking"), input_mode=input_mode, max_list=40, depth=4),
         "scoring_rules": _semantic_compact(structured_data.get("scoring_rules"), input_mode=input_mode, max_list=20, depth=4),
@@ -1595,7 +1603,7 @@ def _value_scan_semantic_payload(structured_data: dict[str, Any], *, input_mode:
         "unified_evidence_pack": _evidence_pack_summary(structured_data.get("unified_evidence_pack")),
         "raw_data_policy": {
             "ai_candidates": "高階模型收到候選主檔摘要；完整 raw 候選資料保留在 structured_data.json.ai_candidates。",
-            "ai_candidate_evidence_pack": "高階模型收到 ai_candidate_evidence_summary；完整逐檔證據包保留在 structured_data.json.ai_candidate_evidence_pack。",
+            "ai_candidate_evidence_pack": "高階模型同時收到完整逐檔證據包與導讀摘要；完整證據不得只留在附錄，過大時沿用保真分段。",
             "chip_backup_data": "避免逐檔完整籌碼備援資料重複展開；高階模型使用 chip_backup_summary / source_event_summary / evidence_pack 判斷，需要追查時看附錄 JSON。",
         },
     }
@@ -1783,7 +1791,7 @@ def _value_scan_evidence_pack_summary(value: Any) -> dict[str, Any] | None:
     return {
         "schema_version": "value_scan_evidence_summary_v1",
         "candidate_count": len(rows),
-        "summary_policy": "保留每檔重估分數、財務關鍵欄位、交叉驗證、來源事件數與代表證據；完整逐檔證據包留在 JSON 附錄。",
+        "summary_policy": "此為導讀摘要，不取代同一入模封包中的完整 ai_candidate_evidence_pack；完整逐檔證據亦保存在 JSON 附錄。",
         "candidates": rows,
     }
 
@@ -2792,7 +2800,7 @@ def _emit(progress: ProgressCallback | None, message: str) -> None:
 
 
 def _generate_low_model_json_with_timeout(minimax: MiniMaxService, prompt: str, timeout_seconds: float):
-    if getattr(minimax, "provider", "") == "deepseek":
+    if getattr(minimax, "provider", "") in {"deepseek", "openai_router"}:
         return minimax.with_timeout(timeout_seconds).generate_json(prompt)
     if not hasattr(minimax, "timeout_seconds"):
         return minimax.generate_json(prompt)
@@ -2826,7 +2834,7 @@ def _run_low_model_digest_guarded(
         _emit(progress, f"{model_name} 低階整理快取命中：facts={len(cached.get('facts') or [])} sources={len(cached.get('source_map') or [])}")
         return cached
 
-    cooldown = None if getattr(minimax, "provider", "") == "deepseek" else _low_model_cooldown_status()
+    cooldown = None if getattr(minimax, "provider", "") in {"deepseek", "openai_router"} else _low_model_cooldown_status()
     if cooldown:
         digest = _low_model_cooldown_digest(
             request,
@@ -2891,7 +2899,7 @@ def _run_low_model_digest_guarded(
     try:
         result = minimax.generate_json(prompt)
         parsed = _parse_json_object(result.markdown)
-        digest = _normalize_digest(parsed, model_name=model_name)
+        digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
         digest["prompt_path"] = str(prompt_path)
         digest["diagnostics"] = result.diagnostics
         digest["fingerprint"] = fingerprint
@@ -2987,7 +2995,7 @@ def _retry_single_low_model_digest(
     try:
         retry_result = _generate_low_model_json_with_timeout(minimax, retry_prompt, LOW_MODEL_RETRY_TIMEOUT_SECONDS)
         parsed = _parse_json_object(retry_result.markdown)
-        digest = _normalize_digest(parsed, model_name=model_name)
+        digest = _normalize_digest(parsed, model_name=retry_result.diagnostics.get('actual_model') or model_name)
         digest["status"] = "success_after_retry"
         digest["prompt_path"] = str(prompt_path)
         digest["retry_prompt_path"] = str(retry_path)
@@ -3025,7 +3033,7 @@ def _run_segmented_low_model_digest(
     depth: int,
     original_prompt_chars: int,
 ) -> dict[str, Any]:
-    cooldown = None if getattr(minimax, "provider", "") == "deepseek" else _low_model_cooldown_status()
+    cooldown = None if getattr(minimax, "provider", "") in {"deepseek", "openai_router"} else _low_model_cooldown_status()
     if cooldown:
         digest = _low_model_cooldown_digest(
             request,
@@ -3174,7 +3182,7 @@ def _run_segmented_low_model_digest(
         try:
             result = _generate_low_model_json_with_timeout(minimax, prompt, LOW_MODEL_SEGMENT_TIMEOUT_SECONDS)
             parsed = _parse_json_object(result.markdown)
-            digest = _normalize_digest(parsed, model_name=model_name)
+            digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
             digest["prompt_path"] = str(prompt_path)
             digest["diagnostics"] = result.diagnostics
             digests.append(digest)
@@ -3337,7 +3345,7 @@ def _retry_low_model_segment(
     try:
         retry_result = _generate_low_model_json_with_timeout(minimax, retry_prompt, LOW_MODEL_RETRY_TIMEOUT_SECONDS)
         parsed = _parse_json_object(retry_result.markdown)
-        digest = _normalize_digest(parsed, model_name=model_name)
+        digest = _normalize_digest(parsed, model_name=retry_result.diagnostics.get('actual_model') or model_name)
         digest["prompt_path"] = str(retry_path)
         digest["diagnostics"] = retry_result.diagnostics
         digests.append(digest)

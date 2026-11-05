@@ -12,6 +12,23 @@ from research_center.report_numeric_validation import validate_valuation_tables
 
 
 class ReaderQualityTests(unittest.TestCase):
+    def test_grouped_citations_validate_every_source_not_only_single_brackets(self):
+        sources = [SourceItem('S020', '公司公告', 'https://example.com/official', 'Level 1')]
+        result = review_reader_content('已公告 [S020、S999]；另一組 [S020/S998]。', sources)
+        self.assertEqual(result['unknown_source_ids'], ['S998', 'S999'])
+        self.assertFalse(result['mechanical_checks_passed'])
+        valid = review_reader_content('已公告 [S020] 與 [S020、S020]。', sources)
+        self.assertEqual(valid['unknown_source_ids'], [])
+
+    def test_ambiguous_local_reference_warns_without_inventing_a_source(self):
+        text = '本地量化值 [前段、S020]；另見 [片段 2]。'
+        source = SourceItem('S020', '公司公告', 'https://example.com/official', 'Level 1')
+        result = review_reader_content(text, [source])
+        self.assertTrue(any('不明引用' in item for item in result['warnings']))
+        self.assertEqual(result['unknown_source_ids'], [])
+        self.assertEqual(text, '本地量化值 [前段、S020]；另見 [片段 2]。')
+        self.assertIn('不可只用「前段／上文／片段」作引用', reader_quality_rules('research'))
+
     def test_scope_and_forecast_deadline_rules_are_shared(self):
         rules = reader_quality_rules('theme_flow')
         for text in ('年度結束與財報可得日', '無行情的公司', '來源優先閱讀數不等於實際送入數'):

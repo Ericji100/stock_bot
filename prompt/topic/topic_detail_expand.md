@@ -29,6 +29,8 @@
 7. `risk_notes`、`missing_data`、`counter_evidence` 必須用繁體中文寫具體內容；若沒有資料，請填入「目前未找到具體資料」與需要補查的方向，不要只輸出空陣列。
 8. 每個 action 必須在 `missing_data` 或 `counter_evidence` 中交代下一步驗證方向，例如：後續追蹤月營收、法說會、訂單、客戶、出貨、法人買賣超、族群量價或反證來源。
 9. 不得只寫正向理由；每個題材至少要有一項風險、反證或資料不足說明。
+10. 每個候選恰好對應一筆 action，原樣保留 theme_id。證據物件只能放在該 action 的 evidence 陣列內；不得混入 actions 陣列。affected_companies、company_relations、supply_chain_nodes、risk_notes、missing_data、counter_evidence 都與 evidence 同層，屬於該 action，不得放進某筆 evidence。
+11. 公司主檔對應只證明代號與名稱身分，不證明訂單、客戶、產品或供應關係。不得把公司背景底稿當作本次新證據；同名、集團或法定名稱未確認時保留候選及缺口。
 
 ## 語言與格式
 

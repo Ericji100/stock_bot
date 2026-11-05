@@ -4,9 +4,9 @@
 
 README 只保留專案入口、啟動方式、常用指令與維護索引；完整歷史內容已保留在 [docs/legacy-readme-full.md](docs/legacy-readme-full.md)，後續細節文件集中在 [docs/](docs/)。
 
-### 本次交付：唯一當前結論（2026-11-05，未部署）
+### 本次交付：唯一當前結論（2026-11-05，已合併 main 並啟動）
 
-請以 [AI 投研中心唯一上線驗收表](docs/hybrid-release-acceptance.md) 判斷目前狀態。固定 Luna／Terra xhigh 混合版本、第二帳戶優先及70／20／10分額；完整測試3,049通過、9略過、363子案例，588來源檔未變。經授權只補第四批，一次Luna xhigh實付US$0.027154175、零新增搜尋與未知，八題已全文審閱；原生引用校對後通過。航運僅有背景證據，完整父包禁止套用，另附七題待確認子包，候選公司不升格。本輪九項隔離檢核通過，未重跑十入口、未部署或重啟。原部署阻塞已結案，程式可部署，仍須你另行授權；正式TG／啟動／排程列部署後驗收，題材測試包不自動匯入。
+請以 [AI 投研中心唯一上線驗收表](docs/hybrid-release-acceptance.md) 判斷目前狀態。經使用者授權，Luna／Terra xhigh 混合版已合併 main，沿用第二帳戶優先及70／20／10分額。原完整測試3,049通過、9略過、363子案例按未變更來源沿用；合併正式設定後另有145項、76子案例通過，禁止外部HTTP。正式Bot已啟動，心跳、佇列、監護程序與43個TG指令註冊正常，一則部署測試通知已送達。兩把金鑰局部合併，535筆帳務及三筆未知預留完整保留，開發測試不占正式分額；25個既有未提交檔案未改動。部署沒有新增付費AI／搜尋或補跑錯過排程，也未套用題材測試包。航運父包禁止套用，其餘七題仍待人工確認。日常排程的實際觸發、推播及費用列使用後觀察，不冒充已重新實跑十入口。
 
 ### 隔離開發歷史記錄（以下非當前部署結論）
 
@@ -105,7 +105,7 @@ Live 稽核將成功送出的模型輸入、快取命中與未確認的準備檔
 | `/radar` 每日雷達 | 穩定可用 | 可選 AI 短評；`/radar_more` 查看完整名單 |
 | 個股資料匯出 | 穩定可用 | `/export`、`/stock_chart`、`/tmf_chart` |
 | 持股與監控 | 穩定可用 | `portfolio.json` 與 `config.json` 分別管理持股、監控清單 |
-| AI 投研資料中心 | DeepSeek 遷移分支驗證中 | 統一官方 DeepSeek Flash；已實際付費擴跑，部分問題修正後仍待 Live 重驗，不等於正式環境已驗收 |
+| AI 投研資料中心 | Luna／Terra 混合版已部署 | 初搜Luna、重要缺口Terra；Radar／手動最終Terra，背景新聞／題材整理Luna；贈額不足依條件備援DeepSeek |
 | `/value_scan` 價值重估 | 可用，持續調整 | 使用本地重估底稿與外部證據，避免只因熱門題材給高分 |
 | 題材雷達與題材庫 | 可用，持續調整 | 代表股、候選股、疑似蹭題材需分開標示 |
 | 新聞系統 | 可用，持續調整 | 本地新聞庫、外部搜尋與每日排程整理 |
@@ -185,7 +185,7 @@ Windows 可直接執行：
 啟動機器人.bat
 ```
 
-`啟動機器人.bat` 是唯一日常入口，沿用現有 watchdog 與 runner；不要在開發 worktree 同時啟動第二個 Bot。2026-11-03 已經使用者授權合併並啟動正式 Bot，通過心跳與一則 Telegram 測試訊息驗證；既有 ETF／台指全量測試問題另留證據追蹤，不代表全部品質限制已消失。AI 排程統一使用官方 DeepSeek Flash：每週二、五 22:30 題材庫維護（2026-11-03 經使用者同意由 10:00 移至離峰、收盤後）、每日 18:00 背景新聞整理、交易日 21:30 Radar 短評。正常新聞預設不發 Telegram；額度或服務異常另發去重通知，恢復後通知一次。手動新聞指令正常回覆。其餘選股、監控、籌碼與回補排程不改。
+`啟動機器人.bat` 是唯一日常入口，沿用現有 watchdog 與 runner；不要在開發 worktree 同時啟動第二個 Bot。2026-11-05 經授權合併 main 並啟動混合版，心跳及原Telegram連線通過。每週二、五22:30題材庫維護、每日18:00新聞整理採Luna xhigh初搜／整理，重要缺口以Terra xhigh補查；交易日21:30 Radar初搜Luna、補查與最終短評Terra。手動最終分析Terra。第二帳戶優先、70／20／10分額，明確贈額不足依既有條件備援DeepSeek；費用未知不重送。正常新聞不發Telegram，異常告警另依既有去重機制。其餘選股、監控、籌碼與回補排程不改。啟動清單保留的舊`model=deepseek`標籤不代表實際供應商，實際模型以共用路由及請求紀錄為準。
 
 #### DeepSeek 費用與失敗保護
 
@@ -354,10 +354,10 @@ Windows 可直接執行：
 | 月營收與財報 | MOPS、FinMind 結構化財報、公開資料、本地快取 | `.cache/` | 季財報統一成 v3 schema，FinMind 可匿名或使用 key，MOPS Plus 保留為備援 |
 | 法人籌碼 | TWSE、TPEx、FinMind、Fugle | `.cache/chip_daily` | 缺口時可嘗試 FinMind 即時備援 |
 | 大戶分布 | TDCC | `.cache/tdcc` | 價值重估與籌碼分析使用 |
-| 新聞 | DeepSeek Search / Fetch、網頁直接抓取、新聞 URL 匯入 | `database/stock_research.db` | `/news latest` 讀本地庫；`/news refresh` 會搜尋 |
+| 新聞 | Luna初搜／Terra重要缺口補查、網頁抓取、新聞URL匯入；DeepSeek依條件備援 | `database/stock_research.db` | `/news latest` 讀本地庫；`/news refresh` 會搜尋 |
 | 晨間市場速報 | Yahoo Finance、Yahoo 期貨頁首、TAIFEX 備援 | 即時查詢 | `/morning` 台指期夜盤優先抓最新期貨頁首報價；TAIFEX 日檔只作歷史備援，避免清晨日檔未更新時輸出舊夜盤 |
 | 題材庫 | `config/theme_profiles.json` 等 | `config/`、`data/theme/` | 變更包需 review/confirm |
-| AI 報告 | 官方 DeepSeek Flash | `reports/`、`database/` | 同時保存來源與 metadata |
+| AI 報告 | 手動／Radar最終Terra xhigh；排程新聞／題材整理Luna xhigh | `reports/`、`database/` | 保存來源、實際模型與metadata；DeepSeek依條件備援 |
 
 詳細資料策略請看 [docs/data-sources.md](docs/data-sources.md)。
 
@@ -671,8 +671,6 @@ AI 只提供分析建議；`change_id`、`status`、`raw_response_path`、`promp
 /topic_maintain
 /topic_maintain --deep
 
-`/topic_maintain` 是題材庫維護的單一入口。手動不帶參數時預設使用 deep 模式，與排程一樣使用官方 DeepSeek Flash，不再提供模型選單。
-
 /topic_review
 /topic_review change_xxx
 /topic_confirm change_xxx
@@ -681,6 +679,8 @@ AI 只提供分析建議；`change_id`、`status`、`raw_response_path`、`promp
 /topic_source_sync --tpex
 /topic_source_sync --udn
 ```
+
+`/topic_maintain` 是題材庫維護單一入口，手動預設deep，不提供模型選單；手動最終分析Terra xhigh，背景排程整理Luna xhigh，初搜Luna、重要缺口Terra。額度不足依既有條件備援DeepSeek，變更包仍需審核確認。
 
 題材分類規則、代表股命名規則與新聞庫流程請看 [docs/topic-system.md](docs/topic-system.md)。
 
@@ -703,11 +703,11 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 
 ## 定時任務序列與排程
 
-- 每週二、五 22:30：自動執行 `/topic_maintain --deep`，使用 DeepSeek Flash 產生題材庫變更包；不會自動套用。審核或引用檢核不完整的更新包不得確認套用。一般資料庫寫入與其他非 AI 排程不改頻率。
+- 每週二、五22:30：`/topic_maintain --deep`，Luna初搜／整理、Terra重要缺口補查；變更包不自動套用，審核或引用不完整者不得確認。一般資料庫寫入與非AI排程不變。
 - 12:30：監控掃描。
 - 13:50：午報。
 - 17:45：持股報告。
-- 每日 18:00：背景新聞整理，使用 DeepSeek Flash 分類，預設不推播正常新聞至 Telegram。
+- 每日18:00：背景新聞Luna初搜／分類、Terra重要缺口補查；正常新聞不推Telegram。
 - 20:30：交易日執行全部選股，等同 `/scan` 選項 7，完成後發送 Telegram 訊息。
 ### 定時任務可靠性與排查
 
@@ -719,7 +719,7 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 - watchdog 不只檢查 process 是否存活，也會讀取 heartbeat 的 `schedule_health`。若排程健康狀態標示異常，會依既有 watchdog 流程重啟 runner。
 - 若早上定時任務未觸發，優先檢查三個檔案：`.runtime/bot_heartbeat.json`、`logs/scheduled_tasks/當日.jsonl`、runner CMD 視窗輸出。若 audit log 沒有 `triggered`，代表 APScheduler callback 未進入；若有 `started` 但沒有 `completed`，代表任務執行中卡住或 timeout。
 
-- 21:30：交易日執行 Radar 推播，定時 Radar 預設啟用 DeepSeek Flash 短評。
+- 21:30：交易日Radar十五檔，Luna初搜、Terra重要缺口補查與最終短評。
 - 16:30、18:30、21:00：籌碼快取回補；16:30 / 18:30 為今日回補，21:00 為完整回補。
 - 每 2 小時：完整資料回補健康檢查，啟動後 5 分鐘先檢查一次。
 - 報告與推播類定時任務使用 `ScheduledTaskService` 序列佇列；若前一個定時任務尚未完成，下一個任務會排隊，等前一個完成後接續執行。

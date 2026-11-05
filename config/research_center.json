@@ -1,16 +1,39 @@
 {
   "openai_primary_enabled": true,
-  "openai_credit_grants": [],
+  "openai_credit_grants": [
+    {
+      "account_id": "primary",
+      "allowance_usd": "58.79",
+      "evidence": "Read-only billing UI: received Nov 03 2026, Available, remaining 58.79 of 59.00, used 0.21, displayed expiry Nov 21 2026. Organization General and Stock Bot key project verified in the same selected organization. Local cutoff is conservatively Nov 20 UTC because UI only gives a date, not an exact instant. Opening allowance is remaining credit, not a new monthly grant. No payment settings changed.",
+      "expires_at": "2026-11-20T00:00:00+00:00",
+      "grant_id": "personal-20261103-verified-20261104",
+      "organization_id": "org-vrmm6h5a84fpBwGfzxAwv5m2",
+      "starts_at": "2026-11-03T00:00:00+00:00",
+      "verified_at": "2026-11-04T04:28:00+00:00"
+    },
+    {
+      "account_id": "secondary",
+      "allowance_usd": "22.00",
+      "evidence": "User-provided screenshot: received Nov 04 2026, Available, remaining USD22.00 of USD22.00, used USD0.00, displayed expiry Nov 11 2026. Organization and project IDs supplied by user, not independently verified in browser. API key permission and scope require real request verification. Local expiry conservatively Nov10 UTC because screenshot has date only; this is not a monthly renewal guarantee. No payment settings changed.",
+      "expires_at": "2026-11-10T00:00:00+00:00",
+      "grant_id": "secondary-20261104-user-screenshot22",
+      "organization_id": "org-mWhTkq23v2JEAD3BGnqnvrZ5",
+      "starts_at": "2026-11-04T00:00:00+00:00",
+      "verified_at": "2026-11-04T12:17:51+00:00"
+    }
+  ],
   "openai_job_limit_usd": 5.0,
   "deepseek_only": true,
   "deepseek_model": "deepseek-flash",
   "deepseek_monthly_limit_usd": 10.0,
   "deepseek_background_monthly_usd": 7.0,
   "deepseek_manual_monthly_usd": 2.0,
-  "deepseek_manual_allowances_usd": {"2026-11": 2.0},
+  "deepseek_manual_allowances_usd": {
+    "2026-11": 2.0
+  },
   "deepseek_monthly_reserve_usd": 1.0,
-  "deepseek_job_limit_usd": 0.30,
-  "deepseek_background_reserve_usd": 0.20,
+  "deepseek_job_limit_usd": 0.3,
+  "deepseek_background_reserve_usd": 0.2,
   "deepseek_usd_cny_budget_rate": 7.5,
   "scheduled_news_push_enabled": false,
   "model": "gemini-3.1-pro-preview",

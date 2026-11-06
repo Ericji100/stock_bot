@@ -729,6 +729,15 @@ AI 投研報告輸出在 `reports/`，metadata、新聞、事件與來源快照�
 
 ### Bot 最小健康監控
 
+#### Telegram 連線與錯誤診斷（2026-11-06，已重啟載入）
+
+- 接收指令（長輪詢）與訊息／API連線分開追蹤；只有對應實際請求成功才恢復，空的成功輪詢也算。`getMe`成功不代表接收指令已恢復；程序心跳正常也不等於Telegram暢通。
+- 全域錯誤處理保留完整例外鏈、時間、操作與診斷編號；同一事件的CMD提示預設五分鐘去重，診斷不去重、不截成500字。遮蔽Bot Token、指定敏感值、Bearer與常見金鑰，不保存完整Update、訊息正文或請求參數。
+- 沿用既有每分鐘心跳工作送出狀態提示，不新增探測排程。同次異常／恢復各提示一次；若尚未發出異常就恢復，合併為一則。提示本身失敗不再產生新告警；送出結果不明保留紀錄、不自動重送。狀態無法安全落盤時先不發提示，避免重啟後重複發送。
+- 本地狀態與逐日JSONL診斷在工作資料設定檔的`runtime/telegram/`；預設為`.workdata/prod/runtime/telegram/state.json`及`diagnostics/YYYY-MM-DD.jsonl`。心跳的`schedule_health.telegram_transport`另有兩通道狀態、最後成功時間與通知計數。重新啟動後，不以舊的成功狀態冒充新連線已通。
+- 不更動原Telegram重連、發送重試、逾時、模型、AI預算或交易規則，不因網路恢復重跑分析／交易。程式錯誤仍完整留證；此紀錄不會使watchdog因短暫Telegram斷線重啟Bot。
+- 經確認無執行中工作並獲授權，11/6 09:10已沿原啟停流程重啟載入；原生輪詢與API成功狀態、心跳、43項指令註冊及一則連線驗收通知通過。381項測試、99子案例通過（1項既有套件棄用警告），未付費呼叫AI／搜尋。真正斷線／恢復通知已離線模擬驗證，正式線路不刻意斷網；實際使用者指令回覆仍可用`/start`確認。見[補強驗證報告](verification/telegram-health-20261106/report.md)。
+
 - Bot 啟動後會每 1 分鐘寫入 `.runtime/bot_heartbeat.json`，欄位包含 `updated_at`、`pid`、`job_queue_available`、`last_scheduled_event`、`last_scheduled_event_at`。
 - 一般 heartbeat 只更新 `updated_at`、`pid` 與 `job_queue_available`；既有定時任務觸發時才更新 `last_scheduled_event` 與 `last_scheduled_event_at`。
 - 這個機制只放在 runtime / 排程入口層，不修改新聞、題材、選股、監控策略邏輯。

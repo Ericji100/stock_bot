@@ -9,7 +9,6 @@ import threading
 from typing import Awaitable, Callable
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.request import HTTPXRequest
 import stock_ai_bot.selection.curated_scan_service as curated_scan_service
 import stock_ai_bot.selection.laoxiao_scan_service as laoxiao_scan_service
 from stock_ai_bot.backfill.scheduled_all_scan_prepare_service import (
@@ -92,6 +91,10 @@ from stock_ai_bot.monitoring.etf_monitor.integration import (
 from stock_ai_bot.common.progress_logger import ProgressHeartbeat, now_timestamp, has_leading_timestamp, format_cmd_message
 from stock_ai_bot.telegram.telegram_stock_formatting import prepare_telegram_chunks
 from stock_ai_bot.telegram.telegram_push_service import send_telegram_message
+from stock_ai_bot.telegram.telegram_health_service import (
+    HEALTH_SERVICE_KEY, MonitoredHTTPXRequest, TelegramHealthService, handle_telegram_error,
+)
+from stock_ai_bot.workdata import get_workdata_path
 from stock_ai_bot.charts.tmf_chart_service import TmfChartError, build_tmf_chart_report, parse_tmf_chart_args
 
 SCAN_CALLBACK_PREFIX = "scan_strategy:"
@@ -2524,6 +2527,7 @@ def _current_scheduled_task_snapshot() -> dict | None:
 
 
 async def bot_heartbeat_tick(context: ContextTypes.DEFAULT_TYPE):
+    telegram_health = getattr(context.application, "bot_data", {}).get(HEALTH_SERVICE_KEY)
     try:
         update_schedule_health(
             job_queue_available=_job_queue_available(context),
@@ -2531,9 +2535,16 @@ async def bot_heartbeat_tick(context: ContextTypes.DEFAULT_TYPE):
             current_task=_current_scheduled_task_snapshot(),
             recent_event_loop_lag_seconds=round(_RECENT_EVENT_LOOP_LAG_SECONDS, 3),
             schedule_unhealthy_reason=None,
+            **({"telegram_transport": telegram_health.snapshot()} if telegram_health is not None else {}),
         )
     except Exception as exc:
         print(f"[{now_timestamp()}] heartbeat failed: {exc}", flush=True)
+    if telegram_health is not None:
+        try:
+            telegram_health.persist()
+            await telegram_health.flush_notices(context.bot, load_config()['chat_id'])
+        except Exception as exc:
+            telegram_health.application_error(exc)
 
 
 async def event_loop_lag_tick(context: ContextTypes.DEFAULT_TYPE):
@@ -2589,19 +2600,28 @@ async def post_init(application):
 def main():
     config = load_config()
     # 強化 Timeout 設定
-    req = HTTPXRequest(connect_timeout=60, read_timeout=60, write_timeout=60, pool_timeout=60)
+    telegram_health = TelegramHealthService(
+        get_workdata_path("runtime", "telegram"),
+        sensitive_values=(config['api_token'], config['chat_id']),
+    )
+    req = MonitoredHTTPXRequest(health=telegram_health, connect_timeout=60, read_timeout=60,
+                               write_timeout=60, pool_timeout=60)
+    polling_req = MonitoredHTTPXRequest(health=telegram_health, connection_pool_size=1)
     tw_tz = pytz.timezone('Asia/Taipei')
 
     app = (
         ApplicationBuilder()
         .token(config['api_token'])
         .request(req)
+        .get_updates_request(polling_req)
         .post_init(post_init)
         .post_stop(shutdown_etf_monitor)
         .post_shutdown(shutdown_etf_monitor)
         .concurrent_updates(True)
         .build()
     )
+    app.bot_data[HEALTH_SERVICE_KEY] = telegram_health
+    app.add_error_handler(handle_telegram_error)
     register_etf_monitor(app)
 
     # 設定每天 12:30 鬧鐘

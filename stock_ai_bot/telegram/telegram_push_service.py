@@ -26,8 +26,11 @@ class TelegramPushResult:
     error: str | None = None
 
 
-def sanitize_telegram_error(error: object, *sensitive_values: object) -> str:
+def sanitize_telegram_error(error: object, *sensitive_values: object, max_length: int | None = 500) -> str:
     text = _BOT_TOKEN_RE.sub("[REDACTED_TOKEN]", str(error or "Telegram request failed"))
+    text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._-]+", r"\1[REDACTED_TOKEN]", text)
+    text = re.sub(r"\bsk-[A-Za-z0-9_-]+", "[REDACTED_TOKEN]", text)
+    text = re.sub(r"(?i)([?&](?:token|api_key|apikey|access_token)=)[^&\s]+", r"\1[REDACTED_TOKEN]", text)
     values = sorted(
         {str(value) for value in sensitive_values if value is not None and str(value)},
         key=len,
@@ -35,7 +38,7 @@ def sanitize_telegram_error(error: object, *sensitive_values: object) -> str:
     )
     for value in values:
         text = text.replace(value, "[REDACTED]")
-    return text[:500]
+    return text if max_length is None else text[:max_length]
 
 
 def prepare_telegram_push_chunks(

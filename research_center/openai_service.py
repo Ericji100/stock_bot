@@ -296,7 +296,7 @@ class OpenAIService:
             except OpenAICreditsUnavailable:
                 raise
             except OpenAIUnavailable as exc:
-                self.ledger.warn(exc.status, str(exc))
+                self.ledger.warn(exc.status, str(exc), operation='web_search' if search else 'model')
                 raise
 
     def _request_once(self, prompt, *, json_mode=False, search=False):

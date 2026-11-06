@@ -6,7 +6,7 @@ reconciled allowance, not proof that other applications have stopped spending.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import json
@@ -16,6 +16,11 @@ from uuid import uuid4
 from .deepseek_service import DeepSeekUnavailable, TASK, RUN_ID
 
 ACCOUNT_PRIORITY = ('secondary', 'primary')
+_NOTICE_COMMANDS = {'research': '個股投研', 'value_scan': '價值重估', 'macro': '總體分析',
+                    'theme': '題材分析', 'theme_flow': '題材資金流', 'theme_radar': '題材雷達',
+                    'sector_strength': '族群強弱', 'radar': '選股雷達', 'news': '新聞整理',
+                    'topic_maintain': '題材庫維護'}
+_NOTICE_STAGES = {'web_search': '搜尋階段', 'model': 'AI分析／整理階段', 'preflight': '額度預檢階段'}
 
 
 def amount(value):
@@ -100,21 +105,75 @@ class OpenAICreditLedger:
                     background INTEGER, provider TEXT, reason TEXT, detail TEXT);
                 CREATE TABLE IF NOT EXISTS notices (id TEXT PRIMARY KEY, background INTEGER, run_id TEXT,
                     reason TEXT, message TEXT, state TEXT);
+                CREATE TABLE IF NOT EXISTS notice_attribution (
+                    notice_id TEXT PRIMARY KEY REFERENCES notices(id),
+                    purpose TEXT NOT NULL CHECK(purpose IN ('production','development','unclassified')),
+                    command TEXT NOT NULL, operation TEXT NOT NULL, created_at TEXT,
+                    attributed_at TEXT NOT NULL, evidence TEXT NOT NULL, delivery_result_at TEXT);
                 CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, expires REAL, value TEXT);
                 CREATE TABLE IF NOT EXISTS live_rounds (id TEXT PRIMARY KEY, limit_usd TEXT NOT NULL);
             ''')
-            if 'purpose' not in {row[1] for row in conn.execute('PRAGMA table_info(requests)')}:
+            purpose_known = 'purpose' in {row[1] for row in conn.execute('PRAGMA table_info(requests)')}
+            if not purpose_known:
                 conn.execute("ALTER TABLE requests ADD COLUMN purpose TEXT NOT NULL DEFAULT 'production'")
             if 'round_id' not in {row[1] for row in conn.execute('PRAGMA table_info(requests)')}:
                 conn.execute("ALTER TABLE requests ADD COLUMN round_id TEXT NOT NULL DEFAULT ''")
             if 'case_id' not in {row[1] for row in conn.execute('PRAGMA table_info(requests)')}:
                 conn.execute("ALTER TABLE requests ADD COLUMN case_id TEXT NOT NULL DEFAULT ''")
+            self._attribute_legacy_notices(conn, purpose_known=purpose_known)
             # Serialize schema upgrades across processes before callers start their transaction.
             conn.commit()
             yield conn
             conn.commit()
         finally:
             conn.close()
+
+    def _notice_time(self):
+        return self.now().astimezone(timezone.utc).isoformat(timespec='seconds')
+
+    def _attribute_legacy_notices(self, conn, *, purpose_known=True):
+        # Keep the original six-column notices and every financial table intact.
+        missing = conn.execute('''SELECT n.id,n.run_id FROM notices n
+            LEFT JOIN notice_attribution a ON a.notice_id=n.id WHERE a.notice_id IS NULL''').fetchall()
+        for notice_id, run_id in missing:
+            rows = conn.execute('SELECT id,purpose,command FROM requests WHERE run_id=?', (run_id,)).fetchall() if run_id else []
+            purposes = {p for _, p, _ in rows}
+            purpose = next(iter(purposes)) if purpose_known and len(purposes) == 1 and purposes <= {'production', 'development'} else 'unclassified'
+            commands = {command for _, _, command in rows if command}
+            evidence = {'source': 'legacy_run_requests', 'run_id': run_id,
+                        'request_ids': [identifier for identifier, _, _ in rows],
+                        'purpose_values': sorted(str(value) for value in purposes),
+                        'request_purpose_preexisted': purpose_known,
+                        'classification': purpose, 'original_time_unknown': True}
+            conn.execute('''INSERT INTO notice_attribution
+                (notice_id,purpose,command,operation,created_at,attributed_at,evidence)
+                VALUES (?,?,?,?,?,?,?)''', (notice_id, purpose, next(iter(commands)) if len(commands) == 1 else '',
+                    '', None, self._notice_time(), json.dumps(evidence, ensure_ascii=False)))
+
+    def _queue_notice(self, conn, reason, message, *, operation):
+        command, background, _ = TASK.get()
+        run_id, now = RUN_ID.get(), self._notice_time()
+        query = '''SELECT 1 FROM notices n JOIN notice_attribution a ON a.notice_id=n.id
+            WHERE a.purpose=? AND a.command=? AND n.background=? AND n.reason=? AND n.run_id=?'''
+        params = [self.purpose, command, int(background), reason, run_id]
+        if not run_id:
+            # Unscoped callers have no job identity; throttle rather than suppress forever.
+            query += ' AND a.created_at>=?'
+            params.append((instant(now) - timedelta(minutes=5)).isoformat(timespec='seconds'))
+        if conn.execute(query, params).fetchone():
+            return
+        label = ('排程' if background else '手動') + _NOTICE_COMMANDS.get(command, 'AI工作')
+        stage = _NOTICE_STAGES.get(operation, '執行階段未記錄')
+        local_time = instant(now).astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
+        text = f'【{label}｜{stage}】\n通知時間：{local_time}（台灣時間）\n{message}'
+        identifier = uuid4().hex
+        conn.execute('INSERT INTO notices VALUES (?,?,?,?,?,?)',
+                     (identifier, int(background), run_id, reason, text, 'pending'))
+        conn.execute('''INSERT INTO notice_attribution
+            (notice_id,purpose,command,operation,created_at,attributed_at,evidence) VALUES (?,?,?,?,?,?,?)''',
+            (identifier, self.purpose, command, operation, now, now,
+             json.dumps({'source': 'runtime_explicit', 'purpose': self.purpose,
+                         'run_id': run_id}, ensure_ascii=False)))
 
     def _sync(self, conn):
         for row in self.grants:
@@ -205,32 +264,52 @@ class OpenAICreditLedger:
         with self.db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             conn.execute('INSERT INTO route_events VALUES (?,?,?,?,?,?,?)', (uuid4().hex, RUN_ID.get(), command, int(background), provider, reason, json.dumps(detail or {}, ensure_ascii=False)))
-            if provider == 'deepseek' and not conn.execute("SELECT 1 FROM notices WHERE background=? AND reason=? AND state IN ('pending','sending','sent','delivery_unknown')", (int(background), reason)).fetchone():
+            if provider == 'deepseek':
                 reason_text = {'openai_not_configured': '尚未設定 OpenAI 金鑰',
                                'openai_grant_unverified': '尚未登記已核對的 OpenAI 贈額',
                                'openai_job_budget_exceeded': 'OpenAI 已達單次費用護欄'}.get(reason, 'OpenAI 贈額／分額目前不可用')
-                conn.execute('INSERT INTO notices VALUES (?,?,?,?,?,?)', (uuid4().hex, int(background), RUN_ID.get(), reason,
-                    reason_text + '，後續改由 DeepSeek 依原預算檢查；不是自動加值，也不保證整項工作完成。', 'pending'))
+                self._queue_notice(conn, reason,
+                    reason_text + '，後續改由 DeepSeek 依原預算檢查；不是自動加值，也不保證整項工作完成。',
+                    operation='preflight')
 
     def claim_notice(self):
+        if self.purpose != 'production':
+            return None
         with self.db() as conn:
             conn.execute('BEGIN IMMEDIATE')
-            row = conn.execute("SELECT id,message FROM notices WHERE background=1 AND state='pending' ORDER BY rowid LIMIT 1").fetchone()
+            row = conn.execute('''SELECT n.id,n.message,a.created_at,a.command
+                FROM notices n JOIN notice_attribution a ON a.notice_id=n.id
+                WHERE n.background=1 AND n.state='pending' AND a.purpose='production'
+                ORDER BY n.rowid LIMIT 1''').fetchone()
             if row:
                 conn.execute("UPDATE notices SET state='sending' WHERE id=?", (row[0],))
-            return row
+                message = row[1]
+                if row[2] is None:
+                    label = _NOTICE_COMMANDS.get(row[3], 'AI工作')
+                    message = f'【歷史正式通知｜{label}】\n原始時間未記錄；非本次工作的即時狀態。\n{message}'
+                return row[0], message
+            return None
 
-    def warn(self, reason, message):
+    def warn(self, reason, message, *, operation=''):
         with self.db() as conn:
             conn.execute('BEGIN IMMEDIATE')
-            background = int(TASK.get()[1])
-            if not conn.execute('SELECT 1 FROM notices WHERE background=? AND reason=?', (background, reason)).fetchone():
-                conn.execute('INSERT INTO notices VALUES (?,?,?,?,?,?)', (uuid4().hex, background, RUN_ID.get(), reason,
-                    'OpenAI 工作暫停：' + message + ' 已保留資料；其他非 AI 排程不因此停止。', 'pending'))
+            text = 'OpenAI 工作暫停：' + message + ' 已保留資料；僅針對本次工作，其他排程仍於執行時重新檢查。'
+            if reason == 'transport_unknown':
+                text += ' 此通知不代表額度用完；費用未知仍保留預留，不跨帳戶或模型重送。'
+            self._queue_notice(conn, reason, text, operation=operation)
 
     def notice_result(self, notice_id, success):
+        if self.purpose != 'production':
+            return False
         with self.db() as conn:
-            conn.execute('UPDATE notices SET state=? WHERE id=?', ('sent' if success else 'delivery_unknown', notice_id))
+            conn.execute('BEGIN IMMEDIATE')
+            changed = conn.execute('''UPDATE notices SET state=? WHERE id=? AND state='sending'
+                AND id IN (SELECT notice_id FROM notice_attribution WHERE purpose='production')''',
+                ('sent' if success else 'delivery_unknown', notice_id)).rowcount
+            if changed:
+                conn.execute('UPDATE notice_attribution SET delivery_result_at=? WHERE notice_id=?',
+                             (self._notice_time(), notice_id))
+            return bool(changed)
 
     def summary(self):
         with self.db() as conn:

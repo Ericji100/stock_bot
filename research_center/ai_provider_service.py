@@ -28,14 +28,20 @@ class BudgetNotices:
         self.openai, self.deepseek = openai, deepseek
 
     def claim_notice(self):
+        if self.openai.purpose != 'production':
+            return None
         for provider, budget in [('openai', self.openai), ('deepseek', self.deepseek)]:
             notice = budget.claim_notice()
             if notice:
                 return provider + ':' + notice[0], notice[1]
 
     def notice_result(self, notice_id, success):
+        if self.openai.purpose != 'production':
+            return False
         provider, ident = notice_id.split(':', 1)
-        (self.openai if provider == 'openai' else self.deepseek).notice_result(ident, success)
+        if provider not in {'openai', 'deepseek'}:
+            raise ValueError('Unknown AI notice provider')
+        return (self.openai if provider == 'openai' else self.deepseek).notice_result(ident, success)
 
     def summary(self, *args, **kwargs):
         return {**self.deepseek.summary(*args, **kwargs), 'openai': self.openai.summary()}

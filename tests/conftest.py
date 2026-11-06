@@ -10,6 +10,8 @@ def isolate_monitor_and_scheduler_health_writes(request, tmp_path, monkeypatch):
     }):
         return
     from stock_ai_bot.monitoring import bot_runtime_health as health
+    from stock_ai_bot.monitoring.etf_monitor import runtime_health
+    monkeypatch.setattr(runtime_health, "get_workdata_path", lambda path: tmp_path / path)
 
     for name in ("update_schedule_health", "record_scheduled_status_heartbeat_event"):
         function = getattr(health, name)

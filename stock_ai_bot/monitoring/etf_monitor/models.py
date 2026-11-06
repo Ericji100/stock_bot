@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 
 class MonitorPhase(str, Enum):
+    HEALTH = "runtime_health"
     PREVIEW = "preview_1245"
     DECISION = "decision_1355"
     RECONCILIATION = "reconciliation_2200"

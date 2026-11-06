@@ -355,14 +355,21 @@ def test_recovery_failure_disables_etf_without_blocking_original_startup(capsys)
     async def scenario() -> None:
         await integration.initialize_etf_monitor(app)
         assert runtime.startup_status == "PENDING"
-        await runtime.startup_task
+        for _ in range(100):
+            if runtime.startup_status == "RETRY_WAIT":
+                break
+            await asyncio.sleep(0.01)
+        assert runtime.startup_status == "RETRY_WAIT"
+        assert app.bot_data[integration.RUNTIME_KEY] is runtime
+        assert not job.removed
+        assert "OSError" in runtime.last_error
+        await integration.shutdown_etf_monitor(app)
 
     asyncio.run(scenario())
-    assert runtime.startup_status == "DISABLED"
+    assert runtime.startup_status == "STOPPED"
     assert integration.RUNTIME_KEY not in app.bot_data
     assert job.removed is True
     output = capsys.readouterr().out
-    assert "startup disabled ETF runtime: OSError" in output
     assert "private sqlite" not in output
 
 
@@ -387,14 +394,21 @@ def test_startup_updater_network_failure_disables_etf_and_keeps_bot_alive(capsys
 
     async def scenario() -> None:
         await integration.initialize_etf_monitor(app)
-        await runtime.startup_task
+        for _ in range(100):
+            if runtime.startup_status == "RETRY_WAIT":
+                break
+            await asyncio.sleep(0.01)
+        assert runtime.startup_status == "RETRY_WAIT"
+        assert app.bot_data[integration.RUNTIME_KEY] is runtime
+        assert not job.removed
+        assert "ConnectionError" in runtime.last_error
+        await integration.shutdown_etf_monitor(app)
 
     asyncio.run(scenario())
-    assert runtime.startup_status == "DISABLED"
+    assert runtime.startup_status == "STOPPED"
     assert integration.RUNTIME_KEY not in app.bot_data
     assert job.removed is True
     output = capsys.readouterr().out
-    assert "startup disabled ETF runtime: ConnectionError" in output
     assert "private network" not in output
 
 
@@ -439,16 +453,19 @@ def test_hung_startup_updater_is_bounded_and_jobs_stay_noop(
         assert len(app.tasks) == tasks_before_callback
         await runtime.dispatch(MonitorPhase.DECISION)
         assert runtime.service.calls == 0
-        await runtime.startup_task
+        await asyncio.sleep(0.1)
+        assert runtime.startup_status == "RETRY_WAIT"
+        assert "TimeoutError" in runtime.last_error
+        assert not job.removed
+        await integration.shutdown_etf_monitor(app)
 
     try:
         asyncio.run(scenario())
     finally:
         release.set()
-    assert runtime.startup_status == "DISABLED"
+    assert runtime.startup_status == "STOPPED"
     assert integration.RUNTIME_KEY not in app.bot_data
     assert job.removed is True
-    assert "startup disabled ETF runtime: TimeoutError" in capsys.readouterr().out
 
 
 def test_startup_task_scheduling_failure_disables_etf(tmp_path, monkeypatch, capsys) -> None:

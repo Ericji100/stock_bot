@@ -223,6 +223,32 @@ class EtfMonitorStore:
                 (now,),
             )
 
+    def queue_reconciliation(self, trading_date: date) -> None:
+        """Keep a durable intent even when another date owns the phase lock."""
+        with self.transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO job_runs(run_key,phase,trading_date,status,started_at) "
+                "VALUES(?,?,?,'RETRY_PENDING',?)",
+                (f"{MonitorPhase.RECONCILIATION.value}:{trading_date}",
+                 MonitorPhase.RECONCILIATION.value, trading_date.isoformat(), _utc_now()),
+            )
+
+    def reconciliation_retry_dates(self) -> tuple[date, ...]:
+        with closing(self._connect()) as connection:
+            return tuple(date.fromisoformat(row[0]) for row in connection.execute(
+                "SELECT trading_date FROM job_runs WHERE phase=? "
+                "AND status IN ('FAILED','INTERRUPTED','RETRY_PENDING') ORDER BY trading_date",
+                (MonitorPhase.RECONCILIATION.value,),
+            ))
+
+    def job_status(self, phase: MonitorPhase, trading_date: date) -> str | None:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT status FROM job_runs WHERE run_key=?",
+                (f"{phase.value}:{trading_date.isoformat()}",),
+            ).fetchone()
+            return None if row is None else str(row["status"])
+
     def begin_job(self, phase: MonitorPhase, trading_date: date) -> bool:
         run_key = f"{phase.value}:{trading_date.isoformat()}"
         now = _utc_now()

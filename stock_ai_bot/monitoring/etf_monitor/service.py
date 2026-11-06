@@ -225,7 +225,8 @@ class EtfMonitorService:
             event_ids=ids, message="今日休市", metadata={"trading_day_gate": evidence},
         )
 
-    async def run(self, phase: MonitorPhase, *, now: datetime | None = None) -> PhaseOutcome:
+    async def run(self, phase: MonitorPhase, *, now: datetime | None = None,
+                  delivery_note: str | None = None) -> PhaseOutcome:
         if phase not in {
             MonitorPhase.PREVIEW,
             MonitorPhase.DECISION,
@@ -238,6 +239,14 @@ class EtfMonitorService:
             return PhaseOutcome(phase, trading_date, "ALREADY_COMPLETED")
         try:
             try:
+                if phase is not MonitorPhase.PREVIEW:
+                    earlier = [day for day in self.store.reconciliation_retry_dates()
+                               if day < trading_date]
+                    if earlier:
+                        raise EtfMonitorDataError(
+                            f"prior reconciliation still pending: {earlier[0]}; newer formal state deferred",
+                            reason_code="PRIOR_RECONCILIATION_PENDING",
+                        )
                 gate_value = await asyncio.to_thread(
                     self.trading_day_predicate, trading_date
                 )
@@ -392,6 +401,8 @@ class EtfMonitorService:
                 correction_of=correction_of,
                 pending_transition=pending_transition,
             )
+            if delivery_note:
+                body = f"{delivery_note}\n\n{body}"
             payload = {
                 "core": accepted_core_payload(core),
                 "data": {

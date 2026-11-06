@@ -224,7 +224,7 @@ def test_running_phase_is_cancelled_but_original_ptb_task_is_not(phase):
         cancelled = asyncio.Event()
         original_finished = asyncio.Event()
 
-        async def run(phase):
+        async def run(phase, **kwargs):
             entered.set()
             try:
                 await asyncio.Event().wait()
@@ -272,7 +272,9 @@ def test_shutdown_is_bounded_for_noncooperative_dependency(monkeypatch, capsys):
             except asyncio.CancelledError:
                 await release.wait()
 
-        state = runtime(app, router=SimpleNamespace(verify_route=verify, drain=lambda **_: None))
+        async def drain(**kwargs):
+            return 0
+        state = runtime(app, router=SimpleNamespace(verify_route=verify, drain=drain))
         monkeypatch.setattr(integration, "SHUTDOWN_TIMEOUT_SECONDS", 0.03)
         await integration.initialize_etf_monitor(app)
         await asyncio.wait_for(entered.wait(), 1)
@@ -362,7 +364,7 @@ def test_shutdown_during_retry_prevents_another_attempt():
         calls = []
         entered = asyncio.Event()
 
-        async def run(phase):
+        async def run(phase, **kwargs):
             calls.append(phase)
             entered.set()
             return SimpleNamespace(status="DATA_UNAVAILABLE")
@@ -451,7 +453,7 @@ def test_etf_health_distinguishes_ready_from_bot_liveness(monkeypatch):
         await integration.shutdown_etf_monitor(app)
 
     asyncio.run(scenario())
-    assert [r["etf_monitor"]["status"] for r in recorded] == ["PENDING", "READY", "STOPPED"]
+    assert [r["etf_monitor"]["status"] for r in recorded] == ["PENDING", "PENDING", "READY", "STOPPED"]
     for row in recorded:
         assert row["etf_monitor"]["mode"] == "shadow"
         assert row["etf_monitor"]["schedule"] == {

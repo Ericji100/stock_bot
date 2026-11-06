@@ -130,6 +130,13 @@ def parse_stock_day(raw: bytes, *, request_url: str) -> dict[date, dict[str, str
     query = parse_qs(urlparse(request_url).query)
     if query.get("stockNo") != ["0050"] or query.get("response") != ["json"]:
         raise EtfMonitorDataError("TWSE STOCK_DAY receipt request identity is not 0050/json")
+    # At a month's opening weekend TWSE has no monthly trades yet. Only its
+    # explicit empty-data response is usable; CLOSED still requires the
+    # independent weekend/official-holiday gate during construction/readback.
+    if (isinstance(payload, Mapping)
+        and payload.get("stat") == "很抱歉，沒有符合條件的資料!"
+        and payload.get("data") in (None, [])):
+        return {}
     if not isinstance(payload, Mapping) or payload.get("stat") != "OK":
         raise EtfMonitorDataError("TWSE STOCK_DAY receipt status is not OK")
     output: dict[date, dict[str, str]] = {}

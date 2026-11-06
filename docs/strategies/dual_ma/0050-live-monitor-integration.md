@@ -1,5 +1,35 @@
 # 0050 final-v1.7 ETF 即時監控整合
 
+## 2026-11-06 收盤決策同日恢復
+
+13:55 即時行情查詢收到證交所 13:19:39 的最後成交，收盤驗證以 `MIS_STALE_TRADE` 拒絕。收盤決策用完原短重試後，由同一 Bot 的恢復程序每 300 秒讀取當日待補工作。成功時沿用正式決策事件與 outbox 去重，訊息記載原定時間與補核時間。
+
+收盤決策仍驗證證交所 MIS 的成交時間與收盤證據。補跑限同日，並預留單次工作逾時長度給 22:00 核對，之後由完整日資料流程接手。測試涵蓋短重試後再失敗、同日成功只發一則完整通知、跨日與晚間交接。受影響測試 272 項通過、1 項因預設測試環境缺正式 frozen registry 而跳過。
+
+14:00:23 更新既有 Bot，worker PID 34940 進入 `READY`。14:00:33 稽核已保存第 5 次嘗試，仍為 `MIS_STALE_TRADE`，當時唯一 Telegram 通知為原異常訊息 10287。實測已確認超過舊上限後自動接續，成功補發路徑由隔離測試驗證，當日正式判讀仍待官方行情通過檢查。測試收據位於 `.workdata/qa/etf-decision-recovery-20261106/tests.xml`。
+
+## 2026-11-03 晚間核對持續恢復
+
+晚間核對保留原60/180/300秒短重試；短重試結束後，同一Bot中的背景恢復程序每300秒重新查SQLite的失敗／中斷／待跑核對工作，不設總次數上限。失敗日期留在job_runs，重啟後接續；不新增Bot、polling或外部排程。heartbeat另列 `reconciliation_recovery` 的狀態、待辦日期與下次檢查時間。資料仍異常時持續fail-closed，錯誤與告警沿用既有稽核及去重。
+
+補跑固定原檢查日期，即使跨午夜也不使用新日期代替；正文標示資料恢復後補發、原定時間與實際補核時間。正式確認仍由原service、accepted core、accounting及專用outbox/router產生。已成功的工作不重跑，送達不明不盲目重送。phase lock忙碌時先保存待跑意圖，下一輪接續；timeout後將工作留為可恢復FAILED，避免永久卡在RUNNING。
+
+較早日期有未完成晚間核對時，較新的正式決策／晚間狀態先保持DATA_UNAVAILABLE，等原日期補核完成；盤中預覽不改正式狀態。若已有較新狀態的歷史異常工作，保持原樣並告警要求檢查，不倒寫舊狀態。停止Bot會取消恢復程序，原工作由下次啟動恢復。
+
+11/3實測：268 passed／1 skipped；官方完整日資料、公司行動與accounting驗證通過。更新既有Bot後22:46:17 READY，恢復程序自動取出今晚FAILED工作，22:46:30 SUCCEEDED，Telegram message_id=10214、DELIVERED、attempts=1；heartbeat顯示pending_dates=[]及下一次檢查時間。詳見 `.workdata/qa/etf-eod-recovery-20261103/QA_zh.md`。這取代先前晚間短重試用完即停止的行為。
+
+## 2026-11-02 啟動故障恢復更新
+
+啟動中的 recovery、補資料、群組驗證或 outbox 失敗時，現在保留同一 runtime 及三個排程，保持 fail-closed，以 30、90、300、900 秒退避重試，之後每 900 秒重試，直到成功或 Bot 停止。未通過全部 gate 前不執行策略工作。同步工作逾時後仍可能在背景執行；這時顯示 `WAITING_WORKER`，待原工作結束才重試，避免重複寫入。停止 Bot 會取消等待／重試，也不能因遲到的背景結果重新進入 READY。
+
+每次失敗將階段、次數、完整原因鏈與遮蔽 Telegram token 的 traceback 寫入 production workdata 的 `logs/etf_monitor/runtime-errors.jsonl`，單檔 2 MiB、最多三份輪替。heartbeat 的 ETF 欄位另含 `stage`、`attempt`、`last_error`、`next_retry_at`；Bot 存活與 ETF 就緒分開判讀。啟動故障和成功恢復透過既有 SQLite outbox／專用群組 router 發送告警，同日同類型同階段去重；群組或 SQLite 本身不可用時告警可能暫不可送，錯誤仍留本機，已進入 `DELIVERY_UNCERTAIN` 的訊息不自動重送。
+
+TWSE 月初明確回覆「很抱歉，沒有符合條件的資料!」且沒有日線時，可解析為空行情集合；每日 CLOSED 仍必須由週末、官方休市或正式緊急休市證據確認。正常工作日缺行情與其他非 OK 回應仍拒絕。這修補可重現的月初邊界，不代表已證明 11/2 早上的原始故障就是該原因；當時沒有保存原始 exception。
+
+啟動恢復後只補查同日已到時、未成功的階段，沿用 job/event/outbox 去重。收盤後缺少當時的盤中行情，只送出預覽缺漏說明，不以收盤價重建歷史盤中訊號。正式判讀使用恢復時取得且驗證通過的官方資料，正文標示原定時點、補發時間及實際價格時間。晚間時段未到不提前執行。
+
+本次實際驗收：261 passed／1 skipped；15:16:55 ETF READY，11/1 休市 ledger 已驗證安裝，今日正式判讀 SUCCEEDED。預覽缺漏說明及正式補發 message_id 分別為 10084、10085；22:00 尚待實際時段。完整紀錄在 `.workdata/qa/etf-startup-recovery-20261102/QA_zh.md`。以下舊段落中的啟動失敗後永久 DISABLED／撤銷排程描述，保留為修正前歷史。
+
 ## 狀態與邊界
 
 2026-10-23 14:34 本機運行更新：使用者已另行明確授權啟用影子監控。已補齊並驗證10/22行情，正式Bot經原BAT啟動，本機設定為 `enabled=true`、`mode=shadow`；新群組啟用確認訊息由Telegram確認送達（message_id=9638）。10/23官方日線於擷取時尚未公布，沒有造價或補零；下一個預定核對時段是當日22:00，尚待實際時段觀察。本次沒有向舊群組發測試，亦未中斷02。完整本機證據見 `.workdata/reports/dual-ma/qa/0050-shadow-activation-qa00-20261023/QA_zh.md`。此次啟用設定尚未另行commit／push，以下整合時保持關閉及較早開發紀錄均為歷史狀態。

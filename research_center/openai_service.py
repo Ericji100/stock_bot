@@ -250,9 +250,22 @@ class OpenAIService:
                 'input_utf8_bytes': len(prompt.encode('utf-8')),
                 'reference': 'https://developers.openai.com/api/docs/models/' + self.model}
 
-    def count_input_tokens(self, prompt):
+    def verified_prompt_capacity(self, prompt, *, output_tokens=None, json_mode=False):
+        capacity = self.prompt_capacity(prompt, output_tokens=output_tokens)
+        if capacity['fits']:
+            return capacity
+        instructions = SYSTEM + ('只輸出有效 JSON 物件。' if json_mode else '')
+        count = self.count_input_tokens(prompt, instructions=instructions)
+        bound = count + 4096 + capacity['output_reserved_tokens']
+        return {**capacity, 'fits': bound <= capacity['context_tokens'],
+                'counted_input_tokens': count, 'verified_total_bound': bound,
+                'capacity_basis': 'official_input_count_plus_output_and_framing'}
+
+    def count_input_tokens(self, prompt, *, instructions=None):
         """Use the free count-only endpoint, never a generated response."""
-        body = {'model': self.model, 'instructions': SYSTEM, 'input': prompt}
+        from .ai_execution_control import check_work, bounded_timeout
+        check_work()
+        body = {'model': self.model, 'instructions': SYSTEM if instructions is None else instructions, 'input': prompt}
         digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         key = 'input-count:' + digest
         with self.ledger.db() as conn:
@@ -263,7 +276,8 @@ class OpenAIService:
             raise OpenAIUnavailable('尚未設定計數所需的 OpenAI 金鑰，未啟動付費分析。', 'input_count_unavailable')
         account = self.ledger.choose(self.accounts)[0]['account_id']
         try:
-            with httpx.Client(transport=self.transport, timeout=min(self.timeout_seconds, 60)) as client:
+            check_work()
+            with httpx.Client(transport=self.transport, timeout=bounded_timeout(min(self.timeout_seconds, 60))) as client:
                 response = client.post('https://api.openai.com/v1/responses/input_tokens',
                     headers={'Authorization': 'Bearer ' + self.accounts[account]}, json=body)
             data = response.json()
@@ -300,10 +314,12 @@ class OpenAIService:
                 raise
 
     def _request_once(self, prompt, *, json_mode=False, search=False):
+        from .ai_execution_control import check_work, bounded_timeout, WorkStopped
+        check_work()
         from .search_routing import stage_metadata
         stage = stage_metadata(organizer=self.organizer)
         model = self.model
-        capacity = self.prompt_capacity(prompt)
+        capacity = self.verified_prompt_capacity(prompt, json_mode=json_mode)
         if not capacity['fits']:
             raise OpenAIError('完整資料超過 OpenAI 模型上下文容量；未送出，也未刪減核心資料。', 'prompt_too_large')
         body = {'model': model, 'reasoning': {'effort': 'xhigh'}, 'store': False,
@@ -326,8 +342,13 @@ class OpenAIService:
                           'reasoning_effort': 'xhigh', 'cache_hit': True, 'cost_estimate_usd': '0', 'usage': data['usage'], **stage}
         if search and (snapshot := self._validation_search_snapshot(body)):
             return snapshot[0], {**snapshot[1], **stage}
+        if search and stage['workflow_stage'] == 'critical_gap_search':
+            from .ai_execution_control import require_work_time
+            require_work_time(min(60, self.search_timeout_seconds), reason='insufficient_followup_time')
         # UTF-8 byte bound is deliberately conservative, not a claimed tokenizer.
         input_bound = len(json.dumps(body, ensure_ascii=False).encode('utf-8')) + 4096
+        if 'counted_input_tokens' in capacity:
+            input_bound = capacity['counted_input_tokens'] + 4096
         # Search expansion is provider-controlled. Reserve a full context bound,
         # not a made-up maximum number of returned tokens.
         search_tokens = max(0, 1050000 - self.max_output_tokens - input_bound) if search else 0
@@ -336,6 +357,9 @@ class OpenAIService:
             estimate += Decimal('.01')
         operation = 'web_search' if search else 'model'
         request_timeout = self._request_timeout(search)
+        request_timeout = httpx.Timeout(**{key: bounded_timeout(value)
+                                         for key, value in request_timeout.as_dict().items()})
+        check_work()
         grant, request_id = self.ledger.choose(self.accounts, estimate, reserve=True, operation=operation)
         directory = self.ledger.artifact_root / 'requests'
         detail = {'request_id': request_id, 'run_id': RUN_ID.get(), 'command': TASK.get()[0],
@@ -344,6 +368,8 @@ class OpenAIService:
                   'operation': operation, 'prompt_chars': len(prompt), 'estimated_usd': str(estimate),
                   'client_request_id': request_id, 'request_timeout': request_timeout.as_dict()}
         detail.update(stage)
+        if 'counted_input_tokens' in capacity:
+            detail['input_capacity_check'] = capacity
         try:
             directory.mkdir(parents=True, exist_ok=True)
             (directory / (request_id + '-request.json')).write_text(json.dumps({**detail, 'body': body}, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -355,10 +381,15 @@ class OpenAIService:
             raise OpenAIUnavailable('無法保存 OpenAI 請求紀錄，未送出付費請求。', 'request_log_unavailable') from None
         started = time.monotonic()
         try:
+            check_work()
             with httpx.Client(timeout=request_timeout, transport=self.transport) as client:
+                check_work()
                 response = client.post('https://api.openai.com/v1/responses',
                     headers={'Authorization': 'Bearer ' + self.accounts[grant['account_id']],
                              'X-Client-Request-Id': request_id}, json=body)
+        except WorkStopped:
+            self.ledger.finish(request_id, 'not_sent', Decimal(0), {**detail, 'http_sent': False})
+            raise
         except httpx.TransportError as exc:
             detail.update(status='transport_unknown', transport_error_type=type(exc).__name__,
                           elapsed_seconds=round(time.monotonic() - started, 3))

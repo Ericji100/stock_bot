@@ -119,8 +119,9 @@ def _stock_table_excerpt(text, request):
 class DeepSeekSearchService:
     provider = "deepseek_search"
 
-    def __init__(self, client: DeepSeekService):
+    def __init__(self, client: DeepSeekService, *, radar_critical_gap_search_enabled=False):
         self.client = client
+        self.radar_critical_gap_search_enabled = radar_critical_gap_search_enabled
         if getattr(client, 'provider', '') == 'openai_router':
             self.provider = 'openai_router_search'
         self.max_queries_per_task = 0
@@ -129,6 +130,8 @@ class DeepSeekSearchService:
         return self.client.is_configured()
 
     def search(self, query: str, *, report_date: str = "") -> dict:
+        from .ai_execution_control import check_work
+        check_work()
         from .search_routing import SEARCH_ROUTE, search_route
         if self.provider == 'openai_router_search' and SEARCH_ROUTE.get() is None:
             with search_route(TASK.get()[0]):
@@ -173,10 +176,12 @@ class DeepSeekSearchService:
             return {**_safe_result_title(data, url), "cache_hit": False}
 
     def discover(self, request, tasks, progress=None) -> DiscoveryResult:
+        from .ai_execution_control import check_work, checkpoint_sources
         from .search_routing import (HYBRID_COMMANDS, GAP_LABELS, discovery_command, search_route,
                                      important_search_gaps, gap_query)
         command = discovery_command(request)
         hybrid = self.provider == 'openai_router_search' and command in HYBRID_COMMANDS
+        followup_enabled = command != 'radar' or self.radar_critical_gap_search_enabled
         report_day = request.report_date.isoformat() if request.report_date else TASK.get()[2]
         as_of = date.fromisoformat(report_day) if report_day else datetime.now(ZoneInfo('Asia/Taipei')).date()
         raw_sources = []
@@ -196,6 +201,10 @@ class DeepSeekSearchService:
             policy = task.get('news_quality_policy') if request.command == 'news' else None
             radar_gap = task.get('label') == 'radar_evidence_gap'
             stage = task.get('search_stage', 'critical_gap_search' if radar_gap else 'initial_search') if hybrid else 'initial_search'
+            if hybrid and not followup_enabled and stage == 'critical_gap_search':
+                runs.append({**run, 'workflow_stage': stage, 'early_stop': 'radar_followup_disabled'})
+                initial_groups.append((task, set(), 'initial_search'))
+                continue
             reason = str(task.get('search_reason') or ('official_document_or_counter_evidence' if radar_gap else ''))
             run.update(workflow_stage=stage, search_reason=reason)
             for query in queries:
@@ -207,6 +216,7 @@ class DeepSeekSearchService:
                 if progress:
                     progress(f"AI 搜尋：{task.get('label', '')}｜查詢 {run['query_count'] + 1}")
                 try:
+                    check_work()
                     with search_route(command, stage, reason):
                         result = self.search(query, report_date=report_day)
                     run["query_count"] += 1
@@ -240,6 +250,7 @@ class DeepSeekSearchService:
                         raw_sources.append(source)
                         task_sources.append(source)
                         new_source_keys.add((str(source.get('url') or ''), str(source.get('published_date') or '')))
+                    checkpoint_sources(make_source_items(raw_sources))
                     if new_source_keys - source_keys:
                         no_new_source_streak = 0
                     else:
@@ -302,7 +313,7 @@ class DeepSeekSearchService:
                 task, gaps = check['task'], check['before']
                 receipt = {'label': task.get('label'), 'before': gaps,
                            'attempted': check['stage'] == 'critical_gap_search'}
-                if gaps and check['stage'] == 'initial_search' and len(supplemented) < 3:
+                if followup_enabled and gaps and check['stage'] == 'initial_search' and len(supplemented) < 3:
                     query = gap_query(request, task, gaps, as_of)
                     if query not in supplemented:
                         supplemented.add(query)
@@ -334,12 +345,16 @@ class DeepSeekSearchService:
                     [asdict(item) for item in items if item.url in check['urls']], as_of, command)
                 receipt['status'] = 'coverage_checked_not_fact_verified' if not receipt['remaining'] else 'unresolved'
                 if receipt['remaining'] and not receipt['attempted']:
-                    receipt['deferred_reason'] = 'bounded_followup_or_duplicate_query'
+                    receipt['deferred_reason'] = ('bounded_followup_or_duplicate_query' if followup_enabled
+                                                  else 'radar_followup_disabled')
                 supplements.append(receipt)
-            diagnostics.update(critical_gap_checks=supplements, critical_followup_limit=3,
+            diagnostics.update(critical_gap_checks=supplements, critical_followup_limit=3 if followup_enabled else 0,
+                critical_followup_enabled=followup_enabled,
                 complete=not any(row['remaining'] for row in supplements),
                 status='coverage_checked_not_fact_verified' if not any(row['remaining'] for row in supplements) else 'evidence_incomplete',
-                policy='Luna 初搜；獨立日期／官方正文／公司映射／反證檢查後 Terra 定向補查。保留全部初搜來源與未解缺口，不宣稱語意已驗證。')
+                policy=('Luna 初搜；獨立日期／官方正文／公司映射／反證檢查後 Terra 定向補查。'
+                        if followup_enabled else 'Radar 額外補查已停用；Luna 初搜後仍檢查日期／公司映射／官方證據／反證。')
+                       + '保留全部初搜來源與未解缺口，不宣稱語意已驗證。')
             diagnostics.update(query_count=sum(row['query_count'] for row in runs), source_count=len(items),
                 raw_source_count=len(raw_sources)+extra_raw_count,
                 search_event_inventory=source_events_packet(items))

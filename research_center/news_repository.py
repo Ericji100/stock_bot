@@ -44,6 +44,15 @@ CREATE INDEX IF NOT EXISTS idx_news_published ON news_articles(published_at);
 CREATE INDEX IF NOT EXISTS idx_news_category ON news_articles(category);
 CREATE INDEX IF NOT EXISTS idx_news_created ON news_articles(created_at);
 
+CREATE TABLE IF NOT EXISTS news_discovery_sources (
+    run_id TEXT NOT NULL,
+    record_sha256 TEXT NOT NULL,
+    url TEXT NOT NULL,
+    record TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, record_sha256)
+);
+
 CREATE TABLE IF NOT EXISTS news_preferences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
@@ -74,6 +83,23 @@ class NewsRepository:
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript(SCHEMA)
             _ensure_news_signal_columns(conn)
+
+    def save_discovery_checkpoint(self, sources) -> None:
+        """Retain every distinct source version, even before date/classification checks."""
+        from dataclasses import asdict
+        import hashlib
+        from .deepseek_service import RUN_ID
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            for source in sources:
+                row = asdict(source) if not isinstance(source, dict) else source
+                record = json.dumps(row, ensure_ascii=False, sort_keys=True)
+                conn.execute('INSERT OR IGNORE INTO news_discovery_sources VALUES (?,?,?,?,?)',
+                    (RUN_ID.get(), hashlib.sha256(record.encode()).hexdigest(), row.get('url') or '',
+                     record, datetime.now().astimezone().isoformat()))
+
+    def article_count(self) -> int:
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            return conn.execute('SELECT COUNT(*) FROM news_articles').fetchone()[0]
 
     def save(self, item: NewsItem) -> bool:
         """Save a news item; return False if URL already exists (dedup)."""
@@ -159,12 +185,33 @@ class NewsRepository:
                 except sqlite3.IntegrityError:
                     # Source date corrections must survive deduplication, even when
                     # the article is waiting for AI classification. Keep precise time.
-                    previous = conn.execute('SELECT published_at FROM news_articles WHERE url=?', (item.url,)).fetchone()
+                    previous = conn.execute('SELECT published_at,tags,full_text FROM news_articles WHERE url=?', (item.url,)).fetchone()
                     old_date = str(previous[0] or '') if previous else ''
+                    old_tags = json.loads(previous[1] or '[]') if previous else []
+                    old_body = str(previous[2] or '') if previous else ''
                     incoming = str(item.published_at or '')
                     loses_precision = len(incoming) == 10 and len(old_date) > 10 and normalize_published_date(old_date) == incoming
-                    if incoming and normalize_published_date(incoming) and incoming != old_date and not loses_precision:
+                    explicit = 'publication_explicit' in item.tags and bool(normalize_published_date(incoming))
+                    weakens_date = 'publication_explicit' in old_tags and not explicit
+                    if incoming and normalize_published_date(incoming) and incoming != old_date and not loses_precision and not weakens_date:
                         conn.execute('UPDATE news_articles SET published_at=? WHERE url=?', (incoming, item.url))
+                    if ('local_rule_fallback' in item.tags and 'local_rule_fallback' in old_tags
+                            and 'ai_classified' not in old_tags):
+                        richer = len(item.full_text or '') > len(old_body)
+                        date_upgrade = explicit and 'publication_explicit' not in old_tags
+                        if richer or date_upgrade:
+                            date_tags = {'publication_explicit', 'publication_inferred', 'publication_unknown'}
+                            incoming_dates = [tag for tag in item.tags if tag in date_tags]
+                            dates = (['publication_explicit'] if explicit or 'publication_explicit' in old_tags
+                                     else incoming_dates or [tag for tag in old_tags if tag in date_tags])
+                            tags = list(dict.fromkeys([tag for tag in [*old_tags, *item.tags] if tag not in date_tags] + dates))
+                            conn.execute('''UPDATE news_articles SET tags=?,full_text=?,
+                                title=CASE WHEN ? THEN ? ELSE title END,
+                                summary=CASE WHEN ? THEN ? ELSE summary END
+                                WHERE url=?''', (json.dumps(tags, ensure_ascii=False),
+                                    item.full_text if richer else old_body,
+                                    int(richer and bool(item.title)), item.title,
+                                    int(richer and bool(item.summary)), item.summary, item.url))
                     if "local_rule_fallback" not in item.tags:
                         conn.execute(
                             """UPDATE news_articles SET category=?, related_symbols=?, related_topics=?,

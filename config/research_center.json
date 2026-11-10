@@ -1,5 +1,6 @@
 {
   "openai_primary_enabled": true,
+  "radar_critical_gap_search_enabled": false,
   "openai_credit_grants": [
     {
       "account_id": "primary",

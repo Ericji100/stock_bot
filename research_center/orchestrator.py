@@ -121,7 +121,8 @@ class ResearchCenter:
                 from .ai_provider_service import create_ai_client
                 self.deepseek = create_ai_client(self.config, ROOT_DIR)
                 self.deepseek_organizer = create_ai_client(self.config, ROOT_DIR, organizer=True)
-            self.deepseek_search = DeepSeekSearchService(self.deepseek)
+            self.deepseek_search = DeepSeekSearchService(self.deepseek,
+                radar_critical_gap_search_enabled=self.config.radar_critical_gap_search_enabled)
             # Internal compatibility handles keep existing workflow contracts reusable.
             self.opencode = self.deepseek
             self.low_model_minimax = self.deepseek_organizer

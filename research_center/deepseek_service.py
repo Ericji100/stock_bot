@@ -335,6 +335,8 @@ class DeepSeekService:
                 'reference': 'https://api-docs.deepseek.com/quick_start/pricing/'}
 
     def _post(self, operation: str, body: dict, estimate: Decimal):
+        from .ai_execution_control import check_work, bounded_timeout, WorkStopped
+        check_work()
         request_id = self.account.reserve(operation, estimate)
         tool_request_path = None
         if operation.startswith('v1/tools/'):
@@ -349,6 +351,7 @@ class DeepSeekService:
                 raise DeepSeekError('無法保存搜尋請求，尚未連線或扣款。', 'request_log_unavailable') from None
         started = time.monotonic()
         attempts = 0
+        http_sent = False
         prompt_chars = sum(len(str(m.get("content") or "")) for m in body.get("messages", []))
         def metrics(detail):
             return {**detail, "attempts": attempts, "retry_count": max(0, attempts - 1),
@@ -358,8 +361,11 @@ class DeepSeekService:
         try:
             for attempt in range(self.max_retries + 1):
                 try:
+                    check_work()
                     attempts += 1
-                    with httpx.Client(timeout=self.timeout_seconds, transport=self.account.transport) as client:
+                    with httpx.Client(timeout=bounded_timeout(self.timeout_seconds), transport=self.account.transport) as client:
+                        check_work()
+                        http_sent = True
                         response = client.post("https://api.deepseek.com/" + operation, headers={"Authorization": f"Bearer {self.account.key}"}, json=body)
                     if response.status_code in (401, 402):
                         self.account.block(response.status_code)
@@ -392,6 +398,11 @@ class DeepSeekService:
                     self.account.cooldown_until = time.time() + 30
                     self.account.cooldown_reason = "transport_unknown"
                     raise DeepSeekUnavailable("DeepSeek 連線中斷或逾時；費用未知，已保留進度。", "transport_unknown") from None
+        except WorkStopped as exc:
+            self.account.finish(request_id, 'unknown' if http_sent else 'failed',
+                                metrics({'status': exc.status, 'http_sent': http_sent}),
+                                None if http_sent else Decimal(0))
+            raise
         except DeepSeekError as exc:
             if exc.status == "transport_unknown":
                 self.account.budget.incident(exc.status, background=TASK.get()[1])

@@ -129,6 +129,8 @@ class RoutedAIService:
         self.primary.ledger.route(provider, reason, {'model': model})
 
     def _generate(self, method, prompt, **kwargs):
+        from .ai_execution_control import check_work
+        check_work()
         try:
             pinned = self.account.cached('route:' + RUN_ID.get()) if RUN_ID.get() else None
             if pinned:
@@ -136,6 +138,7 @@ class RoutedAIService:
             result = getattr(self.primary, method)(prompt, **kwargs)
             self._record('openai', result.diagnostics['actual_model'], diagnostics=result.diagnostics)
         except OpenAICreditsUnavailable as exc:
+            check_work()
             # Never catch timeout, malformed replies, rate limits, auth or generic errors here.
             self.primary.ledger.route('deepseek', exc.status)
             try:
@@ -149,6 +152,8 @@ class RoutedAIService:
 
     def preflight_workflow(self, prompts):
         """Check known stages together before paying; generated text is rechecked later."""
+        from .ai_execution_control import check_work
+        check_work()
         estimate = sum((self.primary.estimate_request(p) for p in prompts))
         try:
             self.primary.ledger.choose(self.primary.accounts, estimate)
@@ -183,6 +188,8 @@ class RoutedAIService:
         return self._generate('generate_json', prompt)
 
     def _post(self, operation, body, estimate):
+        from .ai_execution_control import check_work
+        check_work()
         if operation.endswith('search'):
             try:
                 result = self.primary.search(body['query'], TASK.get()[2])

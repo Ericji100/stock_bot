@@ -123,13 +123,18 @@ def format_news_refresh_result(
     meta: dict | None = None,
 ) -> str:
     """Format news refresh summary."""
+    meta = meta or {}
+    partial = (meta.get('classification_status') == 'partial_success'
+               or meta.get('analysis_coverage_status') == 'partial'
+               or meta.get('search_complete') is False
+               or int(meta.get('local_fallback_count') or 0) > 0
+               or int(meta.get('deferred_classification_count') or 0) > 0)
     lines = [
-        "📰 新聞整理完成",
+        "📰 新聞整理部分完成" if partial else "📰 新聞整理完成",
         f"新增：{saved} 則",
         f"略過重複：{skipped} 則",
         f"分類數：{total_categories}",
     ]
-    meta = meta or {}
     items = list(items or [])
     if meta:
         lines.append(
@@ -139,8 +144,11 @@ def format_news_refresh_result(
             f"AI分類 {meta.get('ai_classified_count', meta.get('total', len(items)))} 筆、"
             f"正文補取成功 {meta.get('webfetch_success', 0)} 筆"
         )
-        if meta.get('deferred_classification_count'):
-            lines.append(f"待 AI 複核：{meta['deferred_classification_count']} 則已保存，不列為已完成 AI 判讀。")
+        pending = int(meta.get('deferred_classification_count') or 0) + int(meta.get('local_fallback_count') or 0)
+        if pending:
+            lines.append(f"待 AI 複核：{pending} 則已保存，不列為已完成 AI 判讀。")
+        if meta.get('search_complete') is False:
+            lines.append("搜尋覆蓋尚未完整，缺口保留；本次不是完整 AI 新聞分析。")
     category_counts = meta.get("category_counts") if isinstance(meta, dict) else {}
     if isinstance(category_counts, dict) and category_counts:
         ordered = sorted(category_counts.items(), key=lambda item: (-int(item[1] or 0), news_category_label(str(item[0]))))

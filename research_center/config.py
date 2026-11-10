@@ -37,6 +37,7 @@ class ResearchCenterConfig:
     deepseek_background_reserve_usd: float = 0.20
     deepseek_usd_cny_budget_rate: float = 7.5
     scheduled_news_push_enabled: bool = False
+    radar_critical_gap_search_enabled: bool = False
     model: str = DEFAULT_MODEL
     fallback_models: tuple[str, ...] = DEFAULT_FALLBACK_MODELS
     gemini_discovery_model: str = DEFAULT_GEMINI_DISCOVERY_MODEL
@@ -160,6 +161,7 @@ def load_research_config(root_dir: Path | None = None) -> ResearchCenterConfig:
         deepseek_background_reserve_usd=float(public_config.get("deepseek_background_reserve_usd", 0.20)),
         deepseek_usd_cny_budget_rate=float(public_config.get("deepseek_usd_cny_budget_rate", 7.5)),
         scheduled_news_push_enabled=bool(public_config.get("scheduled_news_push_enabled", False)),
+        radar_critical_gap_search_enabled=bool(public_config.get("radar_critical_gap_search_enabled", False)),
         model=model,
         fallback_models=fallback_models,
         gemini_discovery_model=gemini_discovery_model,

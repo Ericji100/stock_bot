@@ -644,7 +644,9 @@ class OpenAIRoutingTests(unittest.TestCase):
     def test_capacity_refusal_does_not_drop_data_or_send(self):
         with self.assertRaises(Exception):
             self.client.generate_report('完整資料' * 100000)
-        self.assertEqual(self.calls, [])
+        self.assertEqual([request.url.path for request in self.calls], ['/v1/responses/input_tokens'])
+        with self.ledger.db() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM requests').fetchone()[0], 0)
 
     def test_development_does_not_use_formal_bucket_but_consumes_shared_grant(self):
         dev = OpenAICreditLedger(self.root, [grant()], development=True, job_limit=0, now=lambda: self.now)

@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import json
+import os
+import hashlib
 import unittest
 import shutil
 from pathlib import Path
@@ -162,14 +164,15 @@ def _sources() -> list[SourceItem]:
 
 class LowModelDigestTests(unittest.TestCase):
     def setUp(self) -> None:
-        self._cache_root = Path(".cache") / "test_tmp" / f"ai_workflow_{self._testMethodName}_{uuid4().hex}"
-        shutil.rmtree(self._cache_root, ignore_errors=True)
+        base = Path(os.environ.get('CODEX_TASK_TEST_ROOT', '.cache/test_tmp'))
+        self._cache_root = base / ('digest-' + hashlib.sha256(self._testMethodName.encode()).hexdigest()[:8] + uuid4().hex[:4])
         self._cache_patch = patch("research_center.ai_workflow_service.LOW_MODEL_ARTIFACT_DIR", self._cache_root)
         self._cache_patch.start()
 
     def tearDown(self) -> None:
         self._cache_patch.stop()
-        shutil.rmtree(self._cache_root, ignore_errors=True)
+        if not os.environ.get('CODEX_TASK_TEST_ROOT'):
+            shutil.rmtree(self._cache_root, ignore_errors=True)
 
     def test_prompt_forbids_final_investment_judgment(self) -> None:
         prompt = build_low_model_digest_prompt(

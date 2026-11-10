@@ -2133,8 +2133,8 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
         await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
         if meta.get("classification_status") == "partial_success":
-            print("新聞已保存待補，AI 分類未完整成功", flush=True)
-            return {"status": "partial_success", "reason": "新聞已保存，分類待補"}
+            print("新聞已保存，搜尋覆蓋或 AI 分類尚未完整完成", flush=True)
+            return {"status": "partial_success", "reason": "新聞已保存，搜尋／分類缺口待補"}
         digests = run_news_scheduled_latest(repository)
         diagnostics = build_scheduled_news_diagnostics(repository, digests)
         if int(diagnostics.get("primary24", 0) or 0) < 8 or any(

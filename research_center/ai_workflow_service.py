@@ -540,6 +540,18 @@ def _value_size_hint(value: Any) -> dict[str, Any]:
     return {"type": type(value).__name__, "chars": len(str(value))}
 
 
+def _topic_organizer_scope(function):
+    from functools import wraps
+    @wraps(function)
+    def wrapped(request, *args, **kwargs):
+        from .ai_execution_control import execution_scope
+        with execution_scope(15 * 60 if request.command == 'topic_maintain' else None,
+                             reason='organizer_phase_deadline'):
+            return function(request, *args, **kwargs)
+    return wrapped
+
+
+@_topic_organizer_scope
 def run_low_model_digest_for_payload(
     request: CommandRequest,
     payload: dict[str, Any],
@@ -612,7 +624,8 @@ def run_low_model_digest_for_payload(
         },
     )
     try:
-        result = minimax.generate_json(prompt)
+        result = (_generate_low_model_json_with_timeout(minimax, prompt, 180)
+                  if request.command == 'topic_maintain' else minimax.generate_json(prompt))
         parsed = _parse_json_object(result.markdown)
         digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
         digest["prompt_path"] = str(prompt_path)
@@ -2897,7 +2910,8 @@ def _run_low_model_digest_guarded(
         },
     )
     try:
-        result = minimax.generate_json(prompt)
+        result = (_generate_low_model_json_with_timeout(minimax, prompt, 180)
+                  if request.command == 'topic_maintain' else minimax.generate_json(prompt))
         parsed = _parse_json_object(result.markdown)
         digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
         digest["prompt_path"] = str(prompt_path)
@@ -3180,7 +3194,8 @@ def _run_segmented_low_model_digest(
             "source_ids": [item.source_id for item in segment_sources],
         }
         try:
-            result = _generate_low_model_json_with_timeout(minimax, prompt, LOW_MODEL_SEGMENT_TIMEOUT_SECONDS)
+            result = _generate_low_model_json_with_timeout(minimax, prompt,
+                180.0 if request.command == 'topic_maintain' else LOW_MODEL_SEGMENT_TIMEOUT_SECONDS)
             parsed = _parse_json_object(result.markdown)
             digest = _normalize_digest(parsed, model_name=result.diagnostics.get('actual_model') or model_name)
             digest["prompt_path"] = str(prompt_path)
@@ -3194,6 +3209,14 @@ def _run_segmented_low_model_digest(
             _emit(progress, f"{model_name} 分段資料整理完成 {index}/{len(segments)}：facts={run['output_facts']} sources={run['output_sources']}")
         except Exception as exc:
             if isinstance(exc, DeepSeekUnavailable):
+                run.update(status='failed', error=str(exc), fallback_action='stop_without_resend')
+                partial = _merge_low_model_digests(digests, model_name=model_name)
+                partial.update(status='partial_success' if digests else 'failed', enabled=True,
+                    fingerprint=fingerprint, segment_runs=[*runs, run], prompt_paths=prompt_paths,
+                    failed_segment_index=[{'label': run['label'], 'error': str(exc), 'source_ids': run['source_ids']}])
+                partial['artifact_paths'] = save_low_model_digest_artifacts(
+                    request, partial, fingerprint=fingerprint, purpose=purpose)
+                exc.partial_low_model_digest = partial
                 raise
             if _is_low_model_quota_error(exc):
                 cooldown_payload = _write_low_model_cooldown(exc, model_name=model_name)

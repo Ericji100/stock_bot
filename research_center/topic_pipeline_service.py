@@ -139,6 +139,7 @@ def run_topic_pipeline(
     progress: Callable[[str], None] | None = None,
     require_full_ai: bool = False,
     candidate_sink: Callable[[list[dict[str, Any]]], None] | None = None,
+    prompt_capacity: Callable | None = None,
 ) -> tuple[TopicChangePack, list[dict[str, Any]]]:
     """Run staged topic maintenance and return (pack, stage_logs)."""
     stage_logs: list[dict[str, Any]] = []
@@ -157,6 +158,7 @@ def run_topic_pipeline(
         emit=emit,
         full_evidence=require_full_ai,
         structured_data=structured_data,
+        prompt_capacity=prompt_capacity,
     )
     if not candidates:
         candidates = _fallback_candidates_from_evidence(structured_data)
@@ -184,7 +186,7 @@ def run_topic_pipeline(
     detail_batch_size = 1 if mode == TopicChangeMode.UPDATE else DETAIL_BATCH_SIZE
     batches = list(_chunks(selected, detail_batch_size))
     if require_full_ai:
-        batches = _full_evidence_detail_batches(selected, structured_data, prompt_variables, load_prompt, render_prompt)
+        batches = _full_evidence_detail_batches(selected, structured_data, prompt_variables, load_prompt, render_prompt, prompt_capacity)
 
     actions = []
     for batch_index, batch in enumerate(batches, start=1):
@@ -208,6 +210,7 @@ def run_topic_pipeline(
                 emit=emit,
                 full_evidence=require_full_ai,
                 structured_data=structured_data,
+                prompt_capacity=prompt_capacity,
             )
             if require_full_ai and _detail_covers_batch(payload, batch):
                 rows = payload.get('actions') if isinstance(payload, dict) else payload
@@ -297,7 +300,7 @@ def run_topic_pipeline(
     return pack, stage_logs
 
 
-def _full_evidence_detail_batches(candidates, structured_data, prompt_variables, load_prompt, render_prompt):
+def _full_evidence_detail_batches(candidates, structured_data, prompt_variables, load_prompt, render_prompt, prompt_capacity=None):
     """Share complete evidence across adjacent candidates, keeping JSON output bounded."""
     template = load_prompt("topic_detail_expand")
     batches = []
@@ -308,7 +311,7 @@ def _full_evidence_detail_batches(candidates, structured_data, prompt_variables,
             prompt = _full_detail_prompt(template, variables, render_prompt)
             # Keep multi-candidate jobs small; a single complete candidate may
             # exceed this scheduling target, but uses the provider byte guard.
-            if len(prompt) <= 600000 and _full_prompt_fits(prompt):
+            if len(prompt) <= 600000 and _full_prompt_fits(prompt, prompt_capacity):
                 batches[-1] = combined
                 continue
         batches.append([candidate])
@@ -323,9 +326,11 @@ def _full_detail_prompt(template, variables, render_prompt):
         '\n本批每個候選必須各回傳一筆 action，原樣保留候選 theme_id，不能漏項、合併或以其他題材替代。')
 
 
-def _full_prompt_fits(prompt):
+def _full_prompt_fits(prompt, prompt_capacity=None, *, stage='detail_expand', output_tokens=65536):
+    if prompt_capacity is not None:
+        return prompt_capacity(prompt, stage=stage, output_tokens=output_tokens)['fits']
     from .deepseek_service import DeepSeekService
-    return DeepSeekService(None).prompt_capacity(prompt, output_tokens=65536)['fits']
+    return DeepSeekService(None).prompt_capacity(prompt, output_tokens=output_tokens)['fits']
 
 
 def _hydrate_topic_evidence(pack, data):
@@ -394,6 +399,7 @@ def _extract_candidates(
     emit: Callable[[str], None],
     full_evidence: bool = False,
     structured_data: dict | None = None,
+    prompt_capacity: Callable | None = None,
 ) -> list[dict[str, Any]]:
     template = load_prompt("topic_candidate_extract")
     if not template:
@@ -421,7 +427,7 @@ def _extract_candidates(
         return []
     try:
         if full_evidence:
-            prompts = _candidate_capacity_prompts(structured_data or {}, prompt_variables, template, render_prompt)
+            prompts = _candidate_capacity_prompts(structured_data or {}, prompt_variables, template, render_prompt, prompt_capacity)
             if len(prompts) > 1:
                 merged = {}
                 for index, part in enumerate(prompts, 1):
@@ -481,9 +487,8 @@ def _extract_candidates(
         return []
 
 
-def _candidate_capacity_prompts(data, variables, template, render_prompt):
+def _candidate_capacity_prompts(data, variables, template, render_prompt, prompt_capacity=None):
     """Split complete source rows, repeating context rather than dropping evidence."""
-    from .deepseek_service import DeepSeekService
     sources = merge_topic_sources(data)
     def build(rows):
         stage = topic_stage_variables(data, variables, source_rows=rows)
@@ -491,7 +496,7 @@ def _candidate_capacity_prompts(data, variables, template, render_prompt):
         return prompt + '\n完整來源依本批網址核對；只整理候選，不作最終結論、不捏造網址。'
     def split(rows):
         prompt = build(rows)
-        if DeepSeekService(None).prompt_capacity(prompt, output_tokens=32768)['fits']:
+        if _full_prompt_fits(prompt, prompt_capacity, stage='candidate_extract', output_tokens=32768):
             return [prompt]
         if len(rows) <= 1:
             raise ValueError('單筆來源或共用題材背景超過容量，完整保留，不截斷、不冒稱完成。')
@@ -581,6 +586,7 @@ def _expand_batch(
     emit: Callable[[str], None],
     full_evidence: bool = False,
     structured_data: dict | None = None,
+    prompt_capacity: Callable | None = None,
 ) -> Any:
     template = load_prompt("topic_detail_expand")
     if not template:
@@ -602,7 +608,7 @@ def _expand_batch(
     )
     prompt_chars = len(prompt)
     emit(f"AI 補題材細節 batch {batch_index} prompt={prompt_chars} chars")
-    if (not _full_prompt_fits(prompt) if full_evidence else prompt_chars > DETAIL_STAGE_PROMPT_HARD_CHARS):
+    if (not _full_prompt_fits(prompt, prompt_capacity) if full_evidence else prompt_chars > DETAIL_STAGE_PROMPT_HARD_CHARS):
         stage_logs.append({
             "stage": f"detail_expand_{batch_index}",
             "error": f"prompt_too_large:{prompt_chars}",

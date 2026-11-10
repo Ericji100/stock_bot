@@ -68,6 +68,80 @@ def _quote_text(value):
     return ''.join(str(value or '').split()).replace('佔', '占')
 
 
+def restore_topic_source_quotes(pack, structured_data):
+    """Restore uniquely matched typography to supplied text; keep strict audit unchanged."""
+    import hashlib
+    catalogue = {}
+    for row in merge_topic_sources(structured_data):
+        from .evidence_governance import official_evidence_status
+        if official_evidence_status(row) == 'reference_only':
+            continue
+        if url := _url(row.get('url')):
+            catalogue.setdefault(url, []).append(row)
+    repairs = []
+    def quoted_rows(value, path):
+        if isinstance(value, dict):
+            if value.get('supporting_quote') and (value.get('url') or value.get('source_url') or value.get('source_id')):
+                yield path, value
+            for key, child in value.items():
+                yield from quoted_rows(child, f'{path}/{key}')
+        elif isinstance(value, list):
+            for offset, child in enumerate(value):
+                yield from quoted_rows(child, f'{path}/{offset}')
+    for index, action in enumerate(pack.actions):
+        payload = action.to_dict()
+        for path, row in quoted_rows(payload, f'/actions/{index}'):
+            quote = row.get('supporting_quote')
+            if not isinstance(quote, str) or len(_quote_text(quote)) < 16:
+                continue
+            sources = catalogue.get(_url(row.get('url') or row.get('source_url')), [])
+            if not sources and not (row.get('url') or row.get('source_url')) and row.get('source_id'):
+                sources = [source for group in catalogue.values() for source in group
+                           if source.get('source_id') == row['source_id']]
+                if len({_url(source.get('url')) for source in sources}) != 1:
+                    continue
+            if any(_quote_text(quote) in _quote_text(_provided_body(source)) for source in sources):
+                continue
+            needle = _quote_text(quote).replace('®', '').replace('™', '')
+            terminal = needle.endswith('。')
+            if terminal:
+                needle = needle[:-1]
+            matches = {}
+            for source in sources:
+                body = _provided_body(source)
+                chars, positions = [], []
+                for offset, char in enumerate(body):
+                    if not char.isspace() and char not in '®™':
+                        chars.append(char.replace('佔', '占'))
+                        positions.append(offset)
+                text = ''.join(chars)
+                start = text.find(needle)
+                if start < 0 or text.find(needle, start + 1) >= 0:
+                    continue
+                end = start + len(needle)
+                if terminal:
+                    if end == len(text) or text[end] not in '，。；':
+                        continue
+                    end += 1
+                restored = body[positions[start]:positions[end - 1] + 1]
+                matches[restored] = source
+            if len(matches) != 1:
+                continue
+            restored, source = next(iter(matches.items()))
+            if _quote_text(restored).replace('®', '').replace('™', '').rstrip('，。；') != needle.rstrip('，。；'):
+                continue
+            row['supporting_quote'] = restored
+            repairs.append({'path': path, 'original_quote': quote, 'restored_quote': restored,
+                            'url': source.get('url'), 'source_id': source.get('source_id'),
+                            'body_sha256': hashlib.sha256(_provided_body(source).encode()).hexdigest(),
+                            'policy': 'Unique supplied text; only whitespace, trademark glyphs and terminal punctuation.'})
+        # Rehydrate only after exact source matching; the raw model response stays untouched.
+        pack.actions[index] = type(action).from_dict(payload)
+    if repairs:
+        pack.extra.setdefault('source_quote_restorations', []).extend(repairs)
+    return repairs
+
+
 def _company_quote_matches(claim, catalogue):
     code = str(claim.get('company_code') or claim.get('code') or '')
     name = str(claim.get('company_name') or claim.get('name') or '')

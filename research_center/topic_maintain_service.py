@@ -551,7 +551,8 @@ def run_topic_maintain(
             [template,_load_prompt('topic_candidate_extract'),_load_prompt('topic_detail_expand')])
         cached = workflow_account.cached(workflow_key)
         previous = load_change_pack(cached.get('change_id','')) if cached else None
-        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True and previous.extra.get('evidence_review_complete') is True and previous.extra.get('action_review_complete') is True:
+        from .topic_apply_service import validate_action_targets
+        if previous is not None and previous.status == TopicChangeStatus.PENDING and previous.extra.get('ai_review_complete') is True and previous.extra.get('evidence_review_complete') is True and previous.extra.get('action_review_complete') is True and validate_action_targets(previous, load_topic_profiles())['passed']:
             previous.extra['workflow_cache_hit']=True
             workflow_account.activity('topic_workflow',True,{'change_id':previous.change_id})
             emit('本次資料、日期、模型與提示詞未變，重用已完整審核的待確認更新包；不重複付費分析。')
@@ -625,12 +626,12 @@ def run_topic_maintain(
             )
             structured_data["low_model_digest"] = low_model_digest
         except Exception as exc:
-            low_model_digest = {
+            low_model_digest = {**getattr(exc, 'partial_low_model_digest', {}), **{
                 "schema_version": "low_model_digest_v1",
                 "status": "failed",
                 "model": getattr(low_model, "model", "資料整理模型"),
                 "error": str(exc),
-            }
+            }}
             structured_data["low_model_digest"] = low_model_digest
             emit(f"題材資料整理略過：{exc}")
     low_model_digest_json = _json_dumps(low_model_digest, 20000)
@@ -761,6 +762,14 @@ def run_topic_maintain(
         for row in rows:
             stored.append({**row, '_backlog_sources': referenced_topic_sources(row, supplied) or row.get('_backlog_sources') or []})
         AnalysisFollowupStore().defer('topic_maintain', stored)
+    def stage_capacity(stage_prompt, *, stage, output_tokens):
+        from .openai_service import OpenAIService
+        stage_prompt += search_notes_prompt
+        client = _topic_stage_client(center, stage, len(stage_prompt))
+        primary = getattr(client, 'primary', None)
+        if isinstance(primary, OpenAIService):
+            return primary.verified_prompt_capacity(stage_prompt, output_tokens=client.max_output_tokens, json_mode=True)
+        return client.prompt_capacity(stage_prompt, output_tokens=client.max_output_tokens)
     pack, pipeline_logs = run_topic_pipeline(
         mode=mode,
         ai_model=ai_model,
@@ -774,21 +783,25 @@ def run_topic_maintain(
         progress=emit,
         require_full_ai=official,
         candidate_sink=remember_candidates if official else None,
+        prompt_capacity=stage_capacity if official else None,
     )
 
     if official:
         from .ai_provider_service import current_routing_metadata
         _record_topic_models(pack, raw_stages)
         pack.extra['routing_history'] = current_routing_metadata()['routing_history']
+        from .topic_citation_audit import restore_topic_source_quotes
+        from .topic_apply_service import coalesce_topic_updates, resolve_action_targets, validate_action_targets
+        profiles = load_topic_profiles()
+        pack.extra['resolved_update_targets'] = resolve_action_targets(pack, profiles)
+        coalesce_topic_updates(pack, profiles)
+        restore_topic_source_quotes(pack, structured_data)
         quarantine_topic_source_leads(pack, structured_data)
         from .topic_citation_audit import quarantine_unproven_company_claims
         quarantined = quarantine_unproven_company_claims(pack, structured_data)
         if quarantined:
             pack.warnings.append(f'{quarantined} 筆公司主張未通過原文對照，完整保留為候選，不視為已確認事實。')
         citation_audit = audit_topic_citations(pack, structured_data)
-        from .topic_apply_service import resolve_action_targets, validate_action_targets
-        profiles = load_topic_profiles()
-        pack.extra['resolved_update_targets'] = resolve_action_targets(pack, profiles)
         target_audit = validate_action_targets(pack, profiles)
         pack.extra['action_target_audit'] = target_audit
         pack.extra['action_review_complete'] = target_audit['passed']

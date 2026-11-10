@@ -72,7 +72,7 @@ def test_get_me_does_not_clear_polling_and_real_poll_success_recovers_once(healt
     health.succeeded("getUpdates")
     assert health.snapshot()["channels"]["polling"]["status"] == "healthy"
     assert len([e for e in events(health) if e["event"] == "transport_recovered"]) == 1
-    assert [n["delivery"] for n in health.state["notices"]] == ["merged_into_recovery", "pending"]
+    assert [n["delivery"] for n in health.state["notices"]] == ["suppressed_threshold"]
 
 
 def test_new_incident_after_recovery_has_its_own_notice(health):
@@ -81,7 +81,7 @@ def test_new_incident_after_recovery_has_its_own_notice(health):
     health.succeeded("getUpdates")
     health.failed("getUpdates", network_error())
     assert health.snapshot()["channels"]["polling"]["incident_id"] != before
-    assert len(health.state["notices"]) == 3
+    assert len(health.state["notices"]) == 2
 
 
 def test_independent_api_and_polling_health(health):
@@ -93,6 +93,7 @@ def test_independent_api_and_polling_health(health):
 
 def test_notification_sent_once_and_no_retry_or_self_generated_incident(health):
     health.failed("getUpdates", network_error())
+    health.state["notices"][0]["delivery"] = "sent"
     health.succeeded("getUpdates")
     bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=23)))
     asyncio.run(health.flush_notices(bot, 99887766))
@@ -100,11 +101,12 @@ def test_notification_sent_once_and_no_retry_or_self_generated_incident(health):
     assert bot.send_message.await_count == 1
     text = bot.send_message.call_args.kwargs["text"]
     assert "已恢復" in text and "異常1次" in text and "不會因此重跑" in text
-    assert health.snapshot()["notice_counts"]["sent"] == 1
+    assert health.snapshot()["notice_counts"]["sent"] == 2
 
 
 def test_outage_notice_then_recovery_notice(health):
     health.failed("getUpdates", network_error())
+    health.test_clock[0] += timedelta(seconds=60)
     bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=23)))
     asyncio.run(health.flush_notices(bot, 1))
     health.succeeded("getUpdates")
@@ -117,6 +119,7 @@ def test_outage_notice_then_recovery_notice(health):
 @pytest.mark.parametrize("error", [NetworkError("read failed"), asyncio.CancelledError()])
 def test_unknown_notification_is_preserved_and_never_retried(health, error):
     health.failed("getUpdates", network_error())
+    health.test_clock[0] += timedelta(seconds=60)
     bot = SimpleNamespace(send_message=AsyncMock(side_effect=error))
     if isinstance(error, asyncio.CancelledError):
         with pytest.raises(asyncio.CancelledError):
@@ -141,6 +144,7 @@ def test_restart_does_not_claim_healthy_or_retry_uncertain_notice(health):
 
 def test_restart_does_not_send_stale_recovery_until_polling_really_succeeds(health):
     health.failed("getUpdates", network_error())
+    health.state["notices"][0]["delivery"] = "sent"
     health.succeeded("getUpdates")
     resumed = TelegramHealthService(health.root, emit=lambda _: None)
     bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=1)))
@@ -156,6 +160,7 @@ def test_new_outage_supersedes_unsent_old_recovery(health):
     health.succeeded("getUpdates")
     health.failed("getUpdates", network_error())
     bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=1)))
+    health.test_clock[0] += timedelta(seconds=60)
     asyncio.run(health.flush_notices(bot, 1))
     assert bot.send_message.await_count == 1
     assert "已恢復" not in bot.send_message.call_args.kwargs["text"]
@@ -163,6 +168,7 @@ def test_new_outage_supersedes_unsent_old_recovery(health):
 
 def test_no_notification_without_durable_sending_marker(health):
     health.failed("getUpdates", network_error())
+    health.test_clock[0] += timedelta(seconds=60)
     bot = SimpleNamespace(send_message=AsyncMock())
     with patch.object(health, "persist", return_value=False):
         asyncio.run(health.flush_notices(bot, 1))
@@ -261,6 +267,7 @@ def test_notice_transport_does_not_recursively_generate_alerts(health):
         async def send(**kwargs):
             await request.do_request("https://example/sendMessage", "POST")
         health.failed("getUpdates", network_error())
+        health.test_clock[0] += timedelta(seconds=60)
         try:
             with patch.object(HTTPXRequest, "do_request", new=AsyncMock(side_effect=network_error())):
                 await health.flush_notices(SimpleNamespace(send_message=send), 1)
@@ -416,6 +423,7 @@ def test_heartbeat_is_written_before_notice_send_and_without_restarting_work(hea
     import main
     order = []
     health.failed("getUpdates", network_error())
+    health.test_clock[0] += timedelta(seconds=60)
     async def send(**kwargs):
         order.append("send")
         return SimpleNamespace(message_id=1)

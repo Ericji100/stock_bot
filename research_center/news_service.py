@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 from collections import Counter
+from dataclasses import asdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -335,7 +336,7 @@ def _sources_to_news_items(sources: list[SourceItem]) -> list[NewsItem]:
             tags=['publication_' + source_publication_status(src)] +
                  (['official_body_retrieved'] if src.document_kind in {'document_body','parsed_record'} and src.fetch_status == 'success' else []),
             summary=summary,
-            full_text=summary,
+            full_text=src.content or summary,
             news_origin="refresh",
         )))
     return items
@@ -373,6 +374,8 @@ def _backfill_refresh_item_dates(items: list[NewsItem]) -> list[NewsItem]:
         inferred = explicit or normalize_published_date(item.url)
         if inferred:
             item.published_at = inferred
+            item.tags = [tag for tag in item.tags if tag not in
+                         {'publication_unknown', 'publication_inferred', 'publication_explicit'}]
             item.tags.append('publication_explicit' if explicit else 'publication_inferred')
     return items
 
@@ -399,6 +402,8 @@ def _collect_holding_news_sources(
                 for task in tasks:
                     for query in _flatten_news_task_queries(task, limit=2):
                         try:
+                            from .ai_execution_control import check_work, checkpoint_sources
+                            check_work()
                             result = center.minimax_search.search(query)
                             for row in (result.get("results") or [])[:5]:
                                 sources.append(SourceItem(
@@ -406,14 +411,21 @@ def _collect_holding_news_sources(
                                     title=str(row.get("title") or ""),
                                     url=str(row.get("url") or ""),
                                     source_level="Level 3",
-                                    published_date=row.get("published_date"),
-                                    snippet=str(row.get("snippet") or ""),
-                                    provider="minimax_mcp_search",
+                                    published_date=row.get("published_date") or row.get("date"),
+                                    snippet=str(row.get("content") or row.get("summary") or row.get("snippet") or ""),
+                                    search_summary_events=row.get('summary_events') or [],
+                                    provider=result.get('provider') or "minimax_mcp_search",
                                     provider_detail=str(task.get("label") or ""),
                                     found_by=[str(task.get("holding_code") or ""), str(task.get("holding_name") or "")],
                                 ))
+                            checkpoint_sources(sources)
+                        except DeepSeekUnavailable as exc:
+                            exc.partial_discovery_sources = sources
+                            raise
                         except Exception:
                             continue
+        except DeepSeekUnavailable:
+            raise
         except Exception as exc:
             emit(f"Holding MiniMax search failed: {exc}")
 
@@ -725,7 +737,76 @@ from .deepseek_service import DeepSeekUnavailable, task_context
 
 
 @task_context("news")
-def run_news_refresh(
+def run_news_refresh(center, repository, progress=None, ai_model="deepseek"):
+    from .ai_execution_control import execution_scope
+    from .deepseek_service import TASK
+    # Reserve time for enrichment, classification and persistence, not just discovery.
+    seconds = 45 * 60 if TASK.get()[1] else None
+    with execution_scope(seconds):
+        return _run_news_refresh(center, repository, progress, ai_model)
+
+
+def _checkpoint_news_sources(repository, sources):
+    from copy import deepcopy
+    if callable(getattr(repository, 'save_discovery_checkpoint', None)):
+        repository.save_discovery_checkpoint(sources)
+    items = _deduplicate_items(_sources_to_news_items(deepcopy(sources)))
+    items = _filter_by_published_window(_filter_taiwan_finance_news(items), hours=168)
+    if items:
+        repository.save_many(_fallback_classification(items))
+
+
+def _discover_news_sources(center, repository, portfolio, ai_model, progress):
+    from .ai_execution_control import execution_scope, source_checkpoint, check_work
+    from .deepseek_service import TASK
+    from .orchestrator import _GeminiDiscoveryRunner
+    sources = []
+    diagnostics = {}
+    service = getattr(center, 'deepseek_search', None)
+    previous_limit = getattr(service, 'max_queries_per_task', None)
+    if TASK.get()[1] and isinstance(previous_limit, int):
+        service.max_queries_per_task = min(previous_limit, 2) if previous_limit > 0 else 2
+    def checkpoint(rows):
+        sources.extend(rows)
+        _checkpoint_news_sources(repository, rows)
+    request = CommandRequest(command="news", raw_text="/news refresh", target="台股財經新聞",
+                             target_type="news", ai_model=ai_model, report_date=None)
+    try:
+        with execution_scope(20 * 60 if TASK.get()[1] else None, reason='search_phase_deadline'), source_checkpoint(checkpoint):
+            structured = {}
+            try:
+                found, _ = _GeminiDiscoveryRunner(center).run_discovery_flow(
+                    request, sources=[], structured_data=structured, use_grounding=True, progress=progress)
+                sources.extend(found)
+                diagnostics = structured.get("deepseek_search_discovery", structured.get("minimax_search_discovery", {}))
+                _checkpoint_news_sources(repository, sources)
+                check_work()
+                holdings = _collect_holding_news_sources(center, portfolio, request, progress=progress)
+                sources.extend(holdings)
+                _checkpoint_news_sources(repository, sources)
+            except DeepSeekUnavailable as exc:
+                sources.extend(getattr(exc, 'partial_discovery_sources', []) or [])
+                _checkpoint_news_sources(repository, sources)
+                diagnostics = {**getattr(exc, 'partial_discovery_diagnostics', {}), 'complete': False,
+                               'status': 'partial_stopped', 'stop_reason': exc.status}
+                if progress:
+                    progress(f"新聞搜尋停止：{exc}；已保存來源，未完成部分不冒充完整。")
+            # No second provider/fallback search after a stopped official workflow.
+    except DeepSeekUnavailable as exc:
+        diagnostics.update(complete=False, status='partial_stopped', stop_reason=exc.status)
+    except Exception as exc:
+        diagnostics.update(complete=False, status='partial_stopped', stop_reason=type(exc).__name__)
+        if progress:
+            progress(f"新聞搜尋未完整完成：{exc}；保留已保存來源。")
+    finally:
+        if isinstance(previous_limit, int):
+            service.max_queries_per_task = previous_limit
+    from .orchestrator import _merge_sources
+    sources = _merge_sources([], sources)
+    return sources, diagnostics
+
+
+def _run_news_refresh(
     center: Any,
     repository: NewsRepository,
     progress: ProgressCallback | None = None,
@@ -742,6 +823,7 @@ def run_news_refresh(
     def emit(msg: str) -> None:
         if progress:
             progress(msg)
+    saved_before = repository.article_count() if isinstance(repository, NewsRepository) else None
 
     # Smoke test mode: limit MiniMax MCP Search queries per task to 2 to avoid long runs
     smoke_test = os.environ.get("NEWS_SMOKE_TEST") == "1"
@@ -774,56 +856,19 @@ def run_news_refresh(
         except Exception:
             portfolio = {}
 
-        # Collect sources via discovery
-        all_sources: list[SourceItem] = []
-        minimax_diag: dict[str, Any] = {}
-        try:
-            from .orchestrator import _GeminiDiscoveryRunner
-            request = CommandRequest(
-                command="news", raw_text="/news refresh", target="台股財經新聞",
-                target_type="news",
-                mode="normal", source_only=False, score=False, brief=False,
-                top=None, ai_model="gemini", report_date=None,
-                output_formats=("md",), user_id="", created_at=None,
-            )
-            structured_data_discovery: dict[str, Any] = {}
-            runner = _GeminiDiscoveryRunner(center)
-            sources_out, _ = runner.run_discovery_flow(
-                request, sources=list(all_sources), structured_data=structured_data_discovery,
-                use_grounding=True, progress=progress,
-            )
-            all_sources.extend(sources_out)
-            minimax_diag = structured_data_discovery.get("deepseek_search_discovery", structured_data_discovery.get("minimax_search_discovery", {}))
-        except Exception as exc:
-            partial = getattr(exc, 'partial_discovery_sources', None)
-            if partial:
-                all_sources.extend(partial)
-                minimax_diag = getattr(exc, 'partial_discovery_diagnostics', {})
-                emit(f"搜尋中止前已取得 {len(partial)} 筆來源，保留待補，不重抓或冒稱完整搜尋。")
-            emit(f"Discovery 搜尋略過：{exc}")
-
-        holding_sources = _collect_holding_news_sources(
-            center,
-            portfolio,
-            CommandRequest(
-                command="news", raw_text="/news refresh holdings", target="portfolio holdings",
-                target_type="news", mode="normal", source_only=False, score=False, brief=False,
-                top=None, ai_model=ai_model, report_date=None, output_formats=("md",), user_id="", created_at=None,
-            ),
-            progress=progress,
-        )
-        if holding_sources:
-            all_sources.extend(holding_sources)
-            emit(f"Holding news sources: {len(holding_sources)}")
+        all_sources, minimax_diag = _discover_news_sources(center, repository, portfolio, ai_model, progress)
 
         # Fallback: try direct search via center's search services
-        if not all_sources:
+        if (not all_sources and minimax_diag.get('complete') is not False
+                and getattr(getattr(center, 'config', None), 'deepseek_only', False) is not True):
             try:
                 if hasattr(center, "minimax_search") and center.minimax_search.is_configured():
                     for task in tasks:
                         flat_queries = _flatten_news_task_queries(task)
                         for q in flat_queries[:3]:
                             try:
+                                from .ai_execution_control import check_work
+                                check_work()
                                 result = center.minimax_search.search(q)
                                 for r in result.get("results", []):
                                     all_sources.append(SourceItem(
@@ -834,6 +879,8 @@ def run_news_refresh(
                                         published_date=r.get("published_date"),
                                         snippet=r.get("snippet", ""),
                                     ))
+                            except DeepSeekUnavailable:
+                                raise
                             except Exception:
                                 pass
             except Exception:
@@ -870,6 +917,9 @@ def run_news_refresh(
         except Exception as exc:
             emit(f"WebFetch 略過：{exc}")
 
+        if callable(getattr(repository, 'save_discovery_checkpoint', None)):
+            repository.save_discovery_checkpoint(sorted_sources)
+
         web_fetch_diag = structured_data.get("web_fetch_diagnostics") or {}
         webfetch_success = int(web_fetch_diag.get("enriched_source_count") or web_fetch_diag.get("successful") or 0)
 
@@ -892,7 +942,7 @@ def run_news_refresh(
             for item in items:
                 pending_by_url[item.url] = item
             items = _deduplicate_items(list(pending_by_url.values()))
-            items = _rank_news_for_ai(items, portfolio)
+            items = sorted(_rank_news_for_ai(items, portfolio), key=lambda item: item.url not in {row.url for row in pending})
         all_ranked_items = list(items)
         filtered_count = len(items)
         classify_limit = _classify_limit()
@@ -911,6 +961,9 @@ def run_news_refresh(
                 emit(f"Smoke mode: limit AI classification {len(items)} -> {classify_limit}")
                 items = items[:classify_limit]
 
+        # Persist the enriched input before any paid classification can fail.
+        from copy import deepcopy
+        repository.save_many(_fallback_classification(deepcopy(all_ranked_items)))
         # Batch classify with AI
         primary_classifier = _primary_news_classifier_model(center, ai_model)
         from .search_transmission import collect_search_context, source_events_packet
@@ -919,7 +972,8 @@ def run_news_refresh(
                                              [source for source in sorted_sources if source.url in classified_urls],
                                              datetime.now().astimezone().date())
         classified = _batch_classify_news(items, center, emit, ai_model=ai_model,
-                                         search_context_notes=search_notes, search_source_events=source_events_packet(sorted_sources))
+                                         search_context_notes=search_notes, search_source_events=source_events_packet(sorted_sources),
+                                         checkpoint=repository.save_many)
         classified = _tag_portfolio_news_items(classified, portfolio)
 
         for item in classified:
@@ -957,6 +1011,8 @@ def run_news_refresh(
             selected_urls = {item.url for item in items}
             deferred = _fallback_classification([item for item in all_ranked_items if item.url not in selected_urls])
         saved, skipped = repository.save_many([*classified, *deferred])
+        if saved_before is not None:
+            saved = repository.article_count() - saved_before
         emit(f"儲存完成：新增 {saved}，略過 {skipped}")
 
         low_digest_meta = {
@@ -983,7 +1039,7 @@ def run_news_refresh(
                 "classified_count": len(classified),
                 "ai_classified_count": ai_classified_count,
                 "local_fallback_count": local_fallback_count,
-                "classification_status": "partial_success" if local_fallback_count else "ai_success",
+                "classification_status": "partial_success" if local_fallback_count or deferred or minimax_diag.get('complete') is False else "ai_success",
                 "filtered_count": filtered_count,
                 "search_sources": total_source_count,
                 "primary_classifier": primary_classifier,
@@ -1006,9 +1062,10 @@ def run_news_refresh(
             "holding_count": holding_count,
             "ai_classified_count": ai_classified_count,
             "local_fallback_count": local_fallback_count,
-            "classification_status": "partial_success" if local_fallback_count else "ai_success",
+            "classification_status": "partial_success" if local_fallback_count or deferred or minimax_diag.get('complete') is False else "ai_success",
+            "search_complete": minimax_diag.get('complete') is not False,
             "deferred_classification_count": len(deferred),
-            "analysis_coverage_status": "partial" if deferred or local_fallback_count else "complete",
+            "analysis_coverage_status": "partial" if deferred or local_fallback_count or minimax_diag.get('complete') is False else "complete",
             "pending_classification_summary": repository.pending_classification_summary() if official and hasattr(repository, 'pending_classification_summary') else {},
             "analysis_coverage_note": "待補新聞已保存，但未經 AI 判讀；不作為已完成的利多利空結論。" if deferred else "",
             "deferred_urls": [item.url for item in deferred],
@@ -1036,6 +1093,7 @@ def _batch_classify_news(
     *,
     search_context_notes: list[dict[str, Any]] | None = None,
     search_source_events: list[dict[str, Any]] | None = None,
+    checkpoint=None,
 ) -> list[NewsItem]:
     """Batch classify and summarize news via AI.
     
@@ -1074,6 +1132,7 @@ def _batch_classify_news(
         prompt_text=prompt_text,
         label="DeepSeek Flash 一般新聞分類" if primary_model != ai_model else "AI 分類",
         search_source_events=search_source_events,
+        checkpoint=checkpoint,
     )
     if primary_model == ai_model:
         return result_items
@@ -1091,6 +1150,7 @@ def _batch_classify_news(
         prompt_text=prompt_text,
         label="高階新聞複核",
         search_source_events=search_source_events,
+        checkpoint=checkpoint,
     )
     return _merge_reviewed_news_items(result_items, reviewed)
 
@@ -1130,6 +1190,7 @@ def _classify_news_batches(
     prompt_text: str,
     label: str,
     search_source_events: list[dict[str, Any]] | None = None,
+    checkpoint=None,
 ) -> list[NewsItem]:
     batch_size = _classify_batch_size()
     timeout_seconds = _classify_timeout_seconds()
@@ -1157,6 +1218,8 @@ def _classify_news_batches(
                 uncached.append(item)
         items = uncached
     total_batches = (len(items) + batch_size - 1) // batch_size
+    if checkpoint and result_items:
+        checkpoint(result_items)
     emit(f"{label}開始：{len(items)} 則，共 {total_batches} 批，每批最多 {batch_size} 則")
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
@@ -1171,6 +1234,8 @@ def _classify_news_batches(
         emit(f"{label} {batch_no}/{total_batches} prompt={len(full_prompt)} chars est_tokens={max(1, len(full_prompt) // 4)} items={len(batch)}")
 
         try:
+            from .ai_execution_control import check_work
+            check_work()
             ai_result = _call_news_classifier(center, ai_model, full_prompt, timeout_seconds)
             raw = getattr(ai_result, "raw", str(ai_result))
             parsed = _parse_ai_json_batch(raw)
@@ -1183,6 +1248,8 @@ def _classify_news_batches(
                             'model': (getattr(ai_result, 'diagnostics', {}) or {}).get('actual_model'),
                         }, 7 * 86400)
             result_items.extend(_apply_classification_meta(batch, parsed))
+            if checkpoint:
+                checkpoint(result_items)
             emit(f"{label} {batch_no}/{total_batches} 完成")
         except DeepSeekUnavailable as exc:
             emit(f"AI 分類暫停，保存待補分類新聞：{exc}")
@@ -1199,6 +1266,8 @@ def _classify_news_batches(
                 raw = getattr(ai_result, "raw", str(ai_result))
                 parsed = _parse_ai_json_batch(raw)
                 result_items.extend(_apply_classification_meta(batch, parsed))
+                if checkpoint:
+                    checkpoint(result_items)
                 emit(f"{label} {batch_no}/{total_batches} lightweight retry completed")
             except Exception as retry_exc:
                 emit(f"{label} {batch_no}/{total_batches} fallback to local rules: {retry_exc}")

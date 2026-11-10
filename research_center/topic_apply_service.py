@@ -60,9 +60,19 @@ def resolve_action_targets(pack: TopicChangePack, profiles) -> int:
 
 def validate_action_targets(pack: TopicChangePack, profiles) -> dict[str, Any]:
     known = {p.get('theme_id') if isinstance(p, dict) else p.theme_id for p in profiles}
+    existing = set(known)
     issues = []
+    writers = {}
     for index, action in enumerate(pack.actions):
         kind = action.action_type
+        if kind in {TopicActionType.CREATE_THEME, TopicActionType.UPDATE_THEME, TopicActionType.RENAME_THEME}:
+            newly_created_update = (action.theme_id not in existing
+                                    and writers.get(action.theme_id) == TopicActionType.CREATE_THEME
+                                    and kind == TopicActionType.UPDATE_THEME)
+            if action.theme_id in writers and not newly_created_update:
+                issues.append({'action_index': index, 'theme_id': action.theme_id,
+                               'reason': '同一題材有多筆覆寫動作；須先保真組裝或分開審核，不可順序覆蓋。'})
+            writers[action.theme_id] = kind
         if kind == TopicActionType.CREATE_THEME:
             known.add(action.theme_id)
         elif action.theme_id not in known:
@@ -75,6 +85,57 @@ def validate_action_targets(pack: TopicChangePack, profiles) -> dict[str, Any]:
             else:
                 known.discard(action.theme_id)
     return {'passed': not issues, 'issues': issues}
+
+
+def coalesce_topic_updates(pack: TopicChangePack, profiles) -> int:
+    """One explicit existing update target, all constituent analyses retained."""
+    from copy import deepcopy
+    profile_map = {p.get('theme_id') if isinstance(p, dict) else p.theme_id: p for p in profiles}
+    grouped = {}
+    for index, action in enumerate(pack.actions):
+        grouped.setdefault(action.theme_id, []).append((index, action))
+    replacements, removed = {}, set()
+    for target, entries in grouped.items():
+        if len(entries) < 2 or target not in profile_map:
+            continue
+        actions = [action for _, action in entries]
+        if any(action.action_type != TopicActionType.UPDATE_THEME or action.target_theme_id != target
+               or action.company_code or action.company_name or action.node_id for action in actions):
+            continue
+        original = [deepcopy(action.to_dict()) for action in actions]
+        merged = deepcopy(actions[0])
+        profile = profile_map[target]
+        get = (lambda key: profile.get(key)) if isinstance(profile, dict) else (lambda key: getattr(profile, key, None))
+        merged.theme_name = get('theme_name') or merged.theme_name
+        for field in ('keywords', 'industries', 'evidence', 'affected_companies', 'company_relations',
+                      'supply_chain_nodes', 'risk_notes', 'missing_data', 'counter_evidence'):
+            values = []
+            if field in {'keywords', 'industries', 'risk_notes', 'missing_data'}:
+                values.extend(deepcopy(get(field) or []))
+            for action in actions:
+                for value in getattr(action, field):
+                    if value not in values:
+                        values.append(deepcopy(value))
+            setattr(merged, field, values)
+        for field in ('reason', 'supply_chain_role'):
+            sections = [f'既有題材脈絡：{get(field)}'] if field == 'supply_chain_role' and get(field) else []
+            sections.extend(f'【{action.theme_name}】{getattr(action, field)}'
+                            for action in actions if getattr(action, field))
+            setattr(merged, field, '\n\n'.join(sections))
+        order = {'low': 0, 'medium': 1, 'high': 2}
+        merged.confidence = min((action.confidence for action in actions), key=lambda c: order[c.value])
+        merged.extra['coalesced_candidate_ids'] = [action.extra.get('original_candidate_theme_id') or action.theme_id for action in actions]
+        pack.extra.setdefault('coalesced_update_analyses', []).append({'target_theme_id': target,
+            'original_action_indices': [i for i, _ in entries], 'original_actions': original,
+            'policy': 'Preserve existing title/context, union all lists, retain each analysis; no status promotion.'})
+        replacements[entries[0][0]] = merged
+        removed.update(index for index, _ in entries[1:])
+    pack.actions = [replacements.get(index, action) for index, action in enumerate(pack.actions) if index not in removed]
+    if removed:
+        pack.extra['action_count'] = len(pack.actions)
+        pack.extra['assembly_original_summary'] = pack.summary
+        pack.summary = f'題材庫維護：{len(pack.actions) + len(removed)} 份原始分析保真組裝為 {len(pack.actions)} 筆更新動作；原分析均保留。'
+    return len(removed)
 
 
 def confirm_change_pack(change_id: str, user_id: str = "system") -> TopicApplyResult:

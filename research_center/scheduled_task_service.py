@@ -294,10 +294,16 @@ class ScheduledTaskService:
             else:
                 return await runner()
 
-        if spec.timeout_seconds and spec.timeout_seconds > 0:
-            return await asyncio.wait_for(guarded(), timeout=float(spec.timeout_seconds))
-        else:
-            return await guarded()
+        from .ai_execution_control import execution_scope
+        with execution_scope(spec.timeout_seconds or None) as control:
+            try:
+                if spec.timeout_seconds and spec.timeout_seconds > 0:
+                    return await asyncio.wait_for(guarded(), timeout=float(spec.timeout_seconds))
+                return await guarded()
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                # to_thread copies this same event; cancelling its await does not kill its worker.
+                control.stop()
+                raise
 
     def _audit(self, spec: ScheduledTaskSpec, status: str, **event: Any) -> None:
         try:

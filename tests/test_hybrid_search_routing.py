@@ -74,7 +74,7 @@ class HybridSearchRoutingTests(unittest.TestCase):
         self.assertEqual(important_search_gaps(request, {}, rows, date(2026,11,5), 'radar'), [])
 
     def test_single_bounded_followup_preserves_same_url_events_and_unverified_notes(self):
-        service = DeepSeekSearchService(self.router())
+        service = DeepSeekSearchService(self.router(), radar_critical_gap_search_enabled=True)
         seen = []
         def search(query, report_date=''):
             from research_center.search_routing import SEARCH_ROUTE
@@ -112,7 +112,7 @@ class HybridSearchRoutingTests(unittest.TestCase):
         self.assertIn('完整營收與風險原文內容', result.sources[0].snippet)
 
     def test_unknown_fee_stops_followup_retaining_initial_sources(self):
-        service = DeepSeekSearchService(self.router())
+        service = DeepSeekSearchService(self.router(), radar_critical_gap_search_enabled=True)
         data = {'results':[{'title':'1234 線索', 'url':'https://example.test/news', 'summary':'第一批資料'}]}
         request = CommandRequest(command='research', raw_text='/radar', target='1234', report_date=date(2026,11,5))
         with patch.object(service, 'search', side_effect=[data, DeepSeekUnavailable('未知費用', 'transport_unknown')]), patch(
@@ -142,7 +142,7 @@ class HybridSearchRoutingTests(unittest.TestCase):
         self.assertEqual(result['diagnostics']['actual_model'], MODEL)
 
     def test_existing_radar_followup_is_terra_once_not_initial_plus_followup(self):
-        service = DeepSeekSearchService(self.router())
+        service = DeepSeekSearchService(self.router(), radar_critical_gap_search_enabled=True)
         request = CommandRequest(command='research', raw_text='/radar', target='1234', report_date=date(2026,11,5))
         with patch.object(service, 'search', return_value={'results':[]}) as search, patch(
                 'research_center.web_fetch_enrichment.recover_search_publication_dates'):

@@ -26,13 +26,17 @@ _CHANNEL_LABELS = {"polling": "接收指令連線", "api": "訊息及 API 連線
 class TelegramHealthService:
     def __init__(self, root: Path, *, sensitive_values=(),
                  clock: Callable[[], datetime] | None = None, emit: Callable[[str], None] = print,
-                 cooldown_seconds: float = 300):
+                 cooldown_seconds: float = 300, outage_seconds: float = 60,
+                 instability_window_seconds: float = 600, instability_count: int = 3):
         self.root = Path(root)
         self.state_path = self.root / "state.json"
         self.sensitive_values = tuple(sensitive_values)
         self.clock = clock or (lambda: datetime.now(_TAIPEI))
         self.emit = emit
         self.cooldown_seconds = cooldown_seconds
+        self.outage_seconds = outage_seconds
+        self.instability_window_seconds = instability_window_seconds
+        self.instability_count = instability_count
         self._flushing = False
         self._storage_warned = False
         self._state_writable = True
@@ -48,7 +52,7 @@ class TelegramHealthService:
                         or any(not isinstance(item, dict)
                                or item.get("channel") not in _CHANNEL_LABELS
                                or item.get("kind") not in {"outage", "recovered"}
-                               or item.get("delivery") not in {"pending", "sending", "sent", "unknown", "merged_into_recovery", "superseded"}
+                               or item.get("delivery") not in {"pending", "sending", "sent", "unknown", "merged_into_recovery", "superseded", "suppressed_threshold"}
                                or not isinstance(item.get("incident"), dict)
                                or not item["incident"].get("first_error_at")
                                for item in saved["notices"])):
@@ -127,6 +131,10 @@ class TelegramHealthService:
         if fresh_incident:
             channel.update(status="degraded", incident_id=uuid4().hex, first_error_at=now,
                            failures=0, last_notice_at=None)
+            channel.pop('recovered_at', None)
+            recent = channel.get('recent_incident_starts') or []
+            cutoff = self.clock() - timedelta(seconds=self.instability_window_seconds)
+            channel['recent_incident_starts'] = [at for at in recent if datetime.fromisoformat(at) >= cutoff] + [now]
         channel.update(last_error_at=now, last_error_type=type(error).__name__,
                        failures=channel["failures"] + 1)
         channel["diagnostic_id"] = self._diagnostic("transport_error", operation, error,
@@ -151,11 +159,18 @@ class TelegramHealthService:
         if not was_degraded:
             return
         channel["recovered_at"] = now
+        outage_sent = False
         for notice in self.state["notices"]:
+            same = notice["incident"].get("incident_id") == channel["incident_id"]
+            if same and notice["kind"] == "outage" and notice["delivery"] == "sent":
+                outage_sent = True
             if (notice["incident"].get("incident_id") == channel["incident_id"]
                     and notice["kind"] == "outage" and notice["delivery"] == "pending"):
-                notice["delivery"] = "merged_into_recovery"
-        self._notice("recovered", name, channel)
+                notice["delivery"] = "suppressed_threshold"
+        if outage_sent:
+            self._notice("recovered", name, channel)
+        else:
+            self._queue_instability(name)
         self._diagnostic("transport_recovered", operation, channel=name,
                          incident_id=channel["incident_id"], failures=channel["failures"])
         self._say(f"{_CHANNEL_LABELS[name]}已收到成功回應；先前異常{channel['failures']}次。"
@@ -179,27 +194,78 @@ class TelegramHealthService:
                                   for name in ("pending", "sent", "unknown")},
                 "diagnostic_storage_warning": self._storage_warned or not self._state_writable}
 
+    def _queue_instability(self, name):
+        channel = self.state['channels'][name]
+        cutoff = self.clock() - timedelta(seconds=self.instability_window_seconds)
+        starts = [at for at in channel.get('recent_incident_starts', [])
+                  if datetime.fromisoformat(at) >= cutoff]
+        last = channel.get('last_instability_notice_at')
+        if len(starts) < self.instability_count or last and datetime.fromisoformat(last) >= cutoff:
+            return
+        # A sustained incident already has an outage alert; annotate it instead of queueing two.
+        if channel.get('status') == 'degraded':
+            outage = next((n for n in self.state['notices'] if n['channel'] == name
+                and n['kind'] == 'outage' and n['incident'].get('incident_id') == channel['incident_id']
+                and n['delivery'] in {'pending', 'sending', 'sent', 'unknown'}), None)
+            if outage and (self.clock() - datetime.fromisoformat(channel['first_error_at'])).total_seconds() >= self.outage_seconds:
+                if outage['delivery'] == 'pending':
+                    outage['incident'].update(instability_summary=True, incident_count=len(starts))
+                else:
+                    channel['last_instability_notice_at'] = self._timestamp()
+                return
+        if any(n['channel'] == name and n['delivery'] in {'pending','sending'}
+               and n['incident'].get('instability_summary') for n in self.state['notices']):
+            return
+        data = {**channel, 'instability_summary': True, 'incident_count': len(starts)}
+        self._notice('outage', name, data)
+
     async def flush_notices(self, bot, chat_id) -> None:
         if self._flushing:
             return
         self._flushing = True
         token = _NOTICE_REQUEST.set(True)
         try:
+            for name in _CHANNEL_LABELS:
+                self._queue_instability(name)
             for notice in [n for n in self.state["notices"] if n["delivery"] == "pending"][:2]:
                 channel = notice["channel"]
                 data = self.state["channels"][channel]
                 if notice["kind"] == "recovered" and data.get("status") != "healthy":
                     continue
+                if notice['kind'] == 'recovered' and not any(
+                        prior['channel'] == channel and prior['kind'] == 'outage'
+                        and prior['delivery'] == 'sent'
+                        and prior['incident'].get('incident_id') == notice['incident'].get('incident_id')
+                        for prior in self.state['notices']):
+                    notice['delivery'] = 'suppressed_threshold'
+                    self.persist()
+                    continue
                 if data.get("incident_id") != notice["incident"].get("incident_id"):
                     data = notice["incident"]
+                summary = notice['incident'].get('instability_summary')
+                if summary:
+                    data = notice['incident']
+                if notice['kind'] == 'outage' and not summary:
+                    if data.get('status') != 'degraded':
+                        notice['delivery'] = 'suppressed_threshold'
+                        self.persist()
+                        continue
+                    elapsed = (self.clock() - datetime.fromisoformat(data['first_error_at'])).total_seconds()
+                    if elapsed < self.outage_seconds:
+                        continue
                 recovered = notice["kind"] == "recovered"
                 text = (f"Telegram {_CHANNEL_LABELS[channel]}{'已恢復' if recovered else '異常'}\n"
                         f"開始：{data['first_error_at']}\n"
                         f"錯誤類型：{data.get('last_error_type', '連線讀取失敗')}；異常{data.get('failures', 0)}次。\n")
                 if recovered:
                     text += f"恢復：{data['recovered_at']}；已有實際請求成功。\n"
+                if summary:
+                    text = (f"Telegram {_CHANNEL_LABELS[channel]}短時間連線不穩\n"
+                            f"近10分鐘發生{data['incident_count']}次異常；完整診斷已保留。\n")
                 text += "異常期間指令或通知可能延遲；不代表先前訊息已送達，不會因此重跑 AI、交易或補發業務訊息。"
                 notice["delivery"] = "sending"
+                if summary:
+                    self.state['channels'][channel]['last_instability_notice_at'] = self._timestamp()
                 if not self.persist():
                     notice["delivery"] = "pending"
                     break

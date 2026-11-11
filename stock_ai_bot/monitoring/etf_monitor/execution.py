@@ -107,6 +107,19 @@ def prepare_execution_message(store, event_id: str, *, now: datetime | None = No
             body = body.replace("策略安排：下一交易日開盤進場", "原策略安排：歷史開盤進場參考")
             body = body.replace("策略安排：下一交易日開盤出場", "原策略安排：歷史開盤出場參考")
         text = f"0050 趨勢策略｜交易安排時間檢查\n{note}\n\n{body}"
+        if expected is not None and current < expected and status != "SUPERSEDED":
+            from .sizing_config import load_reply_config
+
+            try:
+                sizing_enabled = load_reply_config().enabled
+            except (ValueError, OSError, TypeError):
+                sizing_enabled = False
+            if sizing_enabled:
+                payload = json.loads(connection.execute(
+                    "SELECT payload_json FROM events WHERE event_id=?", (event_id,)).fetchone()[0])
+                if payload.get("core", {}).get("decision") == "BUY_NEXT_OPEN":
+                    text += ("\n\n股數試算：回覆這則進場通知，輸入「可用現金」或「可用現金 委託價」"
+                             "（例：100000 123.4）。僅授權帳號可用；金額會在群組可見。")
         connection.execute(
             "UPDATE outbox SET body=?,body_sha256=? WHERE event_id=? AND status='SENDING'",
             (text, stable_sha256(text), event_id),

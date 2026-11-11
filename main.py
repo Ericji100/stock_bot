@@ -2750,6 +2750,9 @@ def main():
         )
 
     # 註冊指令
+    from stock_ai_bot.monitoring.etf_monitor.sizing_reply import register_position_sizing_handler
+
+    register_position_sizing_handler(app, evidence_path=get_workdata_path("runtime/etf_monitor/sizing-handler.json"))
     research_handlers = build_research_handlers(safe_send_reply, safe_reply_document, run_stoppable_command, make_stoppable_handler)
 
     app.add_handler(CommandHandler("start", start))

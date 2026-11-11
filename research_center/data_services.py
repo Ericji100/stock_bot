@@ -77,6 +77,23 @@ def _fetch_research_frame(
     *,
     timeout_seconds: float = RESEARCH_FETCH_TIMEOUT_SECONDS,
 ) -> pd.DataFrame:
+    from stock_ai_bot.backfill.deadline_control import backfill_scope, check_backfill, current_backfill_control
+    if current_backfill_control() is not None:
+        # Backfill already owns a timed worker. Do not detach another executor
+        # underneath it: its real lifetime must remain inside the resource lease.
+        with backfill_scope(seconds=timeout_seconds):
+            check_backfill()
+            try:
+                result = fetch()
+                check_backfill()
+                return result
+            except Exception as exc:
+                check_backfill()
+                message = f"{label} 取得失敗：{type(exc).__name__}: {exc}"
+                notes.append(message)
+                if progress:
+                    progress(f"個股研究：{message}")
+                return pd.DataFrame()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         future = executor.submit(fetch)

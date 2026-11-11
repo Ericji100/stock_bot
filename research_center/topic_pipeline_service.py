@@ -143,6 +143,24 @@ def run_topic_pipeline(
 ) -> tuple[TopicChangePack, list[dict[str, Any]]]:
     """Run staged topic maintenance and return (pack, stage_logs)."""
     stage_logs: list[dict[str, Any]] = []
+    from .ai_execution_control import check_work
+    from .deepseek_service import DeepSeekUnavailable
+    native_call = call_ai_json
+    stopped = None
+
+    def guarded_call(prompt, stage):
+        nonlocal stopped
+        if stopped is not None:
+            raise stopped
+        try:
+            check_work()
+            return native_call(prompt, stage)
+        except DeepSeekUnavailable as exc:
+            if exc.status != 'invalid_json':
+                stopped = exc
+            raise
+
+    call_ai_json = guarded_call
 
     def emit(message: str) -> None:
         if progress:
@@ -189,6 +207,7 @@ def run_topic_pipeline(
         batches = _full_evidence_detail_batches(selected, structured_data, prompt_variables, load_prompt, render_prompt, prompt_capacity)
 
     actions = []
+    batch_reviews = []
     for batch_index, batch in enumerate(batches, start=1):
         default_types = []
         for candidate in batch:
@@ -198,6 +217,7 @@ def run_topic_pipeline(
                 candidate["target_theme_id"] = target_theme_id
             default_types.append(action_type)
 
+        payload = {}
         if batch_index <= ai_detail_batch_limit:
             payload = _expand_batch(
                 batch=batch,
@@ -218,8 +238,8 @@ def run_topic_pipeline(
                 ordered = [by_id[candidate['theme_id']] for candidate in batch]
                 payload = {**payload, 'actions': ordered} if isinstance(payload, dict) else ordered
             batch_actions = normalize_topic_detail_actions(payload, fallback_candidates=batch)
-            if require_full_ai and any(log.get("error") for log in stage_logs):
-                ai_detail_batch_limit = batch_index
+            # A content error belongs to this batch, not to later independent candidates.
+            # Provider/quota/unknown failures still stop subsequent calls at their boundary.
         else:
             stage_logs.append({
                 "stage": f"detail_expand_{batch_index}_local_budget_fallback",
@@ -239,6 +259,10 @@ def run_topic_pipeline(
                 if batch[idx].get("target_theme_id"):
                     action.target_theme_id = batch[idx]["target_theme_id"]
         actions.extend(batch_actions)
+        if require_full_ai:
+            batch_reviews.append({'batch': batch_index,
+                'candidate_ids': [row['theme_id'] for row in batch],
+                'status': 'success' if _detail_covers_batch(payload, batch) else 'pending'})
         if len(actions) >= target_count:
             break
 
@@ -275,6 +299,9 @@ def run_topic_pipeline(
             "action_count": len(actions),
             "deferred_candidates": candidates[max_count:],
             "backlog_loaded": structured_data.get('topic_backlog_loaded', 0),
+            "detail_review": {'selected_count': len(selected),
+                'ai_completed_count': sum(len(row['candidate_ids']) for row in batch_reviews if row['status'] == 'success'),
+                'batches': batch_reviews},
             "input_scope": "完整去重來源萃取候選，逐題材提供相關完整證據；既有全庫在本地比對" if require_full_ai else "legacy_bounded_inputs",
         },
     )
@@ -623,6 +650,10 @@ def _expand_batch(
             if repairs:
                 stage_logs.append({'stage': f'detail_expand_{batch_index}_structure_repair',
                                    'repairs': repairs, 'policy': 'Only explicit unique owners; original output retained.'})
+            payload, identities = restore_topic_candidate_ids(payload, batch)
+            if identities:
+                stage_logs.append({'stage': f'detail_expand_{batch_index}_identity_restore',
+                                   'restorations': identities})
         if full_evidence and _has_unresolved_topic_ref(payload):
             stage_logs.append({'stage':f'detail_expand_{batch_index}','error':'unresolved_topic_reference'})
             return {}
@@ -675,6 +706,49 @@ def _expand_batch(
                 return retry_payload
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": str(exc), "prompt_chars": prompt_chars})
         return {}
+
+
+def restore_topic_candidate_ids(payload, batch):
+    """Restore only a unique, explicitly supplied update target; never match names."""
+    from copy import deepcopy
+    actions = payload.get('actions') if isinstance(payload, dict) else payload
+    if not isinstance(actions, list) or len(actions) != len(batch):
+        return payload, []
+    expected = {str(row.get('theme_id') or ''): row for row in batch}
+    if '' in expected or len(expected) != len(batch):
+        return payload, []
+    targets = {}
+    for row in batch:
+        target = row.get('target_theme_id')
+        if target and str(row.get('action_type') or '') == 'update_theme':
+            targets.setdefault(str(target), []).append(row['theme_id'])
+    assigned, restorations = [], []
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict):
+            return payload, []
+        identity = str(action.get('theme_id') or '')
+        if identity in expected:
+            candidate = identity
+        elif len(targets.get(identity, [])) == 1 and action.get('action_type') == 'update_theme':
+            candidate = targets[identity][0]
+            restorations.append({'action_index': index, 'original_model_theme_id': identity,
+                                 'candidate_theme_id': candidate, 'target_theme_id': identity})
+        else:
+            return payload, []
+        target = expected[candidate].get('target_theme_id')
+        if action.get('target_theme_id') and action['target_theme_id'] != target:
+            return payload, []
+        assigned.append(candidate)
+    if len(set(assigned)) != len(batch) or not restorations:
+        return payload, []
+    restored = deepcopy(payload)
+    rows = restored['actions'] if isinstance(restored, dict) else restored
+    for repair in restorations:
+        row = rows[repair['action_index']]
+        row['theme_id'] = repair['candidate_theme_id']
+        row['target_theme_id'] = repair['target_theme_id']
+        row.setdefault('extra', {})['candidate_identity_restoration'] = repair
+    return restored, restorations
 
 
 def _detail_covers_batch(payload, batch):

@@ -1032,12 +1032,14 @@ async def _manual_backfill_background(
     try:
         from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
-        decision = await asyncio.to_thread(
+        from research_center.scheduled_task_service import run_cooperative_thread
+        decision = await run_cooperative_thread(
             run_backfill_if_needed,
             report_date_arg,
             force_refresh,
             progress,
             stop_event,
+            stop_event=stop_event,
         )
         if decision.status == "completed":
             GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status})
@@ -1091,12 +1093,14 @@ async def _scheduled_backfill_background() -> None:
     try:
         from stock_ai_bot.backfill.backfill_service import run_backfill_if_needed
 
-        decision = await asyncio.to_thread(
+        from research_center.scheduled_task_service import run_cooperative_thread
+        decision = await run_cooperative_thread(
             run_backfill_if_needed,
             None,
             False,
             progress,
             _SCHEDULED_BACKFILL_STOP_EVENT,
+            stop_event=_SCHEDULED_BACKFILL_STOP_EVENT,
         )
         if decision.status == "completed":
             GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status})
@@ -1119,7 +1123,7 @@ async def _scheduled_backfill_background() -> None:
 
         if decision.status == "stopped":
             print(format_cmd_message("已停止，未寫入完成標記", "定時回補檢查"), flush=True)
-            return
+            return {'status': 'partial_success', 'reason': '回補已停止，已保存成功快取，未寫完整成功標記'}
 
         if decision.status == "completed" and decision.result:
             result = decision.result
@@ -1141,7 +1145,10 @@ async def _scheduled_backfill_background() -> None:
                 print(format_cmd_message(f"\n{health}", "定時回補檢查"), flush=True)
             except Exception:
                 pass
-            return
+            if (getattr(result, 'backfill_ready_for_research', None) == 'partial'
+                    or getattr(result, 'backfill_ready_for_scan', None) is False):
+                return {'status': 'partial_success', 'reason': '回補流程已結束，資料健康度仍有缺口'}
+            return {'status': 'completed'}
 
         print(
             format_cmd_message(f"未完成：{decision.status} / {decision.reason}", "定時回補檢查"),
@@ -1149,6 +1156,7 @@ async def _scheduled_backfill_background() -> None:
         )
     except Exception as exc:
         print(format_cmd_message(f"背景定時回補失敗：{exc}", "定時回補檢查"), flush=True)
+        return {'status': 'partial_success', 'reason': '回補未完整完成，成功快取保留，缺口待補'}
     finally:
         heartbeat.stop()
         task_state = GLOBAL_COMMAND_RUNTIME.get_task(runtime_task_id)
@@ -1900,12 +1908,13 @@ async def scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _flush_ai_notices(context, account, chat_id, *, raise_on_error=True):
+    handled = 0
     if not isinstance(account, DeepSeekAccount):
-        return
+        return handled
     while True:
         notice = account.budget.claim_notice()
         if notice is None:
-            return
+            return handled
         notice_id, message = notice
         try:
             await safe_send_bot_message(context.bot, chat_id, message)
@@ -1914,9 +1923,27 @@ async def _flush_ai_notices(context, account, chat_id, *, raise_on_error=True):
             if raise_on_error:
                 raise
             print("AI 異常通知傳送結果不明，已記錄待查，不自動重送。", flush=True)
-            return
+            return handled + 1
         else:
             account.budget.notice_result(notice_id, True)
+            handled += 1
+
+
+async def _scheduled_outcome_notice(context, chat_id, command, detail, *, provider_notice_sent=False):
+    from research_center.deepseek_service import RUN_ID
+    from research_center.scheduled_outcome_notice import ScheduledOutcomeNotices
+    store = ScheduledOutcomeNotices(get_workdata_path('runtime', 'schedule_outcomes'))
+
+    async def send(text):
+        await safe_send_bot_message(context.bot, chat_id, text, max_attempts=1)
+
+    try:
+        status = await store.observe(command, RUN_ID.get(), get_tw_today().isoformat(), detail, send,
+                                     provider_notice_sent=provider_notice_sent)
+        if status == 'unknown':
+            print('排程狀態通知送達未知，已保存紀錄，不重送或重跑業務。', flush=True)
+    except Exception as exc:
+        print(f'排程狀態通知無法完成：{type(exc).__name__}；原成果及診斷仍保留。', flush=True)
 
 
 async def _scheduled_ai_gate(context, client, chat_id):
@@ -1960,13 +1987,18 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
             print(format_cmd_message(message, "AI題材庫定時維護"), flush=True)
 
         result = await asyncio.to_thread(center.run, request, progress)
-        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
+        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
         if result.status != "success":
             print(format_cmd_message("題材庫維護未完整成功，變更包不得視為正式更新", "定時任務"), flush=True)
             pack = (getattr(result, 'report_json', None) or {}).get('change_pack') or {}
             extra = pack.get('extra') or {}
             reason = ("AI 已完成，但引用、日期或更新目標檢核未通過，不可套用"
                       if extra.get('ai_review_complete') is True else "題材庫 AI 審核未完整完成")
+            review = extra.get('detail_review') or {}
+            await _scheduled_outcome_notice(context, config['chat_id'], 'topic_maintain', {
+                'status': result.status, 'reason': reason,
+                'selected': review.get('selected_count'), 'completed': review.get('ai_completed_count'),
+                'artifact': pack.get('change_id') or '更新包與原始回應已保存'}, provider_notice_sent=bool(notices))
             return {"status": result.status, "reason": reason}
         await send_topic_result_to_chat(context.bot, config["chat_id"], result, safe_send_bot_message)
         print(
@@ -1974,26 +2006,15 @@ async def _scheduled_topic_maintain(context: ContextTypes.DEFAULT_TYPE):
             flush=True,
         )
     except Exception as exc:
-        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
+        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(
             format_cmd_message(f"22:30 AI題材庫維護失敗：{exc}", "定時任務"),
             flush=True,
         )
         traceback.print_exc()
-        try:
-            await safe_send_bot_message(
-                context.bot,
-                config["chat_id"],
-                f"❌ 22:30 AI題材庫維護失敗：{exc}",
-            )
-        except Exception as send_exc:
-            print(
-                format_cmd_message(
-                    f"22:30 AI題材庫維護失敗通知傳送失敗：{send_exc}",
-                    "定時任務",
-                ),
-                flush=True,
-            )
+        await _scheduled_outcome_notice(context, config['chat_id'], 'topic_maintain', {
+            'status': 'failed', 'reason': '處理中斷，請查執行診斷；本次不可視為完整更新',
+            'artifact': '已產生的來源與中間成果保留；不保證已產出更新包'}, provider_notice_sent=bool(notices))
         raise
 
 
@@ -2131,16 +2152,27 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
             print(msg)
 
         items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
-        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
-        if meta.get("classification_status") == "partial_success":
+        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
+        pending = meta.get('pending_classification_summary') or {}
+        search_diag = meta.get('minimax_diagnostics') or {}
+        failed = bool(meta.get('local_fallback_count') or search_diag.get('stop_reason')
+                      or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
+        await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
+            'status': meta.get('classification_status'), 'classified': meta.get('ai_classified_count', 0),
+            'pending': pending.get('eligible_recent', meta.get('deferred_classification_count', 0)),
+            'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else '近期待辦持續累積')},
+            provider_notice_sent=bool(notices))
+        if meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0):
             print("新聞已保存，搜尋覆蓋或 AI 分類尚未完整完成", flush=True)
-            return {"status": "partial_success", "reason": "新聞已保存，搜尋／分類缺口待補"}
+            reason = ('本次選定新聞已判讀，其餘新聞保留待補' if meta.get('classification_status') == 'ai_success'
+                      else '新聞已保存，搜尋／分類缺口待補')
+            return {"status": "partial_success", "reason": reason}
         digests = run_news_scheduled_latest(repository)
         diagnostics = build_scheduled_news_diagnostics(repository, digests)
-        if int(diagnostics.get("primary24", 0) or 0) < 8 or any(
+        if not meta.get('scheduled_balance') and (int(diagnostics.get("primary24", 0) or 0) < 8 or any(
             int((diagnostics.get("display_categories") or {}).get(category, 0) or 0) <= 0
             for category in ("market_focus", "sector_rotation", "ai_semiconductor", "supply_chain", "macro_policy", "company_news")
-        ):
+        )):
             extra_items, extra_meta = await asyncio.to_thread(
                 run_scheduled_news_lightweight_refresh,
                 center,
@@ -2185,8 +2217,11 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         )
         print(f"[{now_timestamp()}] ✅ 新聞整理完成：新增 {meta.get('saved', 0)} 則")
     except Exception as e:
-        await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
+        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(f"[{now_timestamp()}] ⚠️ 新聞整理失敗：{e}")
+        await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
+            'status': 'failed', 'failed': True, 'reason': '整理中斷，請查執行診斷；已有成果保留'},
+            provider_notice_sent=bool(notices))
         raise
 
 
@@ -2301,15 +2336,19 @@ async def _scheduled_chip_cache_backfill(job_data: dict | None = None):
 
     print(format_cmd_message(f"0.00% 準備回補資料 {report_date.isoformat()}", label), flush=True)
     try:
-        await asyncio.to_thread(
-            warmup_chip_data_cache,
-            report_date,
-            full_backfill,
-            False,
-            label,
+        from research_center.scheduled_task_service import run_cooperative_thread
+        from stock_ai_bot.backfill.deadline_control import backfill_scope
+
+        def warmup():
+            with backfill_scope():
+                return warmup_chip_data_cache(report_date, full_backfill, False, label)
+
+        await run_cooperative_thread(
+            warmup,
         )
     except Exception as exc:
         print(f"[{now_timestamp()}] ⚠️ 籌碼快取回補失敗：{exc}", flush=True)
+        return {'status': 'partial_success', 'reason': '籌碼回補未完整完成，成功快取保留，缺口待補'}
 
 
 async def _scheduled_backfill_guarded_background() -> None:
@@ -2318,21 +2357,33 @@ async def _scheduled_backfill_guarded_background() -> None:
         task_id=task_id,
         label="scheduled full backfill check",
         task_type="scheduled_backfill",
-        schedule=_schedule_text_for_label("摰鞈???瑼Ｘ"),
+        schedule=_schedule_text_for_label("完整資料回補檢查"),
         queued=False,
         timeout_seconds=_scheduled_timeout_seconds(task_id),
         resource_group="background_backfill",
     )
     started_at = asyncio.get_running_loop().time()
-    write_scheduled_task_audit_event(spec, "started")
+    write_scheduled_task_audit_event(spec, "waiting_resource")
     async with DEFAULT_RESOURCE_GUARD.acquire("background_backfill"):
+        waited = round(asyncio.get_running_loop().time() - started_at, 3)
+        started_at = asyncio.get_running_loop().time()
+        write_scheduled_task_audit_event(spec, "started", {"resource_wait_seconds": waited})
         try:
-            if spec.timeout_seconds:
-                await asyncio.wait_for(_scheduled_backfill_background(), timeout=spec.timeout_seconds)
-            else:
-                await _scheduled_backfill_background()
+            from research_center.ai_execution_control import execution_scope
+            with execution_scope(spec.timeout_seconds, reason='backfill_deadline') as control:
+                try:
+                    if spec.timeout_seconds:
+                        outcome = await asyncio.wait_for(_scheduled_backfill_background(), timeout=spec.timeout_seconds)
+                    else:
+                        outcome = await _scheduled_backfill_background()
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    control.stop()
+                    _SCHEDULED_BACKFILL_STOP_EVENT.set()
+                    raise
             elapsed = round(asyncio.get_running_loop().time() - started_at, 3)
-            write_scheduled_task_audit_event(spec, "completed", {"elapsed_seconds": elapsed})
+            status = outcome.get('status', 'completed') if isinstance(outcome, dict) else 'completed'
+            write_scheduled_task_audit_event(spec, status, {"elapsed_seconds": elapsed,
+                **({'error_summary': outcome['reason']} if isinstance(outcome, dict) and outcome.get('reason') else {})})
         except asyncio.TimeoutError:
             elapsed = round(asyncio.get_running_loop().time() - started_at, 3)
             write_scheduled_task_audit_event(

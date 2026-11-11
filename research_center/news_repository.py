@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
+from dataclasses import asdict
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -65,6 +67,16 @@ CREATE TABLE IF NOT EXISTS news_preferences (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS news_classification_inputs (
+    url TEXT NOT NULL,
+    input_sha256 TEXT NOT NULL,
+    record TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    saved_at TEXT NOT NULL,
+    classified_at TEXT,
+    PRIMARY KEY (url, input_sha256)
+);
+
 CREATE INDEX IF NOT EXISTS idx_news_preferences_url ON news_preferences(url);
 CREATE INDEX IF NOT EXISTS idx_news_preferences_category ON news_preferences(normalized_category);
 CREATE INDEX IF NOT EXISTS idx_news_preferences_type ON news_preferences(news_type);
@@ -83,6 +95,8 @@ class NewsRepository:
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.executescript(SCHEMA)
             _ensure_news_signal_columns(conn)
+            if 'classified_at' not in {row[1] for row in conn.execute('PRAGMA table_info(news_classification_inputs)')}:
+                conn.execute('ALTER TABLE news_classification_inputs ADD COLUMN classified_at TEXT')
 
     def save_discovery_checkpoint(self, sources) -> None:
         """Retain every distinct source version, even before date/classification checks."""
@@ -100,6 +114,75 @@ class NewsRepository:
     def article_count(self) -> int:
         with closing(sqlite3.connect(self.db_path)) as conn:
             return conn.execute('SELECT COUNT(*) FROM news_articles').fetchone()[0]
+
+    def recent_discovery_sources(self, as_of, hours: int = 48):
+        """Merge all recent versions for reuse; untouched snapshots remain in SQLite."""
+        from datetime import time
+        from dataclasses import replace
+        from zoneinfo import ZoneInfo
+        from .models import SourceItem
+        from .orchestrator import _merge_sources
+        end = datetime.combine(as_of, time.max, ZoneInfo('Asia/Taipei'))
+        start = end - timedelta(hours=hours)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            rows = conn.execute('''SELECT record FROM news_discovery_sources
+                WHERE julianday(saved_at) BETWEEN julianday(?) AND julianday(?)
+                ORDER BY julianday(saved_at) DESC, rowid DESC''', (start.isoformat(), end.isoformat())).fetchall()
+        sources, seen = [], set()
+        for (record,) in rows:
+            row = json.loads(record)
+            if record in seen:
+                continue
+            seen.add(record)
+            sources.append(SourceItem(**{key: value for key, value in row.items()
+                                         if key in SourceItem.__dataclass_fields__}))
+        merged = _merge_sources([], sources)
+        result = []
+        for item in merged:
+            versions = [source for source in sources if source.url == item.url]
+            body = max((source.content or '' for source in versions), key=len)
+            provenance = [f"saved_publication:{source.published_date or 'unknown'}:{source.date_status or 'unknown'}"
+                          for source in versions]
+            result.append(replace(item, content=body or item.content,
+                                  found_by=list(dict.fromkeys([*item.found_by, *provenance]))))
+        return result
+
+    def prepare_classification_inputs(self, items, *, classifier_context='', source_events=None):
+        """Retain originals before AI mutation and skip only completed identical inputs."""
+        needed, fingerprints = [], {}
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            for item in items:
+                digest = _classification_input_hash(item, classifier_context, (source_events or {}).get(item.url))
+                fingerprints[item.url] = digest
+                previous = conn.execute('SELECT status FROM news_classification_inputs WHERE url=? AND input_sha256=?',
+                                        (item.url, digest)).fetchone()
+                status = previous[0] if previous else 'pending'
+                if previous is None:
+                    conn.execute('INSERT INTO news_classification_inputs (url,input_sha256,record,status,saved_at) VALUES (?,?,?,?,?)',
+                        (item.url, digest, json.dumps(asdict(item), ensure_ascii=False), status,
+                         datetime.now().astimezone().isoformat()))
+                if status == 'pending':
+                    needed.append(item)
+        return needed, fingerprints
+
+    def classification_reuse_summary(self, fingerprints):
+        reused = []
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            for url, digest in fingerprints.items():
+                row = conn.execute('SELECT status,saved_at,classified_at FROM news_classification_inputs WHERE url=? AND input_sha256=?',
+                                   (url, digest)).fetchone()
+                if row and row[0] != 'pending':
+                    reused.append({'url': url, 'original_input_saved_at': row[1], 'classified_at': row[2], 'status': row[0]})
+        return {'items': reused, 'note': 'Unchanged input reused from its original classification; not reanalysed for the current day.'}
+
+    def save_classification_checkpoint(self, items, fingerprints):
+        self.save_many(items)
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            for item in items:
+                if 'ai_classified' in item.tags and 'local_rule_fallback' not in item.tags:
+                    conn.execute('UPDATE news_classification_inputs SET status=?,classified_at=COALESCE(classified_at,?) WHERE url=? AND input_sha256=?',
+                        ('ai_excluded' if 'ai_excluded' in item.tags else 'ai_classified',
+                         datetime.now().astimezone().isoformat(), item.url, fingerprints.get(item.url, '')))
 
     def save(self, item: NewsItem) -> bool:
         """Save a news item; return False if URL already exists (dedup)."""
@@ -234,20 +317,32 @@ class NewsRepository:
             conn.commit()
         return saved, skipped
 
-    def query_pending_classification(self, limit: int = 6) -> list[NewsItem]:
-        cutoff = (datetime.now() - timedelta(days=7)).isoformat()
-        # Rediscovery must not make old news fresh. Preserve older pending rows for audit.
-        return self._query("""SELECT * FROM news_articles WHERE tags LIKE '%local_rule_fallback%'
-            AND published_at>=? ORDER BY
-            CASE WHEN tags LIKE '%counter_evidence%' OR tags LIKE '%official_fact%' THEN 0 ELSE 1 END,
-            created_at, id LIMIT ?""", (cutoff[:10], limit))
-
-    def pending_classification_summary(self) -> dict[str, int]:
-        cutoff = (datetime.now() - timedelta(days=7)).date().isoformat()
+    def _pending_classification_items(self):
+        items = self._query("""SELECT * FROM news_articles WHERE tags LIKE '%local_rule_fallback%'
+            AND tags NOT LIKE '%ai_classified%' ORDER BY created_at, id""", ())
+        by_url = {item.url: item for item in items}
         with closing(sqlite3.connect(self.db_path)) as conn:
-            counts = conn.execute("""SELECT COUNT(*), SUM(CASE WHEN published_at>=? THEN 1 ELSE 0 END)
-                FROM news_articles WHERE tags LIKE '%local_rule_fallback%'""", (cutoff,)).fetchone()
-        total, eligible = counts[0], counts[1] or 0
+            rows = conn.execute('''SELECT url,record,status FROM news_classification_inputs
+                WHERE rowid IN (SELECT MAX(rowid) FROM news_classification_inputs GROUP BY url)
+                ORDER BY saved_at, rowid''').fetchall()
+        for url, record, status in rows:
+            if status == 'pending':
+                by_url[url] = NewsItem(**json.loads(record))
+            else:
+                by_url.pop(url, None)
+        return list(by_url.values())
+
+    def query_pending_classification(self, limit: int = 6, *, as_of=None) -> list[NewsItem]:
+        day = as_of or datetime.now().date()
+        cutoff = (day - timedelta(days=7)).isoformat()
+        # Selection uses publication evidence, never rediscovery/created_at freshness.
+        items = [item for item in self._pending_classification_items()
+                 if cutoff <= (normalize_published_date(item.published_at) or '') <= day.isoformat()]
+        return items[:limit] if limit > 0 else items
+
+    def pending_classification_summary(self, *, as_of=None) -> dict[str, int]:
+        total = len(self._pending_classification_items())
+        eligible = len(self.query_pending_classification(limit=0, as_of=as_of))
         return {'pending_total': total, 'eligible_recent': eligible, 'historical_or_date_unknown': total - eligible}
 
     def delete_by_urls(self, urls: list[str]) -> int:
@@ -401,6 +496,13 @@ class NewsRepository:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
         return [_row_to_item(dict(r)) for r in rows]
+
+
+def _classification_input_hash(item: NewsItem, classifier_context='', source_events=None) -> str:
+    # Ignore AI summaries when an original body exists, and all observation times.
+    record = [classifier_context, source_events, item.url, item.title, item.source, item.published_at, item.full_text or item.summary,
+              sorted(tag for tag in item.tags if tag.startswith('publication_') or tag == 'official_body_retrieved')]
+    return hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def _row_to_item(row: dict[str, Any]) -> NewsItem:

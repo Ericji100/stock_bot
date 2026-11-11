@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -26,6 +26,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from stock_ai_bot.selection.candidate_filter_service import apply_basic_hard_filter, resolve_hard_filter_settings
+from stock_ai_bot.backfill.deadline_control import (
+    backfill_operation, backfill_scope, backfill_sleep, check_backfill,
+)
 
 DEFAULT_CORE_RESEARCH_LIMIT = 80
 DEFAULT_STRUCTURED_TIMEOUT_SECONDS = 30
@@ -84,10 +87,17 @@ def _maybe_throttle(index: int, throttle: BackfillThrottle | None, stop_event: t
     """Yield briefly during long backfill loops.  Return False when stopped."""
     if stop_event and stop_event.is_set():
         return False
+    check_backfill()
     if not throttle or throttle.batch_size <= 0 or throttle.sleep_seconds <= 0:
         return True
     if index > 0 and index % throttle.batch_size == 0:
-        time.sleep(throttle.sleep_seconds)
+        with backfill_scope(stop_event=stop_event):
+            try:
+                backfill_sleep(throttle.sleep_seconds)
+            except Exception:
+                if stop_event and stop_event.is_set():
+                    return False
+                raise
     if stop_event and stop_event.is_set():
         return False
     return True
@@ -291,6 +301,7 @@ def _load_recent_research_codes(limit_files: int = 80) -> set[str]:
     return codes
 
 
+@backfill_operation
 def build_backfill_candidate_pool(
     report_date: date,
     force_refresh: bool = False,
@@ -305,8 +316,10 @@ def build_backfill_candidate_pool(
     warnings: list[str] = []
 
     def emit(message: str) -> None:
+        check_backfill()
         if progress:
             progress(message)
+        check_backfill()
 
     # 1. Load stock universe
     emit("候選池：載入股票宇宙")
@@ -331,6 +344,7 @@ def build_backfill_candidate_pool(
     try:
         revenue_history = load_recent_revenue_history(universe)
         for entry in universe:
+            check_backfill()
             points = revenue_history.get(entry.code) or []
             if not points:
                 continue
@@ -359,6 +373,7 @@ def build_backfill_candidate_pool(
     try:
         price_metrics = load_price_metrics(universe, force_refresh=False)
         for entry in universe:
+            check_backfill()
             metric = price_metrics.get(entry.symbol)
             if not metric:
                 continue
@@ -380,6 +395,7 @@ def build_backfill_candidate_pool(
     emit("候選池：篩選營收規模股")
     try:
         for entry in universe:
+            check_backfill()
             if entry.code in revenue_history:
                 points = revenue_history[entry.code]
             else:
@@ -465,11 +481,14 @@ def _call_collect_research_data(
     start = time.perf_counter()
 
     def emit_sub(msg: str) -> None:
+        check_backfill()
         if progress:
             sub_elapsed = time.perf_counter() - start
             progress(f"投研結構化資料：{stock_label}｜{msg}，用時 {sub_elapsed:.1f} 秒")
+        check_backfill()
 
     try:
+        check_backfill()
         request = CommandRequest(
             command="research",
             raw_text=f"/research {code}",
@@ -485,102 +504,12 @@ def _call_collect_research_data(
         return True, None, None
 
     except Exception as exc:
+        check_backfill()
         emit_sub(f"失敗")
         return False, str(exc), None
 
 
-def warmup_research_structured_data(
-    core_pool: dict[str, BackfillCandidate],
-    report_date: date,
-    force_refresh: bool = False,
-    progress: Callable[[str], None] | None = None,
-    timeout_sec: float = DEFAULT_STRUCTURED_TIMEOUT_SECONDS,
-    stop_event: threading.Event | None = None,
-    throttle: BackfillThrottle | None = None,
-) -> tuple[int, list[str], list[str], int]:
-    """Warm up structured data caches for the core research pool.
-
-    Only stocks in core_pool receive full collect_research_data().
-    Other stocks are handled at the candidate or market level.
-
-    Returns:
-        (count of successfully fetched stocks, list of cache-hit stocks, list of warning messages, timeout count)
-    """
-    if not core_pool:
-        if progress:
-            progress("[完整回補] 核心股完整投研回補略過：核心池為空")
-        return 0, [], [], 0
-
-    count = 0
-    used_cache: list[str] = []
-    warnings: list[str] = []
-    total = len(core_pool)
-    timeout_count = 0
-
-    if progress:
-        progress(f"[完整回補] 核心股完整投研回補開始：{total} 檔")
-
-    for index, candidate in enumerate(core_pool.values(), start=1):
-        name = getattr(candidate, "name", "") or ""
-        label = f"{candidate.code} {name}".strip() if name else candidate.code
-
-        if progress:
-            progress(f"投研結構化資料 {index}/{total} 開始：{label}")
-
-        # Check cache first unless force_refresh
-        if not force_refresh:
-            cached = load_research_structured_cache(candidate.code, report_date)
-            if cached is not None:
-                used_cache.append(candidate.code)
-                count += 1
-                if progress:
-                    progress(f"投研結構化資料 {index}/{total} 快取命中：{label}")
-                continue
-
-        # Run with timeout
-        result_holder: list = [None]  # type: ignore
-
-        def target() -> None:
-            result_holder[0] = _call_collect_research_data(
-                candidate.code,
-                name,
-                report_date,
-                force_refresh,
-                progress,
-            )
-
-        thread = threading.Thread(target=target, daemon=True)
-        thread.start()
-        thread.join(timeout=timeout_sec)
-
-        if thread.is_alive():
-            # Timeout - thread still running
-            timeout_count += 1
-            error_msg = f"超過 {timeout_sec} 秒"
-            warnings.append(f"投研結構化資料逾時 {candidate.code}: {error_msg}")
-            if progress:
-                progress(f"投研結構化資料 {index}/{total} 逾時跳過：{label}，超過 {timeout_sec} 秒")
-        elif result_holder[0] is not None:
-            success, err_str, warn_str = result_holder[0]  # type: ignore
-            if success:
-                count += 1
-            else:
-                warnings.append(f"投研結構化資料回補失敗 {candidate.code}: {err_str}")
-                if progress:
-                    progress(f"投研結構化資料 {index}/{total} 失敗：{label}，原因：{err_str}")
-            if warn_str:
-                warnings.append(warn_str)
-
-        if not _maybe_throttle(index, throttle, stop_event):
-            warnings.append("回補已收到停止指令。")
-            return count, used_cache, warnings, timeout_count
-
-    if progress:
-        progress(f"投研結構化資料完成：{count} 檔成功，{timeout_count} 檔逾時")
-
-    return count, used_cache, warnings, timeout_count
-
-
+@backfill_operation
 def warmup_research_structured_data(
     core_pool: dict[str, BackfillCandidate],
     report_date: date,
@@ -592,6 +521,7 @@ def warmup_research_structured_data(
     max_total_sec: float | None = DEFAULT_STRUCTURED_TOTAL_BUDGET_SECONDS,
 ) -> tuple[int, list[str], list[str], int]:
     """Warm structured research caches with per-stock and total time budgets."""
+    from research_center.ai_execution_control import WorkStopped
     if not core_pool:
         if progress:
             progress("[回補] 核心池為空，略過投研結構化快取")
@@ -609,6 +539,7 @@ def warmup_research_structured_data(
         progress(f"[回補] 核心股完整投研回補開始：核心股票 {total} 檔，單檔逾時 {timeout_sec:.0f} 秒，總預算 {budget_text}")
 
     for index, candidate in enumerate(core_pool.values(), start=1):
+        check_backfill()
         elapsed = time.perf_counter() - started_at
         if max_total_sec is not None and max_total_sec > 0 and elapsed >= max_total_sec:
             warning = f"投研結構化快取達總時間預算 {max_total_sec:.0f} 秒，已處理 {index - 1}/{total} 檔，剩餘留待下次回補"
@@ -622,6 +553,7 @@ def warmup_research_structured_data(
 
         if progress:
             progress(f"投研結構化資料 {index}/{total} 開始：{label}")
+        check_backfill()
 
         if not force_refresh:
             cached = load_research_structured_cache(candidate.code, report_date)
@@ -633,26 +565,57 @@ def warmup_research_structured_data(
                 continue
 
         result_holder: list[Any] = [None]
+        errors: list[BaseException] = []
 
         def target() -> None:
-            result_holder[0] = _call_collect_research_data(
-                candidate.code,
-                name,
-                report_date,
-                force_refresh,
-                progress,
-            )
+            try:
+                check_backfill()
+                result_holder[0] = _call_collect_research_data(
+                    candidate.code, name, report_date, force_refresh, progress,
+                )
+                check_backfill()
+            except BaseException as exc:
+                errors.append(exc)
 
-        thread = threading.Thread(target=target, daemon=True)
-        thread.start()
-        thread.join(timeout=timeout_sec)
+        budget_left = (
+            max_total_sec - (time.perf_counter() - started_at)
+            if max_total_sec is not None and max_total_sec > 0 else float("inf")
+        )
+        total_limited = budget_left < timeout_sec
+        timed_out = False
+        with backfill_scope(seconds=min(timeout_sec, max(0, budget_left))) as control:
+            context = copy_context()
+            thread = threading.Thread(target=context.run, args=(target,), daemon=False)
+            check_backfill()
+            thread.start()
+            try:
+                while thread.is_alive():
+                    control.check()
+                    thread.join(timeout=min(0.05, control.remaining()))
+                control.check()
+            except WorkStopped:
+                timed_out = True
+            finally:
+                # Never release ownership or start another stock while this worker lives.
+                control.stop()
+                thread.join()
 
-        if thread.is_alive():
+        # A parent stop/deadline is cancellation, not a recoverable stock timeout.
+        check_backfill()
+        if timed_out or errors and isinstance(errors[0], WorkStopped):
+            if total_limited:
+                warning = f"投研結構化快取達總時間預算 {max_total_sec:.0f} 秒，剩餘留待下次回補"
+                warnings.append(warning)
+                if progress:
+                    progress(f"[回補] {warning}")
+                break
             timeout_count += 1
             error_msg = f"單檔逾時 {timeout_sec:.0f} 秒"
             warnings.append(f"投研結構化資料逾時 {candidate.code}: {error_msg}")
             if progress:
                 progress(f"投研結構化資料 {index}/{total} 逾時跳過：{label}，已等待 {timeout_sec:.0f} 秒")
+        elif errors:
+            raise errors[0]
         elif result_holder[0] is not None:
             success, err_str, warn_str = result_holder[0]
             if success:
@@ -676,6 +639,7 @@ def warmup_research_structured_data(
     return count, used_cache, warnings, timeout_count
 
 
+@backfill_operation
 def warmup_gross_margin_cache(
     candidates: dict[str, BackfillCandidate],
     progress: Callable[[str], None] | None = None,
@@ -694,28 +658,30 @@ def warmup_gross_margin_cache(
     warnings: list[str] = []
     total = len(candidates)
 
-    for index, candidate in enumerate(candidates.values(), start=1):
-        if stop_event and stop_event.is_set():
-            warnings.append("??????????")
-            break
-        if candidate.symbol and candidate.symbol not in metrics:
-            try:
-                series = load_gross_margin_series(candidate.symbol, metrics)
-                if series:
-                    count += 1
-            except Exception as exc:
-                warnings.append(f"毛利率快取失敗 {candidate.code}: {exc}")
+    try:
+        for index, candidate in enumerate(candidates.values(), start=1):
+            check_backfill()
+            if candidate.symbol and candidate.symbol not in metrics:
+                try:
+                    series = load_gross_margin_series(candidate.symbol, metrics)
+                    if series:
+                        count += 1
+                except Exception as exc:
+                    check_backfill()
+                    warnings.append(f"毛利率快取失敗 {candidate.code}: {exc}")
 
-        if progress and index % 20 == 0:
-            progress(f"毛利率快取進度 {index}/{total}")
-        _maybe_throttle(index, throttle, stop_event)
-
-    _save_gross_margin_cache(metrics)
+            if progress and index % 20 == 0:
+                progress(f"毛利率快取進度 {index}/{total}")
+            _maybe_throttle(index, throttle, stop_event)
+    finally:
+        # These are successful source results, not a completion marker.
+        _save_gross_margin_cache(metrics)
     if progress:
         progress(f"毛利率快取完成：{count} 檔更新")
     return count, warnings
 
 
+@backfill_operation
 def build_and_save_curated_scan_cache(
     report_date: date,
     force_refresh: bool = False,
@@ -752,9 +718,11 @@ def build_and_save_curated_scan_cache(
     try:
         if progress:
             progress("精選選股：執行交叉命中掃描")
+        check_backfill()
         result = build_curated_scan_result(report_date=report_date)
         from stock_ai_bot.monitoring.radar_service import resolve_radar_scoring_version
 
+        check_backfill()
         save_recent_scan_result(
             CURATED_SCAN_TYPE,
             report_date,
@@ -766,11 +734,13 @@ def build_and_save_curated_scan_cache(
             progress(f"精選選股完成：{len(result.selected_codes)} 檔")
         return result.selected_codes, len(result.selected_codes)
     except Exception as exc:
+        check_backfill()
         if progress:
             progress(f"精選選股快取建立失敗: {exc}")
         return [], 0
 
 
+@backfill_operation
 def warmup_market_screening_cache(
     universe: list[Any],
     report_date: date,
@@ -784,8 +754,10 @@ def warmup_market_screening_cache(
     """
 
     def emit(message: str) -> None:
+        check_backfill()
         if progress:
             progress(message)
+        check_backfill()
 
     warnings: list[str] = []
 
@@ -815,6 +787,7 @@ def warmup_market_screening_cache(
     total_symbols = sum(1 for entry in universe if entry.symbol)
     batch_size = 50
     for index, entry in enumerate(universe, start=1):
+        check_backfill()
         if not entry.symbol:
             continue
         try:
@@ -861,6 +834,7 @@ def warmup_market_screening_cache(
             warnings.append(f"官方注意/處置快取失敗: {exc}")
 
     # 4. Ensure gross margin base cache file exists (don't full-scan per-stock)
+    check_backfill()
     try:
         from stock_ai_bot.scanning.stock_scanner import _load_gross_margin_cache
         _load_gross_margin_cache()
@@ -955,6 +929,7 @@ def build_backfill_priority_codes(
     return list(selected)
 
 
+@backfill_operation
 def backfill_candidate_data(
     candidates: dict[str, BackfillCandidate],
     core_pool: dict[str, BackfillCandidate],
@@ -973,8 +948,10 @@ def backfill_candidate_data(
     This does NOT run AI search or model analysis.
     """
     def emit(message: str) -> None:
+        check_backfill()
         if progress:
             progress(message)
+        check_backfill()
 
     result = BackfillResult(report_date=report_date)
     result.universe_count = len(universe)
@@ -1021,6 +998,7 @@ def backfill_candidate_data(
     technical_count = 0
     technical_cache_hits = 0
     for index, candidate in enumerate(candidates.values(), start=1):
+        check_backfill()
         if not candidate.symbol:
             continue
         try:
@@ -1155,6 +1133,7 @@ def backfill_candidate_data(
             priority_codes=priority_codes,
         )
         result.gap_report = gap_report
+        check_backfill()
         result.gap_report_path = str(write_gap_report(report_date, gap_report, BACKFILL_MARKER_ROOT))
 
         health = gap_report.get("health") or {}
@@ -1181,6 +1160,7 @@ def backfill_candidate_data(
     return result
 
 
+@backfill_operation
 def run_full_backfill(
     report_date: date | None = None,
     force_refresh: bool = False,
@@ -1200,8 +1180,10 @@ def run_full_backfill(
     dag_events: list[dict[str, Any]] = []
 
     def emit(message: str) -> None:
+        check_backfill()
         if progress:
             progress(message)
+        check_backfill()
 
     emit(f"0% 開始完整回補，資料日期 {target_date.isoformat()}，force={force_refresh}")
 
@@ -1418,12 +1400,14 @@ def is_market_data_available(report_date: date, now: datetime | None = None) -> 
         try:
             from stock_ai_bot.scanning.stock_scanner import load_stock_universe
             universe = load_stock_universe(force_refresh=False)
+            check_backfill()
             # Pick a few representative stocks to check
             sample = universe[:3] if len(universe) >= 3 else universe
             from stock_ai_bot.scanning.stock_scanner import load_price_metrics
             metrics = load_price_metrics(sample, force_refresh=False)
             # Only confirm availability if date field explicitly equals report_date
             for entry in sample:
+                check_backfill()
                 key = f"{entry.code}.TW" if entry.market == "TWSE" else f"{entry.code}.TWO"
                 if key in metrics:
                     m = metrics[key]
@@ -1433,6 +1417,7 @@ def is_market_data_available(report_date: date, now: datetime | None = None) -> 
             # Some price metric sources do not expose an explicit date. In that case,
             # confirm with a few daily history samples before deciding today's data is unavailable.
             for entry in sample:
+                check_backfill()
                 symbol = getattr(entry, "symbol", None) or (f"{entry.code}.TW" if entry.market == "TWSE" else f"{entry.code}.TWO")
                 try:
                     history_result = fetch_daily_history(symbol, report_date)
@@ -1442,10 +1427,12 @@ def is_market_data_available(report_date: date, now: datetime | None = None) -> 
                         if latest_date >= report_date:
                             return (True, "today_daily_history_available")
                 except Exception:
+                    check_backfill()
                     continue
             # Metrics exist but no confirmed date for this report_date -> unavailable
             return (False, "today_data_date_unconfirmed")
         except Exception:
+            check_backfill()
             return (False, "today_data_check_failed")
 
     # Future dates
@@ -1503,7 +1490,10 @@ def is_backfill_cache_complete(report_date: date) -> tuple[bool, str]:
     return (True, "cache_complete")
 
 
-def write_backfill_complete_marker(report_date: date, result: "BackfillResult") -> None:
+@backfill_operation
+def write_backfill_complete_marker(
+    report_date: date, result: "BackfillResult", *, stop_event: threading.Event | None = None,
+) -> None:
     """Write the complete marker after successful backfill."""
     marker_dir = BACKFILL_MARKER_ROOT / report_date.isoformat()
     marker_dir.mkdir(parents=True, exist_ok=True)
@@ -1582,6 +1572,7 @@ def write_backfill_complete_marker(report_date: date, result: "BackfillResult") 
         "fugle_historical_remaining": fugle_remaining,
         "cooling_sources": cooling_sources,
     }
+    check_backfill()
     with open(marker_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     try:
@@ -1770,6 +1761,26 @@ def run_backfill_if_needed(
     progress: Callable[[str], None] | None = None,
     stop_event: threading.Event | None = None,
 ) -> BackfillRunDecision:
+    """Keep cancellation a stopped decision, never a completion marker."""
+    from research_center.ai_execution_control import WorkStopped
+
+    report_date = report_date or resolve_backfill_report_date()
+    if stop_event and stop_event.is_set():
+        return BackfillRunDecision("skipped", report_date, "stopped_before_start")
+    with backfill_scope(stop_event=stop_event):
+        try:
+            check_backfill()
+            return _run_backfill_if_needed(report_date, force_refresh, progress, stop_event)
+        except WorkStopped:
+            return BackfillRunDecision("stopped", report_date, "stopped_during_execution")
+
+
+def _run_backfill_if_needed(
+    report_date: date | None = None,
+    force_refresh: bool = False,
+    progress: Callable[[str], None] | None = None,
+    stop_event: threading.Event | None = None,
+) -> BackfillRunDecision:
     """Policy-driven backfill runner with lock, cache check, and data availability check.
 
     Returns a BackfillRunDecision describing what happened.
@@ -1795,6 +1806,7 @@ def run_backfill_if_needed(
         )
 
     try:
+        check_backfill()
         # Check cache completeness (skip unless force)
         if not force_refresh:
             complete, reason = is_backfill_cache_complete(report_date)
@@ -1806,7 +1818,9 @@ def run_backfill_if_needed(
                 )
 
         # Check market data availability
+        check_backfill()
         available, avail_reason = is_market_data_available(report_date)
+        check_backfill()
         if not available:
             return BackfillRunDecision(
                 status="skipped",
@@ -1815,6 +1829,7 @@ def run_backfill_if_needed(
             )
 
         # Run the actual backfill
+        check_backfill()
         result = run_full_backfill(report_date, force_refresh, progress, stop_event)
 
         # Check if stopped after backfill returns
@@ -1828,6 +1843,7 @@ def run_backfill_if_needed(
             )
 
         # Write complete marker on success
+        check_backfill()
         write_backfill_complete_marker(report_date, result)
 
         return BackfillRunDecision(

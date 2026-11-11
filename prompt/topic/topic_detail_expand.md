@@ -31,6 +31,7 @@
 9. 不得只寫正向理由；每個題材至少要有一項風險、反證或資料不足說明。
 10. 每個候選恰好對應一筆 action，原樣保留 theme_id。證據物件只能放在該 action 的 evidence 陣列內；不得混入 actions 陣列。affected_companies、company_relations、supply_chain_nodes、risk_notes、missing_data、counter_evidence 都與 evidence 同層，屬於該 action，不得放進某筆 evidence。
 11. 公司主檔對應只證明代號與名稱身分，不證明訂單、客戶、產品或供應關係。不得把公司背景底稿當作本次新證據；同名、集團或法定名稱未確認時保留候選及缺口。
+12. `theme_id` 是本批候選的身分，必須逐字沿用；`target_theme_id` 才是既有題材的更新目標。兩者不同時不可用更新目標替換候選身分，不可自行合併候選。已有明確目標時請原樣附上 `target_theme_id`。
 
 ## 語言與格式
 

@@ -22,6 +22,31 @@ TAIPEI_TZ = timezone(timedelta(hours=8))
 SCHEDULED_AUDIT_DIR = Path("logs") / "scheduled_tasks"
 
 
+async def run_cooperative_thread(function, *args, stop_event=None, **kwargs):
+    """Keep the caller's resource lease until the actual worker stops, even on timeout."""
+    from .ai_execution_control import CONTROL
+    control = CONTROL.get()
+    worker = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        if stop_event is not None:
+            stop_event.set()
+        if control is not None:
+            control.stop()
+        while not worker.done():
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                # A second cancellation cannot release the lease over a live worker.
+                continue
+            except Exception:
+                break
+        if not worker.cancelled():
+            worker.exception()  # Retrieve the stopped worker's diagnostic exception.
+        raise
+
+
 @dataclass(frozen=True)
 class ScheduledTaskSpec:
     task_id: str
@@ -295,6 +320,18 @@ class ScheduledTaskService:
                 return await runner()
 
         from .ai_execution_control import execution_scope
+        if spec.resource_group == 'background_backfill':
+            waiting_at = time.monotonic()
+            self._audit(spec, 'waiting_resource')
+            async with self.resource_guard.acquire(spec.resource_group):
+                self._audit(spec, 'resource_acquired', resource_wait_seconds=round(time.monotonic()-waiting_at, 3))
+                with execution_scope(spec.timeout_seconds or None) as control:
+                    try:
+                        return (await asyncio.wait_for(runner(), timeout=float(spec.timeout_seconds))
+                                if spec.timeout_seconds else await runner())
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        control.stop()
+                        raise
         with execution_scope(spec.timeout_seconds or None) as control:
             try:
                 if spec.timeout_seconds and spec.timeout_seconds > 0:

@@ -5,13 +5,17 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 from typing import Any, Callable
 
 import httpx
 import pandas as pd
 import pytz
 import yfinance as yf
+from stock_ai_bot.backfill.deadline_control import (
+    backfill_checkpoint, backfill_operation, backfill_sleep, check_backfill,
+    request_timeout, request_timeout_kwargs,
+)
 
 from stock_ai_bot.selection.candidate_filter_service import (
     DEFAULT_HARD_FILTER_SETTINGS,
@@ -86,6 +90,7 @@ SOURCE_LABELS = {
 
 
 def _print_chip_progress(label: str, progress: float, message: str) -> None:
+    check_backfill()
     print(f"[{now_timestamp()}] [選股進度][{label}] {progress:.2f}% {message}", flush=True)
 
 
@@ -236,12 +241,14 @@ def _mark_source_success(source_key: str) -> None:
 
 
 def _wait_for_source_slot(source_key: str) -> None:
+    check_backfill()
     interval = SOURCE_MIN_INTERVAL_SECONDS.get(source_key, 3.0)
     with SOURCE_LOCK:
         now = time.monotonic()
         wait_seconds = interval - (now - SOURCE_LAST_REQUEST_AT.get(source_key, 0.0))
         if wait_seconds > 0:
-            time.sleep(wait_seconds)
+            backfill_sleep(wait_seconds)
+        check_backfill()
         SOURCE_LAST_REQUEST_AT[source_key] = time.monotonic()
 
 
@@ -373,12 +380,14 @@ def _render_bucket(title: str, industry_groups: dict[str, list[str]]) -> list[st
     return lines
 
 
+@backfill_checkpoint
 def _load_holiday_dates(target_year: int) -> set[date]:
     if target_year in _HOLIDAY_DATES_CACHE:
         return _HOLIDAY_DATES_CACHE[target_year]
     try:
-        rows = httpx.get(TWSE_HOLIDAY_URL, timeout=20.0, follow_redirects=True, verify=False).json()
+        rows = httpx.get(TWSE_HOLIDAY_URL, timeout=request_timeout(20.0), follow_redirects=True, verify=False).json()
     except Exception:
+        check_backfill()
         return set()
 
     holidays: set[date] = set()
@@ -405,12 +414,14 @@ def is_possible_trading_day(target_date: date) -> bool:
     return target_date not in holidays
 
 
+@backfill_checkpoint
 def _fetch_json(client: httpx.Client, url: str, params: dict[str, Any] | None = None) -> Any:
-    response = client.get(url, params=params)
+    response = client.get(url, params=params, **request_timeout_kwargs(20.0, client=client))
     response.raise_for_status()
     return response.json()
 
 
+@backfill_checkpoint
 def _fetch_source_json(
     client: httpx.Client,
     source_key: str,
@@ -423,6 +434,7 @@ def _fetch_source_json(
     response = client.get(
         url,
         params=params,
+        **request_timeout_kwargs(20.0, client=client),
         headers={
             "User-Agent": "Mozilla/5.0",
             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
@@ -522,6 +534,7 @@ def _save_daily_chip_cache(target_date: date, frame: pd.DataFrame) -> None:
 
 
 def _finmind_payload(client: httpx.Client, params: dict[str, Any], scope: str = "default") -> list[dict[str, Any]]:
+    check_backfill()
     # Check health cooldown and quota before sending request
     if not _CHIP_HEALTH.is_available("finmind"):
         raise RuntimeError("FinMind source currently in cooldown")
@@ -536,18 +549,22 @@ def _finmind_payload(client: httpx.Client, params: dict[str, Any], scope: str = 
     return data if isinstance(data, list) else []
 
 
+@backfill_checkpoint
 def _fallback_shares_outstanding(symbols: list[str]) -> dict[str, float]:
     results: dict[str, float] = {}
     for symbol in symbols:
+        check_backfill()
         try:
             shares_outstanding = yf.Ticker(symbol).info.get("sharesOutstanding")
         except Exception:
+            check_backfill()
             shares_outstanding = None
         if shares_outstanding:
             results[symbol] = float(shares_outstanding)
     return results
 
 
+@backfill_checkpoint
 def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
     issued_shares: dict[str, float] = {}
     missing_tpex_symbols: list[str] = []
@@ -561,13 +578,16 @@ def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
                 if code and shares:
                     issued_shares[code] = shares
         except Exception:
+            check_backfill()
             pass
 
         tpex_quote_rows: list[dict[str, Any]] = []
         for url in (TPEX_MAINBOARD_QUOTES_URL, TPEX_ESB_QUOTES_URL):
+            check_backfill()
             try:
                 tpex_quote_rows.extend(_fetch_json(client, url))
             except Exception:
+                check_backfill()
                 continue
 
         for row in tpex_quote_rows:
@@ -590,6 +610,7 @@ def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
                     if code and shares:
                         issued_shares[code] = shares
             except Exception:
+                check_backfill()
                 pass
 
     for entry in universe:
@@ -606,6 +627,7 @@ def _load_issued_shares_map(universe: list[Any]) -> dict[str, float]:
     return issued_shares
 
 
+@backfill_checkpoint
 def _build_hard_filter_candidates(
     report_date: date,
     force_refresh: bool = False,
@@ -626,6 +648,7 @@ def _build_hard_filter_candidates(
 
     rows: list[dict[str, Any]] = []
     for entry in universe:
+        check_backfill()
         revenue_points = revenue_history.get(entry.code)
         price_metric = price_metrics.get(entry.symbol)
         latest_revenue = revenue_points[0].revenue if revenue_points else None
@@ -697,6 +720,7 @@ def _fetch_twse_foreign_ratio_for_date(client: httpx.Client, target_date: date, 
     rows: list[dict[str, Any]] = []
     remaining_codes = set(candidate_codes)
     for select_type in TWSE_FOREIGN_RATIO_SELECT_TYPES:
+        check_backfill()
         if not remaining_codes:
             break
         payload = _fetch_source_json(
@@ -863,6 +887,7 @@ def _fetch_tpex_net_payload(client: httpx.Client, target_date: date, url: str, s
     roc_date = f"{target_date.year - 1911:03d}/{target_date.month:02d}/{target_date.day:02d}"
     net_map: dict[str, float] = {}
     for search_type in ("buy", "sell"):
+        check_backfill()
         try:
             payload = _fetch_source_json(
                 client,
@@ -955,6 +980,7 @@ def _fetch_finmind_net_buy_for_stock(
     )
 
 
+@backfill_checkpoint
 def _fetch_finmind_net_buy_for_codes(
     client: httpx.Client,
     target_date: date,
@@ -968,11 +994,13 @@ def _fetch_finmind_net_buy_for_codes(
     items = sorted(code_market_map.items())[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]
     total = len(items)
     for index, (code, market) in enumerate(items, start=1):
+        check_backfill()
         if progress_callback and (index == 1 or index % 5 == 0 or index == total):
             progress_callback(index, total, f"FinMind 法人買賣超補資料 {target_date.isoformat()} {index}/{total}")
         try:
             frame = _fetch_finmind_net_buy_for_stock(client, target_date, code, market, scope=scope)
         except Exception:
+            check_backfill()
             continue
         if not frame.empty:
             frames.append(frame)
@@ -1010,6 +1038,7 @@ def _fetch_finmind_foreign_ratio_for_stock(
     return pd.DataFrame()
 
 
+@backfill_checkpoint
 def _fetch_finmind_foreign_ratio_for_codes(
     client: httpx.Client,
     target_date: date,
@@ -1023,11 +1052,13 @@ def _fetch_finmind_foreign_ratio_for_codes(
     code_list = sorted(codes)[:FINMIND_MAX_FALLBACK_STOCKS_PER_DATE]
     total = len(code_list)
     for index, code in enumerate(code_list, start=1):
+        check_backfill()
         if progress_callback and (index == 1 or index % 5 == 0 or index == total):
             progress_callback(index, total, f"FinMind 外資持股比例補資料 {target_date.isoformat()} {index}/{total}")
         try:
             frame = _fetch_finmind_foreign_ratio_for_stock(client, target_date, code, scope=scope)
         except Exception:
+            check_backfill()
             continue
         if not frame.empty:
             frames.append(frame)
@@ -1036,6 +1067,7 @@ def _fetch_finmind_foreign_ratio_for_codes(
     return pd.concat(frames, ignore_index=True)
 
 
+@backfill_checkpoint
 def _fetch_recent_daily_chip_data(
     report_date: date,
     candidates: pd.DataFrame,
@@ -1071,6 +1103,7 @@ def _fetch_recent_daily_chip_data(
         calendar = pd.bdate_range(end=pd.Timestamp(report_date), periods=TRADING_DAY_LOOKBACK).date[::-1]
     with httpx.Client(timeout=20.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0"}) as client:
         for checked_index, target_date in enumerate(calendar, start=1):
+            check_backfill()
             # Extra safety: skip weekends and Taiwan market holidays if calendar ever contains them.
             if not is_possible_trading_day(target_date):
                 _print_chip_progress(progress_label, _chip_progress_value(progress_start, progress_end, len(collected_dates), checked_index, target_trading_days), f"略過週末非交易日 {target_date.isoformat()}")
@@ -1489,12 +1522,14 @@ def _parse_tdcc_text(raw_text: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@backfill_checkpoint
 def update_tdcc_snapshot_cache() -> Path | None:
     _ensure_cache_dirs()
     try:
-        response = httpx.get(TDCC_DISTRIBUTION_URL, timeout=30.0, follow_redirects=True, verify=False)
+        response = httpx.get(TDCC_DISTRIBUTION_URL, timeout=request_timeout(30.0), follow_redirects=True, verify=False)
         response.raise_for_status()
     except Exception:
+        check_backfill()
         return None
 
     raw_text = response.text
@@ -1557,6 +1592,7 @@ def _build_weekly_distribution(candidates: pd.DataFrame, report_date: date | Non
     return aggregated.sort_values(["code", "snapshot_date"]).reset_index(drop=True)
 
 
+@backfill_checkpoint
 def build_market_context(
     force_refresh: bool = False,
     report_date: date | None = None,
@@ -2013,6 +2049,7 @@ def build_chip_reports(
     return reports, context
 
 
+@backfill_operation
 def warmup_chip_data_cache(
     report_date: date | None = None,
     full_backfill: bool = False,
@@ -2022,6 +2059,8 @@ def warmup_chip_data_cache(
     scope: str = "default",
     extra_candidates: list[dict[str, Any]] | None = None,
     scan_settings: dict[str, Any] | None = None,
+    *,
+    stop_event: Event | None = None,
 ) -> ChipMarketContext:
     target_date = report_date or get_tw_today()
     target_days = TARGET_DAILY_TRADING_DAYS if full_backfill else 1

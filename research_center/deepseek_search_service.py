@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 import hashlib
 import json
@@ -17,6 +19,19 @@ from .source_rank import make_source_items
 from .source_text_cleaner import clean_source_title
 from .preferred_sources import match_preferred_source
 from .search_transmission import source_events_packet
+
+
+_NEWS_SEED_SOURCES = ContextVar('scheduled_news_seed_sources', default=())
+
+
+@contextmanager
+def scheduled_news_seed_sources(sources):
+    """Pass saved news through the existing planner without changing other commands."""
+    token = _NEWS_SEED_SOURCES.set(tuple(sources))
+    try:
+        yield
+    finally:
+        _NEWS_SEED_SOURCES.reset(token)
 
 
 @dataclass(frozen=True)
@@ -175,7 +190,7 @@ class DeepSeekSearchService:
                 self.client.account.cache(key, data, 3600)
             return {**_safe_result_title(data, url), "cache_hit": False}
 
-    def discover(self, request, tasks, progress=None) -> DiscoveryResult:
+    def discover(self, request, tasks, progress=None, *, seed_sources=None) -> DiscoveryResult:
         from .ai_execution_control import check_work, checkpoint_sources
         from .search_routing import (HYBRID_COMMANDS, GAP_LABELS, discovery_command, search_route,
                                      important_search_gaps, gap_query)
@@ -184,7 +199,11 @@ class DeepSeekSearchService:
         followup_enabled = command != 'radar' or self.radar_critical_gap_search_enabled
         report_day = request.report_date.isoformat() if request.report_date else TASK.get()[2]
         as_of = date.fromisoformat(report_day) if report_day else datetime.now(ZoneInfo('Asia/Taipei')).date()
-        raw_sources = []
+        scheduled_news = command == 'news' and TASK.get()[1]
+        seeds = (seed_sources if seed_sources is not None else _NEWS_SEED_SOURCES.get()) if scheduled_news else ()
+        raw_sources = [asdict(source) if isinstance(source, SourceItem) else dict(source) for source in seeds]
+        if raw_sources:
+            checkpoint_sources(make_source_items(raw_sources))
         seen_queries = set()
         runs = []
         context_notes = []
@@ -194,11 +213,14 @@ class DeepSeekSearchService:
             for group in task.get("queries") or []:
                 queries.extend(group.get("items", []) if isinstance(group, dict) else [str(group)])
             run = {"label": task.get("label"), "query_count": 0, "cache_hit_count": 0, "error_count": 0, "title_code_isolated_count": 0, "nonmatching_table_count": 0}
-            task_sources = []
+            policy = task.get('news_quality_policy') if request.command == 'news' else None
+            terms = [str(term).casefold() for term in (policy or {}).get('terms', []) if term]
+            task_sources = [dict(row) for row in raw_sources if scheduled_news and policy and any(
+                term in f"{row.get('title') or ''} {row.get('snippet') or ''} {row.get('content') or ''}".casefold()
+                for term in terms)]
             quality_date_attempts = set()
             source_keys = set()
             no_new_source_streak = 0
-            policy = task.get('news_quality_policy') if request.command == 'news' else None
             radar_gap = task.get('label') == 'radar_evidence_gap'
             stage = task.get('search_stage', 'critical_gap_search' if radar_gap else 'initial_search') if hybrid else 'initial_search'
             if hybrid and not followup_enabled and stage == 'critical_gap_search':
@@ -207,6 +229,19 @@ class DeepSeekSearchService:
                 continue
             reason = str(task.get('search_reason') or ('official_document_or_counter_evidence' if radar_gap else ''))
             run.update(workflow_stage=stage, search_reason=reason)
+            if scheduled_news and policy and stage == 'initial_search':
+                # Shared quality and critical-gap policies run before any new query.
+                quality = _news_task_quality(task_sources, policy, as_of)
+                gaps = important_search_gaps(request, task, task_sources, as_of, command)
+                run.update(seed_source_count=len(task_sources), seed_quality=quality, seed_critical_gaps=gaps)
+                if quality['passed'] and not gaps:
+                    run.update(quality=quality, early_stop='saved_source_quality_satisfied',
+                               unexecuted_query_count=len(queries))
+                    runs.append(run)
+                    if hybrid:
+                        initial_groups.append((task, {row.get('url') for row in task_sources}, stage))
+                    continue
+            source_keys.update((str(row.get('url') or ''), str(row.get('published_date') or '')) for row in task_sources)
             for query in queries:
                 if query in seen_queries:
                     continue
@@ -287,6 +322,8 @@ class DeepSeekSearchService:
                     raise
                 except Exception:
                     run["error_count"] += 1
+            if scheduled_news and policy:
+                run['quality'] = _news_task_quality(task_sources, policy, as_of)
             runs.append(run)
             if hybrid:
                 initial_groups.append((task, {row.get('url') for row in task_sources}, stage))
@@ -363,4 +400,10 @@ class DeepSeekSearchService:
                 context_notes.append({'kind': 'unresolved_critical_search_gaps', 'verified': False,
                     'reason': '重要搜尋缺口仍未補齊；不得宣稱官方證據、日期或公司映射已驗證。保留條件式推論，不冒充已核實事實。',
                     'checks': remaining})
+        if scheduled_news:
+            complete = (diagnostics.get('complete', True) and not any(run['error_count'] for run in runs)
+                        and all(run.get('quality', {}).get('passed', True) for run in runs))
+            diagnostics['complete'] = complete
+            if not complete:
+                diagnostics['status'] = 'evidence_incomplete'
         return DiscoveryResult(items, diagnostics)

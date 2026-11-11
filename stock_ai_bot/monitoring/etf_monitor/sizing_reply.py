@@ -21,6 +21,7 @@ from .integration import RUNTIME_KEY
 from .position_sizing import SizingInputError, estimate_position, parse_request, render_estimate, validate_prices
 from .service import _material_state
 from .sizing_config import ReplyConfig, load_reply_config
+from .sizing_simulation import SIMULATION_HEADER, RESULT_HEADER, SizingSimulations, SimulationRejected, render_simulation
 
 
 LOGGER = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ class ReplyReceipts:
                                (status, None if response_id is None else str(response_id), key))
 
 
-async def process_sizing_reply(update, context, *, config=None, receipts=None, clock=None) -> bool:
+async def process_sizing_reply(update, context, *, config=None, receipts=None, simulations=None, clock=None) -> bool:
     """True means this ETF reply is consumed, including safe rejections."""
     current_time = clock or (lambda: datetime.now(TAIPEI))
     message = update.effective_message
@@ -129,12 +130,13 @@ async def process_sizing_reply(update, context, *, config=None, receipts=None, c
     if sender is None or not sender.is_bot or sender.id != context.bot.id:
         return False
     runtime = context.application.bot_data.get(RUNTIME_KEY)
+    reply_text = getattr(reply, "text", None) or ""
+    simulation = reply_text.startswith((SIMULATION_HEADER, RESULT_HEADER))
     try:
-        event_id = None if runtime is None else find_reply_event(runtime.store, reply.message_id)
+        event_id = None if runtime is None or simulation else find_reply_event(runtime.store, reply.message_id)
     except Exception as exc:
         LOGGER.warning("0050 sizing source lookup stopped: %s", type(exc).__name__)
         return True
-    reply_text = getattr(reply, "text", None) or ""
     if event_id is None and not reply_text.startswith(("0050 趨勢策略｜", "0050 股數試算")):
         return False
     # Edits are never new cash requests; also prevent AI/date handlers consuming them.
@@ -177,17 +179,25 @@ async def process_sizing_reply(update, context, *, config=None, receipts=None, c
                 text = "這次現金回覆已過期，請重新回覆最新可用現金。"
         if text is None:
             try:
-                if event_id is None:
+                if simulation:
+                    registry = simulations or SizingSimulations(get_workdata_path("runtime/etf_monitor/sizing-simulations.sqlite3"))
+                    quote = registry.resolve(chat_id=message.chat_id, bot_id=context.bot.id,
+                        message_id=reply.message_id, text=reply_text, now=current_time())
+                elif event_id is None:
                     raise ReplyRejected("請回覆原本有效的正式進場通知，輸入可用現金或「現金 委託價」；此訊息不能作為試算依據。")
-                # Recheck after the network await: EOD may cancel/correct while routing.
-                quote = resolve_quote(runtime, event_id, current_time())
+                else:
+                    # Recheck after network awaits; formal protections stay intact.
+                    quote = resolve_quote(runtime, event_id, current_time())
                 cash, override = parse_request(message.text or "")
                 value = estimate_position(cash, quote["price"] if override is None else override, quote["stop"])
-                text = render_estimate(value, quote=quote, cash=cash, override=override is not None)
-            except (ReplyRejected, SizingInputError) as exc:
+                renderer = render_simulation if simulation else render_estimate
+                text = renderer(value, quote=quote, cash=cash, override=override is not None)
+            except (ReplyRejected, SizingInputError, SimulationRejected) as exc:
                 text = str(exc)
         sending = True
-        if not text.startswith("0050 股數試算"):
+        if simulation and not text.startswith(RESULT_HEADER):
+            text = RESULT_HEADER + "\n" + text
+        elif not text.startswith("0050 股數試算"):
             text = "0050 股數試算\n" + text
         response = await context.bot.send_message(chat_id=int(ETF_MONITOR_CHAT_ID), text=text,
             reply_to_message_id=message.message_id, allow_sending_without_reply=False,
@@ -228,7 +238,7 @@ def register_position_sizing_handler(application, *, evidence_path: Path | None 
                         "registered_at": datetime.now(TAIPEI).isoformat(), "enabled": cfg.enabled,
                         "allowed_user_count": len(cfg.allowed_user_ids),
                         "source_sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
-                                          for name in ("sizing_reply.py", "sizing_config.py", "position_sizing.py", "execution.py")}}
+                                          for name in ("sizing_reply.py", "sizing_config.py", "position_sizing.py", "execution.py", "sizing_simulation.py")}}
             evidence_path.parent.mkdir(parents=True, exist_ok=True)
             evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:

@@ -57,3 +57,17 @@ CostModel 沿用既有 Decimal、逐筆四捨五入整元費稅與 ETF 稅別；
 暫存流程例外：初期回歸沿用既有健康測試的 `TemporaryDirectory`，其合成目錄由標準庫自動清除，Agent 未先攔住，沒有遵守本次 owned／原生回收要求。最後一輪改用本次子程序測試入口，TEMP／TMP 僅指向 owned 區，並保留 19 個標準庫內部目錄；同一 513 項通過結果已重跑確認，見 `test-temp-policy.json`。原始資料、正式庫與實測結果沒有因此遺失；後續回收數量不包含初期已由標準庫清除的目錄。
 
 全部本次測試、探測、等待及部署子程序退出後，已檢查 owner、實際引用及逐檔 snapshot，將本次 owned 區剩餘 2,355 個檔案、69,874,097 bytes 以 `ITransferSource.RecycleItem` 回收，收據 `RECYCLED_VERIFIED`，原路徑已不存在；回收可還原，不宣稱立即釋放同量空間。計畫及收據保存在 `.codex-cleanup/01a0c332-c7b4-7273-afc7-c51e7c2a52d4/oddlot1111/`。正式來源原件、必要機器證據、原回復備份與其他任務檔案保留。
+
+## 19:21 可回覆模擬通知補充
+
+使用者要求演練現金回覆，舊格式展示通知 10502 沒有正式事件，原 handler 正確拒絕。此次新增獨立模擬登記與分流，原正式 BUY 檢查沒有放寬。登記綁定固定群組、Bot、送達訊息 ID、正文雜湊及兩小時期限；成功回覆、非法輸入與拒絕都帶模擬標頭。沿用同一計算器、原帳號授權、成員核對、五分鐘請求及去重；不讀取帳戶、不下單。試算結果本身不能當作原始通知再回覆計算。模擬登記不保存現金、使用者 ID 或正文，僅留固定範例價、防守價及必要發送證據。
+
+隔離驗收覆蓋有效／改價、過期、錯使用者、離群、改文、非法價格、未知 ID、回覆結果、重複預約與發送不明。實際 PTB Application 分流測試在正式 HOLD 狀態下回覆新模擬通知能得 831 股，阻擋後續 AI handler；舊 10502 不報股數。六個正式表逐欄相同。受影響回歸 522 passed、1 skipped，既有 PTB 棄用警告一項；另補 config／原 monitor 回歸 15 passed，合計 537 passed、1 skipped，結果存 supplemental.xml。測試暫存全在本次 owned 區，19 個標準庫 TemporaryDirectory 保留，沒有標準庫自動刪除。
+
+19:21:37 在 heartbeat 新鮮、current_task=null、queue_size=0 並核對原 PID 父子鏈後停止閒置 Bot，保留原 watchdog 32064，由其恢復單一新 worker 23272。19:21:40 註冊五個來源雜湊，READY 與當前檔案一致。重啟前後及發送後，正式庫所有表內容雜湊、42 則 outbox、監控設定、11/12 有限觀察 request 與五個原 dirty 檔均相同，quick_check=ok；原監控持續 shadow。回復基準為 main `3474b42`，只有程式與獨立模擬登記，未遷移正式 schema 或覆寫正式庫。
+
+使用者已明確授權新測試訊息。單次 request `sim-sizing-20261111-01` 在 19:21:55 收到 Telegram 回執 **10505**，send_attempts=1、登記 DELIVERED，有效至 21:21:55（臺北時間）。通知明示虛構 120／108 與輸入範例。19:22:20 原 Bot 接到實際群組回覆，股數回覆收據 SENT、response_id=10507，使用者明確確認「已收到股數結果」。不保存現金或正文；動態回覆後正式庫、監控設定與 11/12 request 再次核對一致。原 10502 沒有加入登記；沒有偽造正式 BUY、人工現金輸入或第二個 getUpdates 輪詢器。此次已完成真實連線的模擬股數回覆驗收；自然有效 BUY 的人工回覆仍待自然發生，兩者分列。
+
+必要證據集中在 `.workdata/qa/etf-sizing-simulation-20261111/`：focused.xml、tests.xml、supplemental.xml、test-temp-policy.json、deployment-before／after／sent／replied.json、delivery.json、live-reply.json。原日期行情、部位、原 outbox 與 11/12 有限驗收均保留。
+
+本次寫入者退出、引用與正式證據確認後，owned `simcalc1111` 的 776 件暫存、25,168,799 bytes 已經原生 `ITransferSource.RecycleItem` 回收，收據 RECYCLED_VERIFIED，原路徑不存在。計畫、逐檔 snapshot 與回收收據留在 `.codex-cleanup/01a0c332-c7b4-7273-afc7-c51e7c2a52d4/simcalc1111/`；其他任務、必要證據及正常使用的獨立模擬登記保留。未安裝套件、未新增背景排程。

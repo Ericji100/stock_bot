@@ -49,14 +49,14 @@ class Request(BaseRequest):
         return 200, json.dumps({"ok": True, "result": result}).encode()
 
 
-def make_update(bot, *, source=201, message_id=500, user_id=USER, text="100000"):
+def make_update(bot, *, source=201, message_id=500, user_id=USER, text="100000", source_text=None):
     chat = {"id": CHAT, "type": "group", "title": "Fixture"}
     return Update.de_json({"update_id": message_id, "message": {
         "message_id": message_id, "date": int(TIME.timestamp()), "chat": chat,
         "from": {"id": user_id, "is_bot": False, "first_name": "Fixture user"}, "text": text,
         "reply_to_message": {"message_id": source, "date": int(TIME.timestamp()), "chat": chat,
             "from": {"id": 12345, "is_bot": True, "first_name": "Fixture", "username": "fixture_bot"},
-            "text": "0050 趨勢策略｜觸發進場" if source == 201 else "AI 選單"},
+            "text": source_text if source_text is not None else ("0050 趨勢策略｜觸發進場" if source == 201 else "AI 選單")},
     }}, bot)
 
 
@@ -77,7 +77,7 @@ def test_actual_dispatch_consumes_owned_replies_and_preserves_other_handlers(tmp
         sizing_reply.register_position_sizing_handler(app, evidence_path=tmp_path / "handler.json")
         evidence = json.loads((tmp_path / "handler.json").read_text())
         assert evidence["status"] == "REGISTERED" and evidence["enabled"] and evidence["group"] == -1
-        assert len(evidence["source_sha256"]) == 4 and "allowed_user_ids" not in evidence
+        assert len(evidence["source_sha256"]) == 5 and "allowed_user_ids" not in evidence
         consumed_elsewhere = []
         async def other(update, context): consumed_elsewhere.append(update.update_id)
         app.add_handler(MessageHandler(filters.TEXT, other))

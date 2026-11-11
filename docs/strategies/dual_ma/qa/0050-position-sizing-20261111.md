@@ -1,6 +1,6 @@
 # 0050 群組回覆股數試算（2026-11-11）
 
-目前狀態：開發及功能驗證完成，正式 Bot 正執行其他背景資料回補，待安全時段部署。11/12 三時段 shadow 驗收保留；本功能不改 accepted 訊號、模型股數、影子補帳或原績效。
+目前狀態：已於 11/11 18:36 在安全空檔部署，原 Bot READY，handler 註冊與載入版本核對通過。11/12 三時段 shadow 驗收保留；本功能不改 accepted 訊號、模型股數、影子補帳或原績效。真實有效 BUY 的人工回覆案例尚未自然發生，與已通過的隔離功能驗收分列。
 
 ## 操作與試算界線
 
@@ -46,6 +46,12 @@ CostModel 沿用既有 Decimal、逐筆四捨五入整元費稅與 ETF 稅別；
 
 ## 部署、回復與證據
 
-正式 Bot 的既有背景回補於 16:42 啟動，部署先等該工作收尾，不中斷其他資料寫入。程式回復基準為 `8386613`；新 handler／設定可差異回復，收據不含現金。沒有改監控 DB schema，也不覆寫正式庫或封存研究。原 `config/etf_monitor.json` SHA-256 與 11/12 有限驗收 request 保持一致，不重設觀察日。正式部署、心跳、資料庫及推送驗證待補。
+等待原回補程序、18:00 新聞整理及 18:30 籌碼快取工作退出後，連續觀察無執行中排程及空佇列，再重新核對 PID／父子鏈與已驗收來源。18:36 停止閒置舊 Bot，喚醒原 watchdog，由其恢復單一 Bot。新 worker PID 36168，18:36:48 註冊 group=-1 的 handler，四個來源 SHA-256 與磁碟版本一致；18:36:55 READY 驗證 PASS。原監控庫全部逐表內容雜湊及 42 則 outbox 保持一致，quick_check=ok、schema=7；原監控設定與 11/12 request 的 SHA-256 均相同，複查仍為 WAITING_SCHEDULE。沒有新增排程或中斷其他寫入者。
 
-必要機器證據在 `.workdata/qa/etf-position-sizing-20261111/`：`connection.json`、`tests.xml`、`odd-lot-data-capability.json`（封存盤點與舊端點失敗）、`current-source-capability.json` 及 `source-probes/`（現行來源三個原件）；部署、推送與本次 owned 暫存的原生回收收據完成後補記。新程序註冊 marker 為 `.workdata/prod/runtime/etf_monitor/sizing-handler.json`，只記 PID、註冊時刻及四個來源雜湊，用來核對載入版本；仍須結合 Bot READY 與功能驗證，不能單憑 marker 宣稱交易驗收。無套件安裝、券商存取、真實下單或外部測試訊息。
+程式已以 `b95cf2b` 提交並推送至 main，僅含本次 11 個程式／設定／測試／文件路徑；其他任務的 dirty／untracked 內容保留。程式回復基準為 `8386613`；新 handler／設定可差異回復，收據不含現金。本次只有可靠 Git 程式回復需求，沒有改監控 DB schema，未另建資料庫備份，也不覆寫正式庫或封存研究。
+
+必要機器證據在 `.workdata/qa/etf-position-sizing-20261111/`：`connection.json`、`tests.xml`、`odd-lot-data-capability.json`（封存盤點與舊端點失敗）、`current-source-capability.json` 及 `source-probes/`（現行來源三個原件）、`scope-protection.json`、`deployment-before.json`、`deployment-after.json`、`git-publication.json`。新程序註冊 marker 為 `.workdata/prod/runtime/etf_monitor/sizing-handler.json`，只記 PID、註冊時刻及四個來源雜湊，用來核對載入版本；仍須結合 Bot READY 與功能驗證，不能單憑 marker 宣稱交易驗收。無套件安裝、券商存取、真實下單或外部測試訊息。
+
+暫存流程例外：初期回歸沿用既有健康測試的 `TemporaryDirectory`，其合成目錄由標準庫自動清除，Agent 未先攔住，沒有遵守本次 owned／原生回收要求。最後一輪改用本次子程序測試入口，TEMP／TMP 僅指向 owned 區，並保留 19 個標準庫內部目錄；同一 513 項通過結果已重跑確認，見 `test-temp-policy.json`。原始資料、正式庫與實測結果沒有因此遺失；後續回收數量不包含初期已由標準庫清除的目錄。
+
+全部本次測試、探測、等待及部署子程序退出後，已檢查 owner、實際引用及逐檔 snapshot，將本次 owned 區剩餘 2,355 個檔案、69,874,097 bytes 以 `ITransferSource.RecycleItem` 回收，收據 `RECYCLED_VERIFIED`，原路徑已不存在；回收可還原，不宣稱立即釋放同量空間。計畫及收據保存在 `.codex-cleanup/01a0c332-c7b4-7273-afc7-c51e7c2a52d4/oddlot1111/`。正式來源原件、必要機器證據、原回復備份與其他任務檔案保留。

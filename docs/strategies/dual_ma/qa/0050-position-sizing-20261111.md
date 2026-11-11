@@ -50,6 +50,8 @@ CostModel 沿用既有 Decimal、逐筆四捨五入整元費稅與 ETF 稅別；
 
 程式已以 `b95cf2b` 提交並推送至 main，僅含本次 11 個程式／設定／測試／文件路徑；其他任務的 dirty／untracked 內容保留。程式回復基準為 `8386613`；新 handler／設定可差異回復，收據不含現金。本次只有可靠 Git 程式回復需求，沒有改監控 DB schema，未另建資料庫備份，也不覆寫正式庫或封存研究。
 
+並行內容核對：`stock_list.json` 於 17:50 更新，與 17:43 預檢雜湊不同；本次不對該變動歸因，未提交或回退此檔，保留現有版本。其餘四個原 dirty 檔雜湊相同。這項工作區觀察與已驗證的提交範圍分開，不宣稱所有其他檔案在期間完全未變。
+
 必要機器證據在 `.workdata/qa/etf-position-sizing-20261111/`：`connection.json`、`tests.xml`、`odd-lot-data-capability.json`（封存盤點與舊端點失敗）、`current-source-capability.json` 及 `source-probes/`（現行來源三個原件）、`scope-protection.json`、`deployment-before.json`、`deployment-after.json`、`git-publication.json`。新程序註冊 marker 為 `.workdata/prod/runtime/etf_monitor/sizing-handler.json`，只記 PID、註冊時刻及四個來源雜湊，用來核對載入版本；仍須結合 Bot READY 與功能驗證，不能單憑 marker 宣稱交易驗收。無套件安裝、券商存取、真實下單或外部測試訊息。
 
 暫存流程例外：初期回歸沿用既有健康測試的 `TemporaryDirectory`，其合成目錄由標準庫自動清除，Agent 未先攔住，沒有遵守本次 owned／原生回收要求。最後一輪改用本次子程序測試入口，TEMP／TMP 僅指向 owned 區，並保留 19 個標準庫內部目錄；同一 513 項通過結果已重跑確認，見 `test-temp-policy.json`。原始資料、正式庫與實測結果沒有因此遺失；後續回收數量不包含初期已由標準庫清除的目錄。

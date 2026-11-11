@@ -445,6 +445,20 @@ class EtfMonitorService:
                     "market_status": quote.market_status,
                     "is_market_closed": quote.is_market_closed,
                 }
+            if core.decision in {Decision.BUY_NEXT_OPEN, Decision.SELL_NEXT_OPEN} and phase is not MonitorPhase.PREVIEW:
+                if existing_payload is not None:
+                    # Legacy payloads stay identical across retries.
+                    if "execution_window" in existing_payload:
+                        payload["execution_window"] = existing_payload["execution_window"]
+                else:
+                    execution_day = expected_fill_date
+                    if execution_day is None:
+                        execution_day, _ = await self._next_trading_session_after(trading_date)
+                    payload["execution_window"] = {
+                        "expected_open_at": datetime.combine(
+                            execution_day, datetime.min.time().replace(hour=9), TAIPEI
+                        ).isoformat(),
+                    }
             self.store.append_event_with_outbox(
                 event_id=event_id,
                 phase=phase,
@@ -480,6 +494,11 @@ class EtfMonitorService:
                 )
             await self._deliver(event_id, has_outbox=should_notify)
             self.store.finish_job(phase, trading_date, succeeded=True)
+            from .execution import refresh_execution_status
+
+            await asyncio.to_thread(refresh_execution_status, self.store, event_id=event_id)
+            if correction_of is not None:
+                await asyncio.to_thread(refresh_execution_status, self.store, event_id=correction_of)
             return PhaseOutcome(
                 phase=phase,
                 trading_date=trading_date,

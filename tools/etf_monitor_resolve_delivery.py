@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from stock_ai_bot.monitoring.etf_monitor.store import EtfMonitorStore
+from stock_ai_bot.monitoring.etf_monitor.execution import refresh_execution_status
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -24,6 +25,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         delivered=args.mark_delivered,
         telegram_message_id=args.telegram_message_id,
     )
+    refresh_execution_status(store)
     print(
         "DELIVERED_MANUAL"
         if args.mark_delivered

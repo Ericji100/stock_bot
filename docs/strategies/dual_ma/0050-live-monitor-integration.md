@@ -271,3 +271,18 @@ SQLite schema 6 新增 `data_failures`：每次失敗分別保存 phase、交易
 - MACD 出場顯示持倉自進場起曾出現非負柱狀值、本次由 ≥ 0 轉為 < 0；低分流另明示不執行價格防守出場。這個條件不保證獲利，不一律稱停利。
 
 情境通知須先明確交代歷史／展示範圍，與今日實際訊號分開；原策略核心、官方行情來源及其他機器人保持原行為。驗證與此次授權發送的收據另存 `.workdata/qa/etf-monitor-conditions-20261027-v1/`。
+
+## 2026-11-11 影子觀察結案修正
+
+恢復檢查除了失敗紀錄，會從本庫第一個監控日尋找尚無晚間 job 的已到期日期，透過官方交易日驗證後補核。若策略狀態已前進，歷史補核獨立保存；只有與當日正式判讀一致且沒有 pending 的 HOLD 可自動通過，涉及交易或差異則通知覆核並阻擋後續正式判讀。逾時或中斷保留可恢復狀態，不倒寫較新部位。
+
+Schema 7 新增 `execution_status`，記錄官方下一交易日 09:00、實際送達證據與目前交易安排狀態。BUY／SELL 通知於發送前重算時間提示；已過原定開盤時明示歷史補核及人工覆核。影子模型仍依 accepted next-open 價格補帳，其模型成交不代表實際可成交；原始訊息另存，重試不疊加標頭。人工送達確認時間不能當成實際提早收到的證據。
+
+本次有限驗收沿用既有五分鐘恢復檢查。Production 的 `runtime/etf_monitor/shadow-closeout.json` 指定 2026-11-12；22:00 job 的 20 分鐘期限加一分鐘後，檢查三時段、官方資料、準時性、既有漏核及 Telegram 回執，保存 `shadow-closeout-acceptance.json` 並透過相同 outbox 通知一次。失敗明列待覆核；送達不確定仍需人工處理。完成後此項驗收停止，日常監控繼續 shadow，不自動切換正式模式。唯讀複查：
+
+```powershell
+$env:STOCK_AI_BOT_WORKDATA_PROFILE='prod'
+python -B -m tools.etf_monitor_shadow_acceptance --day 2026-11-12
+```
+
+本次結果與待驗收範圍見 [影子觀察結案紀錄](qa/0050-shadow-closeout-20261111.md)。

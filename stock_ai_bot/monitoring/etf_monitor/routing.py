@@ -7,6 +7,7 @@ from typing import Any
 from .config import EtfMonitorConfig
 from .errors import EtfMonitorRoutingError
 from .store import EtfMonitorStore
+from .execution import prepare_execution_message, refresh_execution_status
 
 
 _TOKENISH = re.compile(r"(?:bot)?[0-9]{6,}:[A-Za-z0-9_-]{20,}", re.IGNORECASE)
@@ -52,9 +53,10 @@ class FailClosedTelegramRouter:
             self.store.mark_outbox_retry(item.event_id, "ROUTE_VERIFICATION_FAILED_BEFORE_SEND")
             raise
         try:
+            body = prepare_execution_message(self.store, item.event_id)
             message = await self.bot.send_message(
                 chat_id=self.config.chat_id,
-                text=item.body,
+                text=item.body if body is None else body,
                 disable_web_page_preview=True,
             )
             message_id = getattr(message, "message_id", None)
@@ -62,15 +64,18 @@ class FailClosedTelegramRouter:
                 raise EtfMonitorRoutingError("Telegram send returned no message id")
         except asyncio.CancelledError:
             self.store.mark_outbox_uncertain(item.event_id, "SEND_CANCELLED_DELIVERY_UNCERTAIN")
+            refresh_execution_status(self.store, event_id=item.event_id)
             raise
         except Exception as exc:
             self.store.mark_outbox_uncertain(item.event_id, _safe_error(exc))
+            refresh_execution_status(self.store, event_id=item.event_id)
             if isinstance(exc, EtfMonitorRoutingError):
                 raise
             raise EtfMonitorRoutingError(
                 f"ETF Telegram send result is uncertain; manual review required: {_safe_error(exc)}"
             ) from exc
         self.store.mark_outbox_delivered(item.event_id, str(message_id))
+        refresh_execution_status(self.store, event_id=item.event_id)
         return True
 
     async def drain(self, *, limit: int = 20) -> int:

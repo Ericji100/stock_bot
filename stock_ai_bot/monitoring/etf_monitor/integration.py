@@ -111,8 +111,12 @@ class EtfMonitorRuntime:
                     if callable(read_state):
                         state = read_state()
                         if state and str(state["as_of"]) > target_day.isoformat():
-                            await self.report_failure(phase.value, RuntimeError(
-                                f"late reconciliation {target_day} requires review: newer state {state['as_of']} exists"))
+                            from .historical import reconcile_historical
+
+                            try:
+                                await asyncio.wait_for(reconcile_historical(self.service, target_day), timeout=timeout)
+                            except Exception as exc:
+                                await self.report_failure("historical_reconciliation", exc)
                             return
                 try:
                     outcome = await asyncio.wait_for(

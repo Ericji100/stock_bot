@@ -38,6 +38,20 @@ async def decision_recovery_sweep(runtime) -> None:
 
 async def reconciliation_recovery_sweep(runtime) -> None:
     now = datetime.now(ZoneInfo(runtime.config.timezone))
+    from .service import _trading_day_result
+
+    through = now.date()
+    if now.time().replace(tzinfo=None) < runtime.config.schedule.reconciliation:
+        through -= timedelta(days=1)
+    discover = getattr(runtime.store, "missing_reconciliation_dates", None)
+    if callable(discover) and hasattr(runtime.service, "trading_day_predicate"):
+        candidates = await asyncio.to_thread(discover, through)
+        for day in candidates:
+            if runtime.shutting_down:
+                return
+            is_open, _ = _trading_day_result(await asyncio.to_thread(runtime.service.trading_day_predicate, day))
+            if is_open:
+                runtime.store.queue_reconciliation(day)
     dates = await asyncio.to_thread(runtime.store.reconciliation_retry_dates)
     runtime.reconciliation_recovery = {
         "status": "CHECKING", "pending_dates": [str(day) for day in dates],
@@ -72,6 +86,13 @@ async def reconciliation_recovery_loop(application, runtime) -> None:
             if runtime.startup_status == "READY":
                 await reconciliation_recovery_sweep(runtime)
                 await decision_recovery_sweep(runtime)
+                from .execution import refresh_execution_status
+
+                if hasattr(runtime.store, "transaction"):
+                    await asyncio.to_thread(refresh_execution_status, runtime.store)
+                    from .acceptance import closeout_sweep
+
+                    await closeout_sweep(runtime)
         except Exception as exc:
             # A broken endpoint or even a temporary SQLite error must not kill
             # the only recovery loop. Cancellation deliberately propagates.

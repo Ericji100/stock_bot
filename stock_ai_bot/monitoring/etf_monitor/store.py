@@ -21,7 +21,7 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _utc_now() -> str:
@@ -174,6 +174,15 @@ class EtfMonitorStore:
                     details_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS execution_status (
+                    event_id TEXT PRIMARY KEY REFERENCES events(event_id),
+                    original_body TEXT NOT NULL,
+                    expected_open_at TEXT,
+                    delivery_status TEXT NOT NULL,
+                    executable_status TEXT NOT NULL,
+                    delivered_at TEXT,
+                    checked_at TEXT NOT NULL
+                );
                 """
             )
             row = connection.execute(
@@ -233,11 +242,31 @@ class EtfMonitorStore:
                  MonitorPhase.RECONCILIATION.value, trading_date.isoformat(), _utc_now()),
             )
 
+    def missing_reconciliation_dates(self, through: date) -> tuple[date, ...]:
+        """Bound discovery to this live database's first recorded run."""
+        from datetime import timedelta
+
+        with closing(self._connect()) as connection:
+            first = connection.execute("SELECT MIN(trading_date) FROM job_runs").fetchone()[0]
+            existing = {row[0] for row in connection.execute(
+                "SELECT trading_date FROM job_runs WHERE phase=?",
+                (MonitorPhase.RECONCILIATION.value,),
+            )}
+        if first is None:
+            return ()
+        day = date.fromisoformat(first)
+        missing = []
+        while day <= through:
+            if day.isoformat() not in existing:
+                missing.append(day)
+            day += timedelta(days=1)
+        return tuple(missing)
+
     def reconciliation_retry_dates(self) -> tuple[date, ...]:
         with closing(self._connect()) as connection:
             return tuple(date.fromisoformat(row[0]) for row in connection.execute(
                 "SELECT trading_date FROM job_runs WHERE phase=? "
-                "AND status IN ('FAILED','INTERRUPTED','RETRY_PENDING') ORDER BY trading_date",
+                "AND status IN ('FAILED','INTERRUPTED','RETRY_PENDING','REVIEW_REQUIRED') ORDER BY trading_date",
                 (MonitorPhase.RECONCILIATION.value,),
             ))
 

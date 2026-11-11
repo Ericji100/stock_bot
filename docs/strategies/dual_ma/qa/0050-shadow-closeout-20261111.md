@@ -27,3 +27,9 @@
 冷備份前已停止 Bot 寫入，WAL checkpoint=(0,0,0)，schema 6 資料庫 SHA-256 `e543c0cbeefcfd09848222bcd092f371cc5b3500a68999946440dc4255111f85`。備份管理器回傳 `SCOPE_ROOT_TOO_BROAD_OR_MISSING`；保留未納管的必要回復副本 `archive/codex-backups/0050-closeout-20261111-schema6-unmanaged/0050-final-v1.7.sqlite3`，雜湊一致且 quick_check=ok。尚待完整交易日驗收，保留此副本，不自動回收。不修改中央政策或偽造納管收據。
 
 程式回復基準為修改前 main `cec3afc`。若須回退 schema 7，先停寫並保存部署後新事件／回執，再評估還原冷備份與程式；不可直接覆蓋而遺失新紀錄。其他任務的設定、研究與暫存未納入此次提交。
+
+## 暫存收尾與流程例外
+
+停止本次測試／回放寫入者、保存證據並核對引用後，本次 owned 暫存的 2,187 個檔案、84,237,483 bytes 已由 `ITransferSource.RecycleItem` 回收，收據 `RECYCLED_VERIFIED`，原路徑已不存在。計畫及收據保留在 `.codex-cleanup/01a0c332-c7b4-7273-afc7-c51e7c2a52d4/close1111/`；必要冷備份及其他任務資料保留。
+
+流程例外：既有 `replay.py` 第 294 行使用 `TemporaryDirectory`，成功退出會直接清除內部測試庫。本次 Agent 沒有預先攔住，其成功回放的內部臨時庫已由該工具自行移除，未遵守本次要求的回收方式；以上回收數量不包含它。正式庫、冷備份及 parity 結果證據仍完整。未修改此既有 helper；下次使用前須先處理其自動清理行為，不能宣稱本次所有中間檔都經回收。

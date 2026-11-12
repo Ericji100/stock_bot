@@ -1,0 +1,79 @@
+{
+  "at": "2026-11-12T11:43:28.404890+00:00",
+  "ledger_tables": {
+    "account_blocks": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cache": {
+      "rows": 932,
+      "sha256": "f5ea5dbf8066078d4cbf5c3e2e2f6695d3dbd92f76418fe72bebc684a45504ff"
+    },
+    "fee_reconciliations": {
+      "rows": 39,
+      "sha256": "74b9fb3371a79c7b330e56e99af5da8fa4bc7d9e03494d91e8edff19063d78a2"
+    },
+    "grants": {
+      "rows": 2,
+      "sha256": "b613f1148e2997155d75b86f705bf0c2c23a238fa41bf0d9888dbfb0c13174f3"
+    },
+    "live_rounds": {
+      "rows": 6,
+      "sha256": "fa9fca16a04ab4e373cafc30a39979d7249833dbe2f289238e2bc79015d79d75"
+    },
+    "notice_attribution": {
+      "rows": 10,
+      "sha256": "e5f9474574dc5d769465b6063e2122cb50957ecd58c7f7f12cef40e89022bfd4"
+    },
+    "notices": {
+      "rows": 10,
+      "sha256": "6dad77bc26e7fd7a918de8535cd8bfe3f6c2497af46f9d105bda40ba5dda74c8"
+    },
+    "requests": {
+      "rows": 1001,
+      "sha256": "790da7259de039fbea175532c417a68cc9d0b2d9496f2340a18f328075e7f784"
+    },
+    "route_events": {
+      "rows": 1454,
+      "sha256": "e8bcfa043bc713822db130ac7dc2dcd8276071b8d438ec892144c669cf869cc9"
+    }
+  },
+  "news_tables": {
+    "events": {
+      "rows": 70807,
+      "sha256": "b92412d510125f58a8a2c8767f3d480b93f9b4081e32cd9477d5154e10cfa757"
+    },
+    "news_articles": {
+      "rows": 13853,
+      "sha256": "862fc0df54e7ae12df8473762baccdb5dacc2d5db76e0ef088cbfbbdeb4719f5"
+    },
+    "news_classification_inputs": {
+      "rows": 264,
+      "sha256": "7b826d2ec74e5307b6608135d4531407ade4dcfb3c8d97342f6f31e8454f291f"
+    },
+    "news_discovery_sources": {
+      "rows": 5258,
+      "sha256": "7e2a64f8b25463e32aeb8f52ce3fee96aab880940930da2f59aa37f658eb1557"
+    },
+    "news_preferences": {
+      "rows": 8,
+      "sha256": "d308aa83fb19e08e6f4a9fbae661820937b77b56f236e83b1898d5bee90c60eb"
+    },
+    "reports": {
+      "rows": 338,
+      "sha256": "8c4de2368227653386c8678604e2326737f6804b690da4ff3704dab2826e63e4"
+    },
+    "source_snapshots": {
+      "rows": 44052,
+      "sha256": "1ac97f6b02b1c6675aa9ef68409bf2211883179a3b9299a5400fb4b8229daf30"
+    },
+    "sources": {
+      "rows": 43796,
+      "sha256": "382cac162c7a3ef777daa89223a5ff0499b2fe963686fbfd6896f649479d60ee"
+    },
+    "sqlite_sequence": {
+      "rows": 5,
+      "sha256": "e5eac82ca8919c48c7bb79ff908c0398734e724a94ac2bba139ebda94009eef0"
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "updated_at": "2026-11-12T19:43:17+08:00",
+  "pid": 19436,
+  "job_queue_available": true,
+  "last_scheduled_event": "完整資料回補檢查",
+  "last_scheduled_event_at": "2026-11-12T19:20:15+08:00",
+  "schedule_health": {
+    "last_status": "partial_success",
+    "last_status_at": "2026-11-12T19:20:15+08:00",
+    "current_task": {
+      "task_id": "backfill:scheduled",
+      "label": "scheduled_backfill",
+      "status": "stopping",
+      "at": "2026-11-12T19:20:15+08:00"
+    },
+    "last_started": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "started",
+      "at": "2026-11-12T19:20:15+08:00"
+    },
+    "last_completed": {
+      "task_id": "scheduled:portfolio:1745",
+      "label": "17:45 持股報告",
+      "status": "completed",
+      "at": "2026-11-12T17:46:09+08:00",
+      "elapsed_seconds": 69.436
+    },
+    "queue_size": 0,
+    "recent_event_loop_lag_seconds": 0.001,
+    "schedule_unhealthy_reason": null,
+    "last_triggered": {
+      "label": "完整資料回補檢查",
+      "at": "2026-11-12T19:20:15+08:00"
+    },
+    "last_queued": {
+      "task_id": "scheduled:news:1800",
+      "label": "18:00 定時新聞整理",
+      "status": "queued",
+      "at": "2026-11-12T18:00:00+08:00"
+    },
+    "last_failed": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "timeout",
+      "at": "2026-11-10T17:47:34+08:00",
+      "elapsed_seconds": 7200.025,
+      "error_summary": "exceeded 7200 seconds"
+    },
+    "last_skipped_duplicate": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "skipped_duplicate",
+      "at": "2026-11-10T17:47:34+08:00"
+    },
+    "etf_monitor": {
+      "status": "READY",
+      "updated_at": "2026-11-12T19:41:59.502653+08:00",
+      "mode": "shadow",
+      "attempt": 1,
+      "stage": "ready",
+      "last_error": null,
+      "next_retry_at": null,
+      "reconciliation_recovery": {
+        "status": "IDLE",
+        "pending_dates": [],
+        "checked_at": "2026-11-12T19:41:58.694611+08:00",
+        "next_check_at": "2026-11-12T19:46:59.499427+08:00"
+      },
+      "schedule": {
+        "preview": "12:45:00",
+        "decision": "13:55:00",
+        "reconciliation": "22:00:00"
+      }
+    },
+    "telegram_transport": {
+      "channels": {
+        "polling": {
+          "status": "healthy",
+          "last_success_at": "2026-11-12T19:43:07+08:00",
+          "incident_id": "12a88e3de12744a9ab4c885415d8fb23",
+          "first_error_at": "2026-11-11T20:57:43+08:00",
+          "failures": 1,
+          "last_notice_at": "2026-11-11T20:57:43+08:00",
+          "last_error_at": "2026-11-11T20:57:43+08:00",
+          "last_error_type": "TimedOut",
+          "diagnostic_id": "907b44a98cbb4727b4a7b5a167af19e8",
+          "recent_incident_starts": [
+            "2026-11-11T20:57:43+08:00"
+          ],
+          "recovered_at": "2026-11-11T20:57:55+08:00"
+        },
+        "api": {
+          "status": "healthy",
+          "last_success_at": "2026-11-12T18:15:04+08:00",
+          "incident_id": "7944100a038c4d80a7c3666fa0cb67e7",
+          "first_error_at": "2026-11-09T08:36:43+08:00",
+          "failures": 3,
+          "last_notice_at": "2026-11-09T08:36:43+08:00",
+          "last_error_at": "2026-11-09T08:36:47+08:00",
+          "last_error_type": "NetworkError",
+          "diagnostic_id": "08016f6dff454c14b4881024a35f1623",
+          "recovered_at": "2026-11-09T08:36:51+08:00"
+        }
+      },
+      "notice_counts": {
+        "pending": 0,
+        "sent": 7,
+        "unknown": 1
+      },
+      "diagnostic_storage_warning": false
+    }
+  }
+}

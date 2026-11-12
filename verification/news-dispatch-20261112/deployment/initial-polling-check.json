@@ -1,0 +1,10 @@
+{
+  "status": "waiting_for_first_new_native_poll",
+  "new_bot_pid": 6076,
+  "check": "Fresh native polling success after restart cutoff",
+  "initial_result": "AssertionError: poll status/freshness was not yet accepted",
+  "interpretation": "Startup heartbeat alone was not counted as successful polling; wait for an actual successful polling request before accepting.",
+  "read_only_telegram_checks_completed": true,
+  "business_message_sent": false,
+  "new_paid_requests": 0
+}

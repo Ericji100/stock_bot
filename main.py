@@ -2155,7 +2155,9 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
         pending = meta.get('pending_classification_summary') or {}
         search_diag = meta.get('minimax_diagnostics') or {}
-        failed = bool(meta.get('local_fallback_count') or search_diag.get('stop_reason')
+        from research_center.ai_execution_control import is_graceful_search_stop
+        search_stopped = search_diag.get('stop_reason')
+        failed = bool(meta.get('local_fallback_count') or (search_stopped and not is_graceful_search_stop(search_stopped))
                       or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
         await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
             'status': meta.get('classification_status'), 'classified': meta.get('ai_classified_count', 0),

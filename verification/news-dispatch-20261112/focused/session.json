@@ -1,0 +1,25 @@
+{
+  "exit_status": 0,
+  "collected": 330,
+  "failed": 0,
+  "elapsed_seconds": 14.002,
+  "counts": {
+    "": 660,
+    "passed": 330,
+    "subtests passed": 123
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 622,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_news_search_dispatch.py",
+    "tests/test_ai_schedule_stability.py",
+    "tests/test_news_schedule_balance.py",
+    "tests/test_schedule_followup_1111.py",
+    "tests/test_hybrid_search_routing.py",
+    "tests/test_news_service.py",
+    "tests/test_openai_routing.py",
+    "tests/test_deepseek_service.py"
+  ]
+}

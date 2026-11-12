@@ -1,0 +1,20 @@
+{
+  "exit_status": 0,
+  "collected": 3319,
+  "failed": 0,
+  "elapsed_seconds": 421.786,
+  "counts": {
+    "": 6630,
+    "passed": 3310,
+    "skipped": 9,
+    "subtests passed": 363,
+    "warnings": 1
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 622,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests"
+  ]
+}

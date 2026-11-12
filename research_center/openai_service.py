@@ -314,7 +314,7 @@ class OpenAIService:
                 raise
 
     def _request_once(self, prompt, *, json_mode=False, search=False):
-        from .ai_execution_control import check_work, bounded_timeout, WorkStopped
+        from .ai_execution_control import check_work, bounded_timeout, WorkStopped, require_search_dispatch_time
         check_work()
         from .search_routing import stage_metadata
         stage = stage_metadata(organizer=self.organizer)
@@ -345,6 +345,8 @@ class OpenAIService:
         if search and stage['workflow_stage'] == 'critical_gap_search':
             from .ai_execution_control import require_work_time
             require_work_time(min(60, self.search_timeout_seconds), reason='insufficient_followup_time')
+        if search:
+            require_search_dispatch_time(self.search_timeout_seconds)
         # UTF-8 byte bound is deliberately conservative, not a claimed tokenizer.
         input_bound = len(json.dumps(body, ensure_ascii=False).encode('utf-8')) + 4096
         if 'counted_input_tokens' in capacity:
@@ -384,6 +386,8 @@ class OpenAIService:
             check_work()
             with httpx.Client(timeout=request_timeout, transport=self.transport) as client:
                 check_work()
+                if search:
+                    require_search_dispatch_time(self.search_timeout_seconds)
                 response = client.post('https://api.openai.com/v1/responses',
                     headers={'Authorization': 'Bearer ' + self.accounts[grant['account_id']],
                              'X-Client-Request-Id': request_id}, json=body)

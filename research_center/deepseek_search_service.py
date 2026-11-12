@@ -309,6 +309,9 @@ class DeepSeekSearchService:
                                 progress(f"新聞補搜停止：{task.get('label', '')} 連續兩次未新增來源／發布日期線索；品質仍不足，保留全部資料及缺口")
                             break
                 except DeepSeekUnavailable as exc:
+                    from .ai_execution_control import is_graceful_search_stop
+                    if is_graceful_search_stop(exc.status):
+                        run['unexecuted_query_count'] = 1 + sum(q not in seen_queries for q in queries)
                     exc.partial_discovery_sources = make_source_items(raw_sources)
                     exc.partial_discovery_diagnostics = {
                         'enabled': True, 'provider': self.provider, 'status': 'partial_stopped',
@@ -319,6 +322,10 @@ class DeepSeekSearchService:
                         'search_context_notes': context_notes,
                         'search_event_inventory': source_events_packet(exc.partial_discovery_sources),
                     }
+                    if is_graceful_search_stop(exc.status):
+                        exc.partial_discovery_diagnostics['deferred_search'] = {
+                            'query': query, 'task_label': task.get('label'), 'workflow_stage': stage,
+                            'reason': exc.status, **exc.diagnostics}
                     raise
                 except Exception:
                     run["error_count"] += 1

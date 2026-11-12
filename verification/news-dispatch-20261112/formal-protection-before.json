@@ -1,0 +1,32 @@
+{
+  "requests_sha256": "11d5cb519582695e9f210e8f229b89cfb512c314493c0d737a7267a48e30da35",
+  "sources_sha256": "c9cf0e9f876a06261d32842be4133568fd80dcc9bf94a1140b352520996ec395",
+  "unknown": {
+    "id": "d4a9b7e11da346dc8d4f0d6241c7e0a4",
+    "grant_id": "personal-20261103-verified-20261104",
+    "background": 1,
+    "command": "news",
+    "run_id": "e1a7052b712a43249058d7ce97d9983c",
+    "operation": "web_search",
+    "status": "unknown",
+    "estimate": "0.288884",
+    "actual": null,
+    "detail": "{\"request_id\": \"d4a9b7e11da346dc8d4f0d6241c7e0a4\", \"run_id\": \"e1a7052b712a43249058d7ce97d9983c\", \"command\": \"news\", \"account_id\": \"primary\", \"grant_id\": \"personal-20261103-verified-20261104\", \"provider\": \"openai\", \"requested_model\": \"gpt-6-luna\", \"reasoning_effort\": \"xhigh\", \"operation\": \"web_search\", \"prompt_chars\": 137, \"estimated_usd\": \"0.288884\", \"client_request_id\": \"d4a9b7e11da346dc8d4f0d6241c7e0a4\", \"request_timeout\": {\"connect\": 15.0, \"read\": 37.049110999985714, \"write\": 37.04910779999045, \"pool\": 15.0}, \"workflow_stage\": \"initial_search\", \"search_reason\": \"\", \"search_command\": \"news\", \"status\": \"transport_unknown\", \"transport_error_type\": \"ReadTimeout\", \"elapsed_seconds\": 37.283}",
+    "purpose": "production",
+    "round_id": "",
+    "case_id": ""
+  },
+  "files": {
+    "main.py": "8e8a0f4662477c08ed8d301828036a2e38df7902609ad64e315782b88ff3dadd",
+    "research_center/ai_execution_control.py": "e9110729b1dcee44daaa37e85f32688e058eaca8962b473b4633248c7f006977",
+    "research_center/openai_service.py": "ea98b5ffd924ec8cea763efff4dfc825ec621324ff8c45d604b63ad0b888ee64",
+    "research_center/deepseek_service.py": "b13bc0909ac2ba2173f9d03f01b258102e26b67a09f9e7f72fa114070d09f6c9",
+    "research_center/deepseek_search_service.py": "7a80a6f9771631ce78e29c6d6c42ac72a2f14c465131b6b675d662c4201ead75",
+    "research_center/news_service.py": "a37c1afe977477f5db02dda76a5e8b3fe80d530339daf200d023bf7993afaea6",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "stock_list.json": "7726915c288b77f39e585dd743d0fdf73f62d607bc5e8f7801e07ede75894b35",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d"
+  }
+}

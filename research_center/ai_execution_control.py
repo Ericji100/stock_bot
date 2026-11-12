@@ -66,6 +66,23 @@ def require_work_time(seconds, *, reason):
         raise WorkStopped(reason)
 
 
+def is_graceful_search_stop(reason):
+    return reason in {'search_phase_deadline', 'insufficient_followup_time', 'insufficient_search_time'}
+
+
+def require_search_dispatch_time(timeout_seconds):
+    """Leave scheduled news time to finish a search and checkpoint before classifying."""
+    from .deepseek_service import TASK
+    check_work()
+    if TASK.get()[0] != 'news' or not TASK.get()[1]:
+        return
+    required = min(90., float(timeout_seconds)) + 5.
+    if (control := CONTROL.get()) and (remaining := control.remaining()) < required:
+        error = WorkStopped('insufficient_search_time')
+        error.diagnostics.update(remaining_seconds=remaining, required_seconds=required, http_sent=False)
+        raise error
+
+
 @contextmanager
 def source_checkpoint(callback):
     token = SOURCE_CHECKPOINT.set(callback)

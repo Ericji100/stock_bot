@@ -845,7 +845,11 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress):
                 diagnostics = {**getattr(exc, 'partial_discovery_diagnostics', {}), 'complete': False,
                                'status': 'partial_stopped', 'stop_reason': exc.status}
                 if progress:
-                    progress(f"新聞搜尋停止：{exc}；已保存來源，未完成部分不冒充完整。")
+                    from .ai_execution_control import is_graceful_search_stop
+                    if is_graceful_search_stop(exc.status):
+                        progress("新聞搜尋階段結束：剩餘時間不足；已保存來源與缺口，繼續分類已有新聞。")
+                    else:
+                        progress(f"新聞搜尋停止：{exc}；已保存來源，未完成部分不冒充完整。")
             # No second provider/fallback search after a stopped official workflow.
     except DeepSeekUnavailable as exc:
         diagnostics.update(complete=False, status='partial_stopped', stop_reason=exc.status)
@@ -918,7 +922,8 @@ def _run_news_refresh(
 
         all_sources, minimax_diag = _discover_news_sources(center, repository, portfolio, ai_model, progress)
         stop_reason = minimax_diag.get('stop_reason')
-        search_halted = bool(stop_reason and stop_reason not in {'search_phase_deadline', 'insufficient_followup_time'})
+        from .ai_execution_control import is_graceful_search_stop
+        search_halted = bool(stop_reason and not is_graceful_search_stop(stop_reason))
 
         # Fallback: try direct search via center's search services
         if (not all_sources and minimax_diag.get('complete') is not False

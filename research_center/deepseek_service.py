@@ -335,8 +335,10 @@ class DeepSeekService:
                 'reference': 'https://api-docs.deepseek.com/quick_start/pricing/'}
 
     def _post(self, operation: str, body: dict, estimate: Decimal):
-        from .ai_execution_control import check_work, bounded_timeout, WorkStopped
+        from .ai_execution_control import check_work, bounded_timeout, WorkStopped, require_search_dispatch_time
         check_work()
+        if operation == 'v1/tools/search':
+            require_search_dispatch_time(self.timeout_seconds)
         request_id = self.account.reserve(operation, estimate)
         tool_request_path = None
         if operation.startswith('v1/tools/'):
@@ -365,6 +367,8 @@ class DeepSeekService:
                     attempts += 1
                     with httpx.Client(timeout=bounded_timeout(self.timeout_seconds), transport=self.account.transport) as client:
                         check_work()
+                        if operation == 'v1/tools/search':
+                            require_search_dispatch_time(self.timeout_seconds)
                         http_sent = True
                         response = client.post("https://api.deepseek.com/" + operation, headers={"Authorization": f"Bearer {self.account.key}"}, json=body)
                     if response.status_code in (401, 402):

@@ -11,7 +11,6 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Sequence
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -31,12 +30,13 @@ from stock_ai_bot.data_sources.etf_snapshot_registry import (
 
 from .config import EtfMonitorConfig
 from .delta_pipeline import (
+    ANNUAL_HOLIDAY_URL,
     EMERGENCY_CLOSURE_URL,
-    HOLIDAY_URL,
+    annual_holiday_params,
     build_daily_delta_bundle,
     cached_emergency_notice,
     parse_emergency_closures,
-    parse_holidays,
+    parse_annual_holidays,
     verify_delta_receipts,
 )
 from .errors import EtfMonitorDataError
@@ -453,25 +453,14 @@ class OfficialTwseTradingCalendar:
 
     def _load(self, year: int) -> tuple[set[date], dict[str, Any]]:
         try:
-            response = requests.get(HOLIDAY_URL, timeout=self.timeout_seconds)
+            response = requests.get(ANNUAL_HOLIDAY_URL, params=annual_holiday_params(year),
+                                    timeout=self.timeout_seconds)
             response.raise_for_status()
         except requests.RequestException as exc:
             raise EtfMonitorDataError("official TWSE holiday request failed") from exc
-        final_url = str(getattr(response, "url", HOLIDAY_URL) or HOLIDAY_URL)
-        expected = urlparse(HOLIDAY_URL)
-        actual = urlparse(final_url)
-        if (
-            actual.scheme != expected.scheme
-            or actual.netloc != expected.netloc
-            or actual.path != expected.path
-            or actual.query
-            or actual.fragment
-        ):
-            raise EtfMonitorDataError("official TWSE holiday endpoint identity changed")
+        final_url = response.url
         raw = response.content
-        holidays = parse_holidays(raw)
-        if not any(day.year == year for day in holidays):
-            raise EtfMonitorDataError("official TWSE holiday receipt does not cover target year")
+        holidays = parse_annual_holidays(raw, request_url=final_url, year=year)
         digest = hashlib.sha256(raw).hexdigest()
         if self.receipt_root is not None:
             self.receipt_root.mkdir(parents=True, exist_ok=True)
@@ -484,7 +473,7 @@ class OfficialTwseTradingCalendar:
             )
         evidence = {
             "source": "TWSE_HOLIDAY_SCHEDULE_OFFICIAL",
-            "source_endpoint": HOLIDAY_URL,
+            "source_endpoint": ANNUAL_HOLIDAY_URL,
             "request_url": final_url,
             "fetched_at": datetime.now(tz=TAIPEI).isoformat(),
             "receipt_sha256": digest,

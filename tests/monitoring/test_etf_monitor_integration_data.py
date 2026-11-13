@@ -1034,7 +1034,8 @@ def test_automatic_daily_delta_update_captures_validates_and_immutably_installs(
             self.calls.append((url, params))
             final = url if not params else f"{url}?{urlencode(params)}"
             if "holidaySchedule" in url:
-                raw = json.dumps([{"Name": "new year", "Date": "1150101"}]).encode()
+                from test_etf_monitor_emergency_closure import annual_raw
+                raw = annual_raw(int(params["date"][:4]))
             elif "TWT48U_ALL" in url:
                 raw = b"[]"
             elif "dividendList" in url:
@@ -1244,25 +1245,12 @@ def test_official_quote_rejects_stale_source_clock(monkeypatch) -> None:
 def test_official_etf_calendar_verifies_holiday_and_preserves_receipt(
     tmp_path, monkeypatch
 ) -> None:
-    raw = json.dumps([
-        {"Name": "fixture holiday", "Date": "1151021"},
-        {"Name": "new year", "Date": "1150101"},
-    ]).encode()
+    from test_etf_monitor_emergency_closure import annual_raw, calendar_response
 
-    class _Response:
-        content = raw
-        url = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
-
-        def raise_for_status(self):
-            return None
-
+    raw = annual_raw(2026, [["2026-10-21", "fixture holiday", ""], ["2026-01-01", "new year", ""]])
     monkeypatch.setattr(
         "stock_ai_bot.monitoring.etf_monitor.data.requests.get",
-        lambda url, **kwargs: _Response() if "holidaySchedule" in url else SimpleNamespace(
-            url="https://eshop.twse.com.tw/zh/",
-            content="<html>臺灣證券交易所</html>".encode(),
-            raise_for_status=lambda: None,
-        ),
+        lambda url, params=None, **kwargs: calendar_response(url, params, raw=raw),
     )
     calendar = OfficialTwseTradingCalendar(receipt_root=tmp_path / "calendar")
     holiday = calendar.verify(date(2026, 10, 21))

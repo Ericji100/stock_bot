@@ -18,8 +18,9 @@ from stock_ai_bot.monitoring.etf_monitor.data import (
     OfficialTwseTradingCalendar, install_daily_delta_file, load_daily_delta_file,
 )
 from stock_ai_bot.monitoring.etf_monitor.delta_pipeline import (
-    EMERGENCY_CLOSURE_URL, HOLIDAY_URL, build_daily_delta_bundle,
-    cached_emergency_notice, parse_emergency_closures, parse_holidays,
+    ANNUAL_HOLIDAY_URL, EMERGENCY_CLOSURE_URL, PARSER_ANNUAL_HOLIDAY,
+    annual_holiday_params, build_daily_delta_bundle, cached_emergency_notice,
+    parse_annual_holidays, parse_emergency_closures, parse_holidays,
 )
 from stock_ai_bot.monitoring.etf_monitor.errors import EtfMonitorDataError, EtfMonitorRoutingError
 from stock_ai_bot.monitoring.etf_monitor.models import MonitorPhase, stable_sha256
@@ -32,7 +33,27 @@ NOTICE = (
     '<span>115</span>年<span>10</span>月<span>23</span>日休市。</p></html>'
 ).encode()
 EMPTY = '<html><body>臺灣證券交易所</body></html>'.encode()
-HOLIDAYS = json.dumps([{"Date": "1150101"}, {"Date": "1151026"}]).encode()
+
+
+def annual_table(year, rows=None):
+    rows = rows if rows is not None else [[f"{year}-01-01", "開國紀念日", ""]]
+    return {"stat": "ok", "date": f"{year}0101", "title": f"{year - 1911} 年市場開休市日期",
+            "queryYear": year, "fields": ["日期", "名稱", "說明"], "total": len(rows), "data": rows}
+
+
+def annual_raw(year, rows=None):
+    return json.dumps(annual_table(year, rows)).encode()
+
+
+HOLIDAYS = annual_raw(2026, [["2026-01-01", "開國紀念日", ""], ["2026-10-26", "補假", ""]])
+
+
+def calendar_response(url, params=None, *, raw=HOLIDAYS, notice=EMPTY):
+    if url == ANNUAL_HOLIDAY_URL:
+        assert params == annual_holiday_params(2026)
+        return response(url + "?" + urlencode(params), raw)
+    assert url == EMERGENCY_CLOSURE_URL
+    return response(url, notice)
 
 
 def response(url, raw):
@@ -55,8 +76,9 @@ def test_annual_schedule_opening_and_last_trading_days_are_not_holidays():
 
 
 def test_calendar_gate_keeps_annual_information_trading_days_open(monkeypatch):
-    raw = json.dumps([{"Date": "1150101", "Name": "開國紀念日"}, {"Date": "1150223", "Name": "農曆春節後開始交易日"}]).encode()
-    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", lambda url, **k: response(url, raw if url == HOLIDAY_URL else EMPTY))
+    raw = annual_raw(2026, [["2026-01-01", "開國紀念日", ""], ["2026-02-23", "農曆春節後開始交易日", ""]])
+    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get",
+                        lambda url, params=None, **k: calendar_response(url, params, raw=raw))
     assert OfficialTwseTradingCalendar().verify(date(2026, 2, 23))["is_trading_day"] is True
 
 
@@ -79,8 +101,8 @@ def test_bad_notice_page_fails_closed(raw):
 
 
 def test_live_gate_overrides_annual_table_and_retains_durable_proof(tmp_path, monkeypatch):
-    def get(url, **kwargs):
-        return response(url, HOLIDAYS if url == HOLIDAY_URL else NOTICE)
+    def get(url, params=None, **kwargs):
+        return calendar_response(url, params, notice=NOTICE)
     monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", get)
     calendar = OfficialTwseTradingCalendar(receipt_root=tmp_path)
     result = calendar.verify(DAY)
@@ -94,7 +116,8 @@ def test_live_gate_overrides_annual_table_and_retains_durable_proof(tmp_path, mo
 
 
 def test_live_gate_does_not_apply_notice_to_another_day(monkeypatch):
-    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", lambda url, **k: response(url, HOLIDAYS if url == HOLIDAY_URL else NOTICE))
+    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get",
+                        lambda url, params=None, **k: calendar_response(url, params, notice=NOTICE))
     calendar = OfficialTwseTradingCalendar()
     assert calendar.verify(date(2026, 10, 22))["is_trading_day"] is True
     assert calendar.verify(date(2026, 10, 26))["is_trading_day"] is False
@@ -103,9 +126,9 @@ def test_live_gate_does_not_apply_notice_to_another_day(monkeypatch):
 
 @pytest.mark.parametrize("failure", ["redirect", "outage"])
 def test_notice_source_redirect_or_outage_is_not_an_open_day(monkeypatch, failure):
-    def get(url, **kwargs):
-        if url == HOLIDAY_URL:
-            return response(url, HOLIDAYS)
+    def get(url, params=None, **kwargs):
+        if url == ANNUAL_HOLIDAY_URL:
+            return calendar_response(url, params)
         if failure == "outage":
             raise requests.ConnectionError("offline")
         return response("https://untrusted.invalid/", NOTICE)
@@ -117,7 +140,8 @@ def test_notice_source_redirect_or_outage_is_not_an_open_day(monkeypatch, failur
 def test_negative_notice_cache_expires_and_sees_intraday_announcement(monkeypatch):
     from stock_ai_bot.monitoring.etf_monitor import data
     replies = iter([EMPTY, NOTICE])
-    monkeypatch.setattr(data.requests, "get", lambda url, **k: response(url, HOLIDAYS if url == HOLIDAY_URL else next(replies)))
+    monkeypatch.setattr(data.requests, "get", lambda url, params=None, **k:
+                        calendar_response(url, params, notice=EMPTY if url == ANNUAL_HOLIDAY_URL else next(replies)))
     calendar = OfficialTwseTradingCalendar()
     assert calendar.verify(DAY)["is_trading_day"] is True
     calendar._notice_cache[1]["fetched_at"] = "2026-01-01T00:00:00+08:00"
@@ -225,14 +249,18 @@ class DeltaSession:
         return False
     def get(self, url, params=None, timeout=None):
         final = url if not params else url + "?" + urlencode(params)
-        if "holidaySchedule" in url:
-            raw = HOLIDAYS
+        if url == ANNUAL_HOLIDAY_URL:
+            year = int(params["date"][:4])
+            assert params == annual_holiday_params(year)
+            raw = HOLIDAYS if year == 2026 else annual_raw(year)
         elif "TWT48U_ALL" in url:
             raw = b"[]"
         elif "dividendList" in url:
             raw = b"<table></table>"
         elif "STOCK_DAY" in url:
-            raw = json.dumps({"stat": "OK", "data": [["115/10/23", "100", "0", "52", "54", "51", "53"]] if self.bar else []}).encode()
+            dates = {"20261001": "115/10/23", "20261201": "115/12/31"}
+            day = dates.get(params["date"])
+            raw = json.dumps({"stat": "OK", "data": [[day, "100", "0", "52", "54", "51", "53"]] if self.bar and day else []}).encode()
         elif url == EMERGENCY_CLOSURE_URL:
             raw = self.notice
         else:
@@ -242,6 +270,50 @@ class DeltaSession:
 
 def build(tmp_path, session, **kwargs):
     return build_daily_delta_bundle(start=DAY, through=DAY, output=tmp_path / "bundle", frozen_snapshot_id="test", frozen_manifest_sha256="a" * 64, session_factory=lambda: session, **kwargs)
+
+
+def test_calendar_uses_requested_year_after_default_feed_rollover(monkeypatch, tmp_path):
+    requests_made = []
+    def get(url, params=None, **kwargs):
+        requests_made.append((url, params))
+        if url == EMERGENCY_CLOSURE_URL:
+            return response(url, EMPTY)
+        assert url == ANNUAL_HOLIDAY_URL
+        year = int(params["date"][:4])
+        return response(url + "?" + urlencode(params), annual_raw(year))
+    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", get)
+    calendar = OfficialTwseTradingCalendar(receipt_root=tmp_path)
+    today = calendar.verify(date(2026, 11, 13))
+    assert today["is_trading_day"] is True and today["target_year"] == 2026
+    assert calendar.verify(date(2027, 1, 1))["is_trading_day"] is False
+    assert (tmp_path / f"{today['receipt_sha256']}.raw").read_bytes() == annual_raw(2026)
+    assert [p for u, p in requests_made if u == ANNUAL_HOLIDAY_URL] == [
+        annual_holiday_params(2026), annual_holiday_params(2027)]
+
+
+def test_rejects_wrong_year_even_when_requested_url_is_correct(monkeypatch):
+    def get(url, params=None, **kwargs):
+        assert url == ANNUAL_HOLIDAY_URL
+        return response(url + "?" + urlencode(params), annual_raw(2027))
+    monkeypatch.setattr("stock_ai_bot.monitoring.etf_monitor.data.requests.get", get)
+    with pytest.raises(EtfMonitorDataError, match="does not cover target year"):
+        OfficialTwseTradingCalendar().verify(date(2026, 11, 13))
+    with pytest.raises(EtfMonitorDataError, match="request identity"):
+        parse_annual_holidays(annual_raw(2026), request_url=ANNUAL_HOLIDAY_URL +
+                              "?date=20260101&response=json&date=20270101", year=2026)
+
+
+def test_delta_bundle_across_year_boundary_reopens_with_each_years_raw_receipt(tmp_path):
+    bundle = tmp_path / "bundle"
+    build_daily_delta_bundle(start=date(2026, 12, 31), through=date(2027, 1, 1), output=bundle,
+                             frozen_snapshot_id="test", frozen_manifest_sha256="a" * 64,
+                             session_factory=lambda: DeltaSession(bar=True))
+    for day in (date(2026, 12, 31), date(2027, 1, 1)):
+        payload = load_daily_delta_file(bundle / f"{day}.json", expected_date=day,
+                                       snapshot_id="test", manifest_sha256="a" * 64)
+        evidence = payload["calendar_evidence"]
+        assert evidence["parser"] == PARSER_ANNUAL_HOLIDAY
+        assert f"date={day.year}0101" in evidence["request_url"]
 
 
 def test_verified_closed_delta_installs_with_raw_notice_and_no_fake_bar(tmp_path):

@@ -148,6 +148,7 @@ def test_error_trace_redacts_token_in_cause_chain(tmp_path):
 
 def test_opening_month_empty_response_only_allows_proven_closed_day(tmp_path):
     from urllib.parse import urlencode
+    from test_etf_monitor_emergency_closure import annual_raw
 
     class Session:
         def __enter__(self): return self
@@ -156,7 +157,7 @@ def test_opening_month_empty_response_only_allows_proven_closed_day(tmp_path):
             if "STOCK_DAY" in url:
                 data = json.dumps({"stat": "很抱歉，沒有符合條件的資料!"}, ensure_ascii=False).encode()
             elif "holidaySchedule" in url:
-                data = json.dumps([{"Name": "new year", "Date": "1150101"}]).encode()
+                data = annual_raw(int(params["date"][:4]))
             elif "TWT48U" in url:
                 data = b"[]"
             elif "dividendList" in url:

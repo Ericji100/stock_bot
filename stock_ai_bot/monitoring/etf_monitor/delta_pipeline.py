@@ -21,10 +21,12 @@ from .models import canonical_json, stable_sha256
 TAIPEI = ZoneInfo("Asia/Taipei")
 STOCK_DAY_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
 HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
+ANNUAL_HOLIDAY_URL = "https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule"
 ACTION_URL = "https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL"
 DIVIDEND_URL = "https://www.twse.com.tw/zh/ETFortune/dividendList"
 PARSER_STOCK_DAY = "TWSE_STOCK_DAY_V1"
 PARSER_HOLIDAY = "TWSE_HOLIDAY_SCHEDULE_V1"
+PARSER_ANNUAL_HOLIDAY = "TWSE_ANNUAL_HOLIDAY_SCHEDULE_V1"
 PARSER_ACTION = "TWSE_TWT48U_ALL_V1"
 PARSER_DIVIDEND = "TWSE_ETFORTUNE_DIVIDEND_LIST_V1"
 EMERGENCY_CLOSURE_URL = "https://eshop.twse.com.tw/zh/"
@@ -32,6 +34,7 @@ PARSER_EMERGENCY_CLOSURE = "TWSE_EMERGENCY_CLOSURE_NOTICE_V1"
 ALLOWED_PARSERS = {
     PARSER_STOCK_DAY: STOCK_DAY_URL,
     PARSER_HOLIDAY: HOLIDAY_URL,
+    PARSER_ANNUAL_HOLIDAY: ANNUAL_HOLIDAY_URL,
     PARSER_ACTION: ACTION_URL,
     PARSER_DIVIDEND: DIVIDEND_URL,
     PARSER_EMERGENCY_CLOSURE: EMERGENCY_CLOSURE_URL,
@@ -166,8 +169,65 @@ def parse_holidays(raw: bytes) -> set[date]:
     return {
         _roc_date(row.get("Date")) for row in payload
         if isinstance(row, Mapping)
-        and not re.search(r"(?:開始交易日|最後交易日)", str(row.get("Name") or ""))
+        and not _calendar_opening_marker(str(row.get("Name") or ""))
     }
+
+
+def _calendar_opening_marker(name: str) -> bool:
+    return bool(re.search(r"(?:開始交易日|最後交易日)", name))
+
+
+def annual_holiday_params(year: int) -> dict[str, str]:
+    return {"date": date(year, 1, 1).strftime("%Y%m%d"), "response": "json"}
+
+
+def parse_annual_holidays(raw: bytes, *, request_url: str, year: int) -> set[date]:
+    requested = urlparse(request_url)
+    approved = urlparse(ANNUAL_HOLIDAY_URL)
+    expected_query = {key: [value] for key, value in annual_holiday_params(year).items()}
+    if (requested._replace(query="") != approved
+            or parse_qs(requested.query, keep_blank_values=True) != expected_query):
+        raise EtfMonitorDataError("TWSE annual holiday receipt request identity is invalid",
+                                  reason_code="CALENDAR_REQUEST_IDENTITY")
+    try:
+        payload = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EtfMonitorDataError("TWSE annual holiday receipt is not valid JSON",
+                                  reason_code="CALENDAR_INVALID_RESPONSE") from exc
+    if not isinstance(payload, Mapping) or payload.get("stat") != "ok":
+        raise EtfMonitorDataError("TWSE annual holiday receipt status is not ok",
+                                  reason_code="CALENDAR_INVALID_RESPONSE")
+    if (payload.get("date") != expected_query["date"][0]
+            or payload.get("queryYear") != year
+            or payload.get("title") != f"{year - 1911} 年市場開休市日期"):
+        raise EtfMonitorDataError("TWSE annual holiday receipt does not cover target year",
+                                  reason_code="CALENDAR_YEAR_MISMATCH", details={
+                                      "target_year": year, "source_endpoint": ANNUAL_HOLIDAY_URL,
+                                      "receipt_sha256": _sha256(raw),
+                                  })
+    rows = payload.get("data")
+    if (payload.get("fields") != ["日期", "名稱", "說明"] or not isinstance(rows, list)
+            or not rows or payload.get("total") != len(rows)):
+        raise EtfMonitorDataError("TWSE annual holiday table shape is invalid",
+                                  reason_code="CALENDAR_INVALID_RESPONSE")
+    holidays: set[date] = set()
+    for row in rows:
+        try:
+            if (not isinstance(row, list) or len(row) != 3
+                    or not all(isinstance(value, str) for value in row) or not row[1].strip()):
+                raise ValueError("invalid row")
+            day = date.fromisoformat(row[0])
+            if day.isoformat() != row[0] or day.year != year:
+                raise ValueError("row outside target year")
+        except ValueError as exc:
+            raise EtfMonitorDataError("TWSE annual holiday table contains an invalid dated row",
+                                      reason_code="CALENDAR_INVALID_RESPONSE") from exc
+        if not _calendar_opening_marker(row[1]):
+            holidays.add(day)
+    if not holidays:
+        raise EtfMonitorDataError("TWSE annual holiday table contains no closures",
+                                  reason_code="CALENDAR_INVALID_RESPONSE")
+    return holidays
 
 
 class _VisibleNoticeText(HTMLParser):
@@ -285,9 +345,12 @@ def verify_delta_receipts(
     expected_date: date,
     receipt_root: Path,
 ) -> dict[str, Any]:
+    calendar_meta = payload.get("calendar_evidence")
+    parser = calendar_meta.get("parser") if isinstance(calendar_meta, Mapping) else None
+    if parser not in (PARSER_HOLIDAY, PARSER_ANNUAL_HOLIDAY):
+        raise EtfMonitorDataError("daily delta calendar parser is not approved")
     calendar_raw, calendar_evidence = _receipt_bytes(
-        payload.get("calendar_evidence"), receipt_root=receipt_root,
-        field="calendar", parser=PARSER_HOLIDAY,
+        calendar_meta, receipt_root=receipt_root, field="calendar", parser=parser,
     )
     bar_raw, bar_evidence = _receipt_bytes(
         payload.get("bar_evidence"), receipt_root=receipt_root,
@@ -305,7 +368,11 @@ def verify_delta_receipts(
         field="ETF dividend list", parser=PARSER_DIVIDEND,
     )
     bars = parse_stock_day(bar_raw, request_url=bar_evidence["request_url"])
-    holidays = parse_holidays(calendar_raw)
+    holidays = (
+        parse_annual_holidays(calendar_raw, request_url=calendar_evidence["request_url"],
+                              year=expected_date.year)
+        if parser == PARSER_ANNUAL_HOLIDAY else parse_holidays(calendar_raw)
+    )
     stock_query = parse_qs(urlparse(str(bar_evidence["request_url"])).query)
     if stock_query.get("date") != [expected_date.strftime("%Y%m01")]:
         raise EtfMonitorDataError("TWSE STOCK_DAY receipt month does not cover the delta date")
@@ -422,9 +489,18 @@ def build_daily_delta_bundle(
     receipts_dir.mkdir()
     captured_at = (fetched_at or datetime.now(tz=TAIPEI)).astimezone(TAIPEI)
     receipt_rows: dict[str, tuple[bytes, dict[str, Any]]] = {}
+    calendar_by_year: dict[int, dict[str, Any]] = {}
+    holidays: set[date] = set()
     with session_factory() as session:
+        for year in range(start.year, through.year + 1):
+            raw, evidence = _fetch_receipt(
+                session, url=ANNUAL_HOLIDAY_URL, parser=PARSER_ANNUAL_HOLIDAY,
+                params=annual_holiday_params(year), fetched_at=captured_at,
+            )
+            holidays.update(parse_annual_holidays(raw, request_url=evidence["request_url"], year=year))
+            calendar_by_year[year] = evidence
+            receipt_rows[evidence["receipt_sha256"]] = (raw, evidence)
         for url, parser, params in (
-            (HOLIDAY_URL, PARSER_HOLIDAY, None),
             (ACTION_URL, PARSER_ACTION, None),
             (DIVIDEND_URL, PARSER_DIVIDEND, {"startDate": str(start.year), "endDate": str(through.year), "stkNo": "0050"}),
         ):
@@ -443,8 +519,6 @@ def build_daily_delta_bundle(
             )
             receipt_rows[evidence["receipt_sha256"]] = (raw, evidence)
             month = date(month.year + (month.month == 12), 1 if month.month == 12 else month.month + 1, 1)
-        holiday_raw = next(raw for raw, evidence in receipt_rows.values() if evidence["parser"] == PARSER_HOLIDAY)
-        holidays = parse_holidays(holiday_raw)
         observed_days: set[date] = set()
         for raw, evidence in receipt_rows.values():
             if evidence["parser"] == PARSER_STOCK_DAY:
@@ -504,7 +578,7 @@ def build_daily_delta_bundle(
             "frozen_snapshot_id": frozen_snapshot_id,
             "frozen_manifest_sha256": frozen_manifest_sha256,
             "market_status": "OPEN" if bar is not None else "CLOSED",
-            "calendar_evidence": evidence_by_parser[PARSER_HOLIDAY],
+            "calendar_evidence": calendar_by_year[cursor.year],
             "bar": bar,
             "bar_evidence": month_evidence,
             "corporate_action_evidence": [

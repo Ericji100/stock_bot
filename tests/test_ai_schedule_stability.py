@@ -389,7 +389,7 @@ def test_news_batch_checkpoint_survives_later_unknown(tmp_path, monkeypatch):
     from research_center.news_models import NewsItem
     from research_center.deepseek_service import DeepSeekUnavailable
     repo=NewsRepository(tmp_path/'news.db')
-    items=[NewsItem(title='台股新聞',url=f'https://example.test/{i}',published_at='2026-11-06') for i in range(2)]
+    items=[NewsItem(title='台股新聞',url=f'https://example.test/{i}',published_at=date.today().isoformat()) for i in range(2)]
     repo.save_many(n._fallback_classification(items))
     monkeypatch.setattr(n,'_classify_batch_size',lambda:1)
     center=SimpleNamespace(config=SimpleNamespace(deepseek_only=False))

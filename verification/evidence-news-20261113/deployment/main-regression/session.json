@@ -1,0 +1,20 @@
+{
+  "exit_status": 0,
+  "collected": 37,
+  "failed": 0,
+  "elapsed_seconds": 0.537,
+  "counts": {
+    "": 74,
+    "passed": 37
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 626,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_bot_runtime_health.py",
+    "tests/test_bot_watchdog.py",
+    "tests/test_topic_apply_service.py",
+    "tests/test_config_json.py"
+  ]
+}

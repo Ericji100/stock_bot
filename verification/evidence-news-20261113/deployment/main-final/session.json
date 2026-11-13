@@ -1,0 +1,35 @@
+{
+  "exit_status": 1,
+  "collected": 348,
+  "failed": 1,
+  "elapsed_seconds": 6.334,
+  "counts": {
+    "": 696,
+    "passed": 347,
+    "subtests passed": 72,
+    "failed": 1
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 626,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_evidence_news_integrity_1113.py",
+    "tests/test_topic_citation_audit.py",
+    "tests/test_topic_input_package.py",
+    "tests/test_topic_pipeline_service.py",
+    "tests/test_topic_release_closeout.py",
+    "tests/test_news_service.py",
+    "tests/test_news_schedule_balance.py",
+    "tests/test_news_search_dispatch.py",
+    "tests/test_hybrid_search_routing.py",
+    "tests/test_search_source_normalizer.py",
+    "tests/test_evidence_governance.py",
+    "tests/test_schedule_followup_1111.py",
+    "tests/test_ai_schedule_stability.py",
+    "tests/test_bot_runtime_health.py",
+    "tests/test_bot_watchdog.py",
+    "tests/test_topic_apply_service.py",
+    "tests/test_config_json.py"
+  ]
+}

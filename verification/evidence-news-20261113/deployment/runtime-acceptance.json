@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-13T16:22:40.728530+00:00",
+  "code_commit": "51ddaacbf2c6e1c459e3b2bba8892e16e950e0b6",
+  "bot_pid": 8592,
+  "heartbeat": "2026-11-14T00:22:15+08:00",
+  "native_poll_success": "2026-11-14T00:22:08+08:00",
+  "job_queue": true,
+  "queue_size": 0,
+  "current_task": null,
+  "etf_monitor": "READY",
+  "telegram": {
+    "getMe": {
+      "ok": true,
+      "is_bot": true
+    },
+    "getMyCommands": {
+      "ok": true,
+      "count": 43,
+      "all_ten_ai_entries": true
+    },
+    "getWebhookInfo": {
+      "ok": true,
+      "polling_mode": true,
+      "pending_updates": 0
+    }
+  },
+  "protected_data_and_all_accounting_news_tables_unchanged": true,
+  "new_paid_usd": "0",
+  "no_business_test_message_or_paid_task_sent": true,
+  "old_pack_not_applied": true,
+  "future_scheduled_output_quality_still_observation_only": true
+}

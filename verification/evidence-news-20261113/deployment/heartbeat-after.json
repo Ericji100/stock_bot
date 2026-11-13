@@ -1,0 +1,112 @@
+{
+  "updated_at": "2026-11-14T00:22:15+08:00",
+  "pid": 8592,
+  "job_queue_available": true,
+  "last_scheduled_event": "啟動晨報檢查",
+  "last_scheduled_event_at": "2026-11-14T00:21:16+08:00",
+  "schedule_health": {
+    "last_status": "triggered",
+    "last_status_at": "2026-11-14T00:21:16+08:00",
+    "current_task": null,
+    "last_started": {
+      "task_id": "scheduled:22_30_ai題材庫維護",
+      "label": "22:30 AI題材庫維護",
+      "status": "started",
+      "at": "2026-11-13T22:30:00+08:00"
+    },
+    "last_completed": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "completed",
+      "at": "2026-11-13T22:27:02+08:00",
+      "elapsed_seconds": 0.007
+    },
+    "queue_size": 0,
+    "recent_event_loop_lag_seconds": 0.006,
+    "schedule_unhealthy_reason": null,
+    "last_triggered": {
+      "label": "啟動晨報檢查",
+      "at": "2026-11-14T00:21:16+08:00"
+    },
+    "last_queued": {
+      "task_id": "scheduled:22_30_ai題材庫維護",
+      "label": "22:30 AI題材庫維護",
+      "status": "queued",
+      "at": "2026-11-13T22:30:00+08:00"
+    },
+    "last_failed": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "timeout",
+      "at": "2026-11-10T17:47:34+08:00",
+      "elapsed_seconds": 7200.025,
+      "error_summary": "exceeded 7200 seconds"
+    },
+    "last_skipped_duplicate": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "skipped_duplicate",
+      "at": "2026-11-10T17:47:34+08:00"
+    },
+    "etf_monitor": {
+      "status": "READY",
+      "updated_at": "2026-11-14T00:21:18.588108+08:00",
+      "mode": "shadow",
+      "attempt": 1,
+      "stage": "ready",
+      "last_error": null,
+      "next_retry_at": null,
+      "reconciliation_recovery": {
+        "status": "IDLE",
+        "pending_dates": [],
+        "checked_at": "2026-11-14T00:21:17.191110+08:00",
+        "next_check_at": "2026-11-14T00:26:18.585476+08:00"
+      },
+      "schedule": {
+        "preview": "12:45:00",
+        "decision": "13:55:00",
+        "reconciliation": "22:00:00"
+      }
+    },
+    "telegram_transport": {
+      "channels": {
+        "polling": {
+          "status": "healthy",
+          "last_success_at": "2026-11-14T00:22:08+08:00",
+          "incident_id": "7b644bc8d0614afabbf489b846a7ad1d",
+          "first_error_at": "2026-11-13T22:50:51+08:00",
+          "failures": 2,
+          "last_notice_at": "2026-11-13T22:50:51+08:00",
+          "last_error_at": "2026-11-13T22:50:52+08:00",
+          "last_error_type": "NetworkError",
+          "diagnostic_id": "ff63234aa874425fba0d20c17cf897f9",
+          "recent_incident_starts": [
+            "2026-11-13T22:41:37+08:00",
+            "2026-11-13T22:50:39+08:00",
+            "2026-11-13T22:50:51+08:00"
+          ],
+          "last_instability_notice_at": "2026-11-13T22:51:03+08:00",
+          "recovered_at": "2026-11-13T22:51:04+08:00"
+        },
+        "api": {
+          "status": "healthy",
+          "last_success_at": "2026-11-14T00:21:17+08:00",
+          "incident_id": "7944100a038c4d80a7c3666fa0cb67e7",
+          "first_error_at": "2026-11-09T08:36:43+08:00",
+          "failures": 3,
+          "last_notice_at": "2026-11-09T08:36:43+08:00",
+          "last_error_at": "2026-11-09T08:36:47+08:00",
+          "last_error_type": "NetworkError",
+          "diagnostic_id": "08016f6dff454c14b4881024a35f1623",
+          "recovered_at": "2026-11-09T08:36:51+08:00"
+        }
+      },
+      "notice_counts": {
+        "pending": 0,
+        "sent": 9,
+        "unknown": 3
+      },
+      "diagnostic_storage_warning": false
+    }
+  }
+}

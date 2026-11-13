@@ -1,0 +1,10 @@
+{
+  "change_id": "change_20261113_224616",
+  "success": false,
+  "errors": [
+    "引用來源或日期尚未通過檢核；請補查後重新審核，此包不可套用。"
+  ],
+  "all_write_and_backup_boundaries_not_called": true,
+  "old_formal_pack_not_modified_or_applied": true,
+  "kind": "Offline actual guard function with isolated read result and forbidden writes"
+}

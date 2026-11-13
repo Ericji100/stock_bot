@@ -1,0 +1,19 @@
+{
+  "source": {
+    "main.py": "49db65166b3123145e09003b16a537110a77e724039772bd4c670da1d285f1a9",
+    "prompt/news/news_summary.md": "9226e87688314e5c41d3279e1bd8b065c8c39b10315f1cde6196c0d4220a32e4",
+    "research_center/deepseek_search_service.py": "e03fe7bc9c027a7fe32a0f2f37f7eb569e837e8a61b3daa994bbc979c466c110",
+    "research_center/entity_resolver.py": "f7cbcb504599cf9624900e6e66cb36298fc6477c50e4530c425dab57ece730f6",
+    "research_center/news_service.py": "9988053717035885b0deca698f96227193e3fabf604961b80633b31e3d57ddd8",
+    "research_center/topic_citation_audit.py": "d34257ba8d7a01db366dc6f8fdb87646de74ea653835fcfc049c385dd2424804",
+    "research_center/topic_input_package.py": "8bc6bb2300fc4dba62ac83e8922f59ad9cc657c1a8a273df237cd59a6689fe8e",
+    "research_center/topic_pipeline_service.py": "ed3f069e84adb4336c47fa4315c48701e9938566317fe23f31bb684d8f8d1aed",
+    "research_center/topic_schema_normalizer.py": "baeaeb84aa144ff210498e9e0088d6850c7a5bee770dd690bc577c78cd1573b2",
+    "research_center/source_identity.py": "644292ce8b213145f253e10690659b17ef75330450ee17624853019e3da37153",
+    "tests/test_ai_schedule_stability.py": "321caccdb51a8ab63cb05604710ee492f4939ed6aa355162332130855ecb7300",
+    "tests/test_evidence_news_integrity_1113.py": "1e6c0b8945244ee515da3bcf0a483dceb76e6d40683e14106fd2f31095b47942"
+  },
+  "commit": "51ddaacbf2c6e1c459e3b2bba8892e16e950e0b6",
+  "reason": "Only a second obsolete November 6 news fixture date changed to date.today(); production code unchanged",
+  "initial_preflight_retained": true
+}

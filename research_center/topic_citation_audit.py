@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from .source_date_normalizer import normalize_published_date
 from .topic_input_package import merge_topic_sources
 from .topic_quality import normalize_status
+from .source_identity import reference_sources
 
 
 def _url(value: Any) -> str:
@@ -95,9 +96,15 @@ def restore_topic_source_quotes(pack, structured_data):
             if not isinstance(quote, str) or len(_quote_text(quote)) < 16:
                 continue
             sources = catalogue.get(_url(row.get('url') or row.get('source_url')), [])
+            cited_date = normalize_published_date(row.get('publish_date'), row.get('published_date'))
+            if sources and row.get('source_id'):
+                sources = reference_sources(row['source_id'], sources,
+                    url=_url(row.get('url') or row.get('source_url')), published_date=cited_date)
+            if cited_date:
+                sources = [source for source in sources if normalize_published_date(source.get('published_date')) == cited_date]
             if not sources and not (row.get('url') or row.get('source_url')) and row.get('source_id'):
-                sources = [source for group in catalogue.values() for source in group
-                           if source.get('source_id') == row['source_id']]
+                sources = reference_sources(row['source_id'], [source for group in catalogue.values() for source in group],
+                                            published_date=cited_date)
                 if len({_url(source.get('url')) for source in sources}) != 1:
                     continue
             if any(_quote_text(quote) in _quote_text(_provided_body(source)) for source in sources):
@@ -240,8 +247,7 @@ def quarantine_topic_source_leads(pack, structured_data: dict[str, Any]) -> None
 
 def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, Any]:
     catalogue: dict[str, list[dict]] = {}
-    collected = [row for key in ('discovery_sources','base_sources','web_fetched_sources')
-                 for row in structured_data.get(key) or [] if isinstance(row,dict)]
+    collected = merge_topic_sources(structured_data)
     for row in collected:
         if url := _url(row.get("url")):
             catalogue.setdefault(url, []).append(row)
@@ -272,14 +278,12 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
         company_rows(structured_data.get(key))
     citations = list(_rows({"actions": [a.to_dict() for a in pack.actions],
                             "company_knowledge_updates": pack.company_knowledge_updates}))
-    id_urls = {}
-    for source in collected:
-        if source.get('source_id') and (url := _url(source.get('url'))):
-            id_urls.setdefault(str(source['source_id']),set()).add(url)
     resolved_references=[]
+    quote_checks=[]
     for path,row in _id_only_rows({'actions':[a.to_dict() for a in pack.actions]}):
         reference=str(row['source_id'])
-        urls=id_urls.get(reference,set())
+        candidates = reference_sources(reference, collected, published_date=row.get('publish_date') or row.get('published_date'))
+        urls={_url(source.get('url')) for source in candidates if _url(source.get('url'))}
         resolution='unique_source_id'
         if len(urls)>1:
             quote=_quote_text(row.get('supporting_quote'))
@@ -311,6 +315,17 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
         url = _url(raw_url)
         rows = catalogue.get(url, [])
         flags = []
+        if row.get('source_id') and rows:
+            bound = reference_sources(row['source_id'], collected, url=url,
+                                      published_date=row.get('publish_date') or row.get('published_date'))
+            if bound:
+                rows = bound
+            else:
+                flags.append('source_id_url_or_date_mismatch')
+        elif rows and (day := normalize_published_date(row.get('publish_date'), row.get('published_date'))):
+            dated = [source for source in rows if normalize_published_date(source.get('published_date')) == day]
+            if dated:
+                rows = dated
         is_lead = bool(re.match(r'^/actions/\d+/extra/unverified_source_leads/',path))
         if not url:
             flags.append("invalid_url")
@@ -331,7 +346,12 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
         quote = str(row.get('supporting_quote') or '').strip()
         if quote:
             normalized = _quote_text(quote)
-            if len(normalized) < 16 or not any(normalized in _quote_text(_provided_body(source)) for source in rows):
+            matching = [source for source in rows if len(normalized) >= 16
+                        and normalized in _quote_text(_provided_body(source))]
+            quote_checks.append({'path':path, 'url':url, 'quote':quote, 'matched':bool(matching),
+                                 'matched_source_ids':[source.get('source_id') for source in matching],
+                                 'candidate_source_ids':[source.get('source_id') for source in rows]})
+            if not matching:
                 flags.append('supporting_quote_not_in_body')
         if rows and not supplied_dates:
             counts["date_unknown"] += 1
@@ -373,5 +393,6 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
     return {"schema_version": 1, "report_date": as_of, "citation_count": len(citations),
             "counts": dict(counts), "issues": issues, "blocking_count": len(issues),
             "resolved_source_references":resolved_references,
+            "quote_checks":quote_checks,
             "passed": not issues,
             "scope": "驗證引用可追溯、日期、頁型與已確認公司主張的原文對照；不表示已獨立證實主張。舊資料可作背景，不代表近期訂單。"}

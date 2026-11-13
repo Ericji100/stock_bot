@@ -2157,16 +2157,21 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         search_diag = meta.get('minimax_diagnostics') or {}
         from research_center.ai_execution_control import is_graceful_search_stop
         search_stopped = search_diag.get('stop_reason')
+        category_missing = (meta.get('classification_category_coverage') or {}).get('missing_categories') or []
+        from research_center.news_categories import news_category_label
         failed = bool(meta.get('local_fallback_count') or (search_stopped and not is_graceful_search_stop(search_stopped))
                       or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
         await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
-            'status': meta.get('classification_status'), 'classified': meta.get('ai_classified_count', 0),
+            'status': 'partial_success' if category_missing else meta.get('classification_status'), 'classified': meta.get('ai_classified_count', 0),
             'pending': pending.get('eligible_recent', meta.get('deferred_classification_count', 0)),
-            'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else '近期待辦持續累積')},
+            'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else
+                '新聞類別覆蓋不足：' + '、'.join(news_category_label(key) for key in category_missing)
+                if category_missing else '近期待辦持續累積')},
             provider_notice_sent=bool(notices))
-        if meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0):
+        if meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0) or category_missing:
             print("新聞已保存，搜尋覆蓋或 AI 分類尚未完整完成", flush=True)
-            reason = ('本次選定新聞已判讀，其餘新聞保留待補' if meta.get('classification_status') == 'ai_success'
+            reason = ('新聞已保存，分類類別缺口待補' if category_missing else
+                      '本次選定新聞已判讀，其餘新聞保留待補' if meta.get('classification_status') == 'ai_success'
                       else '新聞已保存，搜尋／分類缺口待補')
             return {"status": "partial_success", "reason": reason}
         digests = run_news_scheduled_latest(repository)

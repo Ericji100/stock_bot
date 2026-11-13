@@ -11,17 +11,52 @@ from .config import ROOT_DIR
 ENTITY_RESOLVER_SCHEMA_VERSION = "entity_resolver_v1"
 
 
-def exact_company_identity(name: str, code: str, names: dict[str, str]) -> dict[str, Any]:
+def exact_company_identity(name: str, code: str, names: dict[str, str], aliases: dict | None = None) -> dict[str, Any]:
     """Resolve identity only; never infer a subsidiary, business role or relationship."""
     name, code = str(name or '').strip(), str(code or '').strip()
-    matches = sorted(str(key) for key, value in names.items() if name and str(value).strip() == name)
+    aliases = aliases or {}
+    matches = sorted(str(key) for key, value in names.items() if name and
+                     (str(value).strip() == name or name in aliases.get(str(key), [])))
     if code:
+        if code in names and name in aliases.get(code, []) and matches == [code]:
+            return {'status': 'exact', 'company_code': code, 'company_name': names[code],
+                    'resolution': 'official_alias', 'matched_alias': name}
         if code not in names or (name and str(names[code]).strip() != name):
+            if code in names and not matches and name.endswith(str(names[code])) and len(str(names[code])) >= 2:
+                return {'status': 'alias_pending', 'candidate_codes': [code], 'canonical_name': names[code],
+                        'reason': '代號存在，但延伸名稱缺官方別名證據；不可自動改名或視為身分已確認。'}
             return {'status': 'unresolved' if code not in names else 'conflict', 'candidate_codes': matches}
         return {'status': 'exact', 'company_code': code, 'company_name': names[code]}
     if len(matches) == 1:
         return {'status': 'exact', 'company_code': matches[0], 'company_name': names[matches[0]]}
     return {'status': 'ambiguous' if matches else 'unresolved', 'candidate_codes': matches}
+
+
+def company_aliases_from_sources(data):
+    """Use explicit same-row official company-master names, never AI/substring guesses."""
+    from .source_text_cleaner import source_body_text
+    from urllib.parse import urlsplit
+    names = data.get('authoritative_company_names') or {}
+    aliases = {}
+    for key in ('base_sources', 'discovery_sources', 'web_fetched_sources'):
+        for source in data.get(key) or []:
+            host = (urlsplit(source.get('url') or '').hostname or '').lower()
+            if not any(host == domain or host.endswith('.' + domain) for domain in ('twse.com.tw', 'tpex.org.tw')):
+                continue
+            try:
+                payload = json.loads(source_body_text(source))
+            except (TypeError, ValueError):
+                continue
+            rows = payload if isinstance(payload, list) else payload.get('data', []) if isinstance(payload, dict) else []
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                code = str(row.get('公司代號') or row.get('SecuritiesCompanyCode') or '')
+                short = str(row.get('公司簡稱') or row.get('CompanyAbbreviation') or '').strip()
+                full = str(row.get('公司名稱') or row.get('CompanyName') or '').strip()
+                if code in names and short == names[code] and full:
+                    aliases.setdefault(code, set()).add(full)
+    return {code: sorted(values) for code, values in aliases.items()}
 
 
 @dataclass(frozen=True)

@@ -306,8 +306,9 @@ def run_topic_pipeline(
         },
     )
     _hydrate_topic_evidence(pack, structured_data)
+    from .entity_resolver import company_aliases_from_sources
     pack.extra['company_identity_audit'] = resolve_topic_company_identities(
-        pack.actions, structured_data.get('authoritative_company_names') or {})
+        pack.actions, structured_data.get('authoritative_company_names') or {}, company_aliases_from_sources(structured_data))
     if not pack.actions:
         pack.status = TopicChangeStatus.FAILED
         pack.warnings.append("AI 未產生可套用的題材變更，請拒絕此變更包或重新執行 /topic_maintain。")
@@ -363,24 +364,21 @@ def _full_prompt_fits(prompt, prompt_capacity=None, *, stage='detail_expand', ou
 def _hydrate_topic_evidence(pack, data):
     """Restore only supplied provenance; missing exact supporting quotes stay missing."""
     from .topic_models import coerce_topic_source_level
-    by_url = {}
-    by_id = {}
-    for row in merge_topic_sources(data):
-        if row.get('source_id'):
-            by_id[row['source_id']] = row
-        if row.get('url'):
-            current = by_url.setdefault(row['url'], dict(row))
-            for key, value in row.items():
-                if not current.get(key) and value:
-                    current[key] = value
+    from .source_identity import reference_sources
+    from .source_date_normalizer import normalize_published_date
+    rows = merge_topic_sources(data)
     for action in pack.actions:
         for item in action.evidence:
-            source = by_id.get(item.source_id)
-            if not source or source.get('url') != item.url:
-                source = by_url.get(item.url)
-            if not source:
+            candidates = (reference_sources(item.source_id, rows, url=item.url, published_date=item.publish_date)
+                          if item.source_id else [row for row in rows if row.get('url') == item.url
+                          and (not item.publish_date or normalize_published_date(row.get('published_date')) == normalize_published_date(item.publish_date))])
+            if len(candidates) != 1:
                 continue
-            if not item.source_id:
+            source = candidates[0]
+            if item.source_id != source.get('source_id'):
+                pack.extra.setdefault('source_reference_restorations', []).append({
+                    'theme_id':action.theme_id, 'original_id':item.source_id, 'source_id':source.get('source_id'),
+                    'url':item.url, 'published_date':source.get('published_date'), 'policy':'Unique supplied ID/URL/date; not a claim verification.'})
                 item.source_id = source.get('source_id')
             if item.source in {'', '未命名來源', 'unknown'}:
                 item.source = source.get('title') or item.source

@@ -156,6 +156,7 @@ def build_news_discovery_queries(period: str = "latest") -> list[dict[str, Any]]
             "exclude": ["行情頁", "報價頁", "個股列表頁", "首頁", "泛國際新聞"],
             "queries": [group],
             "news_quality_policy": {"terms": _NEWS_QUALITY_TERMS.get(group.get("title"), []),
+                                    "category": normalize_news_category(group.get("title")),
                                     "require_official": group.get("title") == "個股公告 / MOPS"},
         })
 
@@ -521,7 +522,22 @@ def _fair_scheduled_news(items, pending_urls, portfolio):
         result.append(lane.popleft())
         if lane:
             lanes.append(lane)
+    # Reserve one existing substantive supply-chain article, not an index page.
+    supply = next((item for item in result if _correct_news_category(item) == 'supply_chain'
+                   and 'ai_excluded' not in item.tags and not _is_non_article_page(item)
+                   and len(item.full_text or item.summary or '') >= 120), None)
+    if supply:
+        result = [supply, *[item for item in result if item is not supply]]
     return result
+
+
+def news_category_coverage(items):
+    counts = Counter(_correct_news_category(item) for item in items
+                     if 'ai_classified' in item.tags and 'ai_excluded' not in item.tags
+                     and 'local_rule_fallback' not in item.tags)
+    missing = [key for key in _NEWS_CATEGORY_TASK_LABELS if not counts.get(key)]
+    return {'usable_category_counts': dict(counts), 'missing_categories': missing,
+            'complete': not missing, 'policy': '排除、索引頁及本地備援不冒充有效 AI 類別覆蓋；缺口保留，不強改類別湊數。'}
 
 
 def _env_int(name: str, default: int = 0) -> int:
@@ -1092,6 +1108,7 @@ def _run_news_refresh(
         selected_complete = (ai_classified_count == selected_count and not classification_diagnostics.get('stop_reason'))
         search_complete = minimax_diag.get('complete') is not False
         classification_status = 'ai_success' if selected_complete and search_complete else 'partial_success'
+        category_coverage = news_category_coverage(classified)
         if local_fallback_count:
             emit(f"AI 分類 fallback：{local_fallback_count}/{len(classified)} 則改用本地規則")
 
@@ -1167,6 +1184,7 @@ def _run_news_refresh(
             "webfetch_success": webfetch_success,
             "filtered_count": filtered_count,
             "category_counts": dict(category_counts),
+            "classification_category_coverage": category_coverage,
             "holding_count": holding_count,
             "ai_classified_count": ai_classified_count,
             "local_fallback_count": local_fallback_count,
@@ -2013,7 +2031,10 @@ def _has_sector_rotation_headline(item: NewsItem) -> bool:
 
 
 def _has_supply_chain_headline(item: NewsItem) -> bool:
-    return _title_has_any(item, _HEADLINE_SUPPLY_CHAIN_TERMS)
+    title = item.title or ''
+    multi_company = re.search(r'(?:多家|數家|[二三四五六七八九十兩\d]+家)(?:台廠|公司|廠商)|上游|下游', title)
+    operations = any(term in title for term in ('訂單','需求','供料','成本','毛利','產能','漲價'))
+    return _title_has_any(item, _HEADLINE_SUPPLY_CHAIN_TERMS) or bool(multi_company and operations)
 
 
 def _has_ai_semiconductor_headline(item: NewsItem) -> bool:
@@ -2103,6 +2124,9 @@ def _correct_news_category(item: NewsItem) -> str:
     title_text = (item.title or "").lower()
     if category == "holdings":
         return category
+
+    if _title_has_any(item, ['台指期', '台指選擇權', 'TAIEX futures']) and not _has_company_event_headline(item):
+        return 'market_focus'
 
     if _has_broad_market_headline(item) and not (
         _has_company_event_headline(item) or _has_sector_rotation_headline(item) or _has_supply_chain_headline(item)

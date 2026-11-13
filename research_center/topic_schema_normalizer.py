@@ -68,7 +68,7 @@ def repair_topic_detail_structure(payload: Any, batch: list[dict]) -> tuple[Any,
     return result, repairs
 
 
-def resolve_topic_company_identities(actions, names):
+def resolve_topic_company_identities(actions, names, aliases=None):
     from .entity_resolver import exact_company_identity
     checks = []
     for action in actions:
@@ -77,7 +77,7 @@ def resolve_topic_company_identities(actions, names):
                 name, code = row.get('company_name') or '', row.get('company_code') or ''
                 if not name and not code:
                     continue
-                identity = exact_company_identity(name, code, names)
+                identity = exact_company_identity(name, code, names, aliases)
                 checks.append({'theme_id': action.theme_id, 'kind': kind, 'original_name': name,
                                'original_code': code, **identity})
                 row['identity_mapping'] = identity

@@ -1,0 +1,115 @@
+{
+  "replayed_saved_model_stages": [
+    "candidate_extract",
+    "detail_expand_1",
+    "detail_expand_2",
+    "detail_expand_3",
+    "detail_expand_4"
+  ],
+  "selected": 8,
+  "ai_completed": 8,
+  "provider_capacity": "Offline response stub only; production capacity checks unchanged, no new token-count API request",
+  "batch_scope": "Frozen recorded four-pair layout for saved-response attribution; not a new model execution",
+  "original_blocking_count": 17,
+  "remaining_blocking_count": 6,
+  "strict_quote_failures_retained": [
+    {
+      "path": "/actions/0/company_relations/0/evidence/1",
+      "url": "https://money.udn.com/money/story/124512/9716792",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-08-27"
+      ],
+      "cited_date": "2026-08-27"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/0/evidence/1",
+      "url": "https://money.udn.com/money/story/124512/9716792",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-08-27"
+      ],
+      "cited_date": "2026-08-27"
+    },
+    {
+      "path": "/actions/2/company_relations/4/evidence/1",
+      "url": "https://money.udn.com/money/story/124512/9802886",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-10-08"
+      ],
+      "cited_date": null
+    },
+    {
+      "path": "/actions/2/supply_chain_nodes/4/evidence/1",
+      "url": "https://money.udn.com/money/story/124512/9802886",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-10-08"
+      ],
+      "cited_date": null
+    },
+    {
+      "path": "/actions/6/company_relations/3/evidence/0",
+      "url": "https://tw.stock.yahoo.com/news/ai%E9%AB%98%E9%80%9F%E5%82%B3%E8%BC%B8%E9%BB%9E%E7%81%AB-pcb%E5%BF%85%E7%9C%8B16%E6%AA%94-163900115.html",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-07"
+      ],
+      "cited_date": null
+    },
+    {
+      "path": "/actions/6/supply_chain_nodes/3/evidence/0",
+      "url": "https://tw.stock.yahoo.com/news/ai%E9%AB%98%E9%80%9F%E5%82%B3%E8%BC%B8%E9%BB%9E%E7%81%AB-pcb%E5%BF%85%E7%9C%8B16%E6%AA%94-163900115.html",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-07"
+      ],
+      "cited_date": null
+    }
+  ],
+  "unique_source_ids": 294,
+  "all_original_source_bodies_preserved": true,
+  "target_audit_passed": true,
+  "alias_pending": [
+    {
+      "theme_id": "ai_chip_test_interface",
+      "kind": "affected_companies",
+      "original_name": "中華精測",
+      "original_code": "6510",
+      "status": "alias_pending",
+      "candidate_codes": [
+        "6510"
+      ],
+      "canonical_name": "精測",
+      "reason": "代號存在，但延伸名稱缺官方別名證據；不可自動改名或視為身分已確認。"
+    },
+    {
+      "theme_id": "ai_chip_test_interface",
+      "kind": "company_relations",
+      "original_name": "中華精測",
+      "original_code": "6510",
+      "status": "alias_pending",
+      "candidate_codes": [
+        "6510"
+      ],
+      "canonical_name": "精測",
+      "reason": "代號存在，但延伸名稱缺官方別名證據；不可自動改名或視為身分已確認。"
+    },
+    {
+      "theme_id": "ai_chip_test_interface",
+      "kind": "supply_chain_nodes",
+      "original_name": "中華精測",
+      "original_code": "6510",
+      "status": "alias_pending",
+      "candidate_codes": [
+        "6510"
+      ],
+      "canonical_name": "精測",
+      "reason": "代號存在，但延伸名稱缺官方別名證據；不可自動改名或視為身分已確認。"
+    }
+  ],
+  "verified_aliases": {},
+  "applicable": false,
+  "no_claims_promoted": true
+}

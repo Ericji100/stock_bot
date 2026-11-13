@@ -177,6 +177,10 @@ def append_topic_shared_records(prompt: str, variables: dict[str, str]) -> str:
     if variables.get('topic_field_names_json'):
         prompt += '\n全局欄位名稱字典：同代碼等於其原欄位名，閱讀時須展開，不可把代碼寫入正式輸出。\n' + variables['topic_field_names_json']
     prompt += '\n\n本批日期與證據檢核：\n' + variables.get('evidence_governance_json', '{}')
+    prompt += ('\n引用規則：source_id 必須原樣使用本批來源的唯一編號，不附加日期或說明。'
+               'source_id_aliases 是歷史別名，可能重複，不作正式引用。日期另填 publish_date，並附完整網址。'
+               'supporting_quote 只能逐字摘錄該來源正文，不把摘要、推論或其他文章改寫成引句；'
+               '無法逐字核對時保留主張為待查線索，不捏造引句或升格公司關係。')
     records = variables.get("topic_shared_records_json", "{}")
     if records == "{}":
         return prompt
@@ -221,6 +225,13 @@ def merge_topic_sources(data: dict[str, Any]) -> list[dict]:
                                       *([row['source_id']] if row.get('source_id') else [])]))
             for field,value in row.items():
                 if value is not None and value!='' and value!=[]:
+                    if field in {'found_by','used_in_section','search_summary_events'} and isinstance(value, list):
+                        combined = list(previous.get(field) or [])
+                        for item in value:
+                            if item not in combined:
+                                combined.append(item)
+                        previous[field] = combined
+                        continue
                     if field in {'source_id','published_date','source_level'} and previous.get(field):
                         continue
                     if field in {'snippet','content'} and previous.get(field) and str(value) in str(previous[field]):
@@ -232,7 +243,8 @@ def merge_topic_sources(data: dict[str, Any]) -> list[dict]:
         body=row.get('content')
         if isinstance(body,str) and isinstance(row.get('snippet'),str) and row['snippet'] in body:
             row['snippet']=None
-    return merged
+    from .source_identity import bind_source_ids
+    return bind_source_ids(merged)
 
 
 def topic_source_references(value):
@@ -272,7 +284,8 @@ def _references(value):
 
 def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     result=dict(variables)
-    sources=merge_topic_sources(data) if source_rows is None else source_rows
+    from .source_identity import bind_source_ids
+    sources=merge_topic_sources(data) if source_rows is None else bind_source_ids(source_rows)
     from datetime import date
     from .evidence_governance import build_evidence_governance
     raw_date = data.get('report_date')
@@ -303,8 +316,9 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
                     if company.get('company_code'): codes.add(str(company['company_code']))
                     if company.get('company_name'): terms.add(str(company['company_name']))
         profiles=[p for p in profiles if p.get('theme_id') in ids or p.get('theme_name') in terms]
-        from .entity_resolver import exact_company_identity
+        from .entity_resolver import exact_company_identity, company_aliases_from_sources
         names = data.get('authoritative_company_names') or {}
+        aliases = company_aliases_from_sources(data)
         identities = []
         queries = [(company.get('company_name'), company.get('company_code'))
                    for candidate in batch for company in candidate.get('candidate_companies') or []
@@ -314,7 +328,7 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
         queries.extend((node.get('company_name'), node.get('company_code'))
                        for node in data.get('supply_chain_nodes') or [] if node.get('theme_id') in ids)
         for name, code in queries:
-            identity = exact_company_identity(name, code, names)
+            identity = exact_company_identity(name, code, names, aliases)
             identities.append({'query_name': name, 'query_code': code, **identity})
             if identity['status'] == 'exact':
                 codes.add(identity['company_code'])

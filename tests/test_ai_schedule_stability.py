@@ -368,7 +368,7 @@ def test_news_phase_cutoff_retains_source_and_allows_classification(tmp_path, mo
     from research_center.news_service import _discover_news_sources
     from research_center.ai_execution_control import checkpoint_sources
     repo = NewsRepository(tmp_path/'news.db')
-    source = SourceItem('S1','台股新聞','https://example.test/a','Level 2',snippet='全部內容',published_date='2026-11-06')
+    source = SourceItem('S1','台股新聞','https://example.test/a','Level 2',snippet='全部內容',published_date=date.today().isoformat())
     def discover(*args, **kwargs):
         checkpoint_sources([source])
         raise WorkStopped('search_phase_deadline')

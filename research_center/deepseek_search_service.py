@@ -43,7 +43,7 @@ class DiscoveryResult:
 def _news_task_quality(rows, policy, as_of):
     """Judge fresh substantive article coverage, not the raw search-result count."""
     from .news_models import NewsItem
-    from .news_service import _is_non_article_page
+    from .news_service import _is_non_article_page, _correct_news_category
     from .source_date_normalizer import normalize_published_date
     fresh = []
     trusted = 0
@@ -54,7 +54,9 @@ def _news_task_quality(rows, policy, as_of):
     terms = [str(term).casefold() for term in policy.get('terms', []) if term]
     for row in rows:
         url = str(row.get('url') or '')
-        text = f"{row.get('title') or ''} {row.get('snippet') or ''}"
+        from .source_text_cleaner import source_body_text, article_text_sections
+        primary, _ = article_text_sections(source_body_text(row))
+        text = f"{row.get('title') or ''} {row.get('snippet') or ''} {primary}"
         day = normalize_published_date(row.get('published_date'))
         url_day = normalize_published_date(url) if not day else None
         day = day or url_day
@@ -62,7 +64,10 @@ def _news_task_quality(rows, policy, as_of):
                 len(text) < 120 or not terms or not any(term in text.casefold() for term in terms)):
             continue
         seen.add(url)
-        if _is_non_article_page(NewsItem(title=str(row.get('title') or ''),url=url,summary=text)):
+        article = NewsItem(title=str(row.get('title') or ''), url=url, summary=text)
+        if _is_non_article_page(article):
+            continue
+        if policy.get('category') == 'supply_chain' and _correct_news_category(article) != 'supply_chain':
             continue
         entry = match_preferred_source(url) or {}
         level = str(entry.get('level') or '')

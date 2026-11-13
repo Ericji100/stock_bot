@@ -1,0 +1,32 @@
+{
+  "original_classifier_responses": 10,
+  "reviewed_items": 30,
+  "retained_articles": 23,
+  "excluded_retained": 7,
+  "category_coverage": {
+    "usable_category_counts": {
+      "sector_rotation": 5,
+      "macro_policy": 4,
+      "market_focus": 7,
+      "ai_semiconductor": 4,
+      "supply_chain": 1,
+      "company_news": 2
+    },
+    "missing_categories": [],
+    "complete": true,
+    "policy": "排除、索引頁及本地備援不冒充有效 AI 類別覆蓋；缺口保留，不強改類別湊數。"
+  },
+  "futures_category": [
+    [
+      "外資10.1萬口空單創歷史新高 台指期夜盤41K 保衛戰開打 | 期貨市場 | 期貨 | 經濟日報",
+      "market_focus"
+    ],
+    [
+      "外資10.1萬口空單創歷史新高 台指期夜盤41K保衛戰開打",
+      "market_focus"
+    ]
+  ],
+  "all_body_text_preserved": true,
+  "new_model_calls": 0,
+  "freshness_not_upgraded": true
+}

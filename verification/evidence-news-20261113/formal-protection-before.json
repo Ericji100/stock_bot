@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.py": "df6280ea0f49ff9535ec82745c252095c377d2ee8888057631bd20ba24277b32",
+    "research_center/news_service.py": "956a0e769023c99f32f6936683791e20f376ecd90b2063437f5c04976b37ce72",
+    "research_center/topic_input_package.py": "302c301f48ebb527a6dc30aefee6ecd0116e42e50d8a883df6f134ef0c1f38dd",
+    "research_center/topic_citation_audit.py": "171009e1f2dd868ea0d472905fee17ace7dfbdd3ab9dc3df7fed9bb41e34ee54",
+    "research_center/topic_pipeline_service.py": "9d3559eeafd64273b1dde1af5c5a3d8d915a94f6abfdd605cde77291d7c3f36e",
+    "research_center/entity_resolver.py": "fbea366220639c577fefcbf6777e363d6231f39a5f5b55c8b0e1966bd1ca8d2e",
+    "config.json": "acef1cc285bf271ab5761abc9d123777dd433503aa9b0a096080630c3deb9a45",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+    "logs/topic_inputs/change_20261113_224616.json": "0a23ed3a928eb8b6cc0c31b8d62f3e7d061d25c66e2f69ddb72dc788b94511b1",
+    "logs/topic_ai_raw/change_20261113_224616.json": "5cbcc4beeb4a765ab057b66348681a83384c783d7d7b502dc85660f16a64845d",
+    "data/topic/change_packs/change_20261113_224616.json": "1634b543894c4dd98ede344b4fd58e67fa88396a513358259fc39bc662aea9dd"
+  },
+  "requests_sha256": "13612c8e44bedb96e0d57ccbcbf016848a61873abf86a9003486e84f8700d1a5",
+  "requests": 64,
+  "unknown_count": 6
+}

@@ -72,14 +72,16 @@ def test_thirty_cap_drains_backlog_and_new_events_fairly(tmp_path, monkeypatch, 
     pending_urls = {item.url for item in pending}
     repo.save_many(pending)
     originals = [source(article(100 + i)) for i in range(12)]
+    repo.save_discovery_checkpoint(originals)
     monkeypatch.setattr(news, '_discover_news_sources', lambda *args: (deepcopy(originals), {'complete': True}))
     with ai_task('news', background=True):
         selected, first = news._run_news_refresh(center, repo)
         assert len(selected) == 30 and first['scheduled_balance']
         assert sum(item.url in pending_urls for item in selected) > 6
         assert any('item-100.' in item.url for item in selected)
-        assert first['backlog_status'] == 'ordinary_deferred'
-        assert first['search_complete'] and first['selected_classification_complete']
+        assert first['backlog_status'] == 'partial'
+        assert not first['search_complete'] and first['selected_classification_complete']
+        assert first['workload_plan']['skip_search']
         news._run_news_refresh(center, repo)
     assert repo.pending_classification_summary()['eligible_recent'] == 0
     assert len(calls) > 6

@@ -484,6 +484,14 @@ def _classify_limit() -> int:
     return min(30, value) if TASK.get()[1] and value > 0 else default if TASK.get()[1] else value
 
 
+def news_workload_plan(pending_count, *, resume_saved=False):
+    limit = _classify_limit()
+    skip = bool(resume_saved or pending_count >= max(1, limit))
+    return {'pending_before': pending_count, 'classification_limit': limit,
+            'skip_search': skip, 'search_seconds': 0 if skip else 300 if pending_count else 900,
+            'policy': '既有待辦優先，沿用分類上限與費用護欄；來源、日期與缺口完整保留。'}
+
+
 def _fair_scheduled_news(items, pending_urls, portfolio):
     """Rotate recent pending, older eligible pending and new events, then categories."""
     recent, older, new = [], [], []
@@ -800,13 +808,33 @@ from .deepseek_service import DeepSeekUnavailable, task_context
 @task_context("news")
 def run_news_refresh(center, repository, progress=None, ai_model="deepseek"):
     from .ai_execution_control import execution_scope
-    from .deepseek_service import TASK
+    from .deepseek_service import TASK, RUN_ID
     # Reserve time for enrichment, classification and persistence, not just discovery.
     seconds = 45 * 60 if TASK.get()[1] else None
-    with execution_scope(seconds) as original:
-        paid_seconds = max(0, original.remaining() - 5 * 60) if seconds else None
-        with execution_scope(paid_seconds, reason='news_classification_deadline'):
-            return _run_news_refresh(center, repository, progress, ai_model)
+    journal = repository if TASK.get()[1] and isinstance(repository, NewsRepository) else None
+    day = TASK.get()[2] or datetime.now().date().isoformat()
+    if journal:
+        from tools.bot_watchdog import default_process_exists
+        journal.recover_interrupted_refreshes(default_process_exists)
+        resume = journal.refresh_requires_resume()
+        journal.record_refresh(RUN_ID.get(), day, 'starting', detail={'resume_saved_sources': resume})
+    else:
+        resume = False
+    try:
+        with execution_scope(seconds) as original:
+            paid_seconds = max(0, original.remaining() - 5 * 60) if seconds else None
+            with execution_scope(paid_seconds, reason='news_classification_deadline'):
+                items, meta = _run_news_refresh(center, repository, progress, ai_model, **({'resume_saved':True} if resume else {}))
+        if journal:
+            journal.record_refresh(RUN_ID.get(), day, 'finished', meta['classification_status'],
+                {key:meta.get(key) for key in ('ai_classified_count','pending_classification_summary','search_complete',
+                                               'classification_diagnostics','workload_plan')})
+        return items, meta
+    except BaseException as exc:
+        if journal:
+            journal.record_refresh(RUN_ID.get(), day, 'interrupted', 'interrupted',
+                {'reason': type(exc).__name__, 'automatic_paid_retry': False})
+        raise
 
 
 def _checkpoint_news_sources(repository, sources):
@@ -819,7 +847,7 @@ def _checkpoint_news_sources(repository, sources):
         repository.save_many(_fallback_classification(items))
 
 
-def _discover_news_sources(center, repository, portfolio, ai_model, progress):
+def _discover_news_sources(center, repository, portfolio, ai_model, progress, *, search_seconds=15*60):
     from .ai_execution_control import execution_scope, source_checkpoint, check_work
     from .deepseek_service import TASK
     from .orchestrator import _GeminiDiscoveryRunner
@@ -843,7 +871,7 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress):
              if TASK.get()[1] and callable(getattr(repository, 'recent_discovery_sources', None)) else [])
     sources.extend(seeds)
     try:
-        with execution_scope(15 * 60 if TASK.get()[1] else None, reason='search_phase_deadline'), source_checkpoint(checkpoint), scheduled_news_seed_sources(seeds):
+        with execution_scope(search_seconds if TASK.get()[1] else None, reason='search_phase_deadline'), source_checkpoint(checkpoint), scheduled_news_seed_sources(seeds):
             structured = {}
             try:
                 found, _ = _GeminiDiscoveryRunner(center).run_discovery_flow(
@@ -886,6 +914,7 @@ def _run_news_refresh(
     repository: NewsRepository,
     progress: ProgressCallback | None = None,
     ai_model: str = "deepseek",
+    *, resume_saved=False,
 ) -> tuple[list[NewsItem], dict[str, Any]]:
     """Refresh news: search, fetch, classify, save.
 
@@ -936,7 +965,20 @@ def _run_news_refresh(
         except Exception:
             portfolio = {}
 
-        all_sources, minimax_diag = _discover_news_sources(center, repository, portfolio, ai_model, progress)
+        pending_before = repository.query_pending_classification(limit=0, as_of=analysis_day) if scheduled and isinstance(repository, NewsRepository) else []
+        workload = news_workload_plan(len(pending_before), resume_saved=resume_saved)
+        from .deepseek_service import RUN_ID
+        if scheduled and isinstance(repository, NewsRepository):
+            repository.record_refresh(RUN_ID.get(), analysis_day.isoformat(), 'classification' if workload['skip_search'] else 'search', detail=workload)
+        if scheduled and workload['skip_search']:
+            all_sources = repository.recent_discovery_sources(analysis_day)
+            minimax_diag = {'complete': False, 'status': 'saved_sources_resume', 'deferred_search': True,
+                'reason': '優先判讀已保存新聞，新的搜尋缺口保留；未重送先前未結算搜尋。'}
+            emit(minimax_diag['reason'])
+        else:
+            from .ai_execution_control import execution_scope
+            with execution_scope(workload['search_seconds'] if scheduled else None, reason='search_phase_deadline'):
+                all_sources, minimax_diag = _discover_news_sources(center, repository, portfolio, ai_model, progress)
         stop_reason = minimax_diag.get('stop_reason')
         from .ai_execution_control import is_graceful_search_stop
         search_halted = bool(stop_reason and not is_graceful_search_stop(stop_reason))
@@ -996,7 +1038,7 @@ def _run_news_refresh(
             output_formats=("md",), user_id="", created_at=None,
         )
         try:
-            if not search_halted:
+            if not search_halted and not (scheduled and workload['skip_search']):
                 _enrich_sources_with_web_fetch(fetch_request, sorted_sources, structured_data, progress=progress)
         except Exception as exc:
             emit(f"WebFetch 略過：{exc}")
@@ -1078,6 +1120,8 @@ def _run_news_refresh(
             else:
                 repository.save_many(rows)
         # Batch classify with AI
+        if scheduled and isinstance(repository, NewsRepository):
+            repository.record_refresh(RUN_ID.get(), analysis_day.isoformat(), 'classification', detail=workload)
         primary_classifier = _primary_news_classifier_model(center, ai_model)
         from .search_transmission import collect_search_context, source_events_packet
         classified_urls = {item.url for item in items}
@@ -1176,6 +1220,7 @@ def _run_news_refresh(
 
         return [item for item in classified if 'ai_excluded' not in item.tags], {
             "scheduled_balance": scheduled,
+            "workload_plan": workload,
             "saved": saved,
             "skipped": skipped,
             "total": len(classified),

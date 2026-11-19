@@ -305,6 +305,8 @@ def run_topic_pipeline(
             "input_scope": "完整去重來源萃取候選，逐題材提供相關完整證據；既有全庫在本地比對" if require_full_ai else "legacy_bounded_inputs",
         },
     )
+    from .topic_quote_binding import bind_topic_quotes
+    bind_topic_quotes(pack, structured_data)
     _hydrate_topic_evidence(pack, structured_data)
     from .entity_resolver import company_aliases_from_sources
     pack.extra['company_identity_audit'] = resolve_topic_company_identities(

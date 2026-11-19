@@ -2633,6 +2633,32 @@ async def post_init(application):
     await register_bot_commands(application)
     await initialize_etf_monitor(application)
     try:
+        from research_center.config import load_research_config
+        from tools.bot_watchdog import default_process_exists
+        from research_center.scheduled_outcome_notice import ScheduledOutcomeNotices
+        repository = NewsRepository(load_research_config().database_path)
+        recovered = repository.recover_interrupted_refreshes(default_process_exists)
+        notices = ScheduledOutcomeNotices(get_workdata_path('runtime', 'schedule_outcomes'))
+        events = []
+        for days in range(7):
+            day = get_tw_today() - timedelta(days=days)
+            audit = get_workdata_path('logs', 'scheduled_tasks', f'{day.isoformat()}.jsonl')
+            if audit.is_file():
+                events.extend(json.loads(line) for line in audit.read_text(encoding='utf-8-sig').splitlines() if line.strip())
+        from research_center.ai_budget_service import shared_budget_root
+        from research_center.config import ROOT_DIR as research_root
+        scheduled_runs = repository.scheduled_news_request_runs(shared_budget_root(research_root) / 'openai' / 'openai-credits.sqlite3')
+        recovered.extend(repository.import_unclosed_refreshes(events, notices.recorded_run_ids('news'),
+            as_of=datetime.now(pytz.timezone('Asia/Taipei')), scheduled_run_ids=scheduled_runs))
+        async def send_recovery(text):
+            await safe_send_bot_message(application.bot, load_config()['chat_id'], text, max_attempts=1)
+        for row in recovered:
+            await notices.observe('news', row['run_id'], row['day'], {
+                'status':'interrupted', 'failed':True,
+                'reason':row['recovery']['reason'], 'interrupted_phase':row['phase']}, send_recovery)
+    except Exception as exc:
+        print(f'新聞中斷紀錄核對未完成：{type(exc).__name__}；不自動重送付費請求。', flush=True)
+    try:
         write_bot_heartbeat(job_queue_available=bool(application.job_queue))
     except Exception as exc:
         print(f"[{now_timestamp()}] ⚠️ 啟動 heartbeat 寫入失敗：{exc}", flush=True)

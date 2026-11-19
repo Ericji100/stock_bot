@@ -17,7 +17,7 @@ def repair_topic_detail_structure(payload: Any, batch: list[dict]) -> tuple[Any,
     expected = {row.get('theme_id') for row in batch}
     continuation = {'affected_companies', 'company_relations', 'supply_chain_nodes',
                     'risk_notes', 'missing_data', 'counter_evidence'}
-    evidence_fields = {'source_id', 'url', 'published_date', 'publish_date', 'source_level',
+    evidence_fields = {'source_id', 'quote_id', 'url', 'published_date', 'publish_date', 'source_level',
                        'claim', 'content', 'source', 'title', 'supporting_quote'}
     root_fields = {key: result[key] for key in continuation & result.keys()}
     root_owner_index = None
@@ -246,13 +246,14 @@ def _normalize_evidence(value: Any) -> list[TopicEvidence]:
         level = coerce_topic_source_level(item.get("source_level"))
         source = str(item.get("source") or item.get("source_title") or item.get("title") or "").strip()
         content = str(item.get("content") or item.get("summary") or item.get("claim") or item.get("supports") or item.get("snippet") or item.get("supporting_quote") or "").strip()
-        if not source and not content and not item.get("source_id") and not item.get("url"):
+        if not source and not content and not item.get("source_id") and not item.get("url") and not item.get('quote_id'):
             continue
         result.append(TopicEvidence(
             source=source or "未命名來源",
             source_level=level,
             supporting_quote=str(item.get('supporting_quote') or '').strip() or None,
             source_id=str(item.get('source_id') or '').strip() or None,
+            quote_id=str(item.get('quote_id') or '').strip() or None,
             content=to_traditional_text(content),
             url=item.get("url"),
             publish_date=item.get("publish_date") or item.get("published_date"),

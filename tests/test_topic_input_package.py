@@ -2,7 +2,7 @@ import json
 import unittest
 
 from research_center.topic_input_package import (
-    append_topic_shared_records, intern_topic_payloads, merge_topic_sources, topic_stage_variables,
+    append_topic_shared_records, intern_topic_payloads, merge_topic_sources, topic_stage_variables, expand_topic_stage_variables,
 )
 
 
@@ -28,7 +28,7 @@ class TopicInputPackageTests(unittest.TestCase):
     def test_candidate_receives_all_source_text_without_string_truncation(self):
         data=self.data()
         variables=topic_stage_variables(data,{})
-        sources=json.loads(variables['discovery_sources_json'])
+        sources=expand_topic_stage_variables(variables)['discovery_sources_json']
         self.assertEqual(len(sources),2)
         self.assertEqual(sources[0]['snippet'],data['discovery_sources'][0]['snippet'])
         self.assertNotIn('[truncated',variables['discovery_sources_json'])
@@ -37,7 +37,7 @@ class TopicInputPackageTests(unittest.TestCase):
         batch=[{'theme_id':'power','theme_name':'電源','candidate_companies':[{'company_code':'9999','company_name':'供電公司'}],
                 'source_refs':[{'url':'https://example.test/a'}]}]
         variables=topic_stage_variables(self.data(),{},batch)
-        sources=json.loads(variables['web_fetched_sources_json'])
+        sources=expand_topic_stage_variables(variables)['web_fetched_sources_json']
         self.assertEqual(len(sources),1)
         self.assertEqual(len(sources[0]['snippet']),32000)
         self.assertEqual(json.loads(variables['existing_topic_profiles_json'])[0]['risk_notes'],['完整既有風險'])
@@ -90,6 +90,7 @@ class TopicInputPackageTests(unittest.TestCase):
         variables=topic_stage_variables(data,{},batch)
         records=json.loads(variables['topic_shared_records_json'])
         prompt=append_topic_shared_records(variables['web_fetched_sources_json'],variables)
-        self.assertTrue(data['discovery_sources'][0]['snippet'] in prompt)
+        self.assertEqual(expand_topic_stage_variables(variables)['web_fetched_sources_json'][0]['snippet'],data['discovery_sources'][0]['snippet'])
+        self.assertIn('$topic_body',prompt)
         restored=expand_records(json.loads(variables['supply_chain_nodes_json']),records)
         self.assertEqual(restored,data['supply_chain_nodes'])

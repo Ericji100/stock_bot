@@ -67,6 +67,7 @@ class TopicEvidence:
     score_contribution: float = 0.0
     supporting_quote: str | None = None
     source_id: str | None = None
+    quote_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +79,7 @@ class TopicEvidence:
             "score_contribution": self.score_contribution,
             "supporting_quote": self.supporting_quote,
             **({"source_id": self.source_id} if self.source_id else {}),
+            **({"quote_id": self.quote_id} if self.quote_id else {}),
         }
 
     @classmethod
@@ -92,6 +94,7 @@ class TopicEvidence:
             score_contribution=float(data.get("score_contribution", 0.0)),
             supporting_quote=data.get('supporting_quote'),
             source_id=data.get('source_id'),
+            quote_id=data.get('quote_id'),
         )
 
 

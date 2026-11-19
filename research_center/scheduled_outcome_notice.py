@@ -10,6 +10,10 @@ class ScheduledOutcomeNotices:
     def __init__(self, root: Path):
         self.path = Path(root) / 'outcomes.sqlite3'
 
+    def recorded_run_ids(self, command):
+        with self._db() as conn:
+            return {row[0] for row in conn.execute('SELECT run_id FROM outcomes WHERE command=?', (command,))}
+
     @contextmanager
     def _db(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

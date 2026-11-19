@@ -1,0 +1,429 @@
+{
+  "original_blockers": 13,
+  "remaining_blockers": 10,
+  "issues": [
+    {
+      "path": "/actions/0/company_relations/0/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/company_relations/1/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/company_relations/2/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/company_relations/3/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/company_relations/4/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/0/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/1/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/2/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/3/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    },
+    {
+      "path": "/actions/0/supply_chain_nodes/4/evidence/0",
+      "url": "https://money.udn.com/money/story/11162/9766942",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-09-20"
+      ],
+      "cited_date": "2026-09-20"
+    }
+  ],
+  "actions": {
+    "actions": [
+      {
+        "theme_id": "ai_server_odm_revenue_split",
+        "status": "blocked",
+        "issues": [
+          {
+            "path": "/actions/0/company_relations/0/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/company_relations/1/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/company_relations/2/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/company_relations/3/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/company_relations/4/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/supply_chain_nodes/0/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/supply_chain_nodes/1/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/supply_chain_nodes/2/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/supply_chain_nodes/3/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          },
+          {
+            "path": "/actions/0/supply_chain_nodes/4/evidence/0",
+            "url": "https://money.udn.com/money/story/11162/9766942",
+            "reason": "supporting_quote_not_in_body",
+            "supplied_dates": [
+              "2026-09-20"
+            ],
+            "cited_date": "2026-09-20"
+          }
+        ]
+      },
+      {
+        "theme_id": "aidc_behind_meter_power_storage",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "aidc_transformer_capacity",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "automotive_parts_to_ai_cooling",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "cowos_l_capacity_and_asic_mix",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "cpo_copper_pcb_transition",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "fanout_panel_level_packaging",
+        "status": "citation_checks_passed",
+        "issues": []
+      },
+      {
+        "theme_id": "fvoci_realized_gains_dividend_capacity",
+        "status": "citation_checks_passed",
+        "issues": []
+      }
+    ],
+    "blocked_theme_ids": [
+      "ai_server_odm_revenue_split"
+    ],
+    "other_issues": [],
+    "automatic_paid_repair": false,
+    "whole_pack_applicable": false,
+    "scope": "引用檢核分題結果，不代表公司關係已證實；不允許部分自動套用。"
+  },
+  "model_stages_reused": [
+    "candidate_extract",
+    "detail_expand_1",
+    "detail_expand_2",
+    "detail_expand_3",
+    "detail_expand_4",
+    "detail_expand_5"
+  ],
+  "selected": 8,
+  "ai_completed": 8,
+  "unique_sources": 336,
+  "quote_spans": 111,
+  "all_source_body_characters_preserved": true,
+  "short_quote_restorations": [
+    {
+      "path": "/actions/1/company_relations/1/evidence/0",
+      "original_quote": "例如東元與半導體廠推動綠電轉供",
+      "restored_quote": "在這樣的情況下，業者只能同時布局PPA、長約綠電、自建發電與大型儲能；例如東元與半導體廠推動綠電轉供，台達則以大型儲能與微電網案場提供支援[13][14][11]。",
+      "source_id": "S18050365877557453945",
+      "url": "https://www.moneydj.com/kmdj/news/newsviewer.aspx?a=872b43e1-bcbf-499c-bc6d-dea0517fa675",
+      "body_sha256": "df951d67a6156b2822f0c23bd7a438b3dbcc8f7a545cd538f810ed19a21d7cc6",
+      "policy": "Unique exact short quote extended to its original sentence; not a claim verification."
+    },
+    {
+      "path": "/actions/1/supply_chain_nodes/1/evidence/0",
+      "original_quote": "例如東元與半導體廠推動綠電轉供",
+      "restored_quote": "在這樣的情況下，業者只能同時布局PPA、長約綠電、自建發電與大型儲能；例如東元與半導體廠推動綠電轉供，台達則以大型儲能與微電網案場提供支援[13][14][11]。",
+      "source_id": "S18050365877557453945",
+      "url": "https://www.moneydj.com/kmdj/news/newsviewer.aspx?a=872b43e1-bcbf-499c-bc6d-dea0517fa675",
+      "body_sha256": "df951d67a6156b2822f0c23bd7a438b3dbcc8f7a545cd538f810ed19a21d7cc6",
+      "policy": "Unique exact short quote extended to its original sentence; not a claim verification."
+    }
+  ],
+  "reference_bindings": {
+    "bindings": [
+      {
+        "path": "/actions/6/evidence/0",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source": "台積電CoWoS後有追兵　封測廠拚扇出型先進封裝",
+          "source_level": "L2_media",
+          "content": "中央社報導力成布局FOPLP及其面向AI晶片的方案；報導亦保留客戶驗證與量產的目標、預期限定詞。",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "publish_date": "2026-02-07",
+          "score_contribution": 0.0,
+          "supporting_quote": "半導體封測廠力成積極擴充扇出型面板級封裝，董事長蔡篤恭指出，力成可提供FOPLP先進封裝為核心的AI晶片封裝完整方案",
+          "source_id": "S025"
+        }
+      },
+      {
+        "path": "/actions/6/evidence/1",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source": "台積電CoWoS後有追兵　封測廠拚扇出型先進封裝",
+          "source_level": "L2_media",
+          "content": "力成的客戶驗證與量產時程是報導所載公司目標及預期，不能當成已完成量產或滿載。",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "publish_date": "2026-02-07",
+          "score_contribution": 0.0,
+          "supporting_quote": "蔡篤恭預期，力成目標今年底完成FOPLP所有客戶端驗證，規劃最快2027年年初FOPLP進入量產階段，預期到2028年年中，FOPLP產能滿載。",
+          "source_id": "S025"
+        }
+      },
+      {
+        "path": "/actions/6/evidence/4",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source": "台積電CoWoS後有追兵　封測廠拚扇出型先進封裝",
+          "source_level": "L2_media",
+          "content": "報導呈現面板級封裝領域的國際競爭者，顯示台廠布局不代表取得客戶或市場份額。",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "publish_date": "2026-02-07",
+          "score_contribution": 0.0,
+          "supporting_quote": "此外，艾克爾（Amkor）、Nepes及韓國三星電子旗下三星電機（SEMCO）等，也已投入面板級封裝技術。",
+          "source_id": "S025"
+        }
+      },
+      {
+        "path": "/actions/6/company_relations/0/evidence/0",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source_id": "S025",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "published_date": "2026-02-07",
+          "source_level": "L2_media",
+          "supporting_quote": "半導體封測廠力成積極擴充扇出型面板級封裝，董事長蔡篤恭指出，力成可提供FOPLP先進封裝為核心的AI晶片封裝完整方案"
+        }
+      },
+      {
+        "path": "/actions/6/company_relations/0/evidence/1",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source_id": "S025",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "published_date": "2026-02-07",
+          "source_level": "L2_media",
+          "supporting_quote": "蔡篤恭預期，力成目標今年底完成FOPLP所有客戶端驗證，規劃最快2027年年初FOPLP進入量產階段，預期到2028年年中，FOPLP產能滿載。"
+        }
+      },
+      {
+        "path": "/actions/6/supply_chain_nodes/0/evidence/0",
+        "policy": "exact_url_date_reference",
+        "original": {
+          "source_id": "S025",
+          "url": "https://www.cna.com.tw/news/afe/202602070013.aspx",
+          "published_date": "2026-02-07",
+          "supporting_quote": "半導體封測廠力成積極擴充扇出型面板級封裝，董事長蔡篤恭指出，力成可提供FOPLP先進封裝為核心的AI晶片封裝完整方案"
+        }
+      },
+      {
+        "path": "/actions/6/affected_companies/0/evidence_source_ids/0",
+        "policy": "same_company_exact_evidence_reference",
+        "original": "S025",
+        "source_id": "S17230287601932471000"
+      }
+    ],
+    "issues": []
+  },
+  "prompts": [
+    {
+      "stage": "candidate_extract",
+      "chars": 911123,
+      "sent": false
+    },
+    {
+      "stage": "detail_expand_1",
+      "chars": 588209,
+      "sent": false
+    },
+    {
+      "stage": "detail_expand_2",
+      "chars": 305263,
+      "sent": false
+    },
+    {
+      "stage": "detail_expand_3",
+      "chars": 565211,
+      "sent": false
+    },
+    {
+      "stage": "detail_expand_4",
+      "chars": 498716,
+      "sent": false
+    },
+    {
+      "stage": "detail_expand_5",
+      "chars": 237757,
+      "sent": false
+    }
+  ],
+  "input_roundtrip_checks": [
+    {
+      "stage": "candidate",
+      "source_count": 336,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "candidate",
+      "source_count": 336,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "detail",
+      "source_count": 31,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "detail",
+      "source_count": 7,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "detail",
+      "source_count": 28,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "detail",
+      "source_count": 22,
+      "all_fields_and_body_exactly_reconstructed": true
+    },
+    {
+      "stage": "detail",
+      "source_count": 2,
+      "all_fields_and_body_exactly_reconstructed": true
+    }
+  ],
+  "new_paid_calls": 0,
+  "whole_pack_applicable": false,
+  "new_prompt_model_compliance_verified": false,
+  "capacity": "Original saved layout reused with capacity response stub; production checks unchanged"
+}

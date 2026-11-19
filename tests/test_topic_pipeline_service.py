@@ -55,9 +55,14 @@ class TopicPipelineServiceTests(unittest.TestCase):
         self.assertTrue(pack.extra['ai_review_complete'])
 
     def test_official_large_combined_evidence_uses_separate_complete_batches(self):
+        import hashlib
         from research_center.topic_pipeline_service import _full_evidence_detail_batches
         candidates=[{'theme_id':str(i),'candidate_companies':[{'company_code':str(i)}]} for i in (1111,9999)]
-        data={'discovery_sources':[{'url':f'https://example.test/{i}','title':str(i),'content':text*350000}
+        # Exact repeated spans are now interned; use distinct text to exercise capacity.
+        def body(seed):
+            return ''.join(hashlib.sha256(f'{seed}:{n}'.encode()).hexdigest().translate(
+                str.maketrans('0123456789','ghijklmnop')) for n in range(5469))
+        data={'discovery_sources':[{'url':f'https://example.test/{i}','title':str(i),'content':body(text)}
                                    for i,text in [(1111,'x'),(9999,'y')]]}
         groups=_full_evidence_detail_batches(candidates,data,{},lambda name:'{web_fetched_sources_json}',self._render_prompt)
         self.assertEqual(groups,[[candidates[0]],[candidates[1]]])

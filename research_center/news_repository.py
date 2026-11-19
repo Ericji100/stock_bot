@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS news_classification_inputs (
 CREATE INDEX IF NOT EXISTS idx_news_preferences_url ON news_preferences(url);
 CREATE INDEX IF NOT EXISTS idx_news_preferences_category ON news_preferences(normalized_category);
 CREATE INDEX IF NOT EXISTS idx_news_preferences_type ON news_preferences(news_type);
+
+CREATE TABLE IF NOT EXISTS news_refresh_runs (
+    run_id TEXT PRIMARY KEY, day TEXT NOT NULL, owner_pid INTEGER NOT NULL,
+    phase TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL, detail TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS news_refresh_events (
+    run_id TEXT NOT NULL, at TEXT NOT NULL, phase TEXT NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL
+);
 """
 
 
@@ -114,6 +122,76 @@ class NewsRepository:
     def article_count(self) -> int:
         with closing(sqlite3.connect(self.db_path)) as conn:
             return conn.execute('SELECT COUNT(*) FROM news_articles').fetchone()[0]
+
+    def record_refresh(self, run_id, day, phase, status='running', detail=None):
+        import os
+        stamp = datetime.now().astimezone().isoformat()
+        payload = json.dumps(detail or {}, ensure_ascii=False)
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute('INSERT INTO news_refresh_events VALUES (?,?,?,?,?)', (run_id, stamp, phase, status, payload))
+            conn.execute('''INSERT INTO news_refresh_runs VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(run_id) DO UPDATE SET phase=excluded.phase,status=excluded.status,
+                    updated_at=excluded.updated_at,detail=excluded.detail''',
+                (run_id, day, os.getpid(), phase, status, stamp, payload))
+
+    def recover_interrupted_refreshes(self, process_exists):
+        """Close dead owners locally, never retry a paid request or alter the cost ledger."""
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = [dict(row) for row in conn.execute("SELECT * FROM news_refresh_runs WHERE status='running'")]
+        recovered = []
+        for row in rows:
+            if process_exists(row['owner_pid']):
+                continue
+            detail = {'reason': '程序中斷，來源與已完成分類保留；未結算請求不自動重送。',
+                      'interrupted_phase': row['phase'], 'previous_detail': json.loads(row['detail']),
+                      'automatic_paid_retry': False}
+            self.record_refresh(row['run_id'], row['day'], row['phase'], 'interrupted', detail)
+            recovered.append({**row, 'recovery': detail})
+        return recovered
+
+    def import_unclosed_refreshes(self, events, recorded_run_ids, *, as_of, scheduled_run_ids=()):
+        """Adopt only one source run matching an overdue, unclosed scheduled news job."""
+        grouped = {}
+        for event in events:
+            if event.get('task_id') == 'scheduled:news:1800':
+                grouped.setdefault(event.get('timestamp', '')[:10], []).append(event)
+        terminal = {'completed','partial_success','failed','timeout','cancelled','skipped_budget'}
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            known = {row[0] for row in conn.execute('SELECT run_id FROM news_refresh_runs')}
+            sources = conn.execute('SELECT run_id,MIN(saved_at),MAX(saved_at) FROM news_discovery_sources GROUP BY run_id').fetchall()
+        imported = []
+        for day, rows in grouped.items():
+            starts = [datetime.fromisoformat(row['timestamp']) for row in rows if row.get('status') == 'started']
+            if len(starts) != 1 or any(row.get('status') in terminal for row in rows):
+                continue
+            start = starts[0]
+            if as_of < start + timedelta(minutes=45):
+                continue
+            matches = [run for run, first, last in sources if run in scheduled_run_ids and run not in known | set(recorded_run_ids)
+                       and start <= datetime.fromisoformat(first) <= datetime.fromisoformat(last) <= start + timedelta(minutes=45)]
+            if len(matches) == 1:
+                run = matches[0]
+                self.record_refresh(run, day, 'search', 'interrupted', {
+                    'reason':'已確認排程有開始、無結案，來源已保存；舊程序中斷，未結算請求不重送。',
+                    'schedule_started_at':start.isoformat(), 'automatic_paid_retry':False})
+                imported.append({'run_id':run, 'day':day, 'phase':'search',
+                    'recovery':{'reason':'搜尋排程中斷，已保存來源待分類；未結算請求保留，不自動重送。'}})
+        return imported
+
+    @staticmethod
+    def scheduled_news_request_runs(ledger_path):
+        """Read only attribution; constructing a budget manager would migrate accounting."""
+        path = Path(ledger_path)
+        if not path.is_file():
+            return set()
+        with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as conn:
+            return {row[0] for row in conn.execute("SELECT DISTINCT run_id FROM requests WHERE command='news' AND background=1 AND purpose='production'")}
+
+    def refresh_requires_resume(self):
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute("SELECT status FROM news_refresh_runs ORDER BY updated_at DESC LIMIT 1").fetchone()
+        return bool(row and row[0] == 'interrupted')
 
     def recent_discovery_sources(self, as_of, hours: int = 48):
         """Merge all recent versions for reuse; untouched snapshots remain in SQLite."""

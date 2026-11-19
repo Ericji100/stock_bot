@@ -1,0 +1,97 @@
+{
+  "completed_days": [
+    {
+      "day": "2026-11-16",
+      "recorded_classifier_responses": 10,
+      "selected_classified": 30,
+      "categories": {
+        "market_focus": 6,
+        "company_news": 4,
+        "sector_rotation": 5,
+        "macro_policy": 4,
+        "": 5,
+        "ai_semiconductor": 4,
+        "supply_chain": 2
+      },
+      "excluded": 5,
+      "local_fallback": 0,
+      "bodies_preserved": true,
+      "new_ai_calls": 0
+    },
+    {
+      "day": "2026-11-17",
+      "recorded_classifier_responses": 10,
+      "selected_classified": 30,
+      "categories": {
+        "supply_chain": 4,
+        "market_focus": 5,
+        "company_news": 5,
+        "ai_semiconductor": 4,
+        "macro_policy": 2,
+        "": 7,
+        "sector_rotation": 3
+      },
+      "excluded": 7,
+      "local_fallback": 0,
+      "bodies_preserved": true,
+      "new_ai_calls": 0
+    }
+  ],
+  "all_recorded_input_fields_and_date_audits_matched": true,
+  "matching_versions_preserved": "news-original-versions.json",
+  "interrupted_1118": {
+    "source_snapshots": 669,
+    "merged_sources": 585,
+    "eligible_saved_articles": 24,
+    "recovered": [
+      {
+        "run_id": "7dbc561d627e460c81b7fd402c90c8a9",
+        "day": "2026-11-18",
+        "phase": "search",
+        "recovery": {
+          "reason": "搜尋排程中斷，已保存來源待分類；未結算請求保留，不自動重送。"
+        }
+      }
+    ],
+    "workload_plan": {
+      "pending_before": 24,
+      "classification_limit": 30,
+      "skip_search": true,
+      "search_seconds": 0,
+      "policy": "既有待辦優先，沿用分類上限與費用護欄；來源、日期與缺口完整保留。"
+    },
+    "classification_not_rerun_without_saved_response": true,
+    "unsettled_original_request_unchanged": [
+      {
+        "id": "370572175b2f424f892c25746b82ea87",
+        "status": "pending",
+        "estimate": "0.288884",
+        "actual": null
+      }
+    ]
+  },
+  "workload_examples": {
+    "55": {
+      "pending_before": 55,
+      "classification_limit": 30,
+      "skip_search": true,
+      "search_seconds": 0,
+      "policy": "既有待辦優先，沿用分類上限與費用護欄；來源、日期與缺口完整保留。"
+    },
+    "21": {
+      "pending_before": 21,
+      "classification_limit": 30,
+      "skip_search": false,
+      "search_seconds": 300,
+      "policy": "既有待辦優先，沿用分類上限與費用護欄；來源、日期與缺口完整保留。"
+    },
+    "0": {
+      "pending_before": 0,
+      "classification_limit": 30,
+      "skip_search": false,
+      "search_seconds": 900,
+      "policy": "既有待辦優先，沿用分類上限與費用護欄；來源、日期與缺口完整保留。"
+    }
+  },
+  "new_paid_usd": "0"
+}

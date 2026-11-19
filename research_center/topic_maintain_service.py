@@ -73,7 +73,7 @@ def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources
     payload={"mode":mode.value,"report_date":report_date,"model":model,
              "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
     stable=_stable_fingerprint_payload(payload)
-    return 'topic-workflow-v6:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
+    return 'topic-workflow-v7-quote-binding:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -802,6 +802,8 @@ def run_topic_maintain(
         if quarantined:
             pack.warnings.append(f'{quarantined} 筆公司主張未通過原文對照，完整保留為候選，不視為已確認事實。')
         citation_audit = audit_topic_citations(pack, structured_data)
+        from .topic_quote_binding import topic_repair_plan
+        pack.extra['citation_repair_plan'] = topic_repair_plan(pack, citation_audit)
         target_audit = validate_action_targets(pack, profiles)
         pack.extra['action_target_audit'] = target_audit
         pack.extra['action_review_complete'] = target_audit['passed']

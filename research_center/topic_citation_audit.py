@@ -93,7 +93,7 @@ def restore_topic_source_quotes(pack, structured_data):
         payload = action.to_dict()
         for path, row in quoted_rows(payload, f'/actions/{index}'):
             quote = row.get('supporting_quote')
-            if not isinstance(quote, str) or len(_quote_text(quote)) < 16:
+            if not isinstance(quote, str) or not _quote_text(quote):
                 continue
             sources = catalogue.get(_url(row.get('url') or row.get('source_url')), [])
             cited_date = normalize_published_date(row.get('publish_date'), row.get('published_date'))
@@ -107,6 +107,18 @@ def restore_topic_source_quotes(pack, structured_data):
                                             published_date=cited_date)
                 if len({_url(source.get('url')) for source in sources}) != 1:
                     continue
+            if len(_quote_text(quote)) < 16:
+                from .topic_quote_binding import extend_short_source_quote
+                exact = {extended: source for source in sources if len(sources) == 1
+                         if (extended := extend_short_source_quote(quote, _provided_body(source)))}
+                if len(exact) == 1:
+                    restored, source = next(iter(exact.items()))
+                    row['supporting_quote'] = restored
+                    repairs.append({'path': path, 'original_quote': quote, 'restored_quote': restored,
+                        'source_id': source.get('source_id'), 'url': source.get('url'),
+                        'body_sha256': hashlib.sha256(_provided_body(source).encode()).hexdigest(),
+                        'policy': 'Unique exact short quote extended to its original sentence; not a claim verification.'})
+                continue
             if any(_quote_text(quote) in _quote_text(_provided_body(source)) for source in sources):
                 continue
             needle = _quote_text(quote).replace('®', '').replace('™', '')
@@ -257,7 +269,7 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
                 catalogue.setdefault(url, []).append(row)
     bodies = "\n".join(str(row.get("content") or row.get("snippet") or "") for row in collected)
     as_of = normalize_published_date(structured_data.get("report_date"), pack.created_at)
-    issues = []
+    issues = list((pack.extra.get('quote_binding_audit') or {}).get('issues') or [])
     counts: Counter[str] = Counter()
     company_names = {}
     for code, name in (structured_data.get('authoritative_company_names') or {}).items():
@@ -352,7 +364,8 @@ def audit_topic_citations(pack, structured_data: dict[str, Any]) -> dict[str, An
                                  'matched_source_ids':[source.get('source_id') for source in matching],
                                  'candidate_source_ids':[source.get('source_id') for source in rows]})
             if not matching:
-                flags.append('supporting_quote_not_in_body')
+                exact_short = len(normalized) < 16 and any(normalized in _quote_text(_provided_body(source)) for source in rows)
+                flags.append('supporting_quote_too_short' if exact_short else 'supporting_quote_not_in_body')
         if rows and not supplied_dates:
             counts["date_unknown"] += 1
         if as_of and supplied_dates and max(supplied_dates) < f"{int(as_of[:4]) - 1}{as_of[4:]}":

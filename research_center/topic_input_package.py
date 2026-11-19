@@ -189,15 +189,17 @@ def append_topic_shared_records(prompt: str, variables: dict[str, str]) -> str:
     if variables.get('topic_field_names_json'):
         prompt += '\n全局欄位名稱字典：同代碼等於其原欄位名，閱讀時須展開，不可把代碼寫入正式輸出。\n' + variables['topic_field_names_json']
     prompt += '\n\n本批日期與證據檢核：\n' + variables.get('evidence_governance_json', '{}')
-    prompt += ('\n引用規則：source_id 必須原樣使用本批來源的唯一編號，不附加日期或說明。'
-               'source_id_aliases 是歷史別名，可能重複，不作正式引用。日期另填 publish_date，並附完整網址。'
-               'supporting_quote 只能逐字摘錄該來源正文，不把摘要、推論或其他文章改寫成引句；'
-               '無法逐字核對時保留主張為待查線索，不捏造引句或升格公司關係。')
-    prompt += ('\n優先以 quote_id 選擇完整來源片段，程式依不可變來源回填 supporting_quote、網址與日期。'
+    prompt += ('\n引用規則：source_id 是本批來源的唯一編號；source_id_aliases 是可能重複的歷史別名，'
+               '不能作正式引用。來源編號、網址、日期與 supporting_quote 由程式按選項核對及回填，'
+               '不是由模型抄寫。沒有正文片段時保留待查，不把摘要、推論或其他文章改寫成引句，'
+               '不捏造證據或升格公司關係。')
+    prompt += ('\n引用輸出合約：只選本批原文索引中的 quote_choice，保留對應的主張內容；'
+               '不要輸出 quote_id、supporting_quote、網址或日期，這些由程式依不可變來源回填。'
+               'quote_choice 僅限本批選項，不得自己編號、縮寫或使用其他批次的編號。'
                'quote_id 不代表主張已證實；分析、客戶關係與數字仍須由該片段直接支持。'
                '不可自行縮寫逐字引用、刪去公司或數字；缺少合適片段時保留待查，不借用其他版本。')
-    prompt += ('\n來源正文若為 {"$topic_body":[{"quote_id":"Q編號","text":"逐字原文"},...]}，'
-               '依序串接 text 即是完整正文；分段沒有省略、改寫或刪除。可直接選其中 quote_id，勿抄回全文。')
+    prompt += ('\n來源正文若為 {"$topic_body":[{"quote_choice":"本批選項","quote_id":"Q編號","text":"逐字原文"},...]}，'
+               '依序串接 text 即是完整正文；分段沒有省略、改寫或刪除。以索引的 quote_choice 選取，勿抄回全文。')
     prompt += '\n原文片段索引（文字完整保留在來源正文）：\n' + variables.get('topic_quote_catalog_json', '[]')
     records = variables.get("topic_shared_records_json", "{}")
     if records == "{}":
@@ -385,10 +387,14 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     payloads['evidence_governance_json'] = build_evidence_governance('topic_maintain', report_date, sources, data)
     from .topic_quote_binding import quote_catalog
     catalog = quote_catalog(sources)
+    from .topic_batch_evidence import quote_choices
+    scope = ['detail', [row.get('theme_id') for row in batch]] if batch is not None else ['candidate']
+    catalog = quote_choices(catalog, scope)
     # Text is carried once in place, with exact reconstruction in the shared codec.
     by_source = {}
     for span in catalog:
-        by_source.setdefault(span['source_id'], []).append({'quote_id':span['quote_id'], 'text':span['text']})
+        by_source.setdefault(span['source_id'], []).append({'quote_id':span['quote_id'],
+            'quote_choice':span['quote_choice'], 'text':span['text']})
     source_key = 'web_fetched_sources_json' if batch is not None else 'discovery_sources_json'
     annotated = []
     for source in payloads[source_key]:

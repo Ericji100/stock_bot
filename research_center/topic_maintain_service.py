@@ -46,6 +46,8 @@ TOPIC_LARGE_STAGE_CHARS = 100000
 def _topic_stage_client(center, stage_name, prompt_chars):
     from .ai_provider_service import RoutedAIService
     client = center.deepseek_organizer if stage_name.startswith('candidate') else center.deepseek
+    if stage_name.endswith('_evidence_retry'):
+        return client.with_timeout(min(client.timeout_seconds, 120)).with_output_limit(min(client.max_output_tokens, 8192))
     if isinstance(client, RoutedAIService) and prompt_chars >= TOPIC_LARGE_STAGE_CHARS:
         client = RoutedAIService(client.primary.with_timeout(TOPIC_LARGE_OPENAI_STAGE_TIMEOUT_SECONDS), client.fallback)
     if stage_name.startswith('candidate') and callable(getattr(client, 'with_output_limit', None)):
@@ -73,7 +75,7 @@ def _topic_workflow_cache_key(mode, report_date, model, structured_data, sources
     payload={"mode":mode.value,"report_date":report_date,"model":model,
              "data":_json_safe(structured_data),"sources":_json_safe(sources),"prompts":prompts}
     stable=_stable_fingerprint_payload(payload)
-    return 'topic-workflow-v7-quote-binding:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
+    return 'topic-workflow-v8-batch-evidence:'+hashlib.sha256(json.dumps(stable,ensure_ascii=False,sort_keys=True,default=str).encode('utf-8')).hexdigest()
 
 
 def _load_prompt(name: str) -> str:
@@ -683,9 +685,31 @@ def run_topic_maintain(
     emit("Prompt log 已保存")
 
     raw_stages: list[dict[str, Any]] = []
+    batch_checkpoints: list[dict[str, Any]] = []
+
+    def save_checkpoint(phase):
+        if not official:
+            return
+        from .ai_execution_control import WorkStopped, CONTROL
+        target = raw_response_path(change_id)
+        temporary = target.with_suffix(target.suffix+'.checkpoint')
+        try:
+            temporary.write_text(json.dumps({'stages':raw_stages,'pipeline_logs':[],
+                'checkpoint':{'phase':phase,'not_final_package':True,'batches':batch_checkpoints}},
+                ensure_ascii=False,indent=2),encoding='utf-8')
+            temporary.replace(target)
+        except OSError as exc:
+            if control := CONTROL.get():
+                control.stop()
+            raise WorkStopped('topic_checkpoint_failed') from exc
+
+    def record_batch(checkpoint):
+        batch_checkpoints.append(checkpoint)
+        save_checkpoint('batch_evidence_checked')
 
     def _call_ai_json(stage_prompt: str, stage_name: str) -> dict[str, Any] | list[Any]:
-        stage_prompt += search_notes_prompt
+        if not stage_name.endswith('_evidence_retry'):
+            stage_prompt += search_notes_prompt
         emit(f"呼叫 AI：{ai_model} / {stage_name}")
         raw_text = ""
         requested_model = ''
@@ -753,6 +777,9 @@ def run_topic_maintain(
             raw_stages.append(stage_log)
             raise
 
+        finally:
+            save_checkpoint('response_recorded_awaiting_batch_validation')
+
     # Run staged AI pipeline. AI returns small JSON fragments; local code assembles the pack.
     def remember_candidates(rows):
         from .analysis_followup_service import AnalysisFollowupStore
@@ -784,6 +811,7 @@ def run_topic_maintain(
         require_full_ai=official,
         candidate_sink=remember_candidates if official else None,
         prompt_capacity=stage_capacity if official else None,
+        batch_checkpoint=record_batch if official else None,
     )
 
     if official:
@@ -819,7 +847,8 @@ def run_topic_maintain(
 
     # Save staged raw responses
     raw_p = raw_response_path(change_id)
-    wrapped = json.dumps({"stages": raw_stages, "pipeline_logs": pipeline_logs}, ensure_ascii=False, indent=2)
+    wrapped = json.dumps({"stages": raw_stages, "pipeline_logs": pipeline_logs,
+        'checkpoint':{'phase':'assembled','not_final_package':False,'batches':batch_checkpoints}}, ensure_ascii=False, indent=2)
     raw_p.write_text(wrapped, encoding="utf-8")
     emit("Raw response 已保存")
 

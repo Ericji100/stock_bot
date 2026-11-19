@@ -1,0 +1,28 @@
+{
+  "status": "offline_repair_passed",
+  "originals_unchanged": {
+    "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\verification\\topic-scheduled-live-20261119\\logs\\topic_inputs\\change_20261119_222513.json": "d126e0355f0cfe3fc92692b71dde39e8f880b20181f42ec2f0834614847cdac6",
+    "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\verification\\topic-scheduled-live-20261119\\logs\\topic_ai_raw\\change_20261119_222513.json": "da14c3d5d6b3cc75320df50c00c6310b07b66ae460365201d42b59601eda6525",
+    "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\verification\\topic-scheduled-live-20261119\\change_packs\\change_20261119_222513.json": "80ecd0765e8385997561134f0b82c767a3e0ffe2478a51b8f110cc62e34623e5"
+  },
+  "baseline_blockers": 7,
+  "repaired_blockers": 0,
+  "themes": 8,
+  "citation_count": 74,
+  "other_seven_actions_identical": [
+    "ai_gpu_asic_tpu_platform_mix",
+    "ai_supply_chain_margin_and_financing_risk",
+    "europe_sovereign_ai_datacenter_buildout",
+    "ai_grid_transformer_expansion",
+    "ai_800vdc_sst_flexible_power",
+    "behind_meter_storage_energy_management",
+    "grid_cable_and_resilient_network"
+  ],
+  "deferred_candidates_unchanged": true,
+  "company_knowledge_updates_unchanged": true,
+  "network_attempts": 0,
+  "new_paid_calls": 0,
+  "equal_to_explicit_source_verified_repair": true,
+  "repaired_change_id": "change_20261119_234305",
+  "repaired_path": "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\verification\\topic-batch-evidence-20261119\\release-replay\\recovered\\change_packs\\change_20261119_234305.json"
+}

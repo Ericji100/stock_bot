@@ -1,0 +1,14 @@
+{
+  "prompt_chars": 4739,
+  "source_ids": [
+    "S024"
+  ],
+  "response_fixture": {
+    "repairs": []
+  },
+  "all_source_spans_present": {
+    "/actions/0/evidence/1": true
+  },
+  "new_model_call": false,
+  "fixture_only": true
+}

@@ -1,0 +1,19 @@
+{
+  "prompt_chars": 4739,
+  "source_ids": [
+    "S024"
+  ],
+  "response_fixture": {
+    "repairs": [
+      {
+        "path": "/actions/0/evidence/1",
+        "quote_choice": "B49a2b99a-001"
+      }
+    ]
+  },
+  "all_source_spans_present": {
+    "/actions/0/evidence/1": true
+  },
+  "new_model_call": false,
+  "fixture_only": true
+}

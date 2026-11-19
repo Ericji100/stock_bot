@@ -97,7 +97,11 @@ class ReaderQualityTests(unittest.TestCase):
         from research_center.topic_pipeline_service import _extract_candidates
         replies = [{'candidates':[{'theme_id':'power','theme_name':'電力','source_refs':[{'url':'https://example.com/1'}]}]},
                    {'candidates':[{'theme_id':'power','theme_name':'電力','source_refs':[{'url':'https://example.com/2'}]}]}]
-        with patch('research_center.topic_pipeline_service._candidate_capacity_prompts',return_value=['part one','part two']):
+        def split_prompts(*args, scope_sink=None, **kwargs):
+            self.assertIsNotNone(scope_sink)
+            scope_sink.extend([{'topic_quote_catalog_json':'[]'}, {'topic_quote_catalog_json':'[]'}])
+            return ['part one','part two']
+        with patch('research_center.topic_pipeline_service._candidate_capacity_prompts',side_effect=split_prompts):
             rows = _extract_candidates(prompt_variables={},load_prompt=lambda name:'template',render_prompt=lambda *args:'prompt',
                       call_ai_json=lambda *args:replies.pop(0),stage_logs=[],emit=lambda *args:None,full_evidence=True,structured_data={})
         self.assertEqual(len(rows),1)

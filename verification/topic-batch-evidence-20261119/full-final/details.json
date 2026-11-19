@@ -1,0 +1,62 @@
+[
+  {
+    "nodeid": "tests/monitoring/test_etf_monitor_core_replay.py::test_formal_full_history_live_replay_exact_parity",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\_codex_worktrees\\\\ai-schedule-stability\\\\stock_ai_bot\\\\tests\\\\monitoring\\\\test_etf_monitor_core_replay.py', 116, 'Skipped: formal frozen ETF registry is not installed in this checkout')"
+  },
+  {
+    "nodeid": "tests/test_config_json.py::ConfigJsonTests::test_config_json_is_valid",
+    "when": "call",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\_codex_worktrees\\\\ai-schedule-stability\\\\stock_ai_bot\\\\tests\\\\test_config_json.py', 9, 'Skipped: 本機私有設定不複製到隔離 worktree')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_changed_proof_stops_completion",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_changed_source_after_prepare_stops_completion",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_changed_source_stops_preparation",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_existing_logs_junction_still_rejected",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_failed_checks_produce_no_completion",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_new_plain_path_completes_with_original_manager",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_prepare_backup_acceptance.py::BackupAcceptanceTests::test_project_mismatch_is_rejected",
+    "when": "setup",
+    "outcome": "skipped",
+    "details": "('D:\\\\code\\\\stock_ai_bot\\\\.venv\\\\Lib\\\\site-packages\\\\_pytest\\\\unittest.py', 502, 'Skipped: Requires a newly owned system-management synthetic test root')"
+  },
+  {
+    "nodeid": "tests/test_reader_quality_rules.py::ReaderQualityTests::test_topic_split_candidates_merge_evidence_without_duplicating_theme",
+    "when": "call",
+    "outcome": "failed",
+    "details": "self = <test_reader_quality_rules.ReaderQualityTests testMethod=test_topic_split_candidates_merge_evidence_without_duplicating_theme>\n\n    def test_topic_split_candidates_merge_evidence_without_duplicating_theme(self):\n        from unittest.mock import patch\n        from research_center.topic_pipeline_service import _extract_candidates\n        replies = [{'candidates':[{'theme_id':'power','theme_name':'電力','source_refs':[{'url':'https://example.com/1'}]}]},\n                   {'candidates':[{'theme_id':'power','theme_name':'電力','source_refs':[{'url':'https://example.com/2'}]}]}]\n        with patch('research_center.topic_pipeline_service._candidate_capacity_prompts',return_value=['part one','part two']):\n            rows = _extract_candidates(prompt_variables={},load_prompt=lambda name:'template',render_prompt=lambda *args:'prompt',\n                      call_ai_json=lambda *args:replies.pop(0),stage_logs=[],emit=lambda *args:None,full_evidence=True,structured_data={})\n>       self.assertEqual(len(rows),1)\nE       AssertionError: 0 != 1\n\ntests\\test_reader_quality_rules.py:103: AssertionError"
+  }
+]

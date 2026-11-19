@@ -1,0 +1,191 @@
+{
+  "at": "2026-11-19T15:55:54.179188+00:00",
+  "base": "d5b021bd4021e361a8073711e5ed6d7b2e85b464",
+  "source": {
+    "research_center/topic_batch_evidence.py": "09b3cc02064e2487b6ca603696b92e25112f76a5595782314721779217773066",
+    "research_center/topic_quote_binding.py": "f07fe060e006f1b0826b4485a2e9a51ce68e9b5964a842dfbd8fbdef0d6265eb",
+    "research_center/topic_input_package.py": "3d8ccff07b1f9dac2ea06b1dfa8ea8a5f9a6ec9a9c576570b27bee9f1be990ab",
+    "research_center/topic_pipeline_service.py": "7bc4139bb3b21e61b0e84e4a252b577dc9180a46439d6f51a5583de24c0d8868",
+    "research_center/topic_maintain_service.py": "7ecb208bb0ad3c5c04ddab622573996fc2fdf32cf9daa3547d479abef93f72b1",
+    "prompt/topic/topic_detail_expand.md": "fb16f9d54b6628ace3b12e143ad3111f99d67209cf304f246bdfd610fa55fa3d",
+    "tests/test_topic_batch_evidence.py": "d57f883724690b9054107df45c6ddbd6cd8167d8994b76febeb01497fe964393",
+    "tests/test_reader_quality_rules.py": "8c1c6adc9609ca6529f9f6f48a4223cbe4182ed777d75fa683a81676a6163745"
+  },
+  "protected": {
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3",
+    "config.json": "acef1cc285bf271ab5761abc9d123777dd433503aa9b0a096080630c3deb9a45",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+    "config/company_knowledge.json": "d7ef8755e3f47ac2fe624a22f99ff50def1bb250b09bbd3707acf4d071607116",
+    "stock_list.json": "c55799ee6a0b2fbbce6bbd77a731d8ba6775c3d10ed60358e9d0b2e86eab061f",
+    "logs/topic_inputs/change_20261113_224616.json": "0a23ed3a928eb8b6cc0c31b8d62f3e7d061d25c66e2f69ddb72dc788b94511b1",
+    "logs/topic_ai_raw/change_20261113_224616.json": "5cbcc4beeb4a765ab057b66348681a83384c783d7d7b502dc85660f16a64845d",
+    "data/topic/change_packs/change_20261113_224616.json": "1634b543894c4dd98ede344b4fd58e67fa88396a513358259fc39bc662aea9dd",
+    "logs/topic_inputs/change_20261117_234022.json": "2ed2f6c000f596df33a5ddb83c718d0ad066587b6e1d728c5ff072e1280ef96a",
+    "logs/topic_ai_raw/change_20261117_234022.json": "18864f1fcc0540459df9b4e160819f415e98108ff02ccb0cbe86b91bf09e54ac",
+    "data/topic/change_packs/change_20261117_234022.json": "c32aa228e3d574f8b9700ef69b0d0b9cc2090cfca6a17330c76ee16a58a39c3b"
+  },
+  "ledger": {
+    "account_blocks": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "cache": {
+      "rows": 1290,
+      "sha256": "cfb11cba84534eccae0de1a973c0fe0e8eb9f4e4179a793721e89928a2af2c2b"
+    },
+    "fee_reconciliations": {
+      "rows": 39,
+      "sha256": "978342f1199dc39e54bc0947f900d539f548206c268cdf8d4679b11893c8e9e4"
+    },
+    "grants": {
+      "rows": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "live_rounds": {
+      "rows": 7,
+      "sha256": "e4560f604a90eb0981de3777d9f548c8845bfcabc3723f0014084985a0285f41"
+    },
+    "notice_attribution": {
+      "rows": 10,
+      "sha256": "3f23b9e00630b443090ba3487589b7260a8c25c1075ff10e2552bf1e435dc90e"
+    },
+    "notices": {
+      "rows": 10,
+      "sha256": "4efe983d613c800c5e7feaf9d6699e982fce2bd4cfa8c2112484a3d8ab404d4c"
+    },
+    "requests": {
+      "rows": 1403,
+      "sha256": "57d73eb3070e072c0e543a3b683cd570bf8786ecdf7a43da665e8262eb5aa986"
+    },
+    "route_events": {
+      "rows": 1855,
+      "sha256": "8de9247f23fd48c1ac46d2d97d6d1ac81dc98d80ecad4759e2b12916ac3780b3"
+    }
+  },
+  "formal_dirty": "M .gitignore\n M config/company_theme_map.json\n M config/supply_chain_nodes.json\n M config/theme_profiles.json\n M stock_list.json",
+  "tested_source_count": 629,
+  "heartbeat_before": {
+    "updated_at": "2026-11-19T23:55:29+08:00",
+    "pid": 3340,
+    "job_queue_available": true,
+    "last_scheduled_event": "完整資料回補檢查",
+    "last_scheduled_event_at": "2026-11-19T21:58:27+08:00",
+    "schedule_health": {
+      "last_status": "started",
+      "last_status_at": "2026-11-19T21:58:27+08:00",
+      "current_task": {
+        "task_id": "backfill:scheduled",
+        "label": "scheduled_backfill",
+        "status": "running",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_started": {
+        "task_id": "scheduled:full_backfill_check",
+        "label": "scheduled full backfill check",
+        "status": "started",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_completed": {
+        "task_id": "scheduled:radar:2130",
+        "label": "21:30 Radar 推播（AI 短評）",
+        "status": "completed",
+        "at": "2026-11-18T22:23:16+08:00",
+        "elapsed_seconds": 3196.177
+      },
+      "queue_size": 0,
+      "recent_event_loop_lag_seconds": 0.014,
+      "schedule_unhealthy_reason": null,
+      "last_triggered": {
+        "label": "完整資料回補檢查",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_queued": {
+        "task_id": "scheduled:radar:2130",
+        "label": "21:30 Radar 推播（AI 短評）",
+        "status": "queued",
+        "at": "2026-11-18T21:30:00+08:00"
+      },
+      "last_failed": {
+        "task_id": "scheduled:all_scan:2030",
+        "label": "20:30 全部選股",
+        "status": "timeout",
+        "at": "2026-11-17T22:30:00+08:00",
+        "elapsed_seconds": 7200.017,
+        "error_summary": "exceeded 7200 seconds"
+      },
+      "last_skipped_duplicate": {
+        "task_id": "scheduled:full_backfill_check",
+        "label": "scheduled full backfill check",
+        "status": "skipped_duplicate",
+        "at": "2026-11-10T17:47:34+08:00"
+      },
+      "etf_monitor": {
+        "status": "READY",
+        "updated_at": "2026-11-19T23:53:57.351830+08:00",
+        "mode": "shadow",
+        "attempt": 1,
+        "stage": "ready",
+        "last_error": null,
+        "next_retry_at": null,
+        "reconciliation_recovery": {
+          "status": "IDLE",
+          "pending_dates": [],
+          "checked_at": "2026-11-19T23:53:56.473333+08:00",
+          "next_check_at": "2026-11-19T23:58:57.348877+08:00"
+        },
+        "schedule": {
+          "preview": "12:45:00",
+          "decision": "13:55:00",
+          "reconciliation": "22:00:00"
+        }
+      },
+      "telegram_transport": {
+        "channels": {
+          "polling": {
+            "status": "healthy",
+            "last_success_at": "2026-11-19T23:55:25+08:00",
+            "incident_id": "edbed787b7624646b49435c091d42a14",
+            "first_error_at": "2026-11-17T18:17:43+08:00",
+            "failures": 5,
+            "last_notice_at": "2026-11-17T18:17:43+08:00",
+            "last_error_at": "2026-11-17T18:18:03+08:00",
+            "last_error_type": "TimedOut",
+            "diagnostic_id": "d4c7870975aa49eca0d6227bf82965a9",
+            "recent_incident_starts": [
+              "2026-11-17T18:13:33+08:00",
+              "2026-11-17T18:17:43+08:00"
+            ],
+            "last_instability_notice_at": "2026-11-13T22:51:03+08:00",
+            "recovered_at": "2026-11-17T18:18:14+08:00"
+          },
+          "api": {
+            "status": "healthy",
+            "last_success_at": "2026-11-19T22:00:16+08:00",
+            "incident_id": "7944100a038c4d80a7c3666fa0cb67e7",
+            "first_error_at": "2026-11-09T08:36:43+08:00",
+            "failures": 3,
+            "last_notice_at": "2026-11-09T08:36:43+08:00",
+            "last_error_at": "2026-11-09T08:36:47+08:00",
+            "last_error_type": "NetworkError",
+            "diagnostic_id": "08016f6dff454c14b4881024a35f1623",
+            "recovered_at": "2026-11-09T08:36:51+08:00"
+          }
+        },
+        "notice_counts": {
+          "pending": 0,
+          "sent": 14,
+          "unknown": 6
+        },
+        "diagnostic_storage_warning": false
+      }
+    }
+  },
+  "user_consent": "No manual tasks; user permits interrupting current scheduled backfill, retaining cache, no success marker or proactive replay",
+  "no_database_migration": true,
+  "recovery": "Versioned product files recoverable from base Git commit; preserve all private settings and ledger",
+  "new_paid_usd": "0"
+}

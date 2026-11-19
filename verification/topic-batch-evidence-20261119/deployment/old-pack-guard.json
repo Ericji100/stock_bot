@@ -1,0 +1,18 @@
+[
+  {
+    "change_id": "change_20261113_224616",
+    "success": false,
+    "errors": [
+      "引用來源或日期尚未通過檢核；請補查後重新審核，此包不可套用。"
+    ],
+    "all_write_boundaries_zero": true
+  },
+  {
+    "change_id": "change_20261117_234022",
+    "success": false,
+    "errors": [
+      "引用來源或日期尚未通過檢核；請補查後重新審核，此包不可套用。"
+    ],
+    "all_write_boundaries_zero": true
+  }
+]

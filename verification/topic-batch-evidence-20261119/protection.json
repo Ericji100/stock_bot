@@ -1,0 +1,266 @@
+{
+  "checked_at": "2026-11-19T23:46:49.595609+08:00",
+  "production_protection": {
+    "protected_sha256": {
+      "config/theme_profiles.json": {
+        "sha256": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+        "unchanged": true
+      },
+      "config/company_theme_map.json": {
+        "sha256": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+        "unchanged": true
+      },
+      "config/supply_chain_nodes.json": {
+        "sha256": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+        "unchanged": true
+      },
+      "config/company_knowledge.json": {
+        "sha256": "d7ef8755e3f47ac2fe624a22f99ff50def1bb250b09bbd3707acf4d071607116",
+        "unchanged": true
+      },
+      "config/research_center.json": {
+        "sha256": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+        "unchanged": true
+      },
+      "stock_list.json": {
+        "sha256": "c55799ee6a0b2fbbce6bbd77a731d8ba6775c3d10ed60358e9d0b2e86eab061f",
+        "unchanged": true
+      }
+    },
+    "source_sha256": {
+      "main.py": {
+        "sha256": "54119d4015d0e0fc7194f6aab8edd4c9d8810b0794a8ca9cb20b9bf86d173f27",
+        "unchanged": true
+      },
+      "research_center/topic_maintain_service.py": {
+        "sha256": "3bd0e2b106837d44f05e7d8086f92e0b3b968091a417078ba9a038d3cb3e15f7",
+        "unchanged": true
+      },
+      "research_center/topic_pipeline_service.py": {
+        "sha256": "e7d9575a5d5a2f5d899e475d85512dac6aa2fe47261178f7975f22395a9a463c",
+        "unchanged": true
+      },
+      "research_center/topic_quote_binding.py": {
+        "sha256": "22ee0a75aab8ae27a9c2205667552cf1e1ff42360ee58a5d9ad638c45886d0ee",
+        "unchanged": true
+      },
+      "research_center/topic_input_package.py": {
+        "sha256": "a23b4cbf6e0b175493f93a7baee8967840b9a60151346b38ab32a66bba95640f",
+        "unchanged": true
+      },
+      "research_center/topic_citation_audit.py": {
+        "sha256": "c61260e312480af9adc7ba1e8510988bf5140014c61a6d796574fc39e14ebb8e",
+        "unchanged": true
+      }
+    }
+  },
+  "ledger_read_only": true,
+  "original_round_rows_identical": true,
+  "original_round_request_count": 26,
+  "original_round_settled_usd": "0.631540385",
+  "original_round_all_development": true,
+  "existing_unsettled_entries_untouched": [
+    {
+      "id": "370572175b2f424f892c25746b82ea87",
+      "status": "pending",
+      "estimate": "0.288884",
+      "actual": null,
+      "purpose": "production",
+      "round_id": ""
+    },
+    {
+      "id": "3c55a752f5674559ad7eda2464ea504c",
+      "status": "unknown",
+      "estimate": "0.288884",
+      "actual": null,
+      "purpose": "development",
+      "round_id": "radar-hybrid-20261105-user6"
+    },
+    {
+      "id": "54778eb1b5bb42f98640809adb87022b",
+      "status": "pending",
+      "estimate": "0.288884",
+      "actual": null,
+      "purpose": "production",
+      "round_id": ""
+    },
+    {
+      "id": "56e99a7ff856407996ffd813473ca7cc",
+      "status": "unknown",
+      "estimate": "2.79884",
+      "actual": null,
+      "purpose": "development",
+      "round_id": "terra-xhigh-20261104-user25"
+    },
+    {
+      "id": "640b3d51cc95444d8f30815cec82c3ce",
+      "status": "unknown",
+      "estimate": "0.182326",
+      "actual": null,
+      "purpose": "development",
+      "round_id": "hybrid-deploy-recheck-20261105-user6"
+    },
+    {
+      "id": "6ae162984b3e428f85b3d70e301b0752",
+      "status": "rejected",
+      "estimate": "2.79884",
+      "actual": "0",
+      "purpose": "development",
+      "round_id": "terra-xhigh-20261104-user25"
+    },
+    {
+      "id": "71a64ff5a2044205aaf7fdf9f4b11430",
+      "status": "unknown",
+      "estimate": "2.79884",
+      "actual": null,
+      "purpose": "development",
+      "round_id": "schedule-stability-20261107-user6"
+    },
+    {
+      "id": "d108757c77df4bdc914bfbd3ea3c60f6",
+      "status": "unknown",
+      "estimate": "0.02078275",
+      "actual": null,
+      "purpose": "production",
+      "round_id": ""
+    },
+    {
+      "id": "d4a9b7e11da346dc8d4f0d6241c7e0a4",
+      "status": "unknown",
+      "estimate": "0.288884",
+      "actual": null,
+      "purpose": "production",
+      "round_id": ""
+    }
+  ],
+  "known_old_unknown_reservation_preserved": [
+    {
+      "id": "370572175b2f424f892c25746b82ea87",
+      "status": "pending",
+      "estimate": "0.288884",
+      "actual": null,
+      "purpose": "production",
+      "round_id": ""
+    }
+  ],
+  "new_paid_calls": 0,
+  "new_paid_usd": "0",
+  "production_heartbeat_at_read": {
+    "updated_at": "2026-11-19T23:46:29+08:00",
+    "pid": 3340,
+    "job_queue_available": true,
+    "last_scheduled_event": "完整資料回補檢查",
+    "last_scheduled_event_at": "2026-11-19T21:58:27+08:00",
+    "schedule_health": {
+      "last_status": "started",
+      "last_status_at": "2026-11-19T21:58:27+08:00",
+      "current_task": {
+        "task_id": "backfill:scheduled",
+        "label": "scheduled_backfill",
+        "status": "running",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_started": {
+        "task_id": "scheduled:full_backfill_check",
+        "label": "scheduled full backfill check",
+        "status": "started",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_completed": {
+        "task_id": "scheduled:radar:2130",
+        "label": "21:30 Radar 推播（AI 短評）",
+        "status": "completed",
+        "at": "2026-11-18T22:23:16+08:00",
+        "elapsed_seconds": 3196.177
+      },
+      "queue_size": 0,
+      "recent_event_loop_lag_seconds": 0.0,
+      "schedule_unhealthy_reason": null,
+      "last_triggered": {
+        "label": "完整資料回補檢查",
+        "at": "2026-11-19T21:58:27+08:00"
+      },
+      "last_queued": {
+        "task_id": "scheduled:radar:2130",
+        "label": "21:30 Radar 推播（AI 短評）",
+        "status": "queued",
+        "at": "2026-11-18T21:30:00+08:00"
+      },
+      "last_failed": {
+        "task_id": "scheduled:all_scan:2030",
+        "label": "20:30 全部選股",
+        "status": "timeout",
+        "at": "2026-11-17T22:30:00+08:00",
+        "elapsed_seconds": 7200.017,
+        "error_summary": "exceeded 7200 seconds"
+      },
+      "last_skipped_duplicate": {
+        "task_id": "scheduled:full_backfill_check",
+        "label": "scheduled full backfill check",
+        "status": "skipped_duplicate",
+        "at": "2026-11-10T17:47:34+08:00"
+      },
+      "etf_monitor": {
+        "status": "READY",
+        "updated_at": "2026-11-19T23:43:55.617003+08:00",
+        "mode": "shadow",
+        "attempt": 1,
+        "stage": "ready",
+        "last_error": null,
+        "next_retry_at": null,
+        "reconciliation_recovery": {
+          "status": "IDLE",
+          "pending_dates": [],
+          "checked_at": "2026-11-19T23:43:54.589776+08:00",
+          "next_check_at": "2026-11-19T23:48:55.611604+08:00"
+        },
+        "schedule": {
+          "preview": "12:45:00",
+          "decision": "13:55:00",
+          "reconciliation": "22:00:00"
+        }
+      },
+      "telegram_transport": {
+        "channels": {
+          "polling": {
+            "status": "healthy",
+            "last_success_at": "2026-11-19T23:46:20+08:00",
+            "incident_id": "edbed787b7624646b49435c091d42a14",
+            "first_error_at": "2026-11-17T18:17:43+08:00",
+            "failures": 5,
+            "last_notice_at": "2026-11-17T18:17:43+08:00",
+            "last_error_at": "2026-11-17T18:18:03+08:00",
+            "last_error_type": "TimedOut",
+            "diagnostic_id": "d4c7870975aa49eca0d6227bf82965a9",
+            "recent_incident_starts": [
+              "2026-11-17T18:13:33+08:00",
+              "2026-11-17T18:17:43+08:00"
+            ],
+            "last_instability_notice_at": "2026-11-13T22:51:03+08:00",
+            "recovered_at": "2026-11-17T18:18:14+08:00"
+          },
+          "api": {
+            "status": "healthy",
+            "last_success_at": "2026-11-19T22:00:16+08:00",
+            "incident_id": "7944100a038c4d80a7c3666fa0cb67e7",
+            "first_error_at": "2026-11-09T08:36:43+08:00",
+            "failures": 3,
+            "last_notice_at": "2026-11-09T08:36:43+08:00",
+            "last_error_at": "2026-11-09T08:36:47+08:00",
+            "last_error_type": "NetworkError",
+            "diagnostic_id": "08016f6dff454c14b4881024a35f1623",
+            "recovered_at": "2026-11-09T08:36:51+08:00"
+          }
+        },
+        "notice_counts": {
+          "pending": 0,
+          "sent": 14,
+          "unknown": 6
+        },
+        "diagnostic_storage_warning": false
+      }
+    }
+  },
+  "production_restart": false,
+  "production_deployment": false
+}

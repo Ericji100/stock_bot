@@ -1,0 +1,11 @@
+{
+  "archive": "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\verification\\topic-batch-evidence-20261119\\offline-helpers.zip",
+  "sha256": "3a16ceac75894c0d4816eba22efd39f5c74918880afc972335e834e20a3c585f",
+  "members": {
+    "replay.py": "50aef56137e624562977f155e1ab7a19775caac84dec6a89c16f4a39235b44cb",
+    "full_suite.py": "b40c27266b0950db6164343e700d9d937e61619ddde85fdf4f9ea472944b15a1",
+    "restore_fixtures.py": "7b84d67e95d73a93d9ae29d344eb83ec7db2fa66b90bd947fac362c7543244a2",
+    "protection_proof.py": "adfc1eab1e00b63e2699a9e5d1a0cb8d1294f144a790341cc3af87a3c17f09a0"
+  },
+  "verified": true
+}

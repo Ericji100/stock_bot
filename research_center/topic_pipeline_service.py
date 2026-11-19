@@ -140,6 +140,7 @@ def run_topic_pipeline(
     require_full_ai: bool = False,
     candidate_sink: Callable[[list[dict[str, Any]]], None] | None = None,
     prompt_capacity: Callable | None = None,
+    batch_checkpoint: Callable[[dict], None] | None = None,
 ) -> tuple[TopicChangePack, list[dict[str, Any]]]:
     """Run staged topic maintenance and return (pack, stage_logs)."""
     stage_logs: list[dict[str, Any]] = []
@@ -258,11 +259,25 @@ def run_topic_pipeline(
                 action.action_type = default_types[idx]
                 if batch[idx].get("target_theme_id"):
                     action.target_theme_id = batch[idx]["target_theme_id"]
+        offset = len(actions)
+        for log in stage_logs:
+            if log.get('stage') == f'detail_expand_{batch_index}_evidence_check':
+                for issue in log.get('issues', []):
+                    parts = issue['path'].split('/')
+                    if len(parts)>2 and parts[1]=='actions' and parts[2].isdigit():
+                        parts[2] = str(offset+int(parts[2]))
+                        issue['path'] = '/'.join(parts)
         actions.extend(batch_actions)
         if require_full_ai:
             batch_reviews.append({'batch': batch_index,
                 'candidate_ids': [row['theme_id'] for row in batch],
                 'status': 'success' if _detail_covers_batch(payload, batch) else 'pending'})
+            if batch_checkpoint is not None:
+                checks = [log for log in stage_logs if log.get('stage')==f'detail_expand_{batch_index}_evidence_check']
+                validated = batch_reviews[-1]['status']=='success' and checks and all(log['passed'] for log in checks)
+                batch_checkpoint({**batch_reviews[-1], 'model_status':batch_reviews[-1]['status'],
+                    'status':'validated' if validated else 'pending', 'evidence_checks':checks,
+                    'not_final_package':True})
         if len(actions) >= target_count:
             break
 
@@ -299,6 +314,7 @@ def run_topic_pipeline(
             "action_count": len(actions),
             "deferred_candidates": candidates[max_count:],
             "backlog_loaded": structured_data.get('topic_backlog_loaded', 0),
+            'batch_evidence_audit': [log for log in stage_logs if log.get('stage','').endswith('_evidence_check')],
             "detail_review": {'selected_count': len(selected),
                 'ai_completed_count': sum(len(row['candidate_ids']) for row in batch_reviews if row['status'] == 'success'),
                 'batches': batch_reviews},
@@ -454,12 +470,15 @@ def _extract_candidates(
         return []
     try:
         if full_evidence:
-            prompts = _candidate_capacity_prompts(structured_data or {}, prompt_variables, template, render_prompt, prompt_capacity)
+            scopes = []
+            prompts = _candidate_capacity_prompts(structured_data or {}, prompt_variables, template, render_prompt, prompt_capacity, scope_sink=scopes)
             if len(prompts) > 1:
                 merged = {}
                 for index, part in enumerate(prompts, 1):
                     emit(f'候選題材完整來源分段 {index}/{len(prompts)}：{len(part)} chars')
                     payload = call_ai_json(part, f'candidate_extract_part_{index}')
+                    payload = _check_batch_evidence(payload, structured_data or {}, [], scopes[index-1],
+                        f'candidate_extract_part_{index}', call_ai_json, stage_logs, emit)
                     if _has_unresolved_topic_ref(payload) or _payload_exposes_model_reasoning(payload):
                         raise ValueError('分段候選包含未展開引用或模型草稿。')
                     if isinstance(payload, dict) and isinstance(payload.get('company_knowledge_updates'), dict):
@@ -480,6 +499,9 @@ def _extract_candidates(
                 return list(merged.values())
             prompt = prompts[0]
         payload = call_ai_json(prompt, "candidate_extract")
+        if full_evidence:
+            payload = _check_batch_evidence(payload, structured_data or {}, [], scopes[0],
+                'candidate_extract', call_ai_json, stage_logs, emit)
         if full_evidence and _has_unresolved_topic_ref(payload):
             stage_logs.append({'stage':'candidate_extract','error':'unresolved_topic_reference'})
             return []
@@ -514,16 +536,18 @@ def _extract_candidates(
         return []
 
 
-def _candidate_capacity_prompts(data, variables, template, render_prompt, prompt_capacity=None):
+def _candidate_capacity_prompts(data, variables, template, render_prompt, prompt_capacity=None, *, scope_sink=None):
     """Split complete source rows, repeating context rather than dropping evidence."""
     sources = merge_topic_sources(data)
     def build(rows):
         stage = topic_stage_variables(data, variables, source_rows=rows)
         prompt = append_topic_shared_records(render_prompt(template, stage), stage)
-        return prompt + '\n完整來源依本批網址核對；只整理候選，不作最終結論、不捏造網址。'
+        return prompt + '\n完整來源依本批網址核對；只整理候選，不作最終結論、不捏造網址。', stage
     def split(rows):
-        prompt = build(rows)
+        prompt, stage = build(rows)
         if _full_prompt_fits(prompt, prompt_capacity, stage='candidate_extract', output_tokens=32768):
+            if scope_sink is not None:
+                scope_sink.append(stage)
             return [prompt]
         if len(rows) <= 1:
             raise ValueError('單筆來源或共用題材背景超過容量，完整保留，不截斷、不冒稱完成。')
@@ -659,6 +683,9 @@ def _expand_batch(
             return {}
         if _payload_exposes_model_reasoning(payload):
             stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": "model_reasoning_exposed"})
+        if full_evidence and _detail_covers_batch(payload, batch):
+            payload = _check_batch_evidence(payload, structured_data or {}, batch, variables,
+                f'detail_expand_{batch_index}', call_ai_json, stage_logs, emit)
         if isinstance(payload, dict) and isinstance(payload.get("company_knowledge_updates"), dict):
             stage_logs.append({
                 "stage": f"detail_expand_{batch_index}_company_knowledge",
@@ -697,6 +724,9 @@ def _expand_batch(
             )
             retry_count = len(retry_payload.get("actions", [])) if isinstance(retry_payload, dict) else len(retry_payload or [])
             if retry_count > 0 and (not full_evidence or _detail_covers_batch(retry_payload, batch)):
+                if full_evidence:
+                    retry_payload = _check_batch_evidence(retry_payload, structured_data or {}, batch, variables,
+                        f'detail_expand_{batch_index}', call_ai_json, stage_logs, emit)
                 stage_logs.append({
                     "stage": f"detail_expand_{batch_index}_recovered",
                     "count": retry_count,
@@ -706,6 +736,15 @@ def _expand_batch(
                 return retry_payload
         stage_logs.append({"stage": f"detail_expand_{batch_index}", "error": str(exc), "prompt_chars": prompt_chars})
         return {}
+
+
+def _check_batch_evidence(payload, data, batch, variables, stage, call_ai_json, logs, emit):
+    from .topic_batch_evidence import check_batch_evidence
+    bound, audit = check_batch_evidence(payload, data=data, batch=batch, variables=variables,
+        stage=stage, call_ai_json=call_ai_json, emit=emit)
+    logs.append(audit)
+    emit(f"本批引用檢核：{'通過' if audit['passed'] else '待補查'}，{audit['blocking_count']} 項阻擋；局部重選 {audit['retry_count']} 次。")
+    return bound
 
 
 def restore_topic_candidate_ids(payload, batch):

@@ -41,11 +41,31 @@ def _rows(value, path=''):
             yield from _rows(child, f'{path}/{index}')
 
 
+def bind_quote_reference(row, span, sources):
+    """Bind one exact supplied reference; never guess another source or version."""
+    raw_day = row.get('publish_date') or row.get('published_date')
+    day = normalize_published_date(raw_day)
+    if raw_day and not day:
+        return False
+    matches = (span and (not row.get('url') or source_url(row['url']) == source_url(span['url']))
+        and (not row.get('source_url') or source_url(row['source_url']) == source_url(span['url']))
+        and (not day or day == span['publish_date'])
+        and (not row.get('source_id') or any(candidate['source_id'] == span['source_id']
+             for candidate in reference_sources(row['source_id'], sources,
+             url=span['url'], published_date=span['publish_date']))))
+    if matches:
+        row.update(source_id=span['source_id'], url=span['url'], publish_date=span['publish_date'],
+                   supporting_quote=span['text'])
+    return bool(matches)
+
+
 def bind_topic_quotes(pack, data):
     from .topic_input_package import merge_topic_sources
     sources = merge_topic_sources(data)
     catalog = {row['quote_id']: row for row in quote_catalog(sources)}
-    bindings, failures = [], []
+    bindings = []
+    failures = [deepcopy(issue) for batch in pack.extra.get('batch_evidence_audit', [])
+                if not batch.get('passed') for issue in batch.get('issues', [])]
     targets = [(f'/actions/{index}', action.to_dict(), index) for index, action in enumerate(pack.actions)]
     if pack.company_knowledge_updates:
         targets.append(('/company_knowledge_updates', deepcopy(pack.company_knowledge_updates), None))
@@ -53,18 +73,10 @@ def bind_topic_quotes(pack, data):
         for path, row in _rows(payload, prefix):
             if row.get('quote_id'):
                 span = catalog.get(row['quote_id'])
-                day = normalize_published_date(row.get('publish_date') or row.get('published_date'))
-                matches = (span and (not row.get('url') or source_url(row['url']) == source_url(span['url']))
-                    and (not day or day == span['publish_date'])
-                    and (not row.get('source_id') or any(candidate['source_id'] == span['source_id']
-                         for candidate in reference_sources(row['source_id'], sources,
-                         url=span['url'], published_date=span['publish_date']))))
-                if not matches:
+                original = deepcopy(row)
+                if not bind_quote_reference(row, span, sources):
                     failures.append({'path': path, 'reason': 'quote_reference_mismatch', 'quote_id': row['quote_id']})
                     continue
-                original = deepcopy(row)
-                row.update(source_id=span['source_id'], url=span['url'], publish_date=span['publish_date'],
-                           supporting_quote=span['text'])
                 bindings.append({'path': path, 'policy': 'immutable_source_span', 'original': original,
                                  'quote_id': span['quote_id'], 'body_sha256': span['body_sha256']})
             elif row.get('source_id') and (row.get('url') or row.get('source_url')):

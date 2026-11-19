@@ -1,0 +1,170 @@
+{
+  "calls_reused": [
+    "candidate_extract",
+    "detail_expand_1",
+    "detail_expand_2",
+    "detail_expand_2_evidence_retry",
+    "detail_expand_3",
+    "detail_expand_4"
+  ],
+  "roundtrips": [
+    {
+      "source_count": 284,
+      "all_fields_and_body_equal": true
+    },
+    {
+      "source_count": 284,
+      "all_fields_and_body_equal": true
+    },
+    {
+      "source_count": 22,
+      "all_fields_and_body_equal": true
+    },
+    {
+      "source_count": 8,
+      "all_fields_and_body_equal": true
+    },
+    {
+      "source_count": 13,
+      "all_fields_and_body_equal": true
+    },
+    {
+      "source_count": 8,
+      "all_fields_and_body_equal": true
+    }
+  ],
+  "progress": [
+    "[AI題材庫] /topic_maintain | 開始執行題材知識庫維護",
+    "[AI題材庫] /topic_maintain | 判斷模式：更新",
+    "[AI題材庫] /topic_maintain | 收集全市場股票與來源資料",
+    "[AI題材庫] /topic_maintain | 執行discovery搜尋",
+    "[AI題材庫] /topic_maintain | Discovery完成，取得 284 筆來源",
+    "[AI題材庫] /topic_maintain | WebFetch enrichment 開始",
+    "[AI題材庫] /topic_maintain | WebFetch完成",
+    "[AI題材庫] /topic_maintain | 整理 WebFetch evidence candidates",
+    "[AI題材庫] /topic_maintain | WebFetch evidence candidates完成，共 30 筆",
+    "[AI題材庫] /topic_maintain | 結構化資料摘要：20037 chars",
+    "[AI題材庫] /topic_maintain | Discovery來源：284 筆",
+    "[AI題材庫] /topic_maintain | 正文補取：成功 30 筆，處理來源 30 筆；部分成功不等於完整正文。",
+    "[AI題材庫] /topic_maintain | 既有題材庫：452 項",
+    "[AI題材庫] /topic_maintain | Prompt log 已保存",
+    "[AI題材庫] /topic_maintain | AI 產生候選題材 prompt=822573 chars",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / candidate_extract",
+    "[AI題材庫] /topic_maintain | AI階段 candidate_extract：模型=gpt-6-luna，輸入=873814字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用檢核：通過，0 項阻擋；局部重選 0 次。",
+    "[AI題材庫] /topic_maintain | AI 補題材細節 batch 1 prompt=585795 chars",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / detail_expand_1",
+    "[AI題材庫] /topic_maintain | AI階段 detail_expand_1：模型=gpt-6-luna，輸入=637068字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用檢核：通過，0 項阻擋；局部重選 0 次。",
+    "[AI題材庫] /topic_maintain | AI 補題材細節 batch 2 prompt=331442 chars",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / detail_expand_2",
+    "[AI題材庫] /topic_maintain | AI階段 detail_expand_2：模型=gpt-6-luna，輸入=382715字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用待修正 1 筆，僅重選引用一次，不重跑題材或搜尋。",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / detail_expand_2_evidence_retry",
+    "[AI題材庫] /topic_maintain | AI階段 detail_expand_2_evidence_retry：模型=gpt-6-luna，輸入=4739字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用檢核：待補查，4 項阻擋；局部重選 1 次。",
+    "[AI題材庫] /topic_maintain | AI 補題材細節 batch 3 prompt=465936 chars",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / detail_expand_3",
+    "[AI題材庫] /topic_maintain | AI階段 detail_expand_3：模型=gpt-6-luna，輸入=517209字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用檢核：通過，0 項阻擋；局部重選 0 次。",
+    "[AI題材庫] /topic_maintain | AI 補題材細節 batch 4 prompt=361041 chars",
+    "[AI題材庫] /topic_maintain | 呼叫 AI：deepseek / detail_expand_4",
+    "[AI題材庫] /topic_maintain | AI階段 detail_expand_4：模型=gpt-6-luna，輸入=412314字元，等待上限=600秒",
+    "[AI題材庫] /topic_maintain | 本批引用檢核：通過，0 項阻擋；局部重選 0 次。",
+    "[AI題材庫] /topic_maintain | 題材引用檢核：74 筆，待補查 7 項",
+    "[AI題材庫] /topic_maintain | Raw response 已保存",
+    "[AI題材庫] /topic_maintain | 變更包已保存：change_20261119_234300"
+  ],
+  "intermediate_checkpoints": [
+    {
+      "before_stage": "detail_expand_1",
+      "recorded_responses": 1,
+      "batch_statuses": [],
+      "not_final_package": true
+    },
+    {
+      "before_stage": "detail_expand_2",
+      "recorded_responses": 2,
+      "batch_statuses": [
+        "validated"
+      ],
+      "not_final_package": true
+    },
+    {
+      "before_stage": "detail_expand_2_evidence_retry",
+      "recorded_responses": 3,
+      "batch_statuses": [
+        "validated"
+      ],
+      "not_final_package": true
+    },
+    {
+      "before_stage": "detail_expand_3",
+      "recorded_responses": 4,
+      "batch_statuses": [
+        "validated",
+        "pending"
+      ],
+      "not_final_package": true
+    },
+    {
+      "before_stage": "detail_expand_4",
+      "recorded_responses": 5,
+      "batch_statuses": [
+        "validated",
+        "pending",
+        "validated"
+      ],
+      "not_final_package": true
+    }
+  ],
+  "change_id": "change_20261119_234300",
+  "citation_count": 74,
+  "issues": [
+    {
+      "path": "/actions/2/evidence/1",
+      "reason": "quote_reference_mismatch"
+    },
+    {
+      "path": "/actions/2/evidence/1",
+      "reason": "quote_reference_mismatch",
+      "quote_id": "Qcffee65a22f6ec5c4293f79"
+    },
+    {
+      "path": "/actions/2/supply_chain_nodes/0/evidence/1",
+      "reason": "quote_reference_mismatch",
+      "quote_id": "Qcffee65a22f6ec5c4293f79"
+    },
+    {
+      "path": "/actions/2/supply_chain_nodes/0/evidence/1",
+      "url": "https://www.moneydj.com/kmdj/news/newsviewer.aspx?a=d935ab09-a27f-44a3-ab96-1b8a2c6e6165",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-11-16"
+      ],
+      "cited_date": "2026-11-16"
+    },
+    {
+      "path": "/actions/2/evidence/1",
+      "reason": "quote_reference_mismatch",
+      "quote_id": "Qcffee65a22f6ec5c4293f79"
+    },
+    {
+      "path": "/actions/2/supply_chain_nodes/0/evidence/1",
+      "reason": "quote_reference_mismatch",
+      "quote_id": "Qcffee65a22f6ec5c4293f79"
+    },
+    {
+      "path": "/actions/2/supply_chain_nodes/0/evidence/1",
+      "url": "https://www.moneydj.com/kmdj/news/newsviewer.aspx?a=d935ab09-a27f-44a3-ab96-1b8a2c6e6165",
+      "reason": "supporting_quote_not_in_body",
+      "supplied_dates": [
+        "2026-11-16"
+      ],
+      "cited_date": "2026-11-16"
+    }
+  ],
+  "evidence_complete": false,
+  "action_complete": true,
+  "ai_complete": true
+}

@@ -1,0 +1,44 @@
+{
+  "at": "2026-11-19T15:58:44.046545+00:00",
+  "protected_files_unchanged": true,
+  "all_ledger_tables_unchanged": true,
+  "new_paid_usd": "0",
+  "ledger": {
+    "account_blocks": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "cache": {
+      "rows": 1290,
+      "sha256": "cfb11cba84534eccae0de1a973c0fe0e8eb9f4e4179a793721e89928a2af2c2b"
+    },
+    "fee_reconciliations": {
+      "rows": 39,
+      "sha256": "978342f1199dc39e54bc0947f900d539f548206c268cdf8d4679b11893c8e9e4"
+    },
+    "grants": {
+      "rows": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "live_rounds": {
+      "rows": 7,
+      "sha256": "e4560f604a90eb0981de3777d9f548c8845bfcabc3723f0014084985a0285f41"
+    },
+    "notice_attribution": {
+      "rows": 10,
+      "sha256": "3f23b9e00630b443090ba3487589b7260a8c25c1075ff10e2552bf1e435dc90e"
+    },
+    "notices": {
+      "rows": 10,
+      "sha256": "4efe983d613c800c5e7feaf9d6699e982fce2bd4cfa8c2112484a3d8ab404d4c"
+    },
+    "requests": {
+      "rows": 1403,
+      "sha256": "57d73eb3070e072c0e543a3b683cd570bf8786ecdf7a43da665e8262eb5aa986"
+    },
+    "route_events": {
+      "rows": 1855,
+      "sha256": "8de9247f23fd48c1ac46d2d97d6d1ac81dc98d80ecad4759e2b12916ac3780b3"
+    }
+  }
+}

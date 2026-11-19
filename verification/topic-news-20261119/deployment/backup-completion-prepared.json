@@ -1,0 +1,16 @@
+[
+  {
+    "record": "D:\\code\\stock_ai_bot\\verification\\backup-acceptance\\cb-fc7a65f6e62c480ebdb31f7b60e23e31\\87e3cadd6b7147e9b606502572ddf00f\\completion-record.json",
+    "sha256": "4448d4c8fa97454a905b957c453354798b46c2ce59b4873b1328f0ca1f752e76",
+    "acceptance": "D:\\code\\stock_ai_bot\\verification\\backup-acceptance\\cb-fc7a65f6e62c480ebdb31f7b60e23e31\\87e3cadd6b7147e9b606502572ddf00f\\acceptance.json",
+    "backup_id": "cb-fc7a65f6e62c480ebdb31f7b60e23e31",
+    "status": "PREPARED_ONLY"
+  },
+  {
+    "record": "D:\\code\\stock_ai_bot\\verification\\backup-acceptance\\cb-8b54d81ac61e4578aed72757126a622b\\e6814560c38249aaaefea99057565667\\completion-record.json",
+    "sha256": "c063114af937115e9f082a4c3d0170a9fd49115840f2c195517abb0ab82252dc",
+    "acceptance": "D:\\code\\stock_ai_bot\\verification\\backup-acceptance\\cb-8b54d81ac61e4578aed72757126a622b\\e6814560c38249aaaefea99057565667\\acceptance.json",
+    "backup_id": "cb-8b54d81ac61e4578aed72757126a622b",
+    "status": "PREPARED_ONLY"
+  }
+]

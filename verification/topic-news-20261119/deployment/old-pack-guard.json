@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "errors": [
+    "引用來源或日期尚未通過檢核；請補查後重新審核，此包不可套用。"
+  ],
+  "all_write_and_backup_boundaries_zero": true,
+  "formal_pack_untouched": true
+}

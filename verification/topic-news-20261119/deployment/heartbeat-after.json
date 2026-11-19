@@ -1,0 +1,111 @@
+{
+  "updated_at": "2026-11-19T21:54:29+08:00",
+  "pid": 3340,
+  "job_queue_available": true,
+  "last_scheduled_event": "啟動晨報檢查",
+  "last_scheduled_event_at": "2026-11-19T21:53:29+08:00",
+  "schedule_health": {
+    "last_status": "triggered",
+    "last_status_at": "2026-11-19T21:53:29+08:00",
+    "current_task": null,
+    "last_started": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "started",
+      "at": "2026-11-18T22:11:36+08:00"
+    },
+    "last_completed": {
+      "task_id": "scheduled:radar:2130",
+      "label": "21:30 Radar 推播（AI 短評）",
+      "status": "completed",
+      "at": "2026-11-18T22:23:16+08:00",
+      "elapsed_seconds": 3196.177
+    },
+    "queue_size": 0,
+    "recent_event_loop_lag_seconds": 0.005,
+    "schedule_unhealthy_reason": null,
+    "last_triggered": {
+      "label": "啟動晨報檢查",
+      "at": "2026-11-19T21:53:29+08:00"
+    },
+    "last_queued": {
+      "task_id": "scheduled:radar:2130",
+      "label": "21:30 Radar 推播（AI 短評）",
+      "status": "queued",
+      "at": "2026-11-18T21:30:00+08:00"
+    },
+    "last_failed": {
+      "task_id": "scheduled:all_scan:2030",
+      "label": "20:30 全部選股",
+      "status": "timeout",
+      "at": "2026-11-17T22:30:00+08:00",
+      "elapsed_seconds": 7200.017,
+      "error_summary": "exceeded 7200 seconds"
+    },
+    "last_skipped_duplicate": {
+      "task_id": "scheduled:full_backfill_check",
+      "label": "scheduled full backfill check",
+      "status": "skipped_duplicate",
+      "at": "2026-11-10T17:47:34+08:00"
+    },
+    "etf_monitor": {
+      "status": "READY",
+      "updated_at": "2026-11-19T21:53:32.484819+08:00",
+      "mode": "shadow",
+      "attempt": 1,
+      "stage": "ready",
+      "last_error": null,
+      "next_retry_at": null,
+      "reconciliation_recovery": {
+        "status": "IDLE",
+        "pending_dates": [],
+        "checked_at": "2026-11-19T21:53:30.132051+08:00",
+        "next_check_at": "2026-11-19T21:58:32.476716+08:00"
+      },
+      "schedule": {
+        "preview": "12:45:00",
+        "decision": "13:55:00",
+        "reconciliation": "22:00:00"
+      }
+    },
+    "telegram_transport": {
+      "channels": {
+        "polling": {
+          "status": "healthy",
+          "last_success_at": "2026-11-19T21:54:21+08:00",
+          "incident_id": "edbed787b7624646b49435c091d42a14",
+          "first_error_at": "2026-11-17T18:17:43+08:00",
+          "failures": 5,
+          "last_notice_at": "2026-11-17T18:17:43+08:00",
+          "last_error_at": "2026-11-17T18:18:03+08:00",
+          "last_error_type": "TimedOut",
+          "diagnostic_id": "d4c7870975aa49eca0d6227bf82965a9",
+          "recent_incident_starts": [
+            "2026-11-17T18:13:33+08:00",
+            "2026-11-17T18:17:43+08:00"
+          ],
+          "last_instability_notice_at": "2026-11-13T22:51:03+08:00",
+          "recovered_at": "2026-11-17T18:18:14+08:00"
+        },
+        "api": {
+          "status": "healthy",
+          "last_success_at": "2026-11-19T21:53:32+08:00",
+          "incident_id": "7944100a038c4d80a7c3666fa0cb67e7",
+          "first_error_at": "2026-11-09T08:36:43+08:00",
+          "failures": 3,
+          "last_notice_at": "2026-11-09T08:36:43+08:00",
+          "last_error_at": "2026-11-09T08:36:47+08:00",
+          "last_error_type": "NetworkError",
+          "diagnostic_id": "08016f6dff454c14b4881024a35f1623",
+          "recovered_at": "2026-11-09T08:36:51+08:00"
+        }
+      },
+      "notice_counts": {
+        "pending": 0,
+        "sent": 14,
+        "unknown": 6
+      },
+      "diagnostic_storage_warning": false
+    }
+  }
+}

@@ -1,0 +1,60 @@
+[
+  {
+    "status": "CREATED_PENDING_REVIEW",
+    "entry": {
+      "id": "cb-fc7a65f6e62c480ebdb31f7b60e23e31",
+      "path": "D:\\code\\stock_ai_bot\\archive\\codex-backups\\cb-fc7a65f6e62c480ebdb31f7b60e23e31\\stock_research.db",
+      "source": "D:\\code\\stock_ai_bot\\.workdata\\prod\\database\\stock_research.db",
+      "scope_id": "local-8722a9427d3a6346e792a66743097bd4",
+      "sha256": "b21bf935fa8c824082cbabf1608b81b2756c5ddfe47dbac985244cc5ce6ce0c0",
+      "backed_up_at": "2026-11-19T13:50:50.478950+00:00",
+      "retention": {
+        "kind": "pending_review",
+        "reason": "Recoverable news journal schema and interrupted outcome deployment",
+        "review_condition": "Complete task-specific checks and record completion evidence"
+      },
+      "hold": false,
+      "recovery_required": true,
+      "status": "retained",
+      "review": {
+        "references_checked": false,
+        "writers_quiescent": false,
+        "purpose_confirmed": true
+      },
+      "provenance": {
+        "created_by": "codex",
+        "receipt": "D:\\workspace\\projects\\infrastructure\\system_management\\maintenance\\backup-origins\\cb-fc7a65f6e62c480ebdb31f7b60e23e31.json",
+        "sha256": "7ed0430677fed8d72b0c688c21d7f2b0d5f1039bacb3d71186d70f7c322a8457"
+      }
+    }
+  },
+  {
+    "status": "CREATED_PENDING_REVIEW",
+    "entry": {
+      "id": "cb-8b54d81ac61e4578aed72757126a622b",
+      "path": "D:\\code\\stock_ai_bot\\archive\\codex-backups\\cb-8b54d81ac61e4578aed72757126a622b\\outcomes.sqlite3",
+      "source": "D:\\code\\stock_ai_bot\\.workdata\\prod\\runtime\\schedule_outcomes\\outcomes.sqlite3",
+      "scope_id": "local-8722a9427d3a6346e792a66743097bd4",
+      "sha256": "95d5455ebb2220326ab9e60a2fc9d59b5f43ddb7061ccced1db2869edf2f6b0f",
+      "backed_up_at": "2026-11-19T13:50:58.210044+00:00",
+      "retention": {
+        "kind": "pending_review",
+        "reason": "Recoverable news journal schema and interrupted outcome deployment",
+        "review_condition": "Complete task-specific checks and record completion evidence"
+      },
+      "hold": false,
+      "recovery_required": true,
+      "status": "retained",
+      "review": {
+        "references_checked": false,
+        "writers_quiescent": false,
+        "purpose_confirmed": true
+      },
+      "provenance": {
+        "created_by": "codex",
+        "receipt": "D:\\workspace\\projects\\infrastructure\\system_management\\maintenance\\backup-origins\\cb-8b54d81ac61e4578aed72757126a622b.json",
+        "sha256": "b28e92a82368d47cb13c9a4c607135de25d7d79b2eb14bd0c6626caf8e85c3d5"
+      }
+    }
+  }
+]

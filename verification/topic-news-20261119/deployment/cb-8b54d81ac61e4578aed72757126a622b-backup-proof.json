@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "source_sha256": "b420fa67e36e59c0e8d97c59442a2283b223e95d894ae2af46e20c0991649b5f",
+  "backup_sha256": "95d5455ebb2220326ab9e60a2fc9d59b5f43ddb7061ccced1db2869edf2f6b0f",
+  "checks": [
+    {
+      "name": "Original snapshot recoverable and all SQLite rows equal pre-deployment baseline",
+      "passed": true
+    },
+    {
+      "name": "Backup SQLite integrity check returned ok",
+      "passed": true
+    },
+    {
+      "name": "Native startup recovery, Telegram polling and no new paid calls accepted",
+      "passed": true
+    }
+  ],
+  "limits": "Original database before additive journal/outcome update; retain recovery baseline; not an automatic restore authorization"
+}

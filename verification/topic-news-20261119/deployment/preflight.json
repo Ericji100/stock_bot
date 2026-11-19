@@ -1,0 +1,128 @@
+{
+  "at": "2026-11-19T13:50:45.298687+00:00",
+  "base": "4e03f93158ab2c7b8dd5534410a8f8c045c92725",
+  "source": {
+    "main.py": "54119d4015d0e0fc7194f6aab8edd4c9d8810b0794a8ca9cb20b9bf86d173f27",
+    "research_center/news_repository.py": "ab33c50c101871f7b7604a62daefc5391b64c7931c7db8619df7b79f8dc511c5",
+    "research_center/news_service.py": "31f661015d349b21ae24faee1248524110335eeb41ad8ed3689b2889c779e484",
+    "research_center/scheduled_outcome_notice.py": "ad5e881380c5a80d5118061907a33a95df8b3bc41bd5f17006b0135892f03fb0",
+    "research_center/topic_citation_audit.py": "c61260e312480af9adc7ba1e8510988bf5140014c61a6d796574fc39e14ebb8e",
+    "research_center/topic_input_package.py": "a23b4cbf6e0b175493f93a7baee8967840b9a60151346b38ab32a66bba95640f",
+    "research_center/topic_maintain_service.py": "3bd0e2b106837d44f05e7d8086f92e0b3b968091a417078ba9a038d3cb3e15f7",
+    "research_center/topic_models.py": "6176b00fe0fbbd6699c6893cee7ff700e5f9941852398ed4a131fac18c21e89f",
+    "research_center/topic_pipeline_service.py": "e7d9575a5d5a2f5d899e475d85512dac6aa2fe47261178f7975f22395a9a463c",
+    "research_center/topic_schema_normalizer.py": "f815ffae785781696eb39e11c4decd79f77a6c43a7c4d9e57cdfcc076d71b6cb",
+    "research_center/topic_quote_binding.py": "22ee0a75aab8ae27a9c2205667552cf1e1ff42360ee58a5d9ad638c45886d0ee",
+    "tests/test_news_schedule_balance.py": "e9e301874820a804ef385a0534748c90fd4115899d595bab6a2f7e9af2b71adc",
+    "tests/test_topic_input_package.py": "57b050bab8f77afa8476ec91fb4ecf73d5f9f885c660a129e72cfda69b5418e6",
+    "tests/test_topic_pipeline_service.py": "e8b3f194b194f975fb88f0adf57a8c96a1b68fb89375566a2cd6a799077acfb6",
+    "tests/test_topic_news_recovery_1119.py": "e4d873ba76e274635af07872404fcffd4fddbc5eb53db41fdb297942ad95064e"
+  },
+  "protected": {
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3",
+    "config.json": "acef1cc285bf271ab5761abc9d123777dd433503aa9b0a096080630c3deb9a45",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+    "stock_list.json": "d34746030fa458f312c6a5711d9622a53d3a2917110d089407f77cd42bbf4be3",
+    "logs/topic_inputs/change_20261113_224616.json": "0a23ed3a928eb8b6cc0c31b8d62f3e7d061d25c66e2f69ddb72dc788b94511b1",
+    "logs/topic_ai_raw/change_20261113_224616.json": "5cbcc4beeb4a765ab057b66348681a83384c783d7d7b502dc85660f16a64845d",
+    "data/topic/change_packs/change_20261113_224616.json": "1634b543894c4dd98ede344b4fd58e67fa88396a513358259fc39bc662aea9dd",
+    "logs/topic_inputs/change_20261117_234022.json": "2ed2f6c000f596df33a5ddb83c718d0ad066587b6e1d728c5ff072e1280ef96a",
+    "logs/topic_ai_raw/change_20261117_234022.json": "18864f1fcc0540459df9b4e160819f415e98108ff02ccb0cbe86b91bf09e54ac",
+    "data/topic/change_packs/change_20261117_234022.json": "c32aa228e3d574f8b9700ef69b0d0b9cc2090cfca6a17330c76ee16a58a39c3b"
+  },
+  "ledger": {
+    "account_blocks": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "cache": {
+      "rows": 1279,
+      "sha256": "6718437d9347d80e4eeba2dfe234b7c9d10b075389bc0952c81b9661838e9e7b"
+    },
+    "fee_reconciliations": {
+      "rows": 39,
+      "sha256": "978342f1199dc39e54bc0947f900d539f548206c268cdf8d4679b11893c8e9e4"
+    },
+    "grants": {
+      "rows": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "live_rounds": {
+      "rows": 6,
+      "sha256": "c4345bb7533b8dc8095df163677fb9d346c0d27564d5eab1ebda9030f74fc777"
+    },
+    "notice_attribution": {
+      "rows": 10,
+      "sha256": "3f23b9e00630b443090ba3487589b7260a8c25c1075ff10e2552bf1e435dc90e"
+    },
+    "notices": {
+      "rows": 10,
+      "sha256": "4efe983d613c800c5e7feaf9d6699e982fce2bd4cfa8c2112484a3d8ab404d4c"
+    },
+    "requests": {
+      "rows": 1377,
+      "sha256": "ba1a1657207395248eae9929a7d531b902681c9c53d83210625b0831f41ca04b"
+    },
+    "route_events": {
+      "rows": 1829,
+      "sha256": "08539c75b7742319dc887e4fcdf55edd1e9a388e4ef4f11ca08b9702e6a6fbfd"
+    }
+  },
+  "news": {
+    "events": {
+      "rows": 70807,
+      "sha256": "17b6bf3308d26970ff274b42a9edba0fa8f69ba5e83cc8b8377cb555cd05665c"
+    },
+    "news_articles": {
+      "rows": 14107,
+      "sha256": "a510348cc51ba9e1cb2f0e0a2fdb4035a6444f67c3282d41c4e0a1798cb744dc"
+    },
+    "news_classification_inputs": {
+      "rows": 892,
+      "sha256": "8f6664aa85e617254ea9f896c71aa183ac71cf6ed27d355e5c60fe6e65557125"
+    },
+    "news_discovery_sources": {
+      "rows": 13127,
+      "sha256": "372c7920a810031c2d25a4efe26270f662a13605eefe358a6646b41490eabcb2"
+    },
+    "news_preferences": {
+      "rows": 8,
+      "sha256": "27fbac697bb80cd7082099a82becca7b3041e53084efd382c38fcfe8c9eba0f2"
+    },
+    "reports": {
+      "rows": 338,
+      "sha256": "6592a6ac3679fae4495b0d6bc7520f063636776f83dac72164dda06175c70c20"
+    },
+    "source_snapshots": {
+      "rows": 44052,
+      "sha256": "712ef1f5b78b9f0d27c350f51c02d1d3d68e6a3a7d2973af547a0dac40e8e9b4"
+    },
+    "sources": {
+      "rows": 43796,
+      "sha256": "fb27c3a3b8b7a6ff28e737633384b1459022ba6329e77da985a8189fd21b3423"
+    },
+    "sqlite_sequence": {
+      "rows": 5,
+      "sha256": "efc96f1d786ac3aef06cd4b06b2596861f6fe4a8c7ce3c467be0739c3a4a2137"
+    }
+  },
+  "outcomes": {
+    "deliveries": {
+      "rows": 4,
+      "sha256": "713576bd768d93d7f93981934f16439376794dcb87ab9fc3f146b4bb2a4bf973"
+    },
+    "outcomes": {
+      "rows": 8,
+      "sha256": "e29ea84ad1b2cb61c65a46e670d1f0bb286c585fc7062348e80509fe3ad94e66"
+    }
+  },
+  "formal_dirty": "M .gitignore\n M config/company_theme_map.json\n M config/supply_chain_nodes.json\n M config/theme_profiles.json\n M stock_list.json",
+  "tested_files": 627,
+  "user_consent": "No running manual tasks; user permits start after verification; old topic packs remain blocked",
+  "new_paid_usd": "0",
+  "bot_was_stopped": true
+}

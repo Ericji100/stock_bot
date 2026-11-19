@@ -2,9 +2,9 @@
 
 ## 當前狀態
 
-基準 `4e03f93158ab2c7b8dd5534410a8f8c045c92725`，隔離分支 `codex/ai-schedule-stability`。本輪僅離線修正、重播 11/16～11/18 保存資料及測試；未提交、未合併、未部署、未啟動或重啟正式 Bot，未新增付費搜尋、模型或計數請求。
+基準 `4e03f93158ab2c7b8dd5534410a8f8c045c92725`，修正於隔離分支 `codex/ai-schedule-stability` 完成。使用者後續授權部署並確認無手動任務；11/19 已將程式提交 `d8288f4f96436a75dadd7b7631b94bf97d1e8652` 合併 main、推送並啟動原本停止的 Bot 一次，後續只補文件與證據，不再次重啟。未新增付費搜尋、模型或計數請求；原題材包禁止套用。
 
-最終相關回歸 **299 通過、66 子案例通過、0 失敗**；最終完整測試 **3,349 通過、9 略過、363 子案例通過、0 失敗、回傳碼 0**。本輪離線修正與驗證完成，正式 Bot 仍維持原版本；以下重播結論不冒充新模型執行成功。
+最終相關回歸 **299 通過、66 子案例通過、0 失敗**；最終完整測試 **3,349 通過、9 略過、363 子案例通過、0 失敗、回傳碼 0**。正式目錄合併後另有 321 項回歸、66 子案例通過；啟動與原連線驗收完成。以下重播結論不冒充新模型執行成功或自然排程內容品質已獲新 Live 證實。
 
 ## 唯一驗收表
 
@@ -67,14 +67,29 @@
 - 現有公平輪替測試改用已保存的新來源，以驗證待辦優先模式；容量測試原使用數十萬個完全相同字母，現在片段精確去重可縮小，因此改為同量不同文字，仍要求超容量拆批，未放寬正式容量。
 - 完整測試過程曾為補齊可逆解碼隔離與公司底稿共用綁定而停止本任務測試程序；中途結果不當作通過，最終以 `release-full/session.json` 為準。另一次測試清單包含不存在的檔名而未收集，已更正；原紀錄保留。
 - 不新增依賴、不修改模型組合、分額、交易規則、0050 或既有回測成果。既有題材包不套用，未知費用不重送、不跨帳戶或模型重試。
-- 尚未進行新模型 Live、正式連線驗收或部署；離線測試不能保證未來模型永不錯引或預測一定準確。若新回應不符合引用合約，仍明確受阻並保留可續修範圍，不放行壞資料。
+- 開發階段未進行新模型 Live；後續經授權完成的部署與原連線驗收如下。離線測試不能保證未來模型永不錯引或預測一定準確。若新回應不符合引用合約，仍明確受阻並保留可續修範圍，不放行壞資料。
 
 本輪驗收的結案標準是共用修正、原資料重播、相關及完整測試、正式資料保護與文件完成；不是把原本不支持的歷史主張改成已證實。
 
 ## 交付範圍
 
-修改：`main.py`、`research_center/news_repository.py`、`news_service.py`、`scheduled_outcome_notice.py`、`topic_citation_audit.py`、`topic_input_package.py`、`topic_maintain_service.py`、`topic_models.py`、`topic_pipeline_service.py`、`topic_schema_normalizer.py`、三個既有測試檔及 `README.md`。新增共用 `research_center/topic_quote_binding.py`、`tests/test_topic_news_recovery_1119.py` 與本驗證目錄。未提交、推送或修改正式 checkout。
+修改：`main.py`、`research_center/news_repository.py`、`news_service.py`、`scheduled_outcome_notice.py`、`topic_citation_audit.py`、`topic_input_package.py`、`topic_maintain_service.py`、`topic_models.py`、`topic_pipeline_service.py`、`topic_schema_normalizer.py`、三個既有測試檔及 `README.md`。新增共用 `research_center/topic_quote_binding.py`、`tests/test_topic_news_recovery_1119.py` 與本驗證目錄。只提交本輪檔案及證據；正式 `.gitignore`、三份題材設定及股票清單的既有修改未納入或覆寫。
 
-本輪可交付的是離線驗證通過的修正版；不是已部署、已將舊題材包修成可套用，或已把 11/18 新聞完成真實分類。錯引歷史主張維持禁止套用，缺少真實分類回應的新聞維持待辦。部署、新模型付費複驗與重啟均須另行取得使用者明確授權。
+本輪修正版已依後續授權部署；不是已將舊題材包修成可套用，或已把 11/18 新聞完成真實分類。錯引歷史主張維持禁止套用，缺少真實分類回應的新聞維持待辦，新模型付費複驗未執行。
 
 收尾完成：本任務寫入者已退出，必要原始資料與驗證成果已保留；核對 owner、引用與逐檔 snapshot 後，Windows 原生回收 5,646 檔／559,352,159 bytes，收據為 `RECYCLED_VERIFIED`，本輪 owned 目錄已不存在。計畫與收據保留 `.codex-cleanup/ds/topic-news-1119/`。沒有清其他任務、正式資料或回收筒；回收不代表立即釋放同量磁碟空間。
+
+## 部署與原連線驗收（11/19，當前結論）
+
+| 項目 | 實際結果 |
+|---|---|
+| 範圍與回歸 | 合併前核對 627 個已完整測試來源檔雜湊相等；正式目錄使用 owned 暫存與禁止外部 HTTP 的同一測試器，321 通過、66 子案例、0 失敗／略過、回傳碼 0，5.72 秒。見 [正式回歸](deployment/main-regression/session.json) |
+| 可回復資料 | 透過原共用管理器建立新聞 DB 與狀態 DB 的兩份確切備份，逐檔雜湊、全部表內容及 SQLite integrity_check 均通過；完成註記各獲 `COMPLETED`，保留 recovery_required。見 [備份建立](deployment/backup-creation.json)、[完成結果](deployment/backup-completion.json) |
+| 舊題材包 | 在實際 `confirm_change_pack` 隔離讀取原包，禁止所有備份／寫入邊界，驗證在寫入前拒絕，呼叫數全部為 0；正式 11/13 與 11/17 原輸入／回應／包雜湊未變。見 [防護驗證](deployment/old-pack-guard.json) |
+| 啟動 | 使用既有原啟動器，僅啟動一次；新 Bot PID 3340，監護程序 PID 12848。沒有第二個 Bot，不補跑漏掉的付費排程 |
+| Telegram 與排程 | 21:54:21 新原生輪詢實際成功，不採用啟動時沿用的舊成功時間。getMe／getMyCommands／getWebhookInfo 唯讀檢查成功，43 個指令含十個 AI 入口、待收訊息 0；JobQueue 可用、佇列 0、ETF READY。見 [實際驗收](deployment/runtime-acceptance.json) |
+| 11/18 新聞恢復 | 新增日誌把 `7dbc561d627e460c81b7fd402c90c8a9` 記為 search／interrupted；既有通知機制確認一天一次的中斷提醒已送達。這不是新失敗、額度用完或已重做分類；沒有重送未結算搜尋 |
+| 原資料／帳務 | 原有新聞表逐表內容不變；狀態 DB 僅新增 11/18 中斷結案及一次送達紀錄，所有原狀態列不變；OpenAI 帳本全部表逐表相等，既有 pending／unknown 完整保留，新增費用 US$0。設定與其他未提交檔案雜湊不變 |
+| 暫存 | 正式目錄本次回歸暫存 104 檔／6,254,278 bytes 已原生回收並取得 RECYCLED_VERIFIED；必要證據先保留，不處理其他任務或現用資料 |
+
+可正常使用新版。下次自然新聞排程的待辦處理與新題材回應引用品質仍列持續觀察，不冒充已重跑十入口。必要時回復只反向本輪程式提交，先確認無任務並停止 Bot，保護未提交設定、原始資料與全部帳本；新增日誌表可由舊程式忽略，不為退版自動回復整個新聞 DB 而覆蓋後續新增資料。只有明確授權且確認必要時才使用原始備份，不能回復舊帳務或重送未知請求。

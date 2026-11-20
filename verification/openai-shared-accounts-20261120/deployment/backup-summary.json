@@ -1,0 +1,16 @@
+{
+  "backup_id": "cb-016159a89e2a489cbb308067b0d4dcb7",
+  "managed_completion": true,
+  "backup_sha256": "d03672801de0272e79da23b84445aea98535a12dc8035b1c89e4b7ad0689bb77",
+  "source": "D:\\code\\stock_ai_bot\\.workdata\\ai_budget\\openai\\openai-credits.sqlite3",
+  "path": "D:\\code\\stock_ai_bot\\archive\\codex-backups\\cb-016159a89e2a489cbb308067b0d4dcb7\\openai-credits.sqlite3",
+  "acceptance_sha256": "b6f9fba23563f2fd6ca57ebaf138c04d1471dbebdf2d7a9368dfb3d7f99e2423",
+  "retention": {
+    "kind": "ordinary",
+    "reason": "Verified pre-deployment accounting baseline; later rollback must preserve subsequent spending and must not blindly restore this database."
+  },
+  "sqlite_integrity_check": "ok",
+  "unknown_count": 7,
+  "unknown_reserved_usd": "6.66744075",
+  "restriction": "Do not restore the old ledger wholesale after new spending; preserve subsequent rows and account references."
+}

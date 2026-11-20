@@ -1,0 +1,18 @@
+{
+  "account": "secondary",
+  "reserved": false,
+  "official_balance_verified": false,
+  "network_calls": 0,
+  "new_paid_usd": "0",
+  "job_limit_usd": "5.0",
+  "allocation_policy": "shared_api_confirmed",
+  "checks": {
+    "protected_files_unchanged": true,
+    "openai_original_tables_unchanged": true,
+    "openai_only_expected_schema_addition": true,
+    "openai_unknowns_unchanged": true,
+    "deepseek_original_tables_unchanged": true,
+    "deepseek_only_expected_schema_addition": true,
+    "deepseek_unknowns_unchanged": true
+  }
+}

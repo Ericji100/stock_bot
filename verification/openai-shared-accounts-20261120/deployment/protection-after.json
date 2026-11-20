@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-20T03:42:14.552550+00:00",
+  "checks": {
+    "protected_files_unchanged": true,
+    "openai_original_tables_unchanged": true,
+    "openai_only_expected_schema_addition": true,
+    "openai_unknowns_unchanged": true,
+    "deepseek_original_tables_unchanged": true,
+    "deepseek_only_expected_schema_addition": true,
+    "deepseek_unknowns_unchanged": true
+  },
+  "ledgers": {
+    "openai": {
+      "tables": {
+        "account_blocks": {
+          "rows": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "account_references": {
+          "rows": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "cache": {
+          "rows": 1303,
+          "sha256": "f9ff8473669910db866c299a43c71e8a61e27b1ea6ebe137065c07f3a2970118"
+        },
+        "fee_reconciliations": {
+          "rows": 39,
+          "sha256": "e2c72dd7167b99b5e85d5f16d635ea0af2b80b59578a37c022e6d68b76c3ed4e"
+        },
+        "grants": {
+          "rows": 2,
+          "sha256": "2c2e0e7becfde512689fe4f55dabfbf365d281c3bfbd08a0cc494f29ea2d875b"
+        },
+        "live_rounds": {
+          "rows": 8,
+          "sha256": "32100915794282151775041351c2c0ca2408382060a6520d02e688a29d61cd4b"
+        },
+        "notice_attribution": {
+          "rows": 12,
+          "sha256": "f7ea81d4340d01c1f536a7101f7fd86a1ecadaf175f8a2c66070fd2ba3f8129e"
+        },
+        "notices": {
+          "rows": 12,
+          "sha256": "9a0d93090b6793198769f958e9bce0298672a3e579b7f7170742573db4af6b4c"
+        },
+        "requests": {
+          "rows": 1431,
+          "sha256": "714074af167761ecaaad529c9fad3a1368d7b83a0e92d8e05a053bc3fb0cfaa9"
+        },
+        "route_events": {
+          "rows": 1883,
+          "sha256": "decbdfbeebf2670d057ff78e2e23dadefbe6d94d1b9d62e492f8cc4a7d924cd6"
+        }
+      },
+      "journal_mode": "delete",
+      "unknown_count": 7,
+      "unknown_reserved_usd": "6.66744075"
+    },
+    "deepseek": {
+      "tables": {
+        "incidents": {
+          "rows": 2,
+          "sha256": "76c478b642177058bb28850e45c052a4a583b6faf32c92820bb8e9d4b8acd1c6"
+        },
+        "notices": {
+          "rows": 14,
+          "sha256": "9cfdf363bb1db33f846f3682167a4d1e307c56a98561a398e275c90ebb6f26d0"
+        },
+        "spending": {
+          "rows": 2076,
+          "sha256": "14e1b078d1fa90442fd14b7f4a6bb0210c665ca98977ff0ef5c91f4465bbb7d6"
+        },
+        "spending_attribution": {
+          "rows": 1827,
+          "sha256": "0f81aa90f7e47fa65c487245d86bb00d63b95f2f8be6047ce674b2caa09b05ac"
+        }
+      },
+      "journal_mode": "delete",
+      "unknown_count": 1,
+      "unknown_reserved_usd": "0.00075"
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "at": "2026-11-20T03:36:34.753950+00:00",
+  "source": {
+    "research_center/openai_credit_service.py": "63e9e07ec54b0053242ce1925c7bd6d9f07f5b27c366a05f1df1a3352befaa7d",
+    "research_center/openai_service.py": "85e60d5fa431158d099c983fae3785d2d6e2218cf22298c8f6f7e04784d1a2fd",
+    "tests/test_openai_shared_accounts.py": "a8e9375b51dcd7ca519083894c5b80e0462a145f8675cb5923657f4503e26980",
+    "tests/test_openai_exhaustion_atomic.py": "8d9af5599c92685c76a37e458a98d7e07531120b0c9bbb84546a1d065a6982a3",
+    "tests/test_openai_routing.py": "d571d78862418e83e8bbbb955969d0e819c8f4e90dba1290b172373d3056792f",
+    "tests/test_luna_routing.py": "05f8b9efa4e9ebc6afd1e7c1dbda6f0b283d0ce1030aaa2ce1816fb8cea7a9a9",
+    "tests/test_secondary_report_corrections.py": "31c9854f2c6506acfc290c30771556e335fb6ee0684e9179e43ac739f4893765",
+    "tests/test_terra_focused_validation.py": "2b49f61de9ad9dd4a9ade370c0e8508c283eb71eebd801793649f73b152a1f3a"
+  },
+  "protected": {
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3",
+    "config.json": "acef1cc285bf271ab5761abc9d123777dd433503aa9b0a096080630c3deb9a45",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+    "config/company_knowledge.json": "d7ef8755e3f47ac2fe624a22f99ff50def1bb250b09bbd3707acf4d071607116",
+    "stock_list.json": "c55799ee6a0b2fbbce6bbd77a731d8ba6775c3d10ed60358e9d0b2e86eab061f",
+    "main.py": "54119d4015d0e0fc7194f6aab8edd4c9d8810b0794a8ca9cb20b9bf86d173f27",
+    "data/topic/change_packs/change_20261113_224616.json": "1634b543894c4dd98ede344b4fd58e67fa88396a513358259fc39bc662aea9dd",
+    "data/topic/change_packs/change_20261117_234022.json": "c32aa228e3d574f8b9700ef69b0d0b9cc2090cfca6a17330c76ee16a58a39c3b"
+  },
+  "ledgers": {
+    "openai": {
+      "tables": {
+        "account_blocks": {
+          "rows": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "cache": {
+          "rows": 1303,
+          "sha256": "f9ff8473669910db866c299a43c71e8a61e27b1ea6ebe137065c07f3a2970118"
+        },
+        "fee_reconciliations": {
+          "rows": 39,
+          "sha256": "e2c72dd7167b99b5e85d5f16d635ea0af2b80b59578a37c022e6d68b76c3ed4e"
+        },
+        "grants": {
+          "rows": 2,
+          "sha256": "2c2e0e7becfde512689fe4f55dabfbf365d281c3bfbd08a0cc494f29ea2d875b"
+        },
+        "live_rounds": {
+          "rows": 8,
+          "sha256": "32100915794282151775041351c2c0ca2408382060a6520d02e688a29d61cd4b"
+        },
+        "notice_attribution": {
+          "rows": 12,
+          "sha256": "f7ea81d4340d01c1f536a7101f7fd86a1ecadaf175f8a2c66070fd2ba3f8129e"
+        },
+        "notices": {
+          "rows": 12,
+          "sha256": "9a0d93090b6793198769f958e9bce0298672a3e579b7f7170742573db4af6b4c"
+        },
+        "requests": {
+          "rows": 1431,
+          "sha256": "714074af167761ecaaad529c9fad3a1368d7b83a0e92d8e05a053bc3fb0cfaa9"
+        },
+        "route_events": {
+          "rows": 1883,
+          "sha256": "decbdfbeebf2670d057ff78e2e23dadefbe6d94d1b9d62e492f8cc4a7d924cd6"
+        }
+      },
+      "journal_mode": "delete",
+      "unknown_count": 7,
+      "unknown_reserved_usd": "6.66744075"
+    },
+    "deepseek": {
+      "tables": {
+        "incidents": {
+          "rows": 2,
+          "sha256": "76c478b642177058bb28850e45c052a4a583b6faf32c92820bb8e9d4b8acd1c6"
+        },
+        "notices": {
+          "rows": 14,
+          "sha256": "9cfdf363bb1db33f846f3682167a4d1e307c56a98561a398e275c90ebb6f26d0"
+        },
+        "spending": {
+          "rows": 2076,
+          "sha256": "14e1b078d1fa90442fd14b7f4a6bb0210c665ca98977ff0ef5c91f4465bbb7d6"
+        },
+        "spending_attribution": {
+          "rows": 1827,
+          "sha256": "0f81aa90f7e47fa65c487245d86bb00d63b95f2f8be6047ce674b2caa09b05ac"
+        }
+      },
+      "journal_mode": "delete",
+      "unknown_count": 1,
+      "unknown_reserved_usd": "0.00075"
+    }
+  },
+  "heartbeat_before": {
+    "pid": 29600,
+    "updated_at": "2026-11-20T11:36:18+08:00",
+    "queue": 0,
+    "current_task": null
+  },
+  "manual_task_confirmation": "User confirmed no manual tasks; restart allowed after validation.",
+  "new_paid_tests": false,
+  "raw_financial_snapshot_not_published": true
+}

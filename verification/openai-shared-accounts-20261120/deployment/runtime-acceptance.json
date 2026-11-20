@@ -1,0 +1,37 @@
+{
+  "at": "2026-11-20T03:40:07.831069+00:00",
+  "pid": 4856,
+  "heartbeat": "2026-11-20T11:39:41+08:00",
+  "native_poll_success": "2026-11-20T11:39:33+08:00",
+  "queue": 0,
+  "current_task": null,
+  "etf": "READY",
+  "telegram": {
+    "getMe": {
+      "ok": true,
+      "original_bot_identity_matches": true
+    },
+    "getMyCommands": {
+      "ok": true,
+      "count": 43,
+      "ten_ai_entries": true
+    },
+    "getWebhookInfo": {
+      "ok": true,
+      "pending_updates": 0
+    }
+  },
+  "protection": {
+    "protected_files_unchanged": true,
+    "openai_original_tables_unchanged": true,
+    "openai_only_expected_schema_addition": true,
+    "openai_unknowns_unchanged": true,
+    "deepseek_original_tables_unchanged": true,
+    "deepseek_only_expected_schema_addition": true,
+    "deepseek_unknowns_unchanged": true
+  },
+  "restart_count_this_task": 1,
+  "new_paid_tests_usd": "0",
+  "topic_packs_not_applied": true,
+  "scheduled_paid_analysis_not_retested": true
+}

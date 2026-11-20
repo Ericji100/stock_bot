@@ -1,0 +1,42 @@
+{
+  "source_read_only": true,
+  "network_calls": 0,
+  "old_tables_unchanged": {
+    "grants": true,
+    "requests": true,
+    "account_blocks": true,
+    "live_rounds": true
+  },
+  "old_tables": {
+    "grants": {
+      "count": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "requests": {
+      "count": 1431,
+      "sha256": "4f896fd06c4dbf45b8284864e25937de4f03192c75220f572e74e9b5e73a2ac9"
+    },
+    "account_blocks": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "live_rounds": {
+      "count": 8,
+      "sha256": "09a11fbe573632bffdc2fada28409e10b85c333075627fe83fa04ad0f155b7a5"
+    }
+  },
+  "unknown_requests_retained": 7,
+  "selection": [
+    {
+      "background": false,
+      "chosen_account": "secondary",
+      "new_request_created": false
+    },
+    {
+      "background": true,
+      "chosen_account": "secondary",
+      "new_request_created": false
+    }
+  ],
+  "official_balance_reverified": false
+}

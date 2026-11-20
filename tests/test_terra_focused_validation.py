@@ -133,7 +133,7 @@ def test_stopped_sources_do_not_bypass_historical_date_guard(publication):
 
 
 @pytest.mark.parametrize('manual_already_used',['0','10'])
-def test_background_preserves_physical_manual_share_after_development(tmp_path,manual_already_used):
+def test_background_and_manual_share_after_development_without_reset(tmp_path,manual_already_used):
     from datetime import datetime,timezone
     from research_center.deepseek_service import ai_task
     from research_center.openai_credit_service import OpenAICreditLedger,OpenAICreditsUnavailable
@@ -151,8 +151,8 @@ def test_background_preserves_physical_manual_share_after_development(tmp_path,m
     with ai_task('background',background=True):
         _,ident=production.choose({'secondary'},Decimal('50'),reserve=True)
         production.finish(ident,'success',Decimal('50'),{})
-        with pytest.raises(OpenAICreditsUnavailable): production.choose({'secondary'},Decimal('.01'))
-        with pytest.raises(OpenAICreditsUnavailable): production.choose({'secondary'})
+        assert production.choose({'secondary'},Decimal('50'))[0]['account_id']=='secondary'
+        assert production.choose({'secondary'})[0]['account_id']=='secondary'
     with ai_task('manual'):
         remaining=Decimal('20')-Decimal(manual_already_used)
         _,ident=production.choose({'secondary'},remaining,reserve=True)

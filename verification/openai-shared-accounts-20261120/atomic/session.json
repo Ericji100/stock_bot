@@ -1,0 +1,17 @@
+{
+  "exit_status": 0,
+  "collected": 3,
+  "failed": 0,
+  "elapsed_seconds": 0.381,
+  "counts": {
+    "": 6,
+    "passed": 3
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 631,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_openai_exhaustion_atomic.py"
+  ]
+}

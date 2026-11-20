@@ -1,7 +1,7 @@
-"""Verified, expiring grants with atomic 70/20/10 reservations.
+"""Atomic request accounting with API-confirmed account exhaustion.
 
-No billing API balance is invented here. A grant is a conservative, manually
-reconciled allowance, not proof that other applications have stopped spending.
+Historical grants remain immutable evidence, not a live balance or spending cap.
+Manual, background and development purposes remain separately attributable.
 """
 from __future__ import annotations
 
@@ -101,6 +101,8 @@ class OpenAICreditLedger:
                     status TEXT NOT NULL, estimate TEXT NOT NULL, actual TEXT, detail TEXT,
                     purpose TEXT NOT NULL DEFAULT 'production');
                 CREATE TABLE IF NOT EXISTS account_blocks (account_id TEXT PRIMARY KEY, grant_id TEXT, reason TEXT);
+                CREATE TABLE IF NOT EXISTS account_references (
+                    account_id TEXT PRIMARY KEY, id TEXT UNIQUE NOT NULL, record TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS route_events (id TEXT PRIMARY KEY, run_id TEXT, command TEXT,
                     background INTEGER, provider TEXT, reason TEXT, detail TEXT);
                 CREATE TABLE IF NOT EXISTS notices (id TEXT PRIMARY KEY, background INTEGER, run_id TEXT,
@@ -183,6 +185,22 @@ class OpenAICreditLedger:
                 raise ValueError('已開帳贈額不得改寫或歸零；請保留歷史並建立下一個已核對週期。')
             conn.execute('INSERT OR IGNORE INTO grants VALUES (?,?)', (row['grant_id'], encoded))
 
+    def _account_reference(self, conn, account_id):
+        # Attribute new spending without inventing a new grant or rewriting old ones.
+        historical = [json.loads(row[0]) for row in conn.execute('SELECT record FROM grants')]
+        started = [g for g in historical if g['account_id'] == account_id
+                   and instant(g['starts_at']) <= self.now() and instant(g['verified_at']) <= self.now()]
+        if started:
+            return max(started, key=lambda g: (instant(g['starts_at']), instant(g['verified_at']), g['grant_id']))
+        row = conn.execute('SELECT record FROM account_references WHERE account_id=?', (account_id,)).fetchone()
+        if row:
+            return json.loads(row[0])
+        reference = {'account_id': account_id, 'grant_id': 'api-account-' + uuid4().hex,
+                     'record_kind': 'account_reference_only', 'balance_verified': False}
+        conn.execute('INSERT INTO account_references VALUES (?,?,?)',
+                     (account_id, reference['grant_id'], json.dumps(reference, sort_keys=True)))
+        return reference
+
     def choose(self, account_ids, estimate=Decimal(0), *, reserve=False, operation='model',
                acknowledged_unknown_ids=()):
         estimate = amount(estimate)
@@ -210,10 +228,12 @@ class OpenAICreditLedger:
                     raise OpenAIUnavailable('本輪付費測試已達授權總上限，未送出新請求。', 'openai_round_budget_exceeded')
             if RUN_ID.get() and conn.execute("SELECT 1 FROM requests WHERE run_id=? AND status IN ('pending','unknown')", (RUN_ID.get(),)).fetchone():
                 raise OpenAIUnavailable('本工作有進行中或費用未知的 OpenAI 請求，停止重送並保留成果。', 'transport_unknown')
+            if conn.execute("SELECT 1 FROM account_blocks WHERE reason<>? OR reason IS NULL",
+                            ('credit_balance_exhausted',)).fetchone():
+                raise OpenAIUnavailable('OpenAI 帳戶仍有人工或安全停止標記；不切帳戶或模型繞過。',
+                                        'openai_account_blocked')
             if not account_ids:
                 raise OpenAICreditsUnavailable('尚未設定 OpenAI 金鑰；改檢查既有 DeepSeek 備援。', 'openai_not_configured')
-            if not self.grants:
-                raise OpenAICreditsUnavailable('尚未登記已核對的 OpenAI 贈額與期間，改檢查備援；未宣稱官方餘額用完。', 'openai_grant_unverified')
             rows = conn.execute('SELECT grant_id,background,run_id,estimate,actual,purpose FROM requests').fetchall()
             job = sum((Decimal(a if a is not None else e) for _, _, r, e, a, _ in rows if r and r == RUN_ID.get()), Decimal(0))
             if self.case_id:
@@ -223,32 +243,23 @@ class OpenAICreditLedger:
             if self.job_limit and job + estimate > self.job_limit:
                 raise OpenAICreditsUnavailable('OpenAI 本次工作已用及預留費用將超過單次費用護欄，改由備援依原限額檢查。', 'openai_job_budget_exceeded')
             priority = {account: index for index, account in enumerate(ACCOUNT_PRIORITY)}
-            for grant in sorted(self.grants, key=lambda g: (priority.get(g['account_id'], len(priority)),
-                                                          instant(g['expires_at']), g['grant_id'])):
-                if grant['account_id'] not in account_ids or not instant(grant['verified_at']) <= self.now() < instant(grant['expires_at']):
-                    continue
-                if conn.execute('SELECT 1 FROM account_blocks WHERE account_id=? AND grant_id=?', (grant['account_id'], grant['grant_id'])).fetchone():
-                    continue
-                costs = [(bool(b), Decimal(a if a is not None else e), purpose) for g, b, _, e, a, purpose in rows if g == grant['grant_id']]
-                used = sum((cost for b, cost, purpose in costs if b == bool(background) and purpose == 'production'), Decimal(0))
-                all_used = sum((cost for _, cost, _ in costs), Decimal(0))
-                allowance = Decimal(grant['allowance_usd'])
-                limit = allowance * (Decimal('.7') if background else Decimal('.2'))
-                if (self.purpose == 'production' and (used + estimate > limit or (estimate == 0 and used >= limit))) or all_used + estimate > allowance * Decimal('.9'):
-                    continue
-                if self.purpose == 'production' and background:
-                    manual_used = sum((cost for b, cost, purpose in costs
-                                       if not b and purpose == 'production'), Decimal(0))
-                    manual_remaining = max(Decimal(0), allowance * Decimal('.2') - manual_used)
-                    background_ceiling = allowance * Decimal('.9') - manual_remaining
-                    if all_used + estimate > background_ceiling or (estimate == 0 and all_used >= background_ceiling):
+            references = [self._account_reference(conn, account) for account in account_ids]
+            for grant in sorted(references, key=lambda g: (priority.get(g['account_id'], len(priority)),
+                                 instant(g['expires_at']) if g.get('expires_at') else datetime.max.replace(tzinfo=timezone.utc),
+                                 g['account_id'])):
+                block = conn.execute('SELECT reason FROM account_blocks WHERE account_id=?',
+                                     (grant['account_id'],)).fetchone()
+                if block:
+                    if block[0] == 'credit_balance_exhausted':
                         continue
+                    raise OpenAIUnavailable('OpenAI 帳戶仍有人工或安全停止標記；不切帳戶或模型繞過。',
+                                            'openai_account_blocked')
                 request_id = uuid4().hex if reserve else None
                 if reserve:
                     conn.execute('INSERT INTO requests (id,grant_id,background,command,run_id,operation,status,estimate,actual,detail,purpose,round_id,case_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                         (request_id, grant['grant_id'], int(background), command, RUN_ID.get(), operation, 'pending', str(estimate), None, '{}', self.purpose, self.round_id, self.case_id))
                 return grant, request_id
-        raise OpenAICreditsUnavailable('OpenAI 已核對贈額／對應分額不足或已到期；不購買點數，改檢查 DeepSeek 備援。', 'openai_credits_unavailable')
+        raise OpenAICreditsUnavailable('已設定的 OpenAI 帳戶皆曾由 API 明確回覆額度不足；改檢查 DeepSeek 備援。', 'openai_credits_unavailable')
 
     def finish(self, request_id, status, actual, detail):
         with self.db() as conn:
@@ -257,7 +268,27 @@ class OpenAICreditLedger:
 
     def block(self, grant, reason):
         with self.db() as conn:
-            conn.execute('INSERT OR REPLACE INTO account_blocks VALUES (?,?,?)', (grant['account_id'], grant['grant_id'], reason))
+            conn.execute('BEGIN IMMEDIATE')
+            self._block(conn, grant, reason)
+
+    def _block(self, conn, grant, reason):
+        current = conn.execute('SELECT reason FROM account_blocks WHERE account_id=?',
+                               (grant['account_id'],)).fetchone()
+        if reason == 'credit_balance_exhausted' and current and current[0] != reason:
+            return
+        conn.execute('INSERT OR REPLACE INTO account_blocks VALUES (?,?,?)',
+                     (grant['account_id'], grant['grant_id'], reason))
+        if reason == 'credit_balance_exhausted':
+            label = {'secondary': '第二帳戶', 'primary': '第一帳戶'}.get(grant['account_id'], '目前帳戶')
+            self._queue_notice(conn, reason, f'OpenAI {label} API 明確回覆額度不足；'
+                '後續依帳戶優先順序檢查，沒有自動加值。', operation='preflight')
+
+    def reject_exhausted(self, request_id, grant, detail):
+        with self.db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute('UPDATE requests SET status=?,actual=?,detail=? WHERE id=?',
+                         ('rejected', '0', json.dumps(detail, ensure_ascii=False), request_id))
+            self._block(conn, grant, 'credit_balance_exhausted')
 
     def route(self, provider, reason='', detail=None):
         command, background, _ = TASK.get()
@@ -266,8 +297,9 @@ class OpenAICreditLedger:
             conn.execute('INSERT INTO route_events VALUES (?,?,?,?,?,?,?)', (uuid4().hex, RUN_ID.get(), command, int(background), provider, reason, json.dumps(detail or {}, ensure_ascii=False)))
             if provider == 'deepseek':
                 reason_text = {'openai_not_configured': '尚未設定 OpenAI 金鑰',
-                               'openai_grant_unverified': '尚未登記已核對的 OpenAI 贈額',
-                               'openai_job_budget_exceeded': 'OpenAI 已達單次費用護欄'}.get(reason, 'OpenAI 贈額／分額目前不可用')
+                               'openai_job_budget_exceeded': 'OpenAI 已達單次費用護欄',
+                               'openai_credits_unavailable': '已設定的 OpenAI 帳戶皆由 API 明確回覆額度不足'
+                               }.get(reason, 'OpenAI 目前不可用，請查閱具體原因')
                 self._queue_notice(conn, reason,
                     reason_text + '，後續改由 DeepSeek 依原預算檢查；不是自動加值，也不保證整項工作完成。',
                     operation='preflight')
@@ -315,13 +347,18 @@ class OpenAICreditLedger:
         with self.db() as conn:
             self._sync(conn)
             rows = conn.execute('SELECT grant_id,background,estimate,actual,status,purpose FROM requests').fetchall()
-        return {'provider': 'openai', 'balance_is_local_allowance': True,
+            references = [json.loads(row[0]) for row in conn.execute('SELECT record FROM account_references')]
+        return {'provider': 'openai', 'balance_is_local_allowance': False,
+                'official_balance_known': False, 'allocation_policy': 'shared_api_confirmed',
+                'job_limit_usd': str(self.job_limit), 'account_references': references,
                 'account_priority': list(ACCOUNT_PRIORITY), 'grants': [
-            {**g, 'background_limit': str(Decimal(g['allowance_usd']) * Decimal('.7')),
-             'manual_limit': str(Decimal(g['allowance_usd']) * Decimal('.2')),
-             'reserve': str(Decimal(g['allowance_usd']) * Decimal('.1')),
+            {**g, 'historical_evidence_only': True,
              'used_or_reserved': str(sum((Decimal(a if a is not None else e) for gid, _, e, a, _, _ in rows if gid == g['grant_id']), Decimal(0))),
              'production_used': str(sum((Decimal(a if a is not None else e) for gid, _, e, a, _, p in rows if gid == g['grant_id'] and p == 'production'), Decimal(0))),
              'development_used': str(sum((Decimal(a if a is not None else e) for gid, _, e, a, _, p in rows if gid == g['grant_id'] and p == 'development'), Decimal(0))),
              'unknown_or_pending': sum(s in ('pending', 'unknown') for gid, _, _, _, s, _ in rows if gid == g['grant_id'])}
-            for g in self.grants]}
+            for g in self.grants],
+                'used_or_reserved': str(sum((Decimal(a if a is not None else e) for _, _, e, a, _, _ in rows), Decimal(0))),
+                'production_used': str(sum((Decimal(a if a is not None else e) for _, _, e, a, _, p in rows if p == 'production'), Decimal(0))),
+                'development_used': str(sum((Decimal(a if a is not None else e) for _, _, e, a, _, p in rows if p == 'development'), Decimal(0))),
+                'unknown_or_pending': sum(s in ('pending', 'unknown') for _, _, _, _, s, _ in rows)}

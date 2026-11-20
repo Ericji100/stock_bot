@@ -185,7 +185,7 @@ class OpenAIRoutingTests(unittest.TestCase):
             ledger.finish(ident, 'success', Decimal('.2'), {})
             error = OpenAICreditsUnavailable('合計預留過高', 'openai_job_budget_exceeded')
             self.assertTrue(latch_live_case_cap(ledger, chosen, 'news', error, self.root/'evidence'))
-            with self.assertRaises(OpenAICreditsUnavailable):
+            with self.assertRaises(OpenAIUnavailable):
                 ledger.choose({'a'}, Decimal('.01'), reserve=True)
         with ledger.db() as conn:
             self.assertEqual(conn.execute('SELECT actual FROM requests').fetchall(), [('0.2',)])
@@ -246,19 +246,22 @@ class OpenAIRoutingTests(unittest.TestCase):
             with self.subTest(heartbeat=heartbeat, alive=alive), self.assertRaises(ValueError):
                 validate_production_health(restored, heartbeat, now=self.now, process_alive=lambda pid: alive)
 
-    def test_70_20_10_limits_are_independent_and_buffer_not_spent(self):
-        for bg, total in [(True, '70'), (False, '20')]:
+    def test_manual_and_background_share_without_percentage_limits(self):
+        for bg, total in [(True, '95'), (False, '25')]:
             with ai_task('fixture', background=bg):
                 _, ident = self.ledger.choose({'a'}, Decimal(total), reserve=True)
                 self.ledger.finish(ident, 'success', Decimal(total), {})
-                with self.assertRaises(OpenAICreditsUnavailable):
-                    self.ledger.choose({'a'}, Decimal('.01'))
-        self.assertEqual(self.ledger.summary()['grants'][0]['used_or_reserved'], '90')
+                self.assertEqual(self.ledger.choose({'a'}, Decimal('.01'))[0]['account_id'], 'a')
+        summary = self.ledger.summary()
+        self.assertEqual(summary['grants'][0]['used_or_reserved'], '120')
+        self.assertFalse(summary['official_balance_known'])
+        self.assertNotIn('manual_limit', summary['grants'][0])
 
-    def test_expiry_does_not_invent_next_month_grant(self):
+    def test_expiry_is_historical_and_does_not_invent_next_month_grant(self):
         self.now = datetime(2026, 12, 1, tzinfo=timezone.utc)
-        with self.assertRaises(OpenAICreditsUnavailable):
-            self.ledger.choose({'a'}, Decimal('.01'))
+        self.assertEqual(self.ledger.choose({'a'}, Decimal('.01'))[0]['grant_id'], 'a')
+        with self.ledger.db() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM grants').fetchone()[0], 1)
 
     def test_duplicate_org_and_overlapping_cycles_rejected(self):
         with self.assertRaises(ValueError):
@@ -469,15 +472,18 @@ class OpenAIRoutingTests(unittest.TestCase):
         self.assertTrue(result.diagnostics['cache_hit'])
         self.assertEqual(len(self.calls), 1)
 
-    def test_both_accounts_atomic_no_overspend(self):
+    def test_same_job_atomic_reservations_preserve_single_job_cap(self):
+        from research_center.deepseek_service import RUN_ID
+        self.ledger.job_limit = Decimal('20')
         results, errors = [], []
         barrier = threading.Barrier(4)
         def reserve():
             with ai_task('fixture'):
+                RUN_ID.set('shared-concurrent-job')
                 try:
                     barrier.wait(timeout=10)
                     results.append(self.ledger.choose({'a'}, Decimal('15'), reserve=True))
-                except OpenAICreditsUnavailable:
+                except OpenAIUnavailable:
                     pass
                 except Exception as exc:
                     errors.append(exc)
@@ -648,7 +654,7 @@ class OpenAIRoutingTests(unittest.TestCase):
         with self.ledger.db() as conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM requests').fetchone()[0], 0)
 
-    def test_development_does_not_use_formal_bucket_but_consumes_shared_grant(self):
+    def test_development_usage_is_separate_without_formal_percentage_gates(self):
         dev = OpenAICreditLedger(self.root, [grant()], development=True, job_limit=0, now=lambda: self.now)
         with ai_task('research'):
             _, request_id = dev.choose({'a'}, Decimal('21'), reserve=True)
@@ -656,8 +662,7 @@ class OpenAIRoutingTests(unittest.TestCase):
         with ai_task('research'):
             self.ledger.choose({'a'}, Decimal('20'))
         with ai_task('news', background=True):
-            with self.assertRaises(OpenAICreditsUnavailable):
-                self.ledger.choose({'a'}, Decimal('70'))
+            self.assertEqual(self.ledger.choose({'a'}, Decimal('70'))[0]['account_id'], 'a')
         report = self.ledger.summary()['grants'][0]
         self.assertEqual(report['development_used'], '21')
         self.assertEqual(report['production_used'], '0')

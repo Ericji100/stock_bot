@@ -22,24 +22,21 @@ def test_secondary_priority_is_fixed_even_when_primary_expires_first(tmp_path):
     assert ledger.summary()['account_priority'] == ['secondary', 'primary']
 
 
-def test_background_cannot_spend_manual_or_buffer_across_accounts(tmp_path):
+def test_background_and_manual_do_not_force_account_rotation_by_percentage(tmp_path):
     now = datetime(2026, 11, 5, tzinfo=timezone.utc)
     ledger = OpenAICreditLedger(tmp_path, [grant('primary'), grant('secondary')], now=lambda: now, job_limit=0)
-    for background, amount in [(True, '70'), (False, '20')]:
-        for account in ('secondary', 'primary'):
-            with ai_task('fixture', background=background):
-                chosen, ident = ledger.choose({'primary', 'secondary'}, Decimal(amount), reserve=True)
-                assert chosen['account_id'] == account
-                ledger.finish(ident, 'success', Decimal(amount), {})
-        with ai_task('fixture', background=background), pytest.raises(OpenAICreditsUnavailable):
-            ledger.choose({'primary', 'secondary'}, Decimal('.01'))
-    assert [row['used_or_reserved'] for row in ledger.summary()['grants']] == ['90', '90']
+    for background, cost in [(True, '95'), (False, '25')]:
+        with ai_task('fixture', background=background):
+            chosen, ident = ledger.choose({'primary', 'secondary'}, Decimal(cost), reserve=True)
+            assert chosen['account_id'] == 'secondary'
+            ledger.finish(ident, 'success', Decimal(cost), {})
+    assert [row['used_or_reserved'] for row in ledger.summary()['grants']] == ['0', '120']
 
 
-@pytest.mark.parametrize('reason', ['expired', 'blocked', 'missing_key'])
+@pytest.mark.parametrize('reason', ['blocked', 'missing_key'])
 def test_ineligible_secondary_can_use_primary_without_resetting_usage(tmp_path, reason):
     now = datetime(2026, 11, 5, tzinfo=timezone.utc)
-    secondary = grant('secondary', end='2026-11-04T00:00:00Z') if reason == 'expired' else grant('secondary')
+    secondary = grant('secondary')
     ledger = OpenAICreditLedger(tmp_path, [grant('primary'), secondary], now=lambda: now)
     if reason == 'blocked':
         ledger.block(ledger.grants[1], 'credit_balance_exhausted')

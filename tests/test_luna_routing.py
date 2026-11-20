@@ -136,7 +136,7 @@ class LunaRoutingTests(unittest.TestCase):
     def test_background_credit_refusal_uses_existing_deepseek_fallback(self):
         client=self.make_client()
         fallback=self.fallback()
-        client.ledger.grants=[]
+        client.ledger.block(client.ledger.grants[0], 'credit_balance_exhausted')
         with ai_task('news',background=True):
             result=RoutedAIService(client,fallback).generate_report('完整資料不刪除')
         self.assertEqual(result.diagnostics['requested_model'],BACKGROUND_MODEL)

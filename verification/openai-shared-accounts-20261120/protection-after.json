@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-20T11:23:42.252919+08:00",
+  "production_files": {
+    "research_center/openai_credit_service.py": "94cd3a8bba195921c1380283a68964c8adeca013145323193d5a72fdb71ea66e",
+    "research_center/openai_service.py": "873b6acdd50dc405940b1afe1d99337fb597a4e4f4beb5e2aafaff25b7dbed37",
+    "research_center/ai_provider_service.py": "254844d8e251001a1a253b4584e649975f52d1a4e29f6829167a766690d5415a",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/company_theme_map.json": "aba3bc2283efa97e9d31405fb8e3b715be335b476601ab881245330b99efe4f5",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "04ac7997694d15c6cb06ae19ccadcce904871ab26380e92337c501a00707490d",
+    "stock_list.json": "c55799ee6a0b2fbbce6bbd77a731d8ba6775c3d10ed60358e9d0b2e86eab061f",
+    "main.py": "54119d4015d0e0fc7194f6aab8edd4c9d8810b0794a8ca9cb20b9bf86d173f27",
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3"
+  },
+  "production_financial_tables": {
+    "grants": {
+      "count": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "requests": {
+      "count": 1431,
+      "sha256": "4f896fd06c4dbf45b8284864e25937de4f03192c75220f572e74e9b5e73a2ac9"
+    },
+    "account_blocks": {
+      "count": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "live_rounds": {
+      "count": 8,
+      "sha256": "09a11fbe573632bffdc2fada28409e10b85c333075627fe83fa04ad0f155b7a5"
+    }
+  },
+  "production_tracked_status": " M .gitignore\n M config/company_theme_map.json\n M config/supply_chain_nodes.json\n M config/theme_profiles.json\n M stock_list.json\n",
+  "checks": {
+    "production_files": true,
+    "production_financial_tables": true,
+    "production_tracked_status": true
+  }
+}

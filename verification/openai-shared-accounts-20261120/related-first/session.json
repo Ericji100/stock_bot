@@ -1,0 +1,25 @@
+{
+  "exit_status": 1,
+  "collected": 171,
+  "failed": 1,
+  "elapsed_seconds": 5.263,
+  "counts": {
+    "": 342,
+    "passed": 170,
+    "subtests passed": 61,
+    "failed": 1
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 629,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_openai_routing.py",
+    "tests/test_luna_routing.py",
+    "tests/test_secondary_report_corrections.py",
+    "tests/test_terra_focused_validation.py",
+    "tests/test_ai_notice_isolation.py",
+    "tests/test_development_budget_isolation.py",
+    "tests/test_openai_search_timeout.py"
+  ]
+}

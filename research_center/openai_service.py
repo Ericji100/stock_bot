@@ -415,9 +415,8 @@ class OpenAIService:
             raise OpenAIUnavailable('OpenAI 回應結構不符，費用待核對，不重送。', 'transport_unknown')
         if response.status_code >= 400:
             code = str((data.get('error') or {}).get('code') or '')
-            if code == 'credit_balance_exhausted':
-                self.ledger.finish(request_id, 'rejected', Decimal(0), {**detail, 'error_code': code})
-                self.ledger.block(grant, code)
+            if response.status_code in (402, 429) and code in {'credit_balance_exhausted', 'insufficient_quota'}:
+                self.ledger.reject_exhausted(request_id, grant, {**detail, 'error_code': code})
                 return self._request(prompt, json_mode=json_mode, search=search)
             # 5xx may have reached execution. Preserve its reservation as unknown.
             unknown = response.status_code >= 500 or response.status_code in (408, 409)

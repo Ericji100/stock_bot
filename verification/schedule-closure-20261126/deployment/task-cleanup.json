@@ -1,0 +1,19 @@
+{
+  "all_task_writers_stopped": true,
+  "necessary_evidence_retained": true,
+  "receipts": [
+    {
+      "task": "deployment-regression",
+      "project": "D:\\code\\stock_ai_bot",
+      "receipt": "D:\\code\\stock_ai_bot\\.codex-cleanup\\schedule-1126\\deployment-regression\\receipt.json",
+      "status": "RECYCLED_VERIFIED"
+    },
+    {
+      "task": "deploy-live",
+      "project": "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot",
+      "receipt": "D:\\code\\_codex_worktrees\\ai-schedule-stability\\stock_ai_bot\\.codex-cleanup\\schedule-1126\\deploy-live\\receipt.json",
+      "status": "RECYCLED_VERIFIED"
+    }
+  ],
+  "permanent_delete_used": false
+}

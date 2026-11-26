@@ -1,0 +1,24 @@
+{
+  "test_labels": true,
+  "max_attempts": 1,
+  "no_resend_after_unknown": true,
+  "deliveries": {
+    "news": {
+      "state": "sent",
+      "ok": null,
+      "status": null,
+      "chunk_count": null,
+      "sent_chunk_count": null,
+      "error_code": null
+    },
+    "radar": {
+      "state": "sent",
+      "ok": true,
+      "status": "sent",
+      "chunk_count": 1,
+      "sent_chunk_count": 1,
+      "error_code": null
+    }
+  },
+  "news_production_push_enabled_unchanged": true
+}

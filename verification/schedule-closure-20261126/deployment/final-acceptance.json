@@ -1,0 +1,43 @@
+{
+  "at": "2026-11-26T23:37:43",
+  "pid": 13516,
+  "heartbeat": "2026-11-26T23:37:41+08:00",
+  "telegram_polling_status": "healthy",
+  "latest_polling_success": "2026-11-26T23:37:06+08:00",
+  "queue_size": 0,
+  "current_task": null,
+  "etf_status": "READY",
+  "protected_files_unchanged": {
+    ".gitignore": true,
+    "config/research_center.json": true,
+    "config/secrets.json": true,
+    "config/company_theme_map.json": true,
+    "config/supply_chain_nodes.json": true,
+    "config/theme_profiles.json": true,
+    "stock_list.json": true
+  },
+  "original_financial_table_hash_checks": {
+    "openai.grants": true,
+    "openai.requests": true,
+    "openai.account_blocks": true,
+    "openai.route_events": true,
+    "openai.notices": true,
+    "openai.live_rounds": true,
+    "openai.fee_reconciliations": true,
+    "openai.notice_attribution": true,
+    "openai.account_references": true,
+    "deepseek.spending": true,
+    "deepseek.incidents": true,
+    "deepseek.notices": true,
+    "deepseek.spending_attribution": true
+  },
+  "original_unknown_request": {
+    "status": "pending",
+    "actual": null,
+    "reserve_usd": "1.4694"
+  },
+  "test_round_rows_in_production": 0,
+  "paid_live_round_status": "news_passed_radar_partial_cap_stop",
+  "new_unknown_costs": 0,
+  "restart_count_this_task": 1
+}

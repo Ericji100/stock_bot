@@ -1,0 +1,60 @@
+{
+  "round_id": "schedule-closure-20261126-live3",
+  "settled_api_usage_estimate_usd": "0.996921800",
+  "new_unknown_reserve_usd": "0",
+  "test_case_limits_usd": {
+    "news": "0.50",
+    "radar": "2.50"
+  },
+  "round_limit_usd": "3",
+  "purpose": "development",
+  "accounts": [
+    "secondary"
+  ],
+  "all_raw_responses_retained": true,
+  "stages": [
+    {
+      "case": "news",
+      "model": "gpt-6-luna",
+      "operation": "model",
+      "calls": 2,
+      "usd": "0.007534600",
+      "seconds": 83.17,
+      "input_tokens": 9102,
+      "output_tokens": 12794
+    },
+    {
+      "case": "radar",
+      "model": "gpt-6-luna",
+      "operation": "web_search",
+      "calls": 31,
+      "usd": "0.435106200",
+      "seconds": 1381.2440000000001,
+      "input_tokens": 409068,
+      "output_tokens": 191685
+    },
+    {
+      "case": "radar",
+      "model": "gpt-6.1-terra",
+      "operation": "model",
+      "calls": 2,
+      "usd": "0.55428100",
+      "seconds": 169.275,
+      "input_tokens": 391342,
+      "output_tokens": 13021
+    }
+  ],
+  "radar_status": "partial_success",
+  "radar_ai_comments": 10,
+  "radar_search_candidates": 15,
+  "radar_remaining_codes": [
+    "3227",
+    "6743",
+    "6285",
+    "2636",
+    "2548"
+  ],
+  "stop_reason": "openai_job_budget_exceeded",
+  "no_request_for_third_batch": true,
+  "is_independent_invoice_or_credit_balance_verification": false
+}

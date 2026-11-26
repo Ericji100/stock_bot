@@ -865,10 +865,20 @@ def build_high_model_input_package(
     prompt_chars_estimate: int,
 ) -> dict[str, Any]:
     input_mode = _input_mode_for_prompt(prompt_chars_estimate)
-    from .evidence_governance import build_evidence_governance
+    from .evidence_governance import (build_evidence_governance, company_identity_context,
+                                      company_source_admission, company_safe_prompt_data)
     from .search_transmission import collect_search_context, source_events_packet
     governance = build_evidence_governance(request.command, request.report_date, sources, structured_data)
     structured_data['evidence_governance'] = governance
+    identity_context = company_identity_context(structured_data)
+    identity_context['source_identity_issues'] = {source.source_id: admission['issues']
+        for source in sources if (admission := company_source_admission(source, identity_context))['status'] == 'quarantined'}
+    original_sources = sources
+    from dataclasses import replace
+    sources = [replace(source, title='公司身分待核來源', snippet='公司名稱與代號衝突；原文保留，不作個股事實。',
+                       content=None, search_summary_events=[], found_by=[*source.found_by, 'company_identity_quarantine'])
+               if source.source_id in identity_context['source_identity_issues'] else source for source in sources]
+    structured_data = company_safe_prompt_data(structured_data, identity_context)
     low_digest = structured_data.get("low_model_digest") or {
         "schema_version": LOW_MODEL_DIGEST_SCHEMA_VERSION,
         "status": "skipped",
@@ -956,7 +966,7 @@ def build_high_model_input_package(
         'source_count': len(sources),
         'rows': [{'source_id': item.source_id, 'text_chars': len(item.snippet or ''),
                   'text_sha256': hashlib.sha256((item.snippet or '').encode()).hexdigest()}
-                 for item in sources],
+                 for item in original_sources],
     }
     coverage = build_ai_workflow_coverage(
         request.command,
@@ -980,7 +990,10 @@ def build_high_model_input_package(
         notes=["報告型 AI 指令使用共用 high_model_input_package。", *input_quality_gate.get("warnings", [])],
     )
     package["ai_workflow_coverage"] = coverage
-    return package
+    for row in package['source_text_admission']['rows']:
+        row['company_admission'] = ('quarantined' if row['source_id'] in identity_context['source_identity_issues'] else 'eligible')
+    package['source_text_admission']['scope'] += ' 公司身分衝突來源只準備隔離說明，原始全文仍留來源檔。'
+    return company_safe_prompt_data(package, identity_context)
 
 
 def build_input_quality_gate(

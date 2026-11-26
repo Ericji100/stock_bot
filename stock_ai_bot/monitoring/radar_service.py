@@ -1361,6 +1361,8 @@ def _attach_revenue_scores(candidates: list[RadarCandidate], analysis_date: date
 
 
 def _attach_local_news(candidates: list[RadarCandidate], analysis_date: date) -> None:
+    from research_center.evidence_governance import company_identity_context, company_source_admission
+    identity = company_identity_context()
     try:
         repository = NewsRepository()
         items = repository.query_all_recent(hours=24 * 180)
@@ -1382,19 +1384,26 @@ def _attach_local_news(candidates: list[RadarCandidate], analysis_date: date) ->
                 ]
             )
             if any(term and term in haystack for term in terms):
-                matched.append(
-                    {
+                row = {
                         "title": item.title,
                         "source": item.source,
                         "published_at": item.published_at,
                         "importance_score": item.importance_score,
                         "summary": item.summary,
+                        **({'full_text': item.full_text} if item.full_text and item.full_text != item.summary else {}),
                         "url": item.url,
                         "tags": item.tags,
                         "counter_evidence": item.counter_evidence,
                         "missing_data": item.missing_data,
                     }
-                )
+                admission = company_source_admission(row, {**identity, 'stock': {'code': candidate.code, 'name': candidate.name}})
+                if admission['status'] != 'eligible':
+                    quarantine = candidate.evidence_pack.setdefault('company_evidence_quarantine', [])
+                    record = {'source': row, 'admission': admission}
+                    if record not in quarantine:
+                        quarantine.append(record)
+                    continue
+                matched.append(row)
         candidate.news_items = matched[:5]
 
 
@@ -1950,20 +1959,32 @@ def _attach_web_sources(
 
 
 def _candidate_has_official_document(item: RadarCandidate, analysis_date: date) -> bool:
-    from research_center.evidence_governance import official_evidence_status, source_matches_company
+    return any(record['official_document_body_retrieved'] and record['usable_by_report_date']
+               and record['company_admission']['supports_target_company']
+               for record in _candidate_official_records(item, analysis_date))
 
-    sources = [*item.ai_sources, *item.web_sources]
-    def usable_official_body(source):
-        if not isinstance(source, dict) or official_evidence_status(source) != "retrieved_requires_claim_check":
-            return False
-        published = parse_date_like(source.get("published_date"))
-        if source.get("date_status") != "explicit" or published is None or published > analysis_date:
-            return False
-        if any(value and value > analysis_date for value in
-               (parse_date_like(source.get(field)) for field in ("data_date", "updated_date"))):
-            return False
-        return source_matches_company(source, item.code, item.name)
-    return any(usable_official_body(source) for source in sources)
+
+def _candidate_official_records(item: RadarCandidate, analysis_date: date, *, evidence_pack=None) -> list[dict[str, Any]]:
+    from research_center.evidence_governance import company_identity_context, official_source_record
+    pack = evidence_pack if isinstance(evidence_pack, dict) else (item.evidence_pack or {})
+    structured = pack.get('research_structured_data') or {}
+    sources = [*item.ai_sources, *item.web_sources, *(pack.get('research_sources') or []),
+               *(pack.get('raw_sources') or [])]
+    for key in ('base_sources', 'discovery_sources', 'web_fetched_sources'):
+        sources.extend(structured.get(key) or [])
+    identity = company_identity_context({'stock': {'code': item.code, 'name': item.name}})
+    records, seen = [], set()
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        record = official_source_record(source, identity, analysis_date)
+        if record['official_evidence_status'] == 'non_official':
+            continue
+        key = json.dumps(record, ensure_ascii=False, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            records.append(record)
+    return records
 
 
 def _radar_source_followup_task(item: RadarCandidate, analysis_date: date) -> dict[str, Any]:
@@ -2137,7 +2158,8 @@ def _retain_radar_discovery(item, structured_data, sources, analysis_date):
     from research_center.search_transmission import merge_search_records
     mapping_notes = []
     primary = []
-    company = {'stock': {'code': item.code}}
+    from research_center.evidence_governance import company_identity_context
+    company = company_identity_context({'stock': {'code': item.code, 'name': item.name}})
     for source in eligible:
         issues = source_company_conflicts(source, company)
         if any(issue.get('kind') != 'possible_abbreviation' for issue in issues):
@@ -2549,6 +2571,7 @@ def _build_radar_evidence_pack(
         pack["research_structured_data"] = research_structured_data
     raw_sources = _radar_raw_sources(item, pack, analysis_date)
     pack["raw_sources"] = raw_sources
+    pack['official_source_records'] = _candidate_official_records(item, analysis_date, evidence_pack=pack)
     pack["final_context"] = _radar_final_context(item, analysis_date, raw_sources)
     pack["three_layer_context"] = build_three_layer_evidence_context(
         raw_sources=raw_sources,
@@ -2575,7 +2598,7 @@ def _refresh_radar_three_layer_context(item: RadarCandidate, analysis_date: date
 
 
 def _radar_official_basis_sources(analysis_date: date) -> list[dict[str, Any]]:
-    published_date = analysis_date.isoformat()
+    published_date = None
     return [
         {
             "source_id": "RADAR_OFFICIAL_PRICE_VOLUME",
@@ -2583,10 +2606,12 @@ def _radar_official_basis_sources(analysis_date: date) -> list[dict[str, Any]]:
             "url": "https://www.twse.com.tw/",
             "source_level": "L1_official",
             "published_date": published_date,
-            "provider": "local_official_cache",
+            "provider": "official_reference",
+            "document_kind": "reference_link",
+            "date_status": "unknown",
             "provider_detail": "radar_price_volume_basis",
             "source_type": "official_basis",
-            "snippet": "Radar 技術面與價量條件使用本地快取的 TWSE / TPEx 官方交易資料作為基礎；完整逐檔資料保存在本地快取與 Radar evidence pack。",
+            "snippet": "官方價量查詢入口，未因此取得逐公司解析數據或原文。實際來源、資料日期及供應商須以個股紀錄另行核對。",
             "found_by": ["radar_official_basis"],
         },
         {
@@ -2595,10 +2620,12 @@ def _radar_official_basis_sources(analysis_date: date) -> list[dict[str, Any]]:
             "url": "https://mops.twse.com.tw/",
             "source_level": "L1_official",
             "published_date": published_date,
-            "provider": "local_official_cache",
+            "provider": "official_reference",
+            "document_kind": "reference_link",
+            "date_status": "unknown",
             "provider_detail": "radar_revenue_financial_basis",
             "source_type": "official_basis",
-            "snippet": "Radar 營收、財報與公司公告相關底稿使用本地快取的 MOPS 公開資訊作為基礎；若個股資料不足，報告會在資料缺口中標示。",
+            "snippet": "官方營收與財報查詢入口，不代表已取得本公司原始申報。若底稿來自FinMind等供應商，仍保留其實際來源，不升格為官方原文。",
             "found_by": ["radar_official_basis"],
         },
         {
@@ -2607,10 +2634,12 @@ def _radar_official_basis_sources(analysis_date: date) -> list[dict[str, Any]]:
             "url": "https://www.tpex.org.tw/",
             "source_level": "L1_official",
             "published_date": published_date,
-            "provider": "local_official_cache",
+            "provider": "official_reference",
+            "document_kind": "reference_link",
+            "date_status": "unknown",
             "provider_detail": "radar_chip_basis",
             "source_type": "official_basis",
-            "snippet": "Radar 籌碼條件使用 TWSE、TPEx、TDCC 或其本地快取資料作為基礎；FinMind / Fugle 僅作缺口備援時會另行記錄。",
+            "snippet": "官方法人與集保查詢入口，不等於已取得本輪逐股資料。原始供應商、資料期別及取得紀錄另行保留核對。",
             "found_by": ["radar_official_basis"],
         },
     ]
@@ -4816,6 +4845,10 @@ def _build_ai_comment_payload(
     # Wrapper configuration stays in the local pack, not in every stock's prompt.
     compact_pack = {key: value for key, value in compact_pack.items() if key not in ('policy', 'limits')}
     from research_center.search_transmission import source_events_packet
+    from research_center.evidence_governance import company_identity_context, company_source_admission
+    identity = company_identity_context({'stock': {'code': item.code, 'name': item.name}})
+    company_news = [news for news in item.news_items if isinstance(news, dict)
+                    and company_source_admission(news, identity)['status'] == 'eligible']
     payload = {
         "code": item.code,
         "name": item.name,
@@ -4835,12 +4868,19 @@ def _build_ai_comment_payload(
         "strategies": sorted(item.strategy_codes),
         "technical_signal_summary": _technical_signal_line(item),
         "chip_summary": _chip_grade_line(item),
-        "local_news": [news.get("title") for news in item.news_items[:5] if isinstance(news, dict)],
+        "local_news": [news.get("title") for news in company_news[:5]],
         "data_coverage": item.data_coverage,
         "官方證據狀態": {
             "同公司且日期合格的官方正文已取得": _candidate_has_official_document(item, analysis_date),
+            "逐來源紀錄": [row for row in _candidate_official_records(item, analysis_date)
+                          if row['official_evidence_status'] != 'reference_only'],
+            "查詢入口不算正文": sum(row['official_evidence_status'] == 'reference_only'
+                              for row in _candidate_official_records(item, analysis_date)),
             "限制": "取得正文仍須核對主張；官方入口、媒體轉載與來源筆數不等於事實已核實。",
         },
+        "財報實際供應商": sorted({str(row.get('Financial_Data_Source'))
+            for row in ((item.evidence_pack or {}).get('research_structured_data') or {}).get('financial_data') or []
+            if isinstance(row, dict) and row.get('Financial_Data_Source')}),
         "ai_compact_pack": compact_pack,
         "full_evidence_pack_location": "local artifacts/cache only; not embedded in AI prompt",
     }
@@ -4850,7 +4890,9 @@ def _build_ai_comment_payload(
         payload['search_context_notes'] = notes
     if events:
         payload['search_source_events'] = events
-    return _replace_internal_truncation_markers(payload)
+    from research_center.evidence_governance import company_safe_prompt_data
+    return _replace_internal_truncation_markers(company_safe_prompt_data(payload,
+        {'stock': {'code': item.code, 'name': item.name}}))
 
 
 def _replace_internal_truncation_markers(value: Any) -> Any:

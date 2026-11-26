@@ -306,6 +306,9 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     result=dict(variables)
     from .source_identity import bind_source_ids
     sources=merge_topic_sources(data) if source_rows is None else bind_source_ids(source_rows)
+    original_sources = sources
+    from .evidence_governance import company_safe_prompt_data
+    sources = company_safe_prompt_data(sources, data)
     from datetime import date
     from .evidence_governance import build_evidence_governance
     raw_date = data.get('report_date')
@@ -384,7 +387,8 @@ def topic_stage_variables(data,variables,batch=None,*,source_rows=None):
     if batch is not None:
         payloads['web_fetched_sources_json']=payloads['discovery_sources_json']
         payloads['discovery_sources_json']=[]
-    payloads['evidence_governance_json'] = build_evidence_governance('topic_maintain', report_date, sources, data)
+    payloads['evidence_governance_json'] = build_evidence_governance('topic_maintain', report_date, original_sources, data)
+    payloads = company_safe_prompt_data(payloads, data)
     from .topic_quote_binding import quote_catalog
     catalog = quote_catalog(sources)
     from .topic_batch_evidence import quote_choices

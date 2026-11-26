@@ -26,7 +26,7 @@ def merge_search_records(first, second):
 def retain_search_provenance(previous, replacement):
     """Rebuilding a derived packet must not erase discovery diagnostics."""
     result = dict(replacement)
-    for key in ('search_context_notes', 'search_attempts'):
+    for key in ('search_context_notes', 'search_attempts', 'company_evidence_quarantine'):
         records = merge_search_records((previous or {}).get(key), result.get(key))
         if records:
             result[key] = records

@@ -335,12 +335,34 @@ def _sources_to_news_items(sources: list[SourceItem]) -> list[NewsItem]:
             source=source_name,
             published_at=src.published_date or "",
             tags=['publication_' + source_publication_status(src)] +
-                 (['official_body_retrieved'] if src.document_kind in {'document_body','parsed_record'} and src.fetch_status == 'success' else []),
+                 (['official_body_retrieved'] if _news_official_body(src) else []),
             summary=summary,
             full_text=src.content or summary,
             news_origin="refresh",
         )))
     return items
+
+
+def _news_official_body(source: SourceItem) -> bool:
+    from .evidence_governance import official_evidence_status
+    return source.document_kind == 'document_body' and source.fetch_status == 'success' and official_evidence_status(source) == 'retrieved_requires_claim_check'
+
+
+def _news_company_admission(item: NewsItem) -> dict[str, Any]:
+    from .evidence_governance import company_identity_context, company_source_admission
+    return company_source_admission({'title': item.title, 'url': item.url,
+        'summary': item.summary, 'full_text': item.full_text, 'tags':item.tags}, company_identity_context())
+
+
+def _quarantine_news_identity(item: NewsItem) -> bool:
+    if _news_company_admission(item)['status'] != 'quarantined':
+        return False
+    item.tags = list(dict.fromkeys([*(tag for tag in item.tags if tag != 'local_rule_fallback'),
+                                  'company_identity_conflict', 'ai_excluded']))
+    item.related_symbols = []
+    reason = '公司名稱與代號衝突，原文保留待查，不作個股證據。'
+    item.missing_data = list(dict.fromkeys([*item.missing_data, reason]))
+    return True
 
 
 def _deduplicate_items(items: list[NewsItem]) -> list[NewsItem]:
@@ -1383,6 +1405,14 @@ def _classify_news_batches(
     retry_text_limit = _classify_retry_text_limit()
     result_items: list[NewsItem] = []
     diagnostics = diagnostics if diagnostics is not None else {}
+    admitted_items = []
+    for item in items:
+        if _quarantine_news_identity(item):
+            result_items.append(item)
+        else:
+            admitted_items.append(item)
+    items = admitted_items
+    diagnostics['company_identity_quarantined'] = len(result_items)
     if checkpoint:
         original_checkpoint = checkpoint
         def checkpoint(rows):
@@ -1568,6 +1598,10 @@ def _classification_payload(items: list[NewsItem], text_limit: int, lightweight:
             primary, related = article_text_sections(item.full_text or item.summary)
             body = primary + ('\n\n【其他文章的延伸閱讀，非本文公司證據；勿把其數字歸給本文公司】\n' + related if related else '')
             row["text"] = _truncate_for_ai(body, text_limit)
+        admission = _news_company_admission(item)
+        if admission['status'] == 'quarantined':
+            row.update(title='公司身分待核新聞', snippet='公司對照衝突；只可標記待查或排除，不得推定相關個股。',
+                       text='原文保留於新聞資料庫，不作公司事實。', company_admission=admission)
         payload.append(row)
     return payload
 
@@ -1587,6 +1621,9 @@ def _news_temporal_record(item: NewsItem) -> dict[str, Any]:
 def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) -> list[NewsItem]:
     result_items: list[NewsItem] = []
     for idx, it in enumerate(batch):
+        if _quarantine_news_identity(it):
+            result_items.append(it)
+            continue
         meta = parsed.get(it.id) or parsed.get(it.url) or parsed.get(str(idx), {})
         if meta.get("category") == "exclude":
             from .deepseek_service import TASK
@@ -1628,6 +1665,9 @@ def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) ->
 def _fallback_classification(batch: list[NewsItem]) -> list[NewsItem]:
     result_items: list[NewsItem] = []
     for it in batch:
+        if _quarantine_news_identity(it):
+            result_items.append(it)
+            continue
         it.category = _guess_category(it.title)
         it.category = _correct_news_category(it)
         tags = list(getattr(it, "tags", None) or [])

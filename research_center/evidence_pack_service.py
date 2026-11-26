@@ -72,7 +72,9 @@ def build_ai_compact_context(
     when prompt size or latency matters.
     """
 
-    source_limited = _limit_source_lists(value, max_sources=max_sources, max_string=max_string)
+    from .evidence_governance import company_safe_prompt_data
+    safe_value = company_safe_prompt_data(value, value if isinstance(value, dict) else None)
+    source_limited = _limit_source_lists(safe_value, max_sources=max_sources, max_string=max_string)
     compact = _compact(
         source_limited,
         depth=depth,

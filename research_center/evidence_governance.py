@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
+from functools import lru_cache
+import hashlib
 import re
 from typing import Any
 from urllib.parse import urlsplit, parse_qs
@@ -38,6 +40,154 @@ def source_record(source: Any) -> dict[str, Any]:
     return asdict(source) if is_dataclass(source) else dict(source)
 
 
+def company_identity_context(data: dict[str, Any] | None = None) -> dict[str, Any]:
+    from .config import ROOT_DIR
+    data = data or {}
+    path = ROOT_DIR / 'stock_list.json'
+    names = dict(_company_master(str(path), path.stat().st_mtime_ns if path.exists() else 0))
+    names.update(data.get('authoritative_company_names') or {})
+    for code, row in (data.get('stock_index') or {}).items() if isinstance(data.get('stock_index'), dict) else []:
+        if isinstance(row, dict) and (row.get('name') or row.get('stock_name')):
+            names.setdefault(str(code), row.get('name') or row.get('stock_name'))
+    stock = data.get('stock') or data.get('candidate') or {}
+    stock = stock if isinstance(stock, dict) else {}
+    from .entity_resolver import company_aliases_from_sources
+    aliases = company_aliases_from_sources({**data, 'authoritative_company_names': names})
+    return {**data, 'stock': stock, 'authoritative_company_names': names, 'company_aliases': aliases}
+
+
+@lru_cache(maxsize=8)
+def _company_master(path: str, modified: int) -> tuple:
+    from pathlib import Path
+    from .entity_resolver import _load_stock_universe
+    return tuple((str(row['code']), row['name']) for row in _load_stock_universe(Path(path).parent)
+                 if row.get('code') and row.get('name'))
+
+
+def _source_text(row: dict[str, Any]) -> str:
+    return '\n'.join(dict.fromkeys(str(row.get(key) or '') for key in
+        ('title', 'content', 'snippet', 'summary', 'full_text', 'text') if row.get(key)))
+
+
+@lru_cache(maxsize=16)
+def _company_labels(names: tuple, aliases: tuple):
+    labels = {}
+    for code, name in names:
+        if name and len(name) >= 2:
+            labels.setdefault(name, set()).add(code)
+    for code, values in aliases:
+        for name in values:
+            if len(name) >= 2:
+                labels.setdefault(name, set()).add(code)
+    pattern = '|'.join(re.escape(name) for name in sorted(labels, key=len, reverse=True))
+    return re.compile(pattern or r'(?!)'), labels
+
+
+def _label_matcher(data):
+    return _company_labels(tuple(sorted((data.get('authoritative_company_names') or {}).items())),
+        tuple(sorted((code, tuple(values)) for code, values in (data.get('company_aliases') or {}).items())))
+
+
+def company_source_admission(source: Any, data: dict[str, Any]) -> dict[str, Any]:
+    row = source_record(source)
+    issues = source_company_conflicts(row, data)
+    hard = [issue for issue in issues if issue['kind'] != 'possible_abbreviation']
+    if 'company_identity_conflict' in (row.get('tags') or []):
+        persisted = {'kind': 'persisted_identity_conflict', 'usage': '原來源仍列身分衝突，未經核對不得恢復。'}
+        issues.append(persisted)
+        hard.append(persisted)
+    stock = data.get('stock') or {}
+    code = str(stock.get('code') or '')
+    name = str(stock.get('name') or (data.get('authoritative_company_names') or {}).get(code) or '')
+    text = _source_text(row)
+    direct = bool(code and (re.search(r'(?<!\d)' + re.escape(code) + r'(?!\d)', text)
+                            or code in document_issuer_codes(row)))
+    if not direct and name:
+        matcher, labels = _label_matcher(data)
+        direct = any(labels[match.group()] == {code} for match in matcher.finditer(text))
+    pending = bool(issues) and not hard
+    status = 'quarantined' if hard else 'identity_pending' if pending else 'context_only' if code and not direct else 'eligible'
+    return {'status': status, 'company_code': code or None, 'issues': issues,
+            'supports_target_company': not hard and not pending and (direct or not code),
+            'semantic_verified': False}
+
+
+def company_safe_prompt_data(value: Any, data: dict[str, Any] | None = None) -> Any:
+    """Keep raw inputs untouched; conflicting evidence is a pointer, never a fact packet."""
+    context = company_identity_context(data)
+    def visit(item, current):
+        if isinstance(item, list):
+            return [visit(row, current) for row in item]
+        if not isinstance(item, dict):
+            if isinstance(item, str) and re.search(r'[（(]\s*\d{4,6}|(?<!\d)\d{4,6}[ \t：:]*[\u4e00-\u9fffA-Za-z]', item):
+                gate = company_source_admission({'content': item}, current)
+                if gate['status'] == 'quarantined':
+                    return '公司身分衝突；原文留存，不作個股事實。SHA256：' + hashlib.sha256(item.encode()).hexdigest()
+            return item
+        stock = item.get('stock') or item.get('candidate')
+        if isinstance(stock, dict) and stock.get('code'):
+            current = {**current, 'stock': stock}
+        is_source = bool(item.get('url') or item.get('source_url')) and any(
+            item.get(key) for key in ('title', 'content', 'snippet', 'summary', 'text', 'full_text'))
+        inherited = (current.get('source_identity_issues') or {}).get(str(item.get('source_id') or ''))
+        admission = company_source_admission(item, current) if is_source else None
+        audit_row = {'text_chars', 'text_sha256'} <= item.keys()
+        if (inherited and not audit_row) or (admission and admission['status'] == 'quarantined'):
+            return {'source_id': item.get('source_id') or item.get('id'),
+                'url': item.get('url') or item.get('source_url'),
+                '資料用途': '公司身分衝突，原文保留於來源檔；不可支持個股主張或評分。',
+                '身分問題': inherited or admission['issues'],
+                '原始紀錄SHA256': hashlib.sha256(__import__('json').dumps(item, ensure_ascii=False,
+                    sort_keys=True, default=str).encode()).hexdigest()}
+        result = {}
+        isolated_fields = []
+        for key, row in item.items():
+            if not is_source and key in {'summary', 'snippet', 'content', 'text', 'full_text', '文字'} and isinstance(row, str):
+                field_gate = company_source_admission({'content': row}, current)
+                if field_gate['status'] == 'quarantined':
+                    result[key] = '公司身分衝突；原文留存，不作個股事實。'
+                    isolated_fields.append({'field': key, 'issues': field_gate['issues'],
+                        'sha256': hashlib.sha256(row.encode()).hexdigest()})
+                    continue
+            result[key] = visit(row, current)
+        if isolated_fields:
+            result['公司身分隔離'] = isolated_fields
+        if admission and admission['status'] == 'context_only':
+            matcher, _ = _label_matcher(current)
+            if matcher.search(_source_text(item)):
+                result['證據用途'] = '其他公司背景，不能支持目標公司的主張。'
+        if admission and admission['status'] == 'identity_pending':
+            result['證據用途'] = '公司名稱尚待核對，不能視為公司身分已確認。'
+        return result
+    return visit(value, context)
+
+
+def official_source_record(source: Any, data: dict[str, Any], report_date: date) -> dict[str, Any]:
+    row = source_record(source)
+    from .source_date_normalizer import source_temporal_record
+    reference_label = row.get('source_type') == 'official_basis' or row.get('provider') in {'local_official_cache', 'official_reference'}
+    temporal_row = {**row, 'published_date': None, 'date_status': 'unknown'} if reference_label else row
+    temporal = source_temporal_record(temporal_row, report_date)
+    admission = company_source_admission(row, data)
+    status = official_evidence_status(row)
+    retrieved = status == 'retrieved_requires_claim_check'
+    body = str(row.get('content') or row.get('snippet') or '')
+    return {'source_id': row.get('source_id'), 'url': row.get('url') or row.get('source_url'),
+        'provider': row.get('provider'), 'fetch_provider': row.get('fetch_provider'),
+        'document_kind': row.get('document_kind'), 'fetch_status': row.get('fetch_status'),
+        'published_date': temporal['published_date'], 'publication_status': temporal['publication_status'],
+        'data_date': row.get('data_date'), 'period_start': row.get('period_start'),
+        'period_end': row.get('period_end'), 'fetched_at': row.get('fetched_at'),
+        'official_evidence_status': status, 'company_admission': admission,
+        'parsed_official_data_retrieved': retrieved and row.get('document_kind') == 'parsed_record',
+        'official_document_body_retrieved': retrieved and row.get('document_kind') == 'document_body',
+        'usable_by_report_date': row.get('date_status') == 'explicit' and temporal['publication_status'] == 'explicit'
+            and temporal['available_by_report_date'] is True and not temporal['data_after_report_date']
+            and not temporal['content_updated_after_report_date'],
+        'body_sha256': hashlib.sha256(body.encode()).hexdigest() if retrieved else None,
+        'body_chars': len(body) if retrieved else 0, 'claims_verified': False}
+
+
 def official_evidence_status(source: Any) -> str:
     row = source_record(source)
     try:
@@ -47,8 +197,12 @@ def official_evidence_status(source: Any) -> str:
     if not is_official_url(str(row.get('url') or row.get('source_url') or '')):
         return "non_official"
     status = (row.get("payload") or {}).get("status") if isinstance(row.get("payload"), dict) else None
+    if row.get('source_type') == 'official_basis' or row.get('provider') in {'local_official_cache', 'official_reference'}:
+        return 'reference_only'
     if row.get("document_kind") in {"reference_link", "unavailable"} or status in {"reference_link", "reachable", "unavailable"}:
         return "reference_only"
+    if row.get('fetch_status') in {'failed', 'error', 'unavailable'}:
+        return 'official_origin_unverified_content'
     if row.get("document_kind") in {"parsed_record", "document_body"} and (row.get("content") or row.get("snippet") or row.get("payload")):
         return "retrieved_requires_claim_check"
     return "official_origin_unverified_content"
@@ -61,12 +215,14 @@ def build_evidence_governance(command: str, report_date: date | None, sources: l
     names = {str(row.get('code')): row['name'] for row in _load_stock_universe(ROOT_DIR) if row.get('code') and row.get('name')}
     names.update((data or {}).get('authoritative_company_names') or {})
     checked_data = {**(data or {}), 'authoritative_company_names': names}
+    checked_data = company_identity_context(checked_data)
     records = []
     warnings = []
     for source in sources:
         record = source_temporal_record(source, target)
         record["official_evidence_status"] = official_evidence_status(source)
         record['company_mapping_issues'] = source_company_conflicts(source, checked_data)
+        record['source_provenance'] = official_source_record(source, checked_data, target)
         if record["publication_status"] != "explicit":
             record["usage"] = "發布時間未確認，不可證明當時已知"
         elif record["available_by_report_date"] is False or record["data_after_report_date"] or record['content_updated_after_report_date']:
@@ -117,16 +273,43 @@ def source_company_conflicts(source: Any, data: dict[str, Any]) -> list[dict[str
     for code, company in master.items():
         if isinstance(company, dict):
             names.setdefault(str(code), company.get('name') or company.get('stock_name'))
-    text = str(row.get('title') or '') + '\n' + str(row.get('content') or row.get('snippet') or '')
+    text = _source_text(row)
     issues = []
-    for match in re.finditer(r'([\u4e00-\u9fffA-Za-z]{2,12}(?:-[A-Za-z]{2,4})?)\s*[（(]\s*(\d{4,6})\s*[)）]', text):
+    for match in re.finditer(r'([\u4e00-\u9fffA-Za-z]{2,128}(?:-[A-Za-z]{2,4})?)\s*[（(]\s*(\d{4,6})\s*[)）]', text):
         name, code = match.groups()
         expected = names.get(code)
+        if any(name.endswith(alias) for alias in (data.get('company_aliases') or {}).get(code, [])):
+            continue
         if expected and not (name.endswith(str(expected)) or name.startswith(str(expected) + '股份')):
             abbreviation = str(expected).startswith(name) or name.startswith(str(expected))
             issues.append({'code': code, 'stated_name': name, 'expected_name': str(expected),
                 'kind': 'possible_abbreviation' if abbreviation else 'name_mismatch',
                 'usage': '名稱可能為簡稱，列待核而非已確認錯代號' if abbreviation else '公司代號與名稱衝突；原句僅作待核線索'})
+    from .entity_resolver import exact_company_identity
+    matcher, labels = _label_matcher({**data, 'authoritative_company_names': names})
+    for match in re.finditer(r'(?<!\d)(\d{4,6})(?!\d)[ \t：:]*([\u4e00-\u9fffA-Za-z]{2,128}(?:-[A-Za-z]{2,4})?)', text):
+        code, stated = match.groups()
+        if code not in names:
+            continue
+        if 1900 <= int(code) <= 2099 and code != str((data.get('stock') or {}).get('code') or '') and not re.search(r'股票|證券|代號|股號', text[max(0,match.start()-8):match.start()]):
+            continue  # An outlook year without a stock-code context is not an issuer.
+        label = matcher.match(stated)
+        if not label:
+            continue
+        known = label.group()
+        if labels[known] == {code}:
+            continue
+        if (('股份' in stated[len(known):] or '有限公司' in stated[len(known):])
+                and str(names[code]).startswith(known)):
+            issues.append({'code':code, 'stated_name':stated, 'expected_name':names[code],
+                'kind':'possible_abbreviation', 'usage':'同前綴法定名稱缺官方別名證據，保留待核而非視為身分已確認。'})
+            continue
+        identity = exact_company_identity(known, code, names, data.get('company_aliases'))
+        if identity['status'] == 'conflict':
+            issue = {'code': code, 'stated_name': known, 'expected_name': names[code],
+                     'kind': 'name_mismatch', 'usage': '公司代號與名稱衝突；原句僅作待核線索'}
+            if issue not in issues:
+                issues.append(issue)
     stock = data.get('stock') or {}
     target = str(stock.get('code') or '')
     for issuer in document_issuer_codes(row):
@@ -171,12 +354,11 @@ def document_issuer_codes(source: Any) -> set[str]:
 
 def source_matches_company(source: Any, code: str, name: str = '') -> bool:
     row = source_record(source)
-    text = str(row.get('title') or '') + '\n' + str(row.get('content') or row.get('snippet') or '')
+    text = _source_text(row)
     issues = source_company_conflicts(row, {'stock': {'code': code},
         'authoritative_company_names': {code: name} if name else {}})
     return bool(code and (re.search(r'(?<!\d)' + re.escape(code) + r'(?!\d)', text)
-                          or code in document_issuer_codes(row))) and not any(
-        issue.get('kind') != 'possible_abbreviation' for issue in issues)
+                          or code in document_issuer_codes(row))) and not issues
 
 
 def parsed_official_sources(data: dict[str, Any], start: int = 1) -> list[Any]:

@@ -1,0 +1,28 @@
+{
+  "exit_status": 0,
+  "collected": 422,
+  "failed": 0,
+  "elapsed_seconds": 9.987,
+  "counts": {
+    "": 844,
+    "passed": 422,
+    "subtests passed": 76
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 637,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_company_evidence_gate_1127.py",
+    "tests/test_evidence_governance.py",
+    "tests/test_radar_offline_fixes.py",
+    "tests/test_evidence_pack_service.py",
+    "tests/test_ai_workflow_service.py",
+    "tests/test_governance_live_regressions.py",
+    "tests/test_evidence_news_integrity_1113.py",
+    "tests/test_topic_input_package.py",
+    "tests/test_radar_service.py",
+    "tests/test_news_service.py",
+    "tests/test_ai_data_center.py"
+  ]
+}

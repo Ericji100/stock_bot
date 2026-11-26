@@ -91,7 +91,7 @@ def build_ai_prompt_context(
         max_string=_string_limit_for_command(request),
         depth=5,
     )
-    return {
+    context = {
         "schema_version": "ai_prompt_context_v1",
         "說明": "這是 AI 實際入模資料；完整資料仍保存在本地報告與 JSON。",
         "分析指令": request.command,
@@ -104,6 +104,8 @@ def build_ai_prompt_context(
         "證據與日期檢核索引": "evidence_governance",
         "共用證據包摘要": _compact_evidence_pack(structured_data.get("unified_evidence_pack")),
     }
+    from .evidence_governance import company_safe_prompt_data
+    return company_safe_prompt_data(context, structured_data)
 
 
 def _structured_prompt_summary(request: CommandRequest, data: dict[str, Any]) -> dict[str, Any]:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +22,37 @@ ScheduledTaskSink = Callable[[str], None]
 ScheduledTaskAuditSink = Callable[[Any, str, dict[str, Any]], None]
 TAIPEI_TZ = timezone(timedelta(hours=8))
 SCHEDULED_AUDIT_DIR = Path("logs") / "scheduled_tasks"
+DRAIN_OBSERVER = ContextVar('scheduled_thread_drain_observer', default=None)
+
+
+@contextmanager
+def thread_drain_scope(observer):
+    token = DRAIN_OBSERVER.set(observer)
+    try:
+        yield
+    finally:
+        DRAIN_OBSERVER.reset(token)
+
+
+@asynccontextmanager
+async def resource_lease(guard, group, wait_seconds=None):
+    """Bound waiting, never release a lease before the actual worker exits."""
+    lease = guard.acquire(group)
+    if wait_seconds is None:
+        await lease.__aenter__()
+    else:
+        try:
+            await asyncio.wait_for(lease.__aenter__(), timeout=wait_seconds)
+        except asyncio.TimeoutError as exc:
+            raise ResourceWaitExpired(group) from exc
+    try:
+        yield
+    finally:
+        await lease.__aexit__(None, None, None)
+
+
+class ResourceWaitExpired(TimeoutError):
+    pass
 
 
 async def run_cooperative_thread(function, *args, stop_event=None, **kwargs):
@@ -34,6 +67,9 @@ async def run_cooperative_thread(function, *args, stop_event=None, **kwargs):
             stop_event.set()
         if control is not None:
             control.stop()
+        observer = DRAIN_OBSERVER.get()
+        if observer:
+            observer('stopping')
         while not worker.done():
             try:
                 await asyncio.shield(worker)
@@ -44,6 +80,8 @@ async def run_cooperative_thread(function, *args, stop_event=None, **kwargs):
                 break
         if not worker.cancelled():
             worker.exception()  # Retrieve the stopped worker's diagnostic exception.
+        if observer:
+            observer('worker_stopped')
         raise
 
 
@@ -58,6 +96,7 @@ class ScheduledTaskSpec:
     allow_overlap: bool = False
     category: str = "定時任務"
     resource_group: str | None = None
+    resource_wait_seconds: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"schema_version": SCHEDULED_TASK_SCHEMA_VERSION, **asdict(self)}
@@ -153,6 +192,8 @@ class ScheduledTaskService:
         self._queue: asyncio.Queue[tuple[ScheduledTaskSpec, ScheduledTaskRunner]] | None = None
         self._worker: asyncio.Task | None = None
         self._queued_task_ids: set[str] = set()
+        self._queued_at: dict[str, float] = {}
+        self._running_label: str | None = None
 
     @property
     def queue(self) -> asyncio.Queue[tuple[ScheduledTaskSpec, ScheduledTaskRunner]] | None:
@@ -178,8 +219,10 @@ class ScheduledTaskService:
 
         ahead = self._queue.qsize()
         self._queued_task_ids.add(spec.task_id)
+        self._queued_at[spec.task_id] = time.monotonic()
         await self._queue.put((spec, runner))
-        self._audit(spec, "queued", queue_size=self._queue.qsize(), queued_ahead=ahead)
+        self._audit(spec, "queued", queue_size=self._queue.qsize(), queued_ahead=ahead,
+                    waiting_for=self._running_label)
         if ahead:
             self._log(f"{spec.label} 已排隊，目前前方 {ahead} 個任務", spec.category)
         else:
@@ -269,9 +312,14 @@ class ScheduledTaskService:
             self._log(f"{spec.label} 已在執行中，本次略過", spec.category)
             return
         started_at = time.monotonic()
+        waited = started_at - self._queued_at.pop(spec.task_id, started_at)
+        previous_label = self._running_label
+        self._running_label = spec.label
         try:
             self.runtime.update_progress(spec.task_id, "started")
-            self._audit(spec, "started")
+            self._audit(spec, "started", queue_wait_seconds=round(waited, 3))
+            if waited >= 600:
+                self._log(f'{spec.label} 已等待 {waited / 60:.1f} 分鐘，現在開始；未額外並行或補跑。', spec.category)
             self._log(f"{spec.label} 開始", spec.category)
             outcome = await self._run_with_timeout(spec, runner)
             self._record_outcome(spec, outcome, started_at)
@@ -298,10 +346,19 @@ class ScheduledTaskService:
                 error_summary=str(exc)[:300],
             )
             self._log(f"{spec.label} 失敗：{exc}", spec.category)
+        finally:
+            self._running_label = previous_label
 
     def _record_outcome(self, spec, outcome, started_at):
         status = outcome.get("status") if isinstance(outcome, dict) else None
-        if status in {"skipped_budget", "partial_success", "failed", "fallback_success"}:
+        if status in {'deferred', 'stopped', 'skipped'}:
+            self.runtime.finish_task(spec.task_id, metadata={'outcome': status})
+            if status == 'stopped':
+                self.runtime.finish_stopped_task(spec.task_id)
+            self._audit(spec, status, elapsed_seconds=round(time.monotonic()-started_at, 3),
+                        error_summary=outcome.get('reason'))
+            self._log(f"{spec.label} 已結束本輪：{outcome.get('reason') or status}", spec.category)
+        elif status in {"skipped_budget", "partial_success", "failed", "fallback_success"}:
             reason = str(outcome.get("reason") or status)
             self.runtime.fail_task(spec.task_id, reason, source=spec.task_type, operation=spec.task_id)
             self._audit(spec, status, elapsed_seconds=round(time.monotonic()-started_at, 3), error_summary=reason)
@@ -323,15 +380,19 @@ class ScheduledTaskService:
         if spec.resource_group == 'background_backfill':
             waiting_at = time.monotonic()
             self._audit(spec, 'waiting_resource')
-            async with self.resource_guard.acquire(spec.resource_group):
-                self._audit(spec, 'resource_acquired', resource_wait_seconds=round(time.monotonic()-waiting_at, 3))
-                with execution_scope(spec.timeout_seconds or None) as control:
-                    try:
-                        return (await asyncio.wait_for(runner(), timeout=float(spec.timeout_seconds))
-                                if spec.timeout_seconds else await runner())
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        control.stop()
-                        raise
+            try:
+                async with resource_lease(self.resource_guard, spec.resource_group, spec.resource_wait_seconds):
+                    self._audit(spec, 'resource_acquired', resource_wait_seconds=round(time.monotonic()-waiting_at, 3))
+                    with execution_scope(spec.timeout_seconds or None) as control, thread_drain_scope(
+                            lambda status: self._audit(spec, status)):
+                        try:
+                            return (await asyncio.wait_for(runner(), timeout=float(spec.timeout_seconds))
+                                    if spec.timeout_seconds else await runner())
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            control.stop()
+                            raise
+            except ResourceWaitExpired:
+                return {'status': 'deferred', 'reason': '回補資源仍忙碌，本輪延後；快取與缺口保留，未開始新回補。'}
         with execution_scope(spec.timeout_seconds or None) as control:
             try:
                 if spec.timeout_seconds and spec.timeout_seconds > 0:

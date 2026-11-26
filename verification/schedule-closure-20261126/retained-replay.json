@@ -1,0 +1,25 @@
+{
+  "archive": "retained-replay-private.zip",
+  "sha256": "ce44e0b235d50f2b9211a2d0a97058393baa2097bd3af59c5471d1d372f0f15e",
+  "bytes": 515659,
+  "entries": [
+    {
+      "name": "openai-credits.sqlite3",
+      "bytes": 3899392,
+      "sha256": "358e44aaffcee6678763a3413e8645b3763efd5020f9726b1c367cd1e03d8977"
+    },
+    {
+      "name": "radar/runs.sqlite3",
+      "bytes": 503808,
+      "sha256": "31bd3b9ecdb321e78ba8c2e3049281e4f4189131f2b7815f5d33ff71e085fd65"
+    },
+    {
+      "name": "news/outcomes.sqlite3",
+      "bytes": 28672,
+      "sha256": "c9708294125dcc9b8c757739749c365b715c60c67695b8614f99480f50bed022"
+    }
+  ],
+  "contains_private_financial_evidence": true,
+  "all_extracted_sha256_verified": true,
+  "production_modified": false
+}

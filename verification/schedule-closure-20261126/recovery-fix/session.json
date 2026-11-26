@@ -1,0 +1,30 @@
+{
+  "exit_status": 0,
+  "collected": 307,
+  "failed": 0,
+  "elapsed_seconds": 21.059,
+  "counts": {
+    "": 614,
+    "passed": 307,
+    "subtests passed": 22
+  },
+  "source_unchanged": true,
+  "changed_files": [],
+  "source_file_count": 635,
+  "http_policy": "mock/ASGI only; external HTTP denied",
+  "test_paths": [
+    "tests/test_news_outcome_notices_1126.py",
+    "tests/test_schedule_closure_1126.py",
+    "tests/test_deepseek_service.py",
+    "tests/test_scheduled_radar_push.py",
+    "tests/test_scheduled_task_service.py",
+    "tests/test_scheduled_task_queue.py",
+    "tests/test_bot_runtime_health.py",
+    "tests/test_schedule_followup_1111.py",
+    "tests/test_news_schedule_balance.py",
+    "tests/test_backfill_deadline_control.py",
+    "tests/test_ai_schedule_stability.py",
+    "tests/test_news_search_dispatch.py",
+    "tests/test_openai_shared_accounts.py"
+  ]
+}

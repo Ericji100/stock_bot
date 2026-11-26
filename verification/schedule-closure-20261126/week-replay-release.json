@@ -1,0 +1,113 @@
+{
+  "paid_requests": 0,
+  "production_writes": 0,
+  "source_proofs": [
+    {
+      "path": "D:\\code\\stock_ai_bot\\logs\\scheduled_tasks\\2026-11-23.jsonl",
+      "sha256": "2f97d7902eaccff443ef43283036243fc9d700c282c75c43d1e514e5653432d4"
+    },
+    {
+      "path": "D:\\code\\stock_ai_bot\\logs\\scheduled_tasks\\2026-11-24.jsonl",
+      "sha256": "cad0b095f73c58e968eafbcb5e480102e9cace3be8db76f1137b976b64491935"
+    },
+    {
+      "path": "D:\\code\\stock_ai_bot\\logs\\scheduled_tasks\\2026-11-25.jsonl",
+      "sha256": "7a8f392945aa0c27ee94be0dfbafe6a46686b46e8e33c5d101cf38ab9e2a9e44"
+    },
+    {
+      "path": "D:\\code\\stock_ai_bot\\logs\\scheduled_tasks\\2026-11-26.jsonl",
+      "sha256": "eb77233064cef53a0a73a1f233dc7b2fa09390ef3497c1eb1cb25c02d90cd230"
+    },
+    {
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\ai_budget\\openai\\requests\\bc5f16edab1847fdb315858ba09c63cf-request.json",
+      "sha256": "31629968e4ead786315beacf4fe66ebb57820b088be68fd988b9124325114410"
+    }
+  ],
+  "radar": {
+    "original_started_at": "2026-11-25T21:52:26+08:00",
+    "request_id": "bc5f16edab1847fdb315858ba09c63cf",
+    "original_status": "pending",
+    "unknown_reservation_usd": "1.4694",
+    "original_input_preserved": true,
+    "checkpoint_body_sha256": "eeb1e0a7fb90452ae60c343d27d4c9a694a1a6ac323ef4d34c15053a00199de3",
+    "recovery_notice_count": 1,
+    "automatic_model_retry": false,
+    "same_run_unknown_resend_still_blocked": true,
+    "historical_owner_not_invented": true,
+    "production_row_unchanged": true
+  },
+  "news": [
+    {
+      "day": "2026-11-23",
+      "classified": 19,
+      "recent_pending": 0,
+      "historical_or_unknown_date": 999,
+      "notice_state": "sent",
+      "duplicate": "duplicate",
+      "text": "新聞背景整理狀態提醒｜2026-11-23\n本次AI判讀 19 則，近期待分類 0 則。\n歷史待分類 999 則（含日期不明，另列，不併入近期待辦）。\n原因：新聞類別覆蓋不足：AI / 半導體、供應鏈與產業；搜尋未完整：搜尋覆蓋尚未完整\n原始來源與已完成結果已保存；未分類、日期不明與歷史資料不視為已完成判讀。"
+    },
+    {
+      "day": "2026-11-25",
+      "classified": 30,
+      "recent_pending": 2,
+      "historical_or_unknown_date": 1050,
+      "notice_state": "sent",
+      "duplicate": "duplicate",
+      "text": "新聞背景整理狀態提醒｜2026-11-25\n本次AI判讀 30 則，近期待分類 2 則。\n歷史待分類 1050 則（含日期不明，另列，不併入近期待辦）。\n原因：搜尋未完整：搜尋覆蓋尚未完整；近期待辦持續累積\n原始來源與已完成結果已保存；未分類、日期不明與歷史資料不視為已完成判讀。"
+    },
+    {
+      "day": "2026-11-26",
+      "classified": 30,
+      "recent_pending": 2,
+      "historical_or_unknown_date": 1049,
+      "notice_state": "sent",
+      "duplicate": "duplicate",
+      "text": "新聞背景整理狀態提醒｜2026-11-26\n本次AI判讀 30 則，近期待分類 2 則。\n歷史待分類 1049 則（含日期不明，另列，不併入近期待辦）。\n原因：搜尋未完整：搜尋覆蓋尚未完整；近期待辦連續兩天未減少；近期待辦持續累積\n原始來源與已完成結果已保存；未分類、日期不明與歷史資料不視為已完成判讀。"
+    }
+  ],
+  "backfill": {
+    "observed_wait_count_over_300s": 3,
+    "max_observed_wait_seconds": 5556.869,
+    "replayed_status": "deferred",
+    "new_work_started": 0
+  },
+  "financial_copy": {
+    "grants": {
+      "rows": 2,
+      "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+    },
+    "requests": {
+      "rows": 1737,
+      "sha256": "60f5a3f0174cd35fcdc414dba9fa3ce6c6131fb01445c045437985a0c908472e"
+    },
+    "account_blocks": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "route_events": {
+      "rows": 2188,
+      "sha256": "cdab76cd485e30398ba8b54b6e235dbeebf552092150a26382ea6ee50d7fa7dd"
+    },
+    "notices": {
+      "rows": 12,
+      "sha256": "bdf95159029740cadddaac0a0b1e415e47683358633bfa777bea58f28dcca3ea"
+    },
+    "live_rounds": {
+      "rows": 8,
+      "sha256": "09a11fbe573632bffdc2fada28409e10b85c333075627fe83fa04ad0f155b7a5"
+    },
+    "fee_reconciliations": {
+      "rows": 39,
+      "sha256": "978342f1199dc39e54bc0947f900d539f548206c268cdf8d4679b11893c8e9e4"
+    },
+    "notice_attribution": {
+      "rows": 12,
+      "sha256": "33895272d6e4c6169f263e33c47198e97df7d46b6d9218817405f09851448424"
+    },
+    "account_references": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "financial_copy_all_original_rows_unchanged": true
+}

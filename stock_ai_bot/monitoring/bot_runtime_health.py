@@ -126,21 +126,32 @@ def record_scheduled_status_heartbeat_event(
     }
     if event.get("queue_size") is not None:
         update["queue_size"] = event.get("queue_size")
+    previous = read_bot_heartbeat(path)
+    current_task = (previous.get('schedule_health') or {}).get('current_task')
+    owns_current = isinstance(current_task, dict) and current_task.get('task_id') == event.get('task_id')
     if status == "queued":
         update["last_queued"] = task_event
     elif status == "started":
-        update["current_task"] = task_event
+        if event.get('queued', True) or not current_task:
+            update["current_task"] = task_event
         update["last_started"] = task_event
     elif status == "completed":
-        update["current_task"] = None
+        if owns_current:
+            update["current_task"] = None
         update["last_completed"] = task_event
     elif status in {"failed", "timeout"}:
-        update["current_task"] = None
+        if owns_current:
+            update["current_task"] = None
         update["last_failed"] = task_event
+    elif status in {'partial_success', 'fallback_success', 'skipped_budget', 'deferred', 'stopped', 'cancelled', 'skipped'}:
+        if owns_current:
+            update['current_task'] = None
+        update['last_incomplete' if status not in {'skipped'} else 'last_skipped'] = task_event
+    elif status == 'stopping' and owns_current:
+        update['current_task'] = {**current_task, 'status': 'stopping'}
     elif status == "skipped_duplicate":
         update["last_skipped_duplicate"] = task_event
 
-    previous = read_bot_heartbeat(path)
     return write_bot_heartbeat(
         job_queue_available=bool(previous.get("job_queue_available")),
         schedule_health_update=update,

@@ -51,6 +51,7 @@ from research_center.scheduled_task_service import (
     write_scheduled_task_audit_event,
 )
 from research_center.resource_guard_service import DEFAULT_RESOURCE_GUARD
+from research_center.scheduled_run_store import tracked_scheduled_run, checkpoint as schedule_checkpoint
 from research_center.news_service import run_news_refresh, run_news_latest, run_news_7d, run_news_scheduled_latest, build_scheduled_news_diagnostics, run_scheduled_news_lightweight_refresh
 from research_center.deepseek_service import task_context, DeepSeekAccount, DeepSeekUnavailable, configured_client
 from research_center.news_repository import NewsRepository
@@ -1071,14 +1072,14 @@ async def _manual_backfill_background(
             _USER_BACKFILL_STOP_EVENTS.pop(chat_id, None)
 
 
-async def _scheduled_backfill_background() -> None:
-    global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
+async def _scheduled_backfill_background(stop_event=None) -> None:
+    stop_event = _SCHEDULED_BACKFILL_STOP_EVENT if stop_event is None else stop_event
     runtime_task_id = "backfill:scheduled"
     GLOBAL_COMMAND_RUNTIME.start_task(
         runtime_task_id,
         label="scheduled_backfill",
         task_type="scheduled_backfill",
-        stop_event=_SCHEDULED_BACKFILL_STOP_EVENT,
+        stop_event=stop_event,
     )
     heartbeat = ProgressHeartbeat(
         "定時回補檢查",
@@ -1099,13 +1100,16 @@ async def _scheduled_backfill_background() -> None:
             None,
             False,
             progress,
-            _SCHEDULED_BACKFILL_STOP_EVENT,
-            stop_event=_SCHEDULED_BACKFILL_STOP_EVENT,
+            stop_event,
+            stop_event=stop_event,
         )
+        if decision.status == 'skipped' and getattr(decision, 'reason', '') == 'stopped_before_start':
+            GLOBAL_COMMAND_RUNTIME.finish_stopped_task(runtime_task_id)
+            return {'status': 'partial_success', 'reason': '回補開始前已停止，未寫入成功標記。'}
         if decision.status == "completed":
             GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status})
         elif decision.status == "stopped":
-            GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+            GLOBAL_COMMAND_RUNTIME.finish_stopped_task(runtime_task_id)
         elif decision.status == "skipped":
             GLOBAL_COMMAND_RUNTIME.finish_task(runtime_task_id, metadata={"decision": decision.status, "reason": decision.reason})
         else:
@@ -1160,9 +1164,9 @@ async def _scheduled_backfill_background() -> None:
     finally:
         heartbeat.stop()
         task_state = GLOBAL_COMMAND_RUNTIME.get_task(runtime_task_id)
-        if task_state and task_state.get("status") == "running":
-            if _SCHEDULED_BACKFILL_STOP_EVENT.is_set():
-                GLOBAL_COMMAND_RUNTIME.request_stop(runtime_task_id)
+        if task_state and task_state.get("status") in {"running", "stopping", "timeout"}:
+            if stop_event.is_set():
+                GLOBAL_COMMAND_RUNTIME.finish_stopped_task(runtime_task_id)
             else:
                 GLOBAL_COMMAND_RUNTIME.fail_task(
                     runtime_task_id,
@@ -1170,8 +1174,6 @@ async def _scheduled_backfill_background() -> None:
                     source="backfill",
                     operation="scheduled_backfill",
                 )
-        _SCHEDULED_BACKFILL_RUNNING = False
-        _SCHEDULED_BACKFILL_TASK = None
 
 
 async def manual_full_backfill(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1892,7 +1894,9 @@ async def _scheduled_daily_scan(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
-    await enqueue_scheduled_task(context, "21:30 Radar 推播（AI 短評）", lambda: _scheduled_radar_push(context))
+    report_date = get_tw_today()
+    await enqueue_scheduled_task(context, "21:30 Radar 推播（AI 短評）",
+                                 lambda: _scheduled_radar_push(context, report_date=report_date))
 
 
 async def scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
@@ -2061,18 +2065,19 @@ async def _scheduled_all_scan_push(context: ContextTypes.DEFAULT_TYPE):
 
 
 @task_context("radar", background=True)
-async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
+@tracked_scheduled_run('radar')
+async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE, *, report_date=None):
     config = load_config()
-    target_date = get_tw_today()
+    target_date = report_date or get_tw_today()
     try:
         from stock_ai_bot.strategies.chip_strategies import is_possible_trading_day
 
         if not is_possible_trading_day(target_date):
             print(f"[{now_timestamp()}] Radar 21:30 略過非交易日 {target_date.isoformat()}", flush=True)
-            return
+            return {'status': 'skipped', 'reason': '非交易日，未啟動分析或推播。'}
     except Exception as exc:
         print(f"[{now_timestamp()}] Radar 交易日判斷失敗，保守略過：{exc}", flush=True)
-        return
+        return {'status': 'partial_success', 'reason': '交易日尚未確認，未啟動分析或推播。'}
 
     heartbeat = ProgressHeartbeat(
         "Radar 21:30",
@@ -2087,7 +2092,8 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
     try:
         ai_client = configured_client()
         blocked = await _scheduled_ai_gate(context, ai_client, config["chat_id"])
-        result = await asyncio.to_thread(
+        from research_center.scheduled_task_service import run_cooperative_thread
+        result = await run_cooperative_thread(
             run_radar,
             RadarRequest(
                 source="technical",
@@ -2105,13 +2111,18 @@ async def _scheduled_radar_push(context: ContextTypes.DEFAULT_TYPE):
         incomplete = blocked or not selected or any(c.ai_comment.get("status") != "ok" for c in selected)
         if incomplete:
             report_text = "本次僅提供本地雷達結果，未完成 AI 複核；不可視為正式 AI 推薦。\n\n" + report_text
+        schedule_checkpoint('report_ready', {'report_date': target_date.isoformat(),
+                            'ai_complete': not incomplete, 'text': report_text,
+                            'ai_enriched_codes': result.ai_enriched_codes})
         await _flush_ai_notices(context, ai_client.account, config["chat_id"])
         chunks = prepare_telegram_chunks(report_text)
         print(
             f"[{now_timestamp()}] Radar 21:30 推播文字長度={len(report_text)} chars，拆分段數={len(chunks)}",
             flush=True,
         )
+        schedule_checkpoint('delivery_started', {'chunks_total': len(chunks), 'delivery': 'unconfirmed'})
         await safe_send_bot_message(context.bot, config["chat_id"], report_text)
+        schedule_checkpoint('delivery_sent', {'chunks_total': len(chunks), 'delivery': 'sent'})
         print(f"[{now_timestamp()}] Radar 21:30 推播完成：{len(chunks)}/{len(chunks)} 段", flush=True)
         if incomplete:
             return {"status": "partial_success", "reason": "本地結果已提供，AI 複核未完整完成"}
@@ -2159,11 +2170,21 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         search_stopped = search_diag.get('stop_reason')
         category_missing = (meta.get('classification_category_coverage') or {}).get('missing_categories') or []
         from research_center.news_categories import news_category_label
+        from research_center.news_service import _has_explicit_news_datetime
+        publication_date_gaps = sum(not _has_explicit_news_datetime(item) for item in items) if items else None
         failed = bool(meta.get('local_fallback_count') or (search_stopped and not is_graceful_search_stop(search_stopped))
                       or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
         await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
-            'status': 'partial_success' if category_missing else meta.get('classification_status'), 'classified': meta.get('ai_classified_count', 0),
-            'pending': pending.get('eligible_recent', meta.get('deferred_classification_count', 0)),
+            'status': 'partial_success' if category_missing else meta.get('classification_status'), 'classified': meta.get('ai_classified_count'),
+            'pending': pending.get('eligible_recent', meta.get('deferred_classification_count')),
+            'historical_pending': pending.get('historical_or_date_unknown'),
+            'missing_categories': (meta.get('classification_category_coverage') or {}).get('missing_categories'),
+            'classification_status': meta.get('classification_status'),
+            'selected_classification_complete': meta.get('selected_classification_complete'),
+            'search_complete': meta.get('search_complete'),
+            'remaining_search_gaps_status': meta.get('remaining_search_gaps_status'),
+            'search_stop_reason': search_stopped,
+            'publication_date_gaps': publication_date_gaps,
             'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else
                 '新聞類別覆蓋不足：' + '、'.join(news_category_label(key) for key in category_missing)
                 if category_missing else '近期待辦持續累積')},
@@ -2323,6 +2344,7 @@ async def scheduled_chip_cache_backfill(context: ContextTypes.DEFAULT_TYPE):
         timeout_seconds=_scheduled_timeout_seconds(task_id),
         category="scheduled_background",
         resource_group="background_backfill",
+        resource_wait_seconds=300,
     )
     write_scheduled_task_audit_event(spec, "triggered")
     status, task = await _SCHEDULED_TASK_SERVICE.start_background(
@@ -2345,20 +2367,24 @@ async def _scheduled_chip_cache_backfill(job_data: dict | None = None):
     try:
         from research_center.scheduled_task_service import run_cooperative_thread
         from stock_ai_bot.backfill.deadline_control import backfill_scope
+        stop_event = threading.Event()
 
         def warmup():
-            with backfill_scope():
-                return warmup_chip_data_cache(report_date, full_backfill, False, label)
+            with backfill_scope(stop_event=stop_event):
+                return warmup_chip_data_cache(report_date, full_backfill, False, label, stop_event=stop_event)
 
         await run_cooperative_thread(
-            warmup,
+            warmup, stop_event=stop_event,
         )
     except Exception as exc:
         print(f"[{now_timestamp()}] ⚠️ 籌碼快取回補失敗：{exc}", flush=True)
         return {'status': 'partial_success', 'reason': '籌碼回補未完整完成，成功快取保留，缺口待補'}
 
 
-async def _scheduled_backfill_guarded_background() -> None:
+async def _scheduled_backfill_guarded_background(stop_event=None) -> None:
+    global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
+    from research_center.scheduled_task_service import resource_lease, ResourceWaitExpired, thread_drain_scope
+    stop_event = _SCHEDULED_BACKFILL_STOP_EVENT if stop_event is None else stop_event
     task_id = "scheduled:full_backfill_check"
     spec = ScheduledTaskSpec(
         task_id=task_id,
@@ -2368,50 +2394,66 @@ async def _scheduled_backfill_guarded_background() -> None:
         queued=False,
         timeout_seconds=_scheduled_timeout_seconds(task_id),
         resource_group="background_backfill",
+        resource_wait_seconds=300,
     )
     started_at = asyncio.get_running_loop().time()
     write_scheduled_task_audit_event(spec, "waiting_resource")
-    async with DEFAULT_RESOURCE_GUARD.acquire("background_backfill"):
-        waited = round(asyncio.get_running_loop().time() - started_at, 3)
-        started_at = asyncio.get_running_loop().time()
-        write_scheduled_task_audit_event(spec, "started", {"resource_wait_seconds": waited})
-        try:
+
+    def drain_status(status):
+        write_scheduled_task_audit_event(spec, status)
+        GLOBAL_COMMAND_RUNTIME.update_progress('backfill:scheduled',
+            '停止收尾中；實際工作尚未退出' if status == 'stopping' else '實際背景工作已退出')
+
+    try:
+        async with resource_lease(DEFAULT_RESOURCE_GUARD, 'background_backfill', spec.resource_wait_seconds):
+            waited = round(asyncio.get_running_loop().time() - started_at, 3)
+            started_at = asyncio.get_running_loop().time()
+            write_scheduled_task_audit_event(spec, "started", {"resource_wait_seconds": waited})
+            if stop_event.is_set():
+                write_scheduled_task_audit_event(spec, 'stopped', {'error_summary': '等待期間已要求停止，未啟動回補。'})
+                return
             from research_center.ai_execution_control import execution_scope
-            with execution_scope(spec.timeout_seconds, reason='backfill_deadline') as control:
+            with execution_scope(spec.timeout_seconds, reason='backfill_deadline') as control, thread_drain_scope(drain_status):
                 try:
                     if spec.timeout_seconds:
-                        outcome = await asyncio.wait_for(_scheduled_backfill_background(), timeout=spec.timeout_seconds)
+                        outcome = await asyncio.wait_for(_scheduled_backfill_background(stop_event), timeout=spec.timeout_seconds)
                     else:
-                        outcome = await _scheduled_backfill_background()
+                        outcome = await _scheduled_backfill_background(stop_event)
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     control.stop()
-                    _SCHEDULED_BACKFILL_STOP_EVENT.set()
+                    stop_event.set()
                     raise
             elapsed = round(asyncio.get_running_loop().time() - started_at, 3)
             status = outcome.get('status', 'completed') if isinstance(outcome, dict) else 'completed'
             write_scheduled_task_audit_event(spec, status, {"elapsed_seconds": elapsed,
                 **({'error_summary': outcome['reason']} if isinstance(outcome, dict) and outcome.get('reason') else {})})
-        except asyncio.TimeoutError:
-            elapsed = round(asyncio.get_running_loop().time() - started_at, 3)
-            write_scheduled_task_audit_event(
-                spec,
-                "timeout",
-                {"elapsed_seconds": elapsed, "error_summary": f"exceeded {spec.timeout_seconds} seconds"},
-            )
-            raise
-        except Exception as exc:
-            elapsed = round(asyncio.get_running_loop().time() - started_at, 3)
-            write_scheduled_task_audit_event(
-                spec,
-                "failed",
-                {"elapsed_seconds": elapsed, "error_type": type(exc).__name__, "error_summary": str(exc)[:300]},
-            )
-            raise
+    except ResourceWaitExpired:
+        write_scheduled_task_audit_event(spec, 'deferred', {
+            'resource_wait_seconds': round(asyncio.get_running_loop().time()-started_at, 3),
+            'error_summary': '回補資源仍忙碌，本輪延後；快取與缺口保留，未開始新回補。'})
+    except asyncio.TimeoutError:
+        write_scheduled_task_audit_event(spec, 'timeout', {
+            'elapsed_seconds': round(asyncio.get_running_loop().time()-started_at, 3),
+            'error_summary': f'exceeded {spec.timeout_seconds} seconds'})
+        raise
+    except asyncio.CancelledError:
+        stop_event.set()
+        write_scheduled_task_audit_event(spec, 'cancelled')
+        raise
+    except Exception as exc:
+        write_scheduled_task_audit_event(spec, 'failed', {
+            'elapsed_seconds': round(asyncio.get_running_loop().time()-started_at, 3),
+            'error_type': type(exc).__name__, 'error_summary': str(exc)[:300]})
+        raise
+    finally:
+        if _SCHEDULED_BACKFILL_TASK is asyncio.current_task():
+            _SCHEDULED_BACKFILL_RUNNING = False
+            _SCHEDULED_BACKFILL_TASK = None
 
 
 async def scheduled_full_backfill_check(context: ContextTypes.DEFAULT_TYPE):
     """Check and run scheduled backfill using policy driver every 2 hours."""
-    global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK
+    global _SCHEDULED_BACKFILL_RUNNING, _SCHEDULED_BACKFILL_TASK, _SCHEDULED_BACKFILL_STOP_EVENT
     _record_scheduled_event(context, "完整資料回補檢查")
     backfill_spec = ScheduledTaskSpec(
         task_id="scheduled:full_backfill_check",
@@ -2428,9 +2470,10 @@ async def scheduled_full_backfill_check(context: ContextTypes.DEFAULT_TYPE):
         print(format_cmd_message("上一個背景回補仍在執行，本次略過", "定時回補檢查"), flush=True)
         return
 
-    _SCHEDULED_BACKFILL_STOP_EVENT.clear()
+    _SCHEDULED_BACKFILL_STOP_EVENT = threading.Event()
     _SCHEDULED_BACKFILL_RUNNING = True
-    _SCHEDULED_BACKFILL_TASK = context.application.create_task(_scheduled_backfill_guarded_background())
+    _SCHEDULED_BACKFILL_TASK = context.application.create_task(
+        _scheduled_backfill_guarded_background(_SCHEDULED_BACKFILL_STOP_EVENT))
     _SCHEDULED_BACKFILL_TASK.set_name("定時完整資料回補")
     print(format_cmd_message("已啟動背景定時回補", "定時回補檢查"), flush=True)
     return
@@ -2632,6 +2675,13 @@ async def event_loop_lag_tick(context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application):
     await register_bot_commands(application)
     await initialize_etf_monitor(application)
+    try:
+        from research_center.scheduled_run_store import scheduled_store
+        async def send_radar_recovery(text):
+            await safe_send_bot_message(application.bot, load_config()['chat_id'], text, max_attempts=1)
+        await scheduled_store().notify_recovered(send_radar_recovery)
+    except Exception as exc:
+        print(f'Radar 中斷狀態核對未完成：{type(exc).__name__}；不自動重送分析或推薦。', flush=True)
     try:
         from research_center.config import load_research_config
         from tools.bot_watchdog import default_process_exists

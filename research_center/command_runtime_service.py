@@ -179,6 +179,13 @@ class CommandRuntimeService:
             task.updated_at = _now()
             return True
 
+    def finish_stopped_task(self, task_id: str) -> None:
+        """Only the worker owner may call this, after its real thread has exited."""
+        with self._lock:
+            if task := self._tasks.get(task_id):
+                task.status = 'stopped'
+                task.updated_at = _now()
+
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         with self._lock:
             task = self._tasks.get(task_id)

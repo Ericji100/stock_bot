@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-26T14:10:16.661569+00:00",
+  "production_files": {
+    "main.py": "54119d4015d0e0fc7194f6aab8edd4c9d8810b0794a8ca9cb20b9bf86d173f27",
+    "research_center/scheduled_task_service.py": "1ea5de3453a4d5edbaf2157337f6fced3dc56c0212432c59dfbf80f0f1c4437a",
+    "research_center/scheduled_outcome_notice.py": "ad5e881380c5a80d5118061907a33a95df8b3bc41bd5f17006b0135892f03fb0",
+    "research_center/command_runtime_service.py": "7c32af3e5267dfee16a2ce4efbc0c1ca01146d7efae6391881fcaf97b0feeb74",
+    "stock_ai_bot/monitoring/radar_service.py": "63644a31d9185a3a972acea4176553e30a0e0107a6cfc24f85c534731a1d6425",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/company_theme_map.json": "1abfd7f52b82ac44cced60d3283bf413414efa5089c0c09934ed75e81526b8fe",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "f4bfd640c59390060ee72bf2ed5cc30d92560211ce84c2c821ebd59cceb1fe9a",
+    "config/radar_scoring.json": "8ddb590909eaf3fc9585acf37e6096800588a5b450c1a344a03b4038f177c8a9",
+    "stock_list.json": "d78c7d8287014fe87681bf4d8bad6d5828b3627712353d6011bd79c613aaf825",
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3"
+  },
+  "production_tracked_status": " M .gitignore\n M config/company_theme_map.json\n M config/supply_chain_nodes.json\n M config/theme_profiles.json\n M stock_list.json\n",
+  "production_git": "5550b15624f36f1855444b5862816021e66ce89a",
+  "heartbeat": 13704,
+  "verification": "read-only snapshot; no restart or paid calls"
+}

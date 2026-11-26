@@ -370,6 +370,8 @@ def run_radar(
         _score_candidates(candidates, target_date, scoring_version=radar_request.scoring_version)
     _attach_base_evidence_packs(candidates, target_date)
 
+    _checkpoint_radar('local_data', candidates, target_date)
+
     ai_analysis_meta: dict[str, Any] = {}
     ai_codes = _select_ai_enrichment_codes(candidates, radar_request.ai_top)
     if ai_codes:
@@ -378,6 +380,7 @@ def run_radar(
             _attach_research_center_sources(candidates, ai_codes, target_date, progress)
             _ensure_radar_source_sufficiency(candidates, ai_codes, target_date, progress)
             _attach_research_evidence_packs(candidates, ai_codes, target_date, progress)
+            _checkpoint_radar('sources', candidates, target_date)
             ai_analysis_meta = _attach_ai_comments(candidates, ai_codes, radar_request.model, target_date, progress)
         else:
             _emit(progress, f"Radar：Top{radar_request.ai_top} 外部來源補強 {len(ai_codes)} 檔")
@@ -403,6 +406,17 @@ def run_radar(
     )
     save_radar_result(result)
     return result
+
+
+def _checkpoint_radar(stage, candidates, analysis_date, **extra):
+    from research_center.scheduled_run_store import CURRENT_RUN, checkpoint
+    if CURRENT_RUN.get() is not None:
+        checkpoint(stage, _json_safe({
+            'report_date': analysis_date.isoformat(),
+            'is_final_report': False,
+            'candidates': [_candidate_to_dict(item) for item in candidates],
+            **extra,
+        }))
 
 
 def _radar_evidence_pack_status(candidates: list[RadarCandidate], ai_codes: list[str]) -> dict[str, Any]:
@@ -2080,16 +2094,22 @@ def _attach_research_center_sources(
         tasks = [_radar_discovery_task(item, analysis_date)]
         stopped = False
         try:
-            runner._run_minimax_mcp(request, tasks, sources, structured_data, progress)
-            quality_checked = bool((structured_data.get('deepseek_search_discovery') or {}).get('critical_gap_checks'))
-            if len(sources) < 8 and not quality_checked:
-                runner._run_tavily(request, tasks, sources, structured_data, progress)
-            if len(sources) < 8 and not quality_checked and runner._should_run_gemini(request, sources):
-                discovery_sources: list[SourceItem] = []
-                discovery_runs: list[dict[str, Any]] = []
-                runner._run_gemini(request, tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
-            sources, _dropped_sources = filter_and_sort_sources_for_analysis_date(sources, request)
-            _enrich_sources_with_web_fetch(request, sources, structured_data, progress)
+            from research_center.ai_execution_control import source_checkpoint
+            def retain_sources(partial):
+                _checkpoint_radar('sources', [item], analysis_date,
+                    raw_sources=[_source_to_dict(source) for source in partial],
+                    discovery_data=structured_data)
+            with source_checkpoint(retain_sources):
+                runner._run_minimax_mcp(request, tasks, sources, structured_data, progress)
+                quality_checked = bool((structured_data.get('deepseek_search_discovery') or {}).get('critical_gap_checks'))
+                if len(sources) < 8 and not quality_checked:
+                    runner._run_tavily(request, tasks, sources, structured_data, progress)
+                if len(sources) < 8 and not quality_checked and runner._should_run_gemini(request, sources):
+                    discovery_sources: list[SourceItem] = []
+                    discovery_runs: list[dict[str, Any]] = []
+                    runner._run_gemini(request, tasks, sources, structured_data, discovery_sources, discovery_runs, progress)
+                sources, _dropped_sources = filter_and_sort_sources_for_analysis_date(sources, request)
+                _enrich_sources_with_web_fetch(request, sources, structured_data, progress)
         except DeepSeekUnavailable as exc:
             stopped = True
             sources.extend(getattr(exc, 'partial_discovery_sources', []) or [])
@@ -2102,6 +2122,9 @@ def _attach_research_center_sources(
             _emit(progress, f"Radar：{item.code} 外部來源補強失敗：{exc}")
         finally:
             _retain_radar_discovery(item, structured_data, sources, analysis_date)
+            _checkpoint_radar('sources', [item], analysis_date,
+                              raw_sources=[_source_to_dict(source) for source in sources],
+                              discovery_data=structured_data)
         if stopped:
             break
 
@@ -2781,9 +2804,14 @@ def _attach_ai_comments(
                             pending.ai_comment = {"status": "failed", "model": model, "error": str(exc)}
                     record["jobs"].append(job_record)
                     chunk_records.append(record)
+                    _checkpoint_radar('ai_batch', candidates, analysis_date,
+                                      completed_comments=comments, batches=chunk_records)
                     return {"mode": "radar_compact_ai", "status": "partial_success", "model": model,
                             "chunks": chunk_records, "comment_count": len(comments), "reason": str(exc)}
             record["jobs"].append(job_record)
+            _checkpoint_radar('ai_batch', candidates, analysis_date,
+                              completed_comments=comments,
+                              batches=[*chunk_records, record])
         ok_jobs = [job for job in record["jobs"] if job.get("status") == "ok"]
         record.update(
             {

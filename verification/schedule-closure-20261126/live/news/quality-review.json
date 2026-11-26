@@ -1,0 +1,18 @@
+{
+  "full_items_reviewed": 6,
+  "ai_excluded": 2,
+  "all_raw_responses_retained": true,
+  "new_search_calls": 0,
+  "cost_usd": "0.007534600",
+  "dates_inferred": 6,
+  "quality": {
+    "classification": "passed_with_explicit_exclusions",
+    "counter_evidence": "material_items_distinguish_rebound_from_trend_and_flag_comparison_basis",
+    "official_evidence": "limited_existing_sources_not_officially_verified",
+    "date_reliability": "inferred_not_confirmed",
+    "unsupported_company_links": "no_new_stock_codes_added",
+    "reader_usefulness": "useful_as_clues_with_explicit_gaps_not_confirmed_market_facts"
+  },
+  "local_tool_error": "preview_type_fixed_offline_using_saved_results_no_model_resend",
+  "production_news_database_changed": false
+}

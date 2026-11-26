@@ -1,0 +1,15 @@
+{
+  "protected_files": {
+    ".gitignore": "30b207688c236a01f5e395e00764622905418b097b96d913abeea4c5582285b3",
+    "config/research_center.json": "e44fd93a2c451c0b4aea26120226460604dcb534c888f413b2eaa68223b2c8df",
+    "config/secrets.json": "ad4c3e5603a45511fe71a2b6358735544abb9cd2c998c07b2f195f5c1b7d2446",
+    "config/company_theme_map.json": "1abfd7f52b82ac44cced60d3283bf413414efa5089c0c09934ed75e81526b8fe",
+    "config/supply_chain_nodes.json": "b5ae38f0d8f06013e94bb465793e2deaa80ef0b5a26ba1d064e8b952eb49b81c",
+    "config/theme_profiles.json": "f4bfd640c59390060ee72bf2ed5cc30d92560211ce84c2c821ebd59cceb1fe9a",
+    "stock_list.json": "d78c7d8287014fe87681bf4d8bad6d5828b3627712353d6011bd79c613aaf825"
+  },
+  "formal_tracked_status": " M .gitignore\n M config/company_theme_map.json\n M config/supply_chain_nodes.json\n M config/theme_profiles.json\n M stock_list.json\n",
+  "head": "c3d3384b3d3ab82e36593f70fc7fb09056f6cb40",
+  "source_matches_tested_worktree_after_git_eol": true,
+  "old_pid": 13704
+}

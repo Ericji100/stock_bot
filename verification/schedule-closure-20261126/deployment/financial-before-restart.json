@@ -1,0 +1,67 @@
+{
+  "at": "2026-11-26T14:49:56.428933+00:00",
+  "ledgers": {
+    "openai": {
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\ai_budget\\openai\\openai-credits.sqlite3",
+      "tables": {
+        "grants": {
+          "rows": 2,
+          "sha256": "b8a5ddaea20670a18169251b9b66eb54324912757a10c3ba9c596f8d223d5388"
+        },
+        "requests": {
+          "rows": 1737,
+          "sha256": "60f5a3f0174cd35fcdc414dba9fa3ce6c6131fb01445c045437985a0c908472e"
+        },
+        "account_blocks": {
+          "rows": 0,
+          "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "route_events": {
+          "rows": 2188,
+          "sha256": "cdab76cd485e30398ba8b54b6e235dbeebf552092150a26382ea6ee50d7fa7dd"
+        },
+        "notices": {
+          "rows": 12,
+          "sha256": "bdf95159029740cadddaac0a0b1e415e47683358633bfa777bea58f28dcca3ea"
+        },
+        "live_rounds": {
+          "rows": 8,
+          "sha256": "09a11fbe573632bffdc2fada28409e10b85c333075627fe83fa04ad0f155b7a5"
+        },
+        "fee_reconciliations": {
+          "rows": 39,
+          "sha256": "978342f1199dc39e54bc0947f900d539f548206c268cdf8d4679b11893c8e9e4"
+        },
+        "notice_attribution": {
+          "rows": 12,
+          "sha256": "33895272d6e4c6169f263e33c47198e97df7d46b6d9218817405f09851448424"
+        },
+        "account_references": {
+          "rows": 0,
+          "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
+    },
+    "deepseek": {
+      "path": "D:\\code\\stock_ai_bot\\.workdata\\ai_budget\\budget.sqlite3",
+      "tables": {
+        "spending": {
+          "rows": 2076,
+          "sha256": "46c50822e1c25187e3e61e923509921737dcbaaf0d502247399efa7d3b915705"
+        },
+        "incidents": {
+          "rows": 2,
+          "sha256": "985cf0c0dbe0733c4d01136f2f56fd16ca3c4f859a9b68e6aa9a8add3cb772ac"
+        },
+        "notices": {
+          "rows": 14,
+          "sha256": "78794d1bfe7db09e16de966d0959dc38e2ed77ef8f05f1c01e5970eb90dd886c"
+        },
+        "spending_attribution": {
+          "rows": 1827,
+          "sha256": "9112d84bbdb04db1c9fb28c5e2743a16a36fed716ef7eb44b49403ffb7939778"
+        }
+      }
+    }
+  }
+}

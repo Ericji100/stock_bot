@@ -1,0 +1,10 @@
+{
+  "backup_id": "cb-3b41888bd5434cfbbcf6f916482d2113",
+  "backup_sha256": "79014d8d26a4b303fb2a729fd4f62f98f4c31bc76fd45e364d692853c1b5fd7a",
+  "source_sha256_at_acceptance": "1e67a7e05a6c59df4835d81fe1bedce8a9f7de200c4c042c1ddc6b7efcd6e4c5",
+  "source_sqlite_integrity": "ok",
+  "original_rows_preserved": true,
+  "managed_completion": "COMPLETED",
+  "private_acceptance_retained_in_formal_project": true,
+  "paid_requests": 0
+}

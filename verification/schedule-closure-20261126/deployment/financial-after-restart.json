@@ -1,0 +1,24 @@
+{
+  "at": "2026-11-26T14:52:34.919411+00:00",
+  "all_original_ledger_tables_unchanged": true,
+  "checks": {
+    "openai.grants": true,
+    "openai.requests": true,
+    "openai.account_blocks": true,
+    "openai.route_events": true,
+    "openai.notices": true,
+    "openai.live_rounds": true,
+    "openai.fee_reconciliations": true,
+    "openai.notice_attribution": true,
+    "openai.account_references": true,
+    "deepseek.spending": true,
+    "deepseek.incidents": true,
+    "deepseek.notices": true,
+    "deepseek.spending_attribution": true
+  },
+  "unknown_fee_reservations_preserved": true,
+  "pid": 13516,
+  "heartbeat": "2026-11-26T22:52:11+08:00",
+  "latest_polling_success": "2026-11-26T22:52:03+08:00",
+  "etf": "READY"
+}

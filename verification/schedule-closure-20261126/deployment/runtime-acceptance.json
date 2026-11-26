@@ -1,0 +1,14 @@
+{
+  "accepted_at": "2026-11-26T14:52:59.360775+00:00",
+  "pid": 13516,
+  "heartbeat": "2026-11-26T22:52:41+08:00",
+  "polling_success_after_restart": "2026-11-26T22:52:03+08:00",
+  "etf_status": "READY",
+  "queue_size": 0,
+  "current_task": null,
+  "production_main": "c3d3384b3d3ab82e36593f70fc7fb09056f6cb40",
+  "remote_main": "c3d3384b3d3ab82e36593f70fc7fb09056f6cb40",
+  "source_matches_offline_tests": true,
+  "only_one_authorized_restart": true,
+  "not_ai_live_validation": true
+}

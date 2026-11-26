@@ -1,0 +1,56 @@
+{
+  "events": [
+    {
+      "label": "scheduled full backfill check",
+      "queued": false,
+      "resource_group": "background_backfill",
+      "schedule": "every 2 hours",
+      "schema_version": "scheduled_task_v1",
+      "status": "triggered",
+      "task_id": "scheduled:full_backfill_check",
+      "task_type": "scheduled_backfill",
+      "timeout_seconds": 7200,
+      "timestamp": "2026-11-26T22:56:09+08:00"
+    },
+    {
+      "label": "scheduled full backfill check",
+      "queued": false,
+      "resource_group": "background_backfill",
+      "schedule": "每 2 小時，啟動後 5 分鐘首次檢查",
+      "schema_version": "scheduled_task_v1",
+      "status": "waiting_resource",
+      "task_id": "scheduled:full_backfill_check",
+      "task_type": "scheduled_backfill",
+      "timeout_seconds": 7200,
+      "timestamp": "2026-11-26T22:56:09+08:00"
+    },
+    {
+      "label": "scheduled full backfill check",
+      "queued": false,
+      "resource_group": "background_backfill",
+      "resource_wait_seconds": 0.002,
+      "schedule": "每 2 小時，啟動後 5 分鐘首次檢查",
+      "schema_version": "scheduled_task_v1",
+      "status": "started",
+      "task_id": "scheduled:full_backfill_check",
+      "task_type": "scheduled_backfill",
+      "timeout_seconds": 7200,
+      "timestamp": "2026-11-26T22:56:09+08:00"
+    },
+    {
+      "elapsed_seconds": 0.006,
+      "label": "scheduled full backfill check",
+      "queued": false,
+      "resource_group": "background_backfill",
+      "schedule": "每 2 小時，啟動後 5 分鐘首次檢查",
+      "schema_version": "scheduled_task_v1",
+      "status": "completed",
+      "task_id": "scheduled:full_backfill_check",
+      "task_type": "scheduled_backfill",
+      "timeout_seconds": 7200,
+      "timestamp": "2026-11-26T22:56:09+08:00"
+    }
+  ],
+  "purpose": "native_scheduled_check_after_restart_not_forced_full_recollection",
+  "no_new_ai_request_by_this_check": true
+}

@@ -1,0 +1,18 @@
+{
+  "round_id": "schedule-closure-20261126-live3",
+  "approved": true,
+  "purpose": "development",
+  "round_limit_usd": "3",
+  "case_limits_usd": {"radar": "2.50", "news": "0.50"},
+  "account_priority": ["secondary", "primary"],
+  "stop_on_new_unknown_cost": true,
+  "increase_budget_automatically": false,
+  "paid_deepseek_fallback_in_test": false,
+  "search_in_news_case": false,
+  "radar_ai_top": 15,
+  "telegram_test_labels_required": true,
+  "existing_production_unknown_reservations_untouched": true,
+  "question_id": "call_e85c0c8853fb417ea5c443ea18056016",
+  "user_confirmation": "同意上述案例及 US$3 上限",
+  "restart_confirmation": "目前沒有，可以重啟"
+}

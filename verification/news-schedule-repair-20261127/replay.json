@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "mode": "saved_responses_offline_not_new_ai",
+  "paid_requests": 0,
+  "raw_sha256": "9c43e4ef11cf4d795763d965515df4d36a3cbdb10f5c5e689c239fa0636be88b",
+  "raw_unchanged": true,
+  "sources_preserved": 1162,
+  "news_items": 30,
+  "retained": 20,
+  "excluded": 10,
+  "core_payloads_exact": true,
+  "original_input_items_unchanged": true,
+  "complete_notes_retained": 114,
+  "all_notes_and_events_delivered": true,
+  "pending_context_records": 0,
+  "batches": 10,
+  "original_prompt_chars": 1052662,
+  "replayed_prompt_chars": 205361,
+  "original_batch_range": [
+    103064,
+    107327
+  ],
+  "replayed_batch_range": [
+    18200,
+    22691
+  ],
+  "prompt_chars_reduction": 0.8049126880233162,
+  "publication_gaps": 10,
+  "publication_persisted_consistently": true,
+  "historical_total_cost_usd": "0.196258230",
+  "limitations": [
+    "not new model quality or measured runtime/cost saving",
+    "cohort progress uses synthetic known identity case plus repository tests"
+  ]
+}

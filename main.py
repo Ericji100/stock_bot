@@ -2170,14 +2170,15 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         search_stopped = search_diag.get('stop_reason')
         category_missing = (meta.get('classification_category_coverage') or {}).get('missing_categories') or []
         from research_center.news_categories import news_category_label
-        from research_center.news_service import _has_explicit_news_datetime
-        publication_date_gaps = sum(not _has_explicit_news_datetime(item) for item in items) if items else None
+        from research_center.news_service import news_publication_audit
+        publication_date_gaps = meta.get('publication_date_gaps', news_publication_audit(items)['gap_count'] if items else None)
         failed = bool(meta.get('local_fallback_count') or (search_stopped and not is_graceful_search_stop(search_stopped))
                       or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
         await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
             'status': 'partial_success' if category_missing else meta.get('classification_status'), 'classified': meta.get('ai_classified_count'),
             'pending': pending.get('eligible_recent', meta.get('deferred_classification_count')),
             'historical_pending': pending.get('historical_or_date_unknown'),
+            'pending_progress': meta.get('pending_progress'),
             'missing_categories': (meta.get('classification_category_coverage') or {}).get('missing_categories'),
             'classification_status': meta.get('classification_status'),
             'selected_classification_complete': meta.get('selected_classification_complete'),
@@ -2187,7 +2188,8 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
             'publication_date_gaps': publication_date_gaps,
             'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else
                 '新聞類別覆蓋不足：' + '、'.join(news_category_label(key) for key in category_missing)
-                if category_missing else '近期待辦持續累積')},
+                if category_missing else '搜尋尚有缺口，已保存來源並完成本次分類' if meta.get('search_complete') is False
+                else '期初待辦與新增待辦分別保留，詳見處理進度')},
             provider_notice_sent=bool(notices))
         if meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0) or category_missing:
             print("新聞已保存，搜尋覆蓋或 AI 分類尚未完整完成", flush=True)

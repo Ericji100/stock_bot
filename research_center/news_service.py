@@ -809,11 +809,19 @@ def _boost_latest_recency(items: list[NewsItem], primary_hours: int = 24) -> lis
 
 
 def _has_explicit_news_datetime(item: NewsItem) -> bool:
-    """Return True when source content provides a publish-like timestamp."""
-    published_text = (item.published_at or "").strip()
-    if published_text and _parse_news_datetime(published_text) is not None:
-        return True
-    return _extract_embedded_news_datetime(item) is not None
+    """Publication evidence, not an arbitrary event date in article text."""
+    audit = _news_temporal_record(item)
+    return (audit['publication_status'] == 'explicit'
+            and audit['available_by_report_date'] is True)
+
+
+def news_publication_audit(items):
+    rows = [_news_temporal_record(item) | {'url': item.url} for item in items
+            if 'ai_excluded' not in item.tags]
+    gaps = [row for row in rows if row['publication_status'] != 'explicit'
+            or row['available_by_report_date'] is not True]
+    return {'gap_count': len(gaps), 'items': rows, 'gaps': gaps,
+            'policy': '發布欄位與來源日期標記為準；事件日期、儲存日期及網址推定不冒充確認發布日。'}
 
 
 def _penalize_implicit_news_dates(items: list[NewsItem], penalty: int = 250) -> list[NewsItem]:
@@ -850,7 +858,8 @@ def run_news_refresh(center, repository, progress=None, ai_model="deepseek"):
         if journal:
             journal.record_refresh(RUN_ID.get(), day, 'finished', meta['classification_status'],
                 {key:meta.get(key) for key in ('ai_classified_count','pending_classification_summary','search_complete',
-                                               'classification_diagnostics','workload_plan')})
+                                               'classification_diagnostics','workload_plan',
+                                               'pending_progress','publication_date_gaps','publication_audit')})
         return items, meta
     except BaseException as exc:
         if journal:
@@ -1107,7 +1116,8 @@ def _run_news_refresh(
             classifier = getattr(center, 'deepseek_organizer', None)
             classifier_context = json.dumps([prompt_path.read_text(encoding='utf-8') if prompt_path.exists() else '',
                 reader_quality_rules(), _primary_news_classifier_model(center, ai_model),
-                getattr(classifier, 'model', ai_model), getattr(getattr(classifier, 'fallback', None), 'model', None)])
+                getattr(classifier, 'model', ai_model), getattr(getattr(classifier, 'fallback', None), 'model', None),
+                'news_batch_context_v2'])
             before = len(items)
             items, input_fingerprints = repository.prepare_classification_inputs(items, classifier_context=classifier_context,
                 source_events={row['url']: row for row in source_events_packet(sorted_sources)})
@@ -1201,6 +1211,17 @@ def _run_news_refresh(
             deferred = _fallback_classification([item for item in all_ranked_items if item.url not in selected_urls])
         saved, skipped = repository.save_many([*classified, *deferred])
         checkpoint(classified)
+        publication_audit = news_publication_audit(classified)
+        pending_progress = None
+        if scheduled and isinstance(repository, NewsRepository):
+            before_urls = {item.url for item in pending_before}
+            remaining_urls = {item.url for item in repository.query_pending_classification(limit=0, as_of=analysis_day)}
+            carried = sorted(before_urls & remaining_urls)
+            resolved = sorted(before_urls - remaining_urls)
+            pending_progress = {'before': len(before_urls), 'remaining_before': len(carried),
+                'resolved_before': len(resolved), 'new_pending': len(remaining_urls - before_urls),
+                'remaining': len(remaining_urls), 'carried_urls': carried, 'resolved_urls': resolved,
+                'new_pending_urls': sorted(remaining_urls - before_urls)}
         if saved_before is not None:
             saved = repository.article_count() - saved_before
         emit(f"儲存完成：新增 {saved}，略過 {skipped}")
@@ -1262,6 +1283,9 @@ def _run_news_refresh(
             "reused_classification_count": reused_classification_count,
             "classification_reuse": reuse_summary,
             "classification_diagnostics": classification_diagnostics,
+            "publication_date_gaps": publication_audit['gap_count'],
+            "publication_audit": publication_audit,
+            "pending_progress": pending_progress,
             "search_complete": search_complete,
             "remaining_search_gaps_status": 'declared_incomplete' if not search_complete else 'coverage_checked_not_fact_verified',
             "backlog_status": 'ordinary_deferred' if deferred and selected_complete and search_complete else 'partial' if not selected_complete or not search_complete else 'clear',
@@ -1321,9 +1345,6 @@ def _batch_classify_news(
 
     from .reader_quality_rules import reader_quality_rules
     prompt_text += "\n\n" + reader_quality_rules()
-    from .search_transmission import search_context_prompt
-    prompt_text += search_context_prompt(search_context_notes)
-
     primary_model = _primary_news_classifier_model(center, ai_model)
     if primary_model != ai_model:
         emit(f"新聞分類分流：一般分類使用 DeepSeek Flash，高階模型 {ai_model} 僅複核重要新聞")
@@ -1337,6 +1358,7 @@ def _batch_classify_news(
         search_source_events=search_source_events,
         checkpoint=checkpoint,
         diagnostics=diagnostics,
+        search_context_notes=search_context_notes,
     )
     if primary_model == ai_model or diagnostics.get('stop_reason'):
         return result_items
@@ -1356,6 +1378,7 @@ def _batch_classify_news(
         search_source_events=search_source_events,
         checkpoint=checkpoint,
         diagnostics=diagnostics,
+        search_context_notes=search_context_notes,
     )
     return _merge_reviewed_news_items(result_items, reviewed)
 
@@ -1397,6 +1420,7 @@ def _classify_news_batches(
     search_source_events: list[dict[str, Any]] | None = None,
     checkpoint=None,
     diagnostics=None,
+    search_context_notes=None,
 ) -> list[NewsItem]:
     batch_size = _classify_batch_size()
     timeout_seconds = _classify_timeout_seconds()
@@ -1430,7 +1454,7 @@ def _classify_news_batches(
         import hashlib
         value = json.dumps([prompt_text, getattr(center.deepseek_organizer, 'model', center.config.deepseek_model), events_by_url.get(item.url), item.url, item.title,
                             item.full_text or item.summary, item.published_at,
-                            _news_temporal_record(item)['analysis_date']], ensure_ascii=False, sort_keys=True)
+                            _news_temporal_record(item)['analysis_date'], search_context_notes], ensure_ascii=False, sort_keys=True)
         return "news-classification:" + hashlib.sha256(value.encode()).hexdigest()
     if article_cache is not None:
         uncached = []
@@ -1449,15 +1473,37 @@ def _classify_news_batches(
         checkpoint(result_items)
     emit(f"{label}開始：{len(items)} 則，共 {total_batches} 批，每批最多 {batch_size} 則")
     i = 0
+    from .search_transmission import merge_search_records, partition_search_context, search_context_prompt
+    context_records = merge_search_records([], search_context_notes)
+    sent_context = set()
+    def context_key(row):
+        return json.dumps(row, ensure_ascii=False, sort_keys=True)
+    def batch_context(batch):
+        remaining = items[i + len(batch):]
+        groups = [[item.url for item in batch],
+                  *[[item.url for item in remaining[n:n + batch_size]]
+                    for n in range(0, len(remaining), batch_size)]]
+        pending_context = [row for row in context_records if context_key(row) not in sent_context]
+        # Relevant warnings remain visible even when a previous batch also needed them.
+        all_packets = partition_search_context(context_records, groups)
+        packets = partition_search_context(pending_context, groups)
+        relevant = [row for row in all_packets[0] if context_key(row) in sent_context
+                    and any(item.url in context_key(row) for item in batch)]
+        return merge_search_records(packets[0], relevant)
+
+    def context_prompt(notes, events):
+        text = search_context_prompt(merge_search_records(notes, events))
+        return ('\n本批待查底稿含跨新聞背景；只對網址與公司相符的內容建立關聯，'
+                '未引用或日期不明的記錄仍非已驗證事實。' + text) if notes else text
     while i < len(items):
         batch = items[i : i + batch_size]
         batch_no = (i // batch_size) + 1
         emit(f"{label} {batch_no}/{total_batches} 開始：{len(batch)} 則")
         batch_json = json.dumps(_classification_payload(batch, text_limit), ensure_ascii=False)
         full_prompt = prompt_text.replace("{news_batch_json}", batch_json)
-        from .search_transmission import search_context_prompt
         batch_events = [events_by_url[item.url] for item in batch if item.url in events_by_url]
-        events_prompt = search_context_prompt(batch_events)
+        batch_notes = batch_context(batch)
+        events_prompt = context_prompt(batch_notes, batch_events)
         full_prompt += events_prompt
         emit(f"{label} {batch_no}/{total_batches} prompt={len(full_prompt)} chars est_tokens={max(1, len(full_prompt) // 4)} items={len(batch)}")
 
@@ -1475,12 +1521,14 @@ def _classify_news_batches(
                         batch = batch[:-1]
                         batch_json = json.dumps(_classification_payload(batch, text_limit), ensure_ascii=False)
                         batch_events = [events_by_url[item.url] for item in batch if item.url in events_by_url]
-                        events_prompt = search_context_prompt(batch_events)
+                        batch_notes = batch_context(batch)
+                        events_prompt = context_prompt(batch_notes, batch_events)
                         full_prompt = prompt_text.replace("{news_batch_json}", batch_json) + events_prompt
                         diagnostics['budget_adapted_batches'] = diagnostics.get('budget_adapted_batches', 0) + 1
             ai_result = _call_news_classifier(center, ai_model, full_prompt, timeout_seconds)
             raw = getattr(ai_result, "raw", str(ai_result))
             parsed = _parse_ai_json_batch(raw)
+            sent_context.update(context_key(row) for row in batch_notes)
             if article_cache is not None:
                 for index, item in enumerate(batch):
                     classification = parsed.get(item.id) or parsed.get(item.url) or parsed.get(str(index))
@@ -1511,6 +1559,7 @@ def _classify_news_batches(
                 ai_result = _call_news_classifier(center, ai_model, retry_prompt, retry_timeout_seconds)
                 raw = getattr(ai_result, "raw", str(ai_result))
                 parsed = _parse_ai_json_batch(raw)
+                sent_context.update(context_key(row) for row in batch_notes)
                 result_items.extend(_apply_classification_meta(batch, parsed))
                 if checkpoint:
                     checkpoint(result_items)
@@ -1531,6 +1580,13 @@ def _classify_news_batches(
                     break
         i += len(batch)
 
+    import hashlib
+    diagnostics['search_context_delivery'] = {
+        'records': len(context_records), 'confirmed_response_records': len(sent_context),
+        'pending_records': len([row for row in context_records if context_key(row) not in sent_context]),
+        'original_sha256': hashlib.sha256(json.dumps(context_records, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+        'policy': '完整記錄依新聞網址分批；跨批背景分配一次，原始底稿仍保存，未回應部分不冒充已入模。'}
+    diagnostics['search_context_archive'] = context_records
     return result_items
 
 

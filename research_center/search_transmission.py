@@ -113,3 +113,39 @@ def search_context_prompt(notes):
         return ''
     return ('\n\n搜尋限制與待查資料（不是已驗證來源，不可增加來源數或視為已確認事實；'
             '保留缺口、矛盾及後續查證條件）：\n' + json.dumps(notes, ensure_ascii=False))
+
+
+def partition_search_context(notes, batches):
+    """Route complete records to relevant batches; distribute orphan records once."""
+    groups = [set(urls) for urls in batches]
+    packets = [[] for _ in groups]
+    loads = [0 for _ in groups]
+    if not groups:
+        return packets
+
+    def urls(value):
+        if isinstance(value, dict):
+            result = {value[key] for key in ('url', 'source_url')
+                      if isinstance(value.get(key), str)}
+            for child in value.values():
+                result.update(urls(child))
+            return result
+        if isinstance(value, list):
+            return set().union(*(urls(child) for child in value)) if value else set()
+        return set()
+
+    orphaned = []
+    for row in merge_search_records([], notes):
+        matches = [i for i, group in enumerate(groups) if group.intersection(urls(row))]
+        if not matches:
+            orphaned.append(row)
+            continue
+        size = len(json.dumps(row, ensure_ascii=False))
+        for i in matches:
+            packets[i].append(row)
+            loads[i] += size
+    for row in orphaned:
+        i = min(range(len(groups)), key=lambda n: (loads[n], n))
+        packets[i].append(row)
+        loads[i] += len(json.dumps(row, ensure_ascii=False))
+    return packets

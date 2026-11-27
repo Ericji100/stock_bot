@@ -299,9 +299,30 @@ def _news_issues(detail, previous=None):
             issues['processing'] = _news_reason(reason)
     pending = int(detail.get('pending', 0) or 0)
     previous_pending = int((previous or {}).get('pending', 0) or 0)
-    if pending > 0 and previous_pending > 0 and pending >= previous_pending:
+    progress = _news_pending_progress(detail)
+    previous_progress = _news_pending_progress(previous or {})
+    persistent = (set(progress.get('carried_urls', [])) & set(previous_progress.get('carried_urls', []))
+                  if progress and previous_progress else set())
+    if (progress and previous_pending > 0 and progress['remaining_before'] > 0
+            and (progress['resolved_before'] == 0 or persistent)):
+        issues['backlog'] = '期初近期待辦仍未完成，未以新增新聞冒充處理進度'
+    elif progress is None and pending > 0 and previous_pending > 0 and pending >= previous_pending:
         issues['backlog'] = '近期待辦連續兩天未減少'
     return issues
+
+
+def _news_pending_progress(detail):
+    progress = detail.get('pending_progress')
+    if not isinstance(progress, dict):
+        return None
+    keys = ('before', 'remaining_before', 'resolved_before', 'new_pending', 'remaining')
+    if any(type(progress.get(key)) is not int or progress[key] < 0 for key in keys):
+        return None
+    if (progress['before'] != progress['remaining_before'] + progress['resolved_before']
+            or progress['remaining'] != progress['remaining_before'] + progress['new_pending']
+            or progress['remaining'] != detail.get('pending')):
+        return None
+    return progress
 
 
 def _news_restored(issues, detail):
@@ -332,6 +353,9 @@ def _news_counts(detail):
               else '本次完成數尚待確認；待分類數以保存的資料庫為準。')
     if isinstance(detail.get('historical_pending'), int):
         counts += f'\n歷史待分類 {detail["historical_pending"]} 則（含日期不明，另列，不併入近期待辦）。'
+    if progress := _news_pending_progress(detail):
+        counts += (f'\n期初近期待辦 {progress["before"]} 則：已處理 {progress["resolved_before"]} 則，'
+                   f'仍待處理 {progress["remaining_before"]} 則；另有新增待辦 {progress["new_pending"]} 則。')
     return counts
 
 

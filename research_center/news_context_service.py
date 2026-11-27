@@ -10,6 +10,7 @@ from .models import CommandRequest, SourceItem
 from .news_models import NewsItem, apply_news_signal_tags
 from .news_repository import NewsRepository
 from .news_source_filter import is_irrelevant_market_source
+from .source_date_normalizer import news_publication_record
 
 ProgressCallback = Callable[[str], None]
 
@@ -165,7 +166,7 @@ def format_news_status(status: dict[str, Any]) -> str:
     for item in status.get("items", [])[:8]:
         title = str(item.get("title") or "").strip()
         source = str(item.get("source") or "").strip()
-        date = str(item.get("published_at") or item.get("created_at") or "").strip()
+        date = str(item.get("published_at") or '發布日期待確認').strip()
         lines.append(f"- {date} {source} {title}".strip())
     return "\n".join(lines)
 
@@ -211,7 +212,8 @@ def _source_to_news_item(request: CommandRequest, structured_data: dict[str, Any
         related_symbols=symbols,
         related_topics=topics,
         summary=source.snippet or source.title,
-        full_text=source.snippet or "",
+        full_text=source.content or source.snippet or "",
+        tags=['publication_' + news_publication_record(source)['publication_status']],
         importance_score=1,
         impact_direction="",
         news_origin="research",

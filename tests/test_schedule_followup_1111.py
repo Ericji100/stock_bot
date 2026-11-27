@@ -91,14 +91,14 @@ def test_topic_partial_notice_once_across_restart_and_unknown_no_resend(tmp_path
     asyncio.run(run())
 
 
-def test_news_normal_defer_is_silent_but_repeated_growing_backlog_notifies(tmp_path):
+def test_news_normal_defer_and_repeated_growing_backlog_are_local_only(tmp_path):
     async def run():
         store, send = ScheduledOutcomeNotices(tmp_path), AsyncMock()
         detail = {'status': 'partial_success', 'classified': 18, 'pending': 75}
         assert await store.observe('news', 'one', '2026-11-10', detail, send) == 'silent'
-        assert await store.observe('news', 'two', '2026-11-11', {**detail, 'pending': 90}, send) == 'sent'
-        assert send.await_count == 1
-        assert await store.observe('news', 'three', '2026-11-11', detail, send) == 'duplicate'
+        assert await store.observe('news', 'two', '2026-11-11', {**detail, 'pending': 90}, send) == 'silent'
+        assert await store.observe('news', 'three', '2026-11-11', detail, send) == 'silent'
+        send.assert_not_awaited()
     asyncio.run(run())
 
 

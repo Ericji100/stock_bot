@@ -193,14 +193,21 @@ class NewsRepository:
             row = conn.execute("SELECT status FROM news_refresh_runs ORDER BY updated_at DESC LIMIT 1").fetchone()
         return bool(row and row[0] == 'interrupted')
 
+    def missed_scheduled_edition(self, day):
+        previous = (day - timedelta(days=1)).isoformat()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            result = conn.execute("SELECT status, detail FROM news_refresh_runs WHERE day=? AND phase='finished'", (previous,))
+            return not any(status == 'ai_success' or (json.loads(detail).get('ai_classified_count') or 0) > 0
+                           for status, detail in result)
+
     def recent_discovery_sources(self, as_of, hours: int = 48):
         """Merge all recent versions for reuse; untouched snapshots remain in SQLite."""
         from datetime import time
-        from dataclasses import replace
+        from dataclasses import replace, asdict
         from zoneinfo import ZoneInfo
         from .models import SourceItem
-        from .orchestrator import _merge_sources
-        end = datetime.combine(as_of, time.max, ZoneInfo('Asia/Taipei'))
+        from .source_rank import make_source_items
+        end = as_of if isinstance(as_of, datetime) else datetime.combine(as_of, time.max, ZoneInfo('Asia/Taipei'))
         start = end - timedelta(hours=hours)
         with closing(sqlite3.connect(self.db_path)) as conn:
             rows = conn.execute('''SELECT record FROM news_discovery_sources
@@ -214,14 +221,14 @@ class NewsRepository:
             seen.add(record)
             sources.append(SourceItem(**{key: value for key, value in row.items()
                                          if key in SourceItem.__dataclass_fields__}))
-        merged = _merge_sources([], sources)
+        merged = make_source_items([asdict(source) for source in sources])
         result = []
         for item in merged:
             versions = [source for source in sources if source.url == item.url]
             body = max((source.content or '' for source in versions), key=len)
             provenance = [f"saved_publication:{source.published_date or 'unknown'}:{source.date_status or 'unknown'}"
                           for source in versions]
-            result.append(replace(item, content=body or item.content,
+            result.append(replace(item, content=item.content or body,
                                   found_by=list(dict.fromkeys([*item.found_by, *provenance]))))
         return result
 
@@ -391,6 +398,26 @@ class NewsRepository:
                              json.dumps(item.missing_data, ensure_ascii=False),
                              item.url, item.full_text or '', item.full_text or '', int('ai_classified' in item.tags)),
                         )
+                    # Reconcile date value and provenance together after content/classification updates.
+                    from .source_rank import make_source_items
+                    from .source_date_normalizer import news_publication_record
+                    merged = make_source_items([
+                        {'url': item.url, 'published_at': old_date, 'tags': old_tags, 'content': old_body},
+                        {'url': item.url, 'published_at': item.published_at, 'tags': item.tags, 'content': item.full_text},
+                    ])[0]
+                    record = news_publication_record(merged)
+                    canonical = record['published_date']
+                    matching = [value for value in (old_date, incoming) if normalize_published_date(value) == canonical]
+                    if matching:
+                        canonical = max(matching, key=len)
+                    current_tags = json.loads(conn.execute('SELECT tags FROM news_articles WHERE url=?', (item.url,)).fetchone()[0] or '[]')
+                    date_tags = {'publication_explicit', 'publication_inferred', 'publication_unknown', 'publication_conflict'}
+                    tags = [tag for tag in current_tags if tag not in date_tags]
+                    tags.append('publication_' + record['publication_status'])
+                    if record['publication_status'] == 'conflict':
+                        tags.extend(marker for marker in merged.found_by if marker.startswith('publication_candidate:'))
+                    conn.execute('UPDATE news_articles SET published_at=?,tags=? WHERE url=?',
+                                 (canonical, json.dumps(list(dict.fromkeys(tags)), ensure_ascii=False), item.url))
                     skipped += 1
             conn.commit()
         return saved, skipped
@@ -411,11 +438,9 @@ class NewsRepository:
         return list(by_url.values())
 
     def query_pending_classification(self, limit: int = 6, *, as_of=None) -> list[NewsItem]:
-        day = as_of or datetime.now().date()
-        cutoff = (day - timedelta(days=7)).isoformat()
-        # Selection uses publication evidence, never rediscovery/created_at freshness.
+        from .source_date_normalizer import news_in_publication_window
         items = [item for item in self._pending_classification_items()
-                 if cutoff <= (normalize_published_date(item.published_at) or '') <= day.isoformat()]
+                 if news_in_publication_window(item, 168, as_of)]
         return items[:limit] if limit > 0 else items
 
     def pending_classification_summary(self, *, as_of=None) -> dict[str, int]:
@@ -437,8 +462,8 @@ class NewsRepository:
             conn.commit()
             return int(cur.rowcount or 0)
 
-    def query_recent(self, hours: int = 24, news_origin: str | None = None) -> list[NewsItem]:
-        """Query news from the last N hours."""
+    def query_saved_recent(self, hours: int = 168, news_origin: str | None = None) -> list[NewsItem]:
+        """Storage window for archive/diagnostics only; never a freshness claim."""
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
         if news_origin:
             return self._query(
@@ -447,34 +472,31 @@ class NewsRepository:
             )
         return self._query("SELECT * FROM news_articles WHERE created_at >= ? ORDER BY created_at DESC", (cutoff,))
 
+    def _published_window(self, hours, where='', params=()):
+        from .source_date_normalizer import news_in_publication_window, news_publication_record
+        items = self._query('SELECT * FROM news_articles' + (' WHERE ' + where if where else ''), params)
+        items = [item for item in items if news_in_publication_window(item, hours)]
+        items.sort(key=lambda item: news_publication_record(item)['published_datetime'], reverse=True)
+        return items
+
+    def query_recent(self, hours: int = 24, news_origin: str | None = None) -> list[NewsItem]:
+        return self._published_window(hours, 'news_origin = ?' if news_origin else '', (news_origin,) if news_origin else ())
+
     def query_by_symbol(self, symbol: str, hours: int = 168) -> list[NewsItem]:
         """Query news related to a stock symbol (last N hours, default 7 days)."""
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        return self._query(
-            "SELECT * FROM news_articles WHERE created_at >= ? AND related_symbols LIKE ? ORDER BY created_at DESC",
-            (cutoff, f'%"{symbol}"%'),
-        )
+        return self._published_window(hours, 'related_symbols LIKE ?', (f'%"{symbol}"%',))
 
     def query_by_topic(self, topic: str, hours: int = 168) -> list[NewsItem]:
         """Query news related to a topic keyword (last N hours, default 7 days)."""
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        return self._query(
-            "SELECT * FROM news_articles WHERE created_at >= ? AND related_topics LIKE ? ORDER BY created_at DESC",
-            (cutoff, f'%"{topic}"%'),
-        )
+        return self._published_window(hours, 'related_topics LIKE ?', (f'%"{topic}"%',))
 
     def query_by_category(self, category: str, hours: int = 168) -> list[NewsItem]:
         """Query news by category."""
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        return self._query(
-            "SELECT * FROM news_articles WHERE created_at >= ? AND category = ? ORDER BY created_at DESC",
-            (cutoff, category),
-        )
+        return self._published_window(hours, 'category = ?', (category,))
 
     def query_all_recent(self, hours: int = 168) -> list[NewsItem]:
         """Query all recent news."""
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        return self._query("SELECT * FROM news_articles WHERE created_at >= ? ORDER BY created_at DESC", (cutoff,))
+        return self._published_window(hours)
 
     def get_by_id(self, news_id: str) -> NewsItem | None:
         """Return a single news item by numeric id, #N{id}, or N{id}."""
@@ -495,19 +517,7 @@ class NewsRepository:
         return rows[0] if rows else None
 
     def count_recent(self, hours: int = 24, news_origin: str | None = None) -> int:
-        """Count news items from last N hours."""
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        with closing(sqlite3.connect(self.db_path)) as conn, conn:
-            if news_origin:
-                row = conn.execute(
-                    "SELECT COUNT(*) FROM news_articles WHERE created_at >= ? AND news_origin = ?",
-                    (cutoff, news_origin),
-                ).fetchone()
-                return row[0] if row else 0
-            row = conn.execute(
-                "SELECT COUNT(*) FROM news_articles WHERE created_at >= ?", (cutoff,)
-            ).fetchone()
-            return row[0] if row else 0
+        return len(self.query_recent(hours, news_origin))
 
     def save_preference(self, preference: NewsPreference) -> bool:
         """Append a lightweight user news preference signal."""

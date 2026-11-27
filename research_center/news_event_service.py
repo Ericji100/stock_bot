@@ -22,11 +22,16 @@ def build_news_events_from_context(request: CommandRequest, structured_data: dic
     context = structured_data.get("news_context") or structured_data.get("saved_news_context") or {}
     items = context.get("items") or []
     events: list[dict[str, Any]] = []
+    from .source_date_normalizer import news_publication_record
+    from .date_aware_context import analysis_date_for_request
     for index, item in enumerate(items[:30], 1):
         if not isinstance(item, dict):
             continue
         title = str(item.get("title") or "").strip()
         if not title:
+            continue
+        publication = news_publication_record(item, analysis_date_for_request(request))
+        if not publication['available_by_report_date']:
             continue
         events.append({
             "event_type": _event_type(title, item),
@@ -34,7 +39,7 @@ def build_news_events_from_context(request: CommandRequest, structured_data: dic
             "title": title[:300],
             "source_url": item.get("url") or item.get("source_url") or "",
             "source_level": item.get("source_level") or item.get("level") or "",
-            "published_date": item.get("published_at") or item.get("date") or item.get("created_at") or "",
+            "published_date": publication['published_date'],
             "payload": {
                 "schema_version": NEWS_EVENT_SCHEMA_VERSION,
                 "index": index,

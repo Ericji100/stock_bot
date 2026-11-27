@@ -82,7 +82,7 @@ def test_radar_local_news_uses_shared_gate_and_keeps_full_quarantine():
     sector = NewsItem(title='建材營造產業', url='https://example.test/sector', summary='族群輪動。', published_at='2026-11-03')
     candidate = radar.RadarCandidate(code='3703', name='欣陸', industry='建材營造')
     with patch.object(radar, 'NewsRepository') as repo:
-        repo.return_value.query_all_recent.return_value = [bad, good, sector]
+        repo.return_value.query_saved_recent.return_value = [bad, good, sector]
         radar._attach_local_news([candidate], DAY)
     assert [n['url'] for n in candidate.news_items] == [good.url]
     archived = candidate.evidence_pack['company_evidence_quarantine']
@@ -99,7 +99,7 @@ def test_full_text_and_prior_conflict_flags_cannot_bypass_news_gate():
                       url='https://example.test/flagged', published_at='2026-11-03')
     item=radar.RadarCandidate(code='3703', name='欣陸')
     with patch.object(radar,'NewsRepository') as repo:
-        repo.return_value.query_all_recent.return_value=[bad,flagged]
+        repo.return_value.query_saved_recent.return_value=[bad,flagged]
         radar._attach_local_news([item],DAY)
     assert not item.news_items and len(item.evidence_pack['company_evidence_quarantine'])==2
     assert item.evidence_pack['company_evidence_quarantine'][0]['source']['full_text']==bad.full_text

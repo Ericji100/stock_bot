@@ -235,8 +235,9 @@ def test_source_conversion_preserves_original_body_and_explicit_backfill():
                         snippet='搜尋摘要', content='完整原文' * 200)
     item = _sources_to_news_items([source])[0]
     assert item.summary == source.snippet and item.full_text == source.content
-    with patch('research_center.source_date_normalizer.publication_metadata_date', return_value='2026-11-07'):
-        _backfill_refresh_item_dates([item])
+    item.full_text += '\n<meta property="article:published_time" content="2026-11-07T09:00:00+08:00">'
+    _backfill_refresh_item_dates([item])
+    assert item.published_at == '2026-11-07T09:00:00+08:00'
     assert item.tags.count('publication_explicit') == 1
     assert 'publication_unknown' not in item.tags and 'publication_inferred' not in item.tags
 

@@ -101,6 +101,7 @@ class HybridSearchRoutingTests(unittest.TestCase):
         def enrich(req, items, diagnostics, progress):
             from dataclasses import replace
             items[:] = [replace(item, published_date='2026-11-04', date_status='explicit',
+                found_by=[marker for marker in item.found_by if not marker.startswith('source_date:')] + ['source_date:explicit'],
                 document_kind='document_body', fetch_status='success') for item in items]
         data = {'results':[{'title':'1234 官方公告', 'url':'https://mops.twse.com.tw/STR/1234',
                            'summary':'1234 完整營收與風險原文內容'}]}

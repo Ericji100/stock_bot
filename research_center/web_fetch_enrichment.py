@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any, Callable
 from urllib.parse import urlparse
 
 from .models import CommandRequest, SourceItem
-from .source_rank import sort_sources_by_preferred_weight
+from .source_rank import make_source_items, sort_sources_by_preferred_weight
 from .web_fetch_service import WebFetchService
 
 ProgressCallback = Callable[[str], None]
@@ -16,8 +16,11 @@ ProgressCallback = Callable[[str], None]
 def recover_search_publication_dates(request, sources, diagnostics, progress=None):
     """Fetch real article metadata before dated reports reject unknown dates."""
     from .source_date_normalizer import source_publication_status
+    from .news_search_window import NEWS_EDITION_WINDOW
+    window = NEWS_EDITION_WINDOW.get() if request.command == 'news' else None
     candidates = [source for source in sources if (source.snippet or source.source_level in {'Level 1', 'L1_official'}) and
-                  source_publication_status(source) != 'explicit' and source.fetch_status != 'success']
+                  (window.lane(source) == 'date_pending' if window else source_publication_status(source) != 'explicit')
+                  and source.fetch_status != 'success']
     if not candidates:
         return
     _enrich_sources_with_web_fetch(request, candidates, diagnostics, progress, prefer_official=True)
@@ -70,7 +73,11 @@ def _enrich_sources_with_web_fetch(
             continue
         candidates.append(source)
         seen.add(url)
-    ranked = sorted(candidates, key=_web_fetch_source_priority, reverse=True)
+    from .news_search_window import NEWS_EDITION_WINDOW
+    window = NEWS_EDITION_WINDOW.get() if request.command == 'news' else None
+    ranked = sorted(candidates, key=lambda source: (
+        window.date_verification_priority(source) if window and window.lane(source) == 'date_pending' else 0,
+        _web_fetch_source_priority(source)), reverse=True)
     selected = []
     if prefer_official:
         official = [source for source in ranked if source.source_level in {'Level 1', 'L1_official'}
@@ -118,18 +125,26 @@ def _enrich_sources_with_web_fetch(
                     snippet = '搜尋摘要（尚須原文核對）：\n' + source.snippet + '\n\n取得的本文：\n' + primary
             else:
                 snippet = source.snippet
+            from .source_date_normalizer import PUBLICATION_TIME_MARKER
+            publication = make_source_items([asdict(source), {
+                'url': source.url, 'published_date': fetched.published_date,
+                'date_status': getattr(fetched, 'date_status', None) or ('inferred' if fetched.published_date else 'unknown'),
+                'content': fetched.content,
+                'found_by': [PUBLICATION_TIME_MARKER + value for value in getattr(fetched, 'publication_times', ())],
+            }])[0]
             enriched_sources.append(
                 replace(
                     source,
                     title=fetched.title or source.title,
-                    published_date=(fetched.published_date if getattr(fetched, 'date_status', None) == 'explicit' else source.published_date or fetched.published_date),
+                    published_date=publication.published_date,
                     snippet=snippet,
                     content=fetched.content or source.content,
                     fetch_provider=fetched.fetch_provider,
                     fetch_status=fetched.content_status,
                     fetch_quality=fetched.fetch_quality,
                     failure_reason=fetched.failure_reason,
-                    date_status=(getattr(fetched, 'date_status', None) or 'inferred') if fetched.published_date and (getattr(fetched, 'date_status', None) == 'explicit' or not source.published_date) else source.date_status,
+                    date_status=publication.date_status,
+                    found_by=publication.found_by,
                     updated_date=getattr(fetched, 'updated_date', None) or source.updated_date,
                     document_kind='document_body' if fetched.content and source.document_kind not in {'reference_link', 'unavailable'} else source.document_kind,
                 )

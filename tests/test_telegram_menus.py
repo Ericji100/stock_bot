@@ -1167,11 +1167,18 @@ class NewsMenuTests(unittest.TestCase):
         self.assertIn('CommandHandler("news_save"', content)
 
     def test_scheduled_news_refresh_uses_deepseek(self):
-        from main import _scheduled_news_refresh
+        import main
+        from unittest.mock import AsyncMock
 
-        content = inspect.getsource(_scheduled_news_refresh)
-        self.assertIn('run_news_refresh, center, repository, progress, ai_model="deepseek"', content)
-        self.assertNotIn('ai_model="minimax"', content)
+        center = SimpleNamespace(deepseek=None, config=SimpleNamespace(database_path=Path('unused')))
+        with patch.object(main, 'load_config', return_value={'chat_id': 1}), \
+             patch('research_center.orchestrator.ResearchCenter', return_value=center), \
+             patch.object(main, 'NewsRepository'), \
+             patch.object(main, '_scheduled_outcome_notice', new=AsyncMock()), \
+             patch.object(main, 'run_news_refresh', return_value=([], {'classification_status': 'partial_success'})) as refresh:
+            asyncio.run(main._scheduled_news_refresh(SimpleNamespace()))
+        refresh.assert_called_once()
+        self.assertEqual(refresh.call_args.kwargs['ai_model'], 'deepseek')
 
     def test_main_py_news_url_handler_before_generic_text_handlers(self):
         """Pasted news URLs must be handled before generic text handlers."""

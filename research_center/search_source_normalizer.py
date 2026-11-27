@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 
 from .models import CommandRequest, SourceItem
-from .source_date_normalizer import normalize_published_date_with_status, source_publication_status, normalize_published_date, publication_metadata_date
+from .source_date_normalizer import news_publication_record, normalize_published_date
 from .source_text_cleaner import clean_source_text, clean_source_title
 
 
@@ -55,12 +55,9 @@ def normalize_source_items(
         if title != original_title and "source_title:code_isolated" not in found_by:
             found_by.append("source_title:code_isolated")
         snippet = clean_source_text(source.snippet) if source.snippet else source.snippet
-        published_date, date_status = normalize_published_date_with_status(
-            explicit_values=(source.published_date, publication_metadata_date(source.snippet)),
-            inferred_values=(source.url,),
-        )
-        if source.published_date:
-            date_status=source_publication_status(source)
+        publication = news_publication_record(source)
+        published_date, date_status = publication['published_date'], publication['publication_status']
+        found_by = [marker for marker in found_by if not marker.startswith('source_date:')]
         if date_status != "unknown":
             marker = f"source_date:{date_status}"
             if marker not in found_by:

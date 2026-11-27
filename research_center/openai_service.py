@@ -146,12 +146,15 @@ def parse_search_response(data):
     results = []
     for url, entry in sources.items():
         source, events = entry['source'], entry['events']
+        published = source.get('published_at') or source.get('published_date')
         first = events[0]['record'] if events else {}
         summaries = [str(event['record'].get('summary') or '') for event in events]
         results.append({'title': source.get('title') or first.get('title') or url, 'url': url,
             'search_evidence_url': entry['urls'][0], 'search_evidence_urls': entry['urls'],
             'summary': '\n\n'.join(summaries), 'summary_events': events,
-            'date': source.get('published_date'), 'content': '',
+            'date': published, 'content': '',
+            'published_date': published,
+            'date_status': 'explicit' if published else 'unknown',
             'evidence_kind': 'search_summary_not_original_body', 'provider': 'openai_search',
             'provider_detail': '真實搜尋引用；模型整理摘要不是原文，發布日期未知時不補造。'})
     matched = sum(len(row['summary_events']) for row in results)

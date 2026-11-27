@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import calendar
 from contextlib import contextmanager, closing
+from contextvars import ContextVar
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,9 @@ import hashlib
 import json
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+
+SCHEDULE_OWNS_AI_NOTICE = ContextVar('schedule_owns_ai_notice', default=False)
 
 
 class BudgetBlocked(RuntimeError):
@@ -134,7 +138,8 @@ class MonthlyBudget:
             conn.execute("UPDATE spending SET status=?,actual=? WHERE id=?", (status,str(actual) if actual is not None else None,request_id))
 
     def incident(self, reason, *, background, preflight=False):
-        scope = "background" if background else "manual"
+        local_only = background and SCHEDULE_OWNS_AI_NOTICE.get()
+        scope = "scheduled_news" if local_only else "background" if background else "manual"
         with self.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             previous = conn.execute("SELECT reason FROM incidents WHERE scope=?", (scope,)).fetchone()
@@ -157,7 +162,9 @@ class MonthlyBudget:
             else:
                 message = "AI 服務已有實際請求恢復成功；後續仍逐筆檢查預算與餘額，並非保證整項工作可完成。先前待補工作不代表已自動完成。"
                 kind = "recovered"
-            conn.execute("INSERT INTO notices VALUES (?,?,?,?,?,?)", (uuid4().hex,scope,kind,reason,message,"pending"))
+            conn.execute("INSERT INTO notices VALUES (?,?,?,?,?,?)", (
+                uuid4().hex, 'background' if local_only else scope, kind, reason, message,
+                'local_only' if local_only else 'pending'))
 
     def claim_notice(self):
         with self.db() as conn:

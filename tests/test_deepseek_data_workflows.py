@@ -157,7 +157,7 @@ class NewsEvidencePersistenceTests(unittest.TestCase):
             'tags':['market_story']}})
         items[0].full_text='公司原文'
         repo.save_many(items)
-        restored=repo.query_all_recent()[0]
+        restored=repo.query_saved_recent()[0]
         self.assertEqual(restored.counter_evidence,['客戶可能延後驗收'])
         self.assertEqual(restored.missing_data,['缺少營收占比'])
         self.assertEqual(NewsItem.from_dict(restored.to_dict()).missing_data,restored.missing_data)
@@ -188,7 +188,7 @@ class NewsSearchQualityGateTests(unittest.TestCase):
         from types import SimpleNamespace
         from research_center.deepseek_search_service import DeepSeekSearchService
         service=DeepSeekSearchService(SimpleNamespace())
-        rows=[{'title':'台股供應鏈風險與新訂單','url':f'https://{host}/{path}', 'date':day,
+        rows=[{'title':'台股供應鏈風險與新訂單','url':f'https://{host}/{path}', 'published_date':day,
                'content':'短文' if short else '台股供應鏈訂單增加，但需注意庫存與需求轉弱風險。'*10}
               for host,path in [('www.ctee.com.tw','news/20261102700039-430502'),
                                 ('news.cnyes.com','news/id/12345'),('money.udn.com','money/story/5607/12345'),
@@ -253,7 +253,7 @@ class NewsSearchQualityGateTests(unittest.TestCase):
         self.assertTrue(all(task['news_quality_policy']['terms'] for task in tasks))
         self.assertTrue(next(t for t in tasks if t['label']=='個股公告 / MOPS')['news_quality_policy']['require_official'])
 
-    def test_unknown_provider_dates_use_article_url_dates_not_an_arbitrary_body_date(self):
+    def test_url_or_event_dates_never_satisfy_news_freshness(self):
         from datetime import date
         from research_center.deepseek_search_service import _news_task_quality
         rows=[{'title':'台股供應鏈','url':f'https://{host}/{path}', 'snippet':'台股供應鏈有新訂單但需求風險仍在。'*12}
@@ -261,8 +261,8 @@ class NewsSearchQualityGateTests(unittest.TestCase):
                                 ('www.ctee.com.tw','news/20261102700040-430502'),
                                 ('technews.tw','2026/11/02/power'),('technews.tw','2026/11/02/chip')]]
         quality=_news_task_quality(rows,{'terms':['供應鏈']},date(2026,11,2))
-        self.assertTrue(quality['passed'])
-        self.assertEqual(quality['url_dated_articles'],4)
+        self.assertFalse(quality['passed'])
+        self.assertEqual(quality['url_dated_articles'],0)
         for row in rows:
             row['url']=row['url'].replace('20261102','undated').replace('2026/11/02','undated')
             row['snippet']='報導回顧2026-11-02事件，並非刊登日期。'*12

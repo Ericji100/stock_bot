@@ -1935,14 +1935,17 @@ async def _flush_ai_notices(context, account, chat_id, *, raise_on_error=True):
 
 async def _scheduled_outcome_notice(context, chat_id, command, detail, *, provider_notice_sent=False):
     from research_center.deepseek_service import RUN_ID
+    from research_center.news_search_window import NEWS_EDITION_WINDOW
     from research_center.scheduled_outcome_notice import ScheduledOutcomeNotices
     store = ScheduledOutcomeNotices(get_workdata_path('runtime', 'schedule_outcomes'))
+    window = NEWS_EDITION_WINDOW.get() if command == 'news' else None
+    day = window.scheduled_day if window else get_tw_today()
 
     async def send(text):
         await safe_send_bot_message(context.bot, chat_id, text, max_attempts=1)
 
     try:
-        status = await store.observe(command, RUN_ID.get(), get_tw_today().isoformat(), detail, send,
+        status = await store.observe(command, RUN_ID.get(), day.isoformat(), detail, send,
                                      provider_notice_sent=provider_notice_sent)
         if status == 'unknown':
             print('排程狀態通知送達未知，已保存紀錄，不重送或重跑業務。', flush=True)
@@ -1950,7 +1953,7 @@ async def _scheduled_outcome_notice(context, chat_id, command, detail, *, provid
         print(f'排程狀態通知無法完成：{type(exc).__name__}；原成果及診斷仍保留。', flush=True)
 
 
-async def _scheduled_ai_gate(context, client, chat_id):
+async def _scheduled_ai_gate(context, client, chat_id, *, flush_notices=True):
     account = getattr(client, "account", None)
     if not isinstance(account, DeepSeekAccount):
         return ""
@@ -1959,7 +1962,8 @@ async def _scheduled_ai_gate(context, client, chat_id):
         await asyncio.to_thread(account.preflight)
     except DeepSeekUnavailable as exc:
         reason = exc.status
-    await _flush_ai_notices(context, account, chat_id)
+    if flush_notices:
+        await _flush_ai_notices(context, account, chat_id)
     return reason
 
 
@@ -2138,71 +2142,115 @@ async def scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
     label = "新聞自動整理"
     if context.job and getattr(context.job, "name", None):
         label = str(context.job.name)
-    await enqueue_scheduled_task(context, label, lambda: _scheduled_news_refresh(context))
+    scheduled_day = get_tw_today()
+    await enqueue_scheduled_task(context, label, lambda: _scheduled_news_refresh(context, scheduled_day=scheduled_day))
 
 
 @task_context("news", background=True)
-async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
+async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE, *, scheduled_day=None):
+    from research_center.ai_budget_service import SCHEDULE_OWNS_AI_NOTICE
+    from research_center.deepseek_service import ai_task
+    from research_center.news_search_window import NEWS_EDITION_WINDOW, NewsSearchWindow
+    window = NewsSearchWindow(scheduled_day or get_tw_today())
+    token = SCHEDULE_OWNS_AI_NOTICE.set(True)
+    edition = NEWS_EDITION_WINDOW.set(window)
+    try:
+        with ai_task('news', background=True, report_date=window.scheduled_day.isoformat()):
+            return await _run_scheduled_news_refresh(context)
+    finally:
+        NEWS_EDITION_WINDOW.reset(edition)
+        SCHEDULE_OWNS_AI_NOTICE.reset(token)
+
+
+def _scheduled_news_detail(items, meta):
+    from research_center.ai_execution_control import is_graceful_search_stop
+    from research_center.news_categories import news_category_label
+    from research_center.news_service import news_publication_audit
+
+    pending = meta.get('pending_classification_summary') or {}
+    search = meta.get('minimax_diagnostics') or {}
+    classification = meta.get('classification_diagnostics') or {}
+    categories = (meta.get('classification_category_coverage') or {}).get('missing_categories')
+    search_stop, classify_stop = search.get('stop_reason'), classification.get('stop_reason')
+    selected = meta.get('selected_classification_complete')
+    unprocessed = meta.get('unprocessed_selected_count')
+    classification_failed = bool(classify_stop or meta.get('local_fallback_count') or (
+        selected is False and (unprocessed is None or unprocessed > (classification.get('company_identity_quarantined') or 0))))
+    failed = bool(classification_failed or (search_stop and not is_graceful_search_stop(search_stop)))
+    return {
+        'status': 'partial_success' if categories else meta.get('classification_status'),
+        'classified': meta.get('ai_classified_count'),
+        'pending': pending.get('eligible_recent', meta.get('deferred_classification_count')),
+        'historical_pending': pending.get('historical_or_date_unknown'),
+        'pending_progress': meta.get('pending_progress'),
+        'missing_categories': categories,
+        'classification_status': meta.get('classification_status'),
+        'selected_classification_complete': selected,
+        'classification_failed': classification_failed,
+        'classification_stop_reason': classify_stop,
+        'search_complete': meta.get('search_complete'),
+        'search_executed': (search.get('query_count') or 0) > (search.get('cache_hit_count') or 0),
+        'remaining_search_gaps_status': meta.get('remaining_search_gaps_status'),
+        'search_stop_reason': search_stop,
+        'publication_window_counts': (meta.get('search_publication_window') or {}).get('counts'),
+        'publication_date_gaps': meta['publication_date_gaps'] if 'publication_date_gaps' in meta
+            else news_publication_audit(items)['gap_count'] if items else None,
+        'failed': failed,
+        'reason': ('搜尋或分類中止，成果已保存' if failed else
+                   '新聞類別覆蓋不足：' + '、'.join(news_category_label(key) for key in categories) if categories else
+                   '搜尋尚有缺口，已保存來源並完成本次分類' if meta.get('search_complete') is False else
+                   '期初待辦與新增待辦分別保留，詳見處理進度'),
+    }
+
+
+async def _run_scheduled_news_refresh(context):
     config = load_config()
     print(f"[{now_timestamp()}] 📰 執行定時新聞整理...")
-    center = None
+    outcome = {}
+    phase = '準備新聞整理'
+    async def record(detail):
+        await _scheduled_outcome_notice(context, config['chat_id'], 'news', detail)
+
     try:
         from research_center.orchestrator import ResearchCenter
         center = ResearchCenter()
-        reason = await _scheduled_ai_gate(context, getattr(center, "deepseek", None), config["chat_id"])
+        reason = await _scheduled_ai_gate(context, getattr(center, "deepseek", None), config["chat_id"], flush_notices=False)
         if reason:
+            await record({'status': 'skipped_budget', 'failed': True, 'block_reason': reason})
             return {"status": "skipped_budget", "reason": reason}
         db_path = (
             center.config.database_path
             if hasattr(center, "config") and hasattr(center.config, "database_path")
             else Path(__file__).parent / "database" / "stock_research.db"
         )
+        phase = '開啟新聞資料庫'
         repository = NewsRepository(db_path)
 
         def progress(msg: str) -> None:
             print(msg)
 
+        phase = '搜尋、分類或寫入新聞資料庫'
         items, meta = await asyncio.to_thread(run_news_refresh, center, repository, progress, ai_model="deepseek")
-        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
-        pending = meta.get('pending_classification_summary') or {}
-        search_diag = meta.get('minimax_diagnostics') or {}
-        from research_center.ai_execution_control import is_graceful_search_stop
-        search_stopped = search_diag.get('stop_reason')
-        category_missing = (meta.get('classification_category_coverage') or {}).get('missing_categories') or []
-        from research_center.news_categories import news_category_label
-        from research_center.news_service import news_publication_audit
-        publication_date_gaps = meta.get('publication_date_gaps', news_publication_audit(items)['gap_count'] if items else None)
-        failed = bool(meta.get('local_fallback_count') or (search_stopped and not is_graceful_search_stop(search_stopped))
-                      or (meta.get('classification_diagnostics') or {}).get('stop_reason'))
-        await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
-            'status': 'partial_success' if category_missing else meta.get('classification_status'), 'classified': meta.get('ai_classified_count'),
-            'pending': pending.get('eligible_recent', meta.get('deferred_classification_count')),
-            'historical_pending': pending.get('historical_or_date_unknown'),
-            'pending_progress': meta.get('pending_progress'),
-            'missing_categories': (meta.get('classification_category_coverage') or {}).get('missing_categories'),
-            'classification_status': meta.get('classification_status'),
-            'selected_classification_complete': meta.get('selected_classification_complete'),
-            'search_complete': meta.get('search_complete'),
-            'remaining_search_gaps_status': meta.get('remaining_search_gaps_status'),
-            'search_stop_reason': search_stopped,
-            'publication_date_gaps': publication_date_gaps,
-            'failed': failed, 'reason': ('搜尋或分類中止，成果已保存' if failed else
-                '新聞類別覆蓋不足：' + '、'.join(news_category_label(key) for key in category_missing)
-                if category_missing else '搜尋尚有缺口，已保存來源並完成本次分類' if meta.get('search_complete') is False
-                else '期初待辦與新增待辦分別保留，詳見處理進度')},
-            provider_notice_sent=bool(notices))
-        if meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0) or category_missing:
+        outcome = _scheduled_news_detail(items, meta)
+        if window_status := outcome['publication_window_counts']:
+            print(f"新聞發布期別：主區間 {window_status['primary']}、四天背景 {window_status['supplement']}、"
+                  f"待核時間 {window_status['date_pending']}、區間外 {window_status['outside']}。", flush=True)
+        category_missing = outcome['missing_categories']
+        if outcome['failed'] or meta.get("classification_status") == "partial_success" or meta.get('deferred_classification_count', 0) or category_missing:
+            await record(outcome)
             print("新聞已保存，搜尋覆蓋或 AI 分類尚未完整完成", flush=True)
             reason = ('新聞已保存，分類類別缺口待補' if category_missing else
                       '本次選定新聞已判讀，其餘新聞保留待補' if meta.get('classification_status') == 'ai_success'
                       else '新聞已保存，搜尋／分類缺口待補')
             return {"status": "partial_success", "reason": reason}
+        phase = '讀取與整理已保存新聞'
         digests = run_news_scheduled_latest(repository)
         diagnostics = build_scheduled_news_diagnostics(repository, digests)
         if not meta.get('scheduled_balance') and (int(diagnostics.get("primary24", 0) or 0) < 8 or any(
             int((diagnostics.get("display_categories") or {}).get(category, 0) or 0) <= 0
             for category in ("market_focus", "sector_rotation", "ai_semiconductor", "supply_chain", "macro_policy", "company_news")
         )):
+            phase = '補強搜尋、分類或寫入新聞資料庫'
             extra_items, extra_meta = await asyncio.to_thread(
                 run_scheduled_news_lightweight_refresh,
                 center,
@@ -2211,8 +2259,14 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
                 "deepseek",
                 diagnostics,
             )
-            await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"])
-            if extra_meta.get("classification_status") == "partial_success":
+            if extra_meta.get("ran"):
+                extra_outcome = _scheduled_news_detail(extra_items, extra_meta)
+                outcome['refill'] = extra_outcome
+                for field in ('failed', 'classification_failed', 'classification_stop_reason', 'search_stop_reason'):
+                    outcome[field] = extra_outcome[field] or outcome[field]
+            if outcome['failed'] or extra_meta.get("classification_status") == "partial_success":
+                outcome['status'] = 'partial_success'
+                await record(outcome)
                 return {"status": "partial_success", "reason": "原新聞已保存，補強分類待補"}
             if extra_meta.get("ran"):
                 print(
@@ -2237,21 +2291,29 @@ async def _scheduled_news_refresh(context: ContextTypes.DEFAULT_TYPE):
         )
         text = format_news_digest(digests, period_label="今日")
         if not center.config.scheduled_news_push_enabled:
+            await record(outcome)
             print(f"[{now_timestamp()}] 新聞背景更新完成，TG 推播關閉：新增 {meta.get('saved', 0)} 則", flush=True)
             return
+        phase = '發送每日新聞'
         await context.bot.send_message(
             chat_id=config["chat_id"],
             text=text,
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
+        await record(outcome)
         print(f"[{now_timestamp()}] ✅ 新聞整理完成：新增 {meta.get('saved', 0)} 則")
+    except asyncio.CancelledError:
+        await record({**outcome, 'status': 'interrupted', 'failed': True,
+                      'reason': f'{phase}中斷，請查執行紀錄'})
+        raise
     except Exception as e:
-        notices = await _flush_ai_notices(context, getattr(getattr(center, "deepseek", None), "account", None), config["chat_id"], raise_on_error=False)
         print(f"[{now_timestamp()}] ⚠️ 新聞整理失敗：{e}")
-        await _scheduled_outcome_notice(context, config['chat_id'], 'news', {
-            'status': 'failed', 'failed': True, 'reason': '整理中斷，請查執行診斷；已有成果保留'},
-            provider_notice_sent=bool(notices))
+        detail = {**outcome, 'status': 'failed', 'failed': True,
+                  'reason': f'{phase}失敗，請查執行診斷', 'failure_type': type(e).__name__}
+        if isinstance(e, DeepSeekUnavailable):
+            detail['failure_code'] = e.status
+        await record(detail)
         raise
 
 

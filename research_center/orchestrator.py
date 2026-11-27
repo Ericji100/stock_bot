@@ -1528,6 +1528,10 @@ class _GeminiDiscoveryRunner:
     def run_discovery_flow(self, request: CommandRequest, sources: list[SourceItem], structured_data: dict[str, Any], use_grounding: bool, progress: ProgressCallback | None) -> tuple[list[SourceItem], bool]:
         if self._center.config.deepseek_only:
             tasks = build_grounding_discovery_prompts(request, structured_data=structured_data, source_list=sources)
+            from .news_search_window import NEWS_EDITION_WINDOW
+            scoped_news = request.command == 'news' and NEWS_EDITION_WINDOW.get() is not None
+            if scoped_news:
+                tasks = [*tasks, *structured_data.get('scheduled_holding_news_tasks', ())]
             if request.command == "research" or (request.command == "value_scan" and request.target_type == "stock"):
                 stock = structured_data.get("stock") or next(iter(structured_data.get("candidates") or []), {})
                 name = stock.get("name") or request.target or ""
@@ -1537,6 +1541,9 @@ class _GeminiDiscoveryRunner:
                     "queries":[f"{name} {year} 第{quarter}季 財務報告 官方 新聞稿 每股盈餘", f"{name} 最新 季度財報 投資人關係 官方公告"]}, *tasks]
             structured_data["search_query_log"] = _build_search_query_log(tasks)
             self._run_deepseek(request, tasks, sources, structured_data, progress)
+            if scoped_news:
+                # The edition planner has already checked saved sources and bounded gap search.
+                return normalize_source_items(sources, request, query_intent='search_discovery'), False
             gaps = build_required_data_gap_summary(request, sources, structured_data)
             gap_tasks = build_required_gap_fill_tasks(request, gaps)
             if gap_tasks:

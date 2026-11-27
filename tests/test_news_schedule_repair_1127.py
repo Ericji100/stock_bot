@@ -104,7 +104,7 @@ def test_publication_date_never_uses_arbitrary_event_or_storage_time(tags, publi
         audit = news.news_publication_audit([item])
     assert audit['gap_count'] == int(not expected)
     if expected:
-        assert item.published_at == '2026-11-26'
+        assert item.published_at == ('2026-11-26T09:00:00+08:00' if 'article:published_time' in body else '2026-11-26')
 
 
 def test_refresh_date_audit_matches_saved_rows_and_reports_cohort_progress(tmp_path, monkeypatch, offline_refresh):
@@ -147,7 +147,7 @@ def test_same_unresolved_article_still_alerts_when_other_old_articles_finish():
     assert 'backlog' in _news_issues(current, previous)
 
 
-def test_graceful_search_gap_remains_partial_and_notice_is_deduplicated(tmp_path):
+def test_graceful_search_gap_remains_partial_and_is_local_only(tmp_path):
     async def run():
         store, send = ScheduledOutcomeNotices(tmp_path), AsyncMock()
         prior = {'status': 'ai_success', 'pending': 2, 'classified': 30}
@@ -156,11 +156,12 @@ def test_graceful_search_gap_remains_partial_and_notice_is_deduplicated(tmp_path
             'pending': 4, 'pending_progress': progress(), 'classified': 30, 'failed': False,
             'search_complete': False, 'search_stop_reason': 'insufficient_search_time',
             'publication_date_gaps': 6, 'missing_categories': []}
-        assert await store.observe('news', 'new', '2026-11-27', detail, send) == 'sent'
-        assert await store.observe('news', 'repeat', '2026-11-27', detail, send) == 'duplicate'
-        text = send.call_args.args[0]
+        assert await store.observe('news', 'new', '2026-11-27', detail, send) == 'silent'
+        assert await store.observe('news', 'repeat', '2026-11-27', detail, send) == 'silent'
+        assert store.recorded_run_ids('news') == {'old', 'new', 'repeat'}
+        text = format_outcome_notice('news', '2026-11-27', detail)
         assert '剩餘搜尋時間不足' in text and '來源日期缺口' in text
         assert '已處理 2 則' in text and '新增待辦 4 則' in text
         assert '連續兩天未減少' not in text and '分類未完整' not in text
-        assert send.await_count == 1
+        send.assert_not_awaited()
     asyncio.run(run())

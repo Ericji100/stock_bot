@@ -40,7 +40,7 @@ def stage_metadata(*, organizer=False):
             'search_command': route['command'] if route else ''}
 
 
-def important_search_gaps(request, task, sources, as_of, command):
+def important_search_gaps(request, task, sources, as_of, command, *, news_window=None, supplement=False):
     """Conservative coverage checks, never a semantic fact-verification pass."""
     from .evidence_governance import official_evidence_status, source_matches_company
     from .source_date_normalizer import source_temporal_record
@@ -48,7 +48,12 @@ def important_search_gaps(request, task, sources, as_of, command):
 
     records = []
     for source in sources:
+        if news_window and not (news_window.lane(source) == 'supplement' if supplement else news_window.primary_evidence(source)):
+            continue
         temporal = source_temporal_record(source, as_of)
+        if command == 'news':
+            from .source_date_normalizer import news_publication_record
+            temporal.update(news_publication_record(source, as_of))
         if (temporal['publication_status'] == 'explicit' and temporal['available_by_report_date'] is not False
                 and not temporal['data_after_report_date'] and not temporal['content_updated_after_report_date']):
             records.append(source)
@@ -56,7 +61,7 @@ def important_search_gaps(request, task, sources, as_of, command):
     if not records:
         gaps.append('publication_date')
     policy = task.get('news_quality_policy') or {}
-    if command == 'news' and policy and not _news_task_quality(sources, policy, as_of)['passed']:
+    if command == 'news' and policy and not supplement and not _news_task_quality(sources, policy, as_of, window=news_window)['passed']:
         gaps.append('news_freshness_and_quality')
     target = str(getattr(request, 'target', '') or '')
     match = re.match(r'^(\d{4,6})(?!\d)', target)

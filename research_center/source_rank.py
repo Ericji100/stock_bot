@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 from .models import SourceItem
 from .preferred_sources import match_preferred_source, preferred_source_weight
-from .source_date_normalizer import normalize_published_date_with_status, normalize_published_date, publication_metadata_date
+from .source_date_normalizer import normalize_published_date, news_publication_record
 from .source_text_cleaner import clean_source_text, clean_source_title, source_body_text
 from .search_transmission import merge_search_text, merge_search_records
 
@@ -53,13 +53,26 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
         content = source_body_text(raw) or None
         if not url:
             continue
+        publication = news_publication_record(raw)
         if url in seen:
             index = seen[url]
             existing = items[index]
+            old = news_publication_record(existing)
+            conflict = ('conflict' in {old['publication_status'], publication['publication_status']} or
+                (old['publication_status'] == publication['publication_status'] == 'explicit'
+                 and old['published_date'] != publication['published_date']))
+            preferred = publication if publication['publication_status'] == 'explicit' or not old['published_date'] else old
+            status = 'conflict' if conflict else preferred['publication_status']
+            markers = [m for m in [*existing.found_by, *raw.get('found_by', [])] if not m.startswith('source_date:')]
+            markers.extend(f"publication_candidate:{p['published_date']}:{p['publication_status']}" for p in (old, publication))
+            markers.extend(publication['publication_time_markers'])
+            markers.append('source_date:' + status)
             items[index] = replace(existing, snippet=merge_search_text(existing.snippet, snippet),
                                    content=merge_search_text(existing.content, content) or None,
                                    search_summary_events=merge_search_records(existing.search_summary_events, raw.get('search_summary_events')),
-                                   found_by=list(dict.fromkeys([*existing.found_by, *raw.get('found_by', [])])))
+                                   published_date=preferred['published_date'], date_status=status,
+                                   updated_date=max(filter(None, [existing.updated_date, raw.get('updated_date')]), default=None),
+                                   found_by=list(dict.fromkeys(markers)))
             continue
         seen[url] = len(items)
         preferred = match_preferred_source(url)
@@ -67,24 +80,13 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
         provider_detail = raw.get("provider_detail") or ""
         if preferred:
             provider_detail = f"[{preferred.get('level')} {preferred.get('name')}] {provider_detail}".strip()
-        published_date, date_status = normalize_published_date_with_status(
-            explicit_values=(
-                raw.get("published_date"),
-                raw.get("published_at"),
-                raw.get("datePublished"),
-                raw.get("article:published_time"),
-                publication_metadata_date(raw.get('snippet')),
-            ),
-            inferred_values=(raw.get("date"),url),
-        )
-        found_by = list(raw.get("found_by", []))
+        published_date, date_status = publication['published_date'], publication['publication_status']
+        found_by = [marker for marker in raw.get('found_by', []) if not marker.startswith('source_date:')]
         if title != original_title:
             found_by.append("source_title:code_isolated")
             provider_detail = f"{provider_detail}；標題程式碼已隔離".strip("；")
-        if date_status != "unknown":
-            marker = f"source_date:{date_status}"
-            if marker not in found_by:
-                found_by.append(marker)
+        found_by.append(f"source_date:{date_status}")
+        found_by = list(dict.fromkeys([*found_by, *publication['publication_time_markers']]))
         items.append(
             SourceItem(
                 source_id=f"S{len(items) + 1:03d}",
@@ -100,7 +102,7 @@ def make_source_items(raw_sources: list[dict[str, str]]) -> list[SourceItem]:
                 fetch_quality=raw.get("fetch_quality"),
                 failure_reason=raw.get("failure_reason"),
                 found_by=found_by,
-                date_status=raw.get('date_status') or date_status,
+                date_status=date_status,
                 event_date=raw.get('event_date') or normalize_published_date(title,snippet,raw.get('content')),
                 data_date=raw.get('data_date'),period_start=raw.get('period_start'),period_end=raw.get('period_end'),
                 fetched_at=raw.get('fetched_at'),updated_date=raw.get('updated_date') or normalize_published_date(raw.get('dateModified')),

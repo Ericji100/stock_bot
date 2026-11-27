@@ -204,10 +204,10 @@ def _filter_news_tasks_by_env(tasks: list[dict[str, Any]]) -> list[dict[str, Any
     filtered = [task for task in tasks if str(task.get("label") or "") in allowed_labels]
     return filtered or tasks
 
-def build_holding_news_discovery_queries(portfolio: dict[str, str]) -> list[dict[str, Any]]:
+def build_holding_news_discovery_queries(portfolio: dict[str, str], *, as_of=None) -> list[dict[str, Any]]:
     """Build focused news queries for portfolio holdings."""
     tasks: list[dict[str, Any]] = []
-    today = datetime.now()
+    today = as_of or datetime.now()
     today_dash = today.strftime("%Y-%m-%d")
     today_slash = today.strftime("%Y/%m/%d")
     for code, name in list(portfolio.items())[:30]:
@@ -327,14 +327,18 @@ def _sources_to_news_items(sources: list[SourceItem]) -> list[NewsItem]:
         source_name = matched.get("name") if matched else (src.provider or "")
         summary = src.snippet or ""
         title = _normalize_news_title(src.title or "", summary)
-        from .source_date_normalizer import source_publication_status
+        from .source_date_normalizer import news_publication_record
+        from .news_search_window import NewsSearchWindow
+        publication = news_publication_record(src)
+        status = 'conflict' if publication['publication_time_conflict'] else publication['publication_status']
         items.append(apply_news_signal_tags(NewsItem(
             id=str(uuid.uuid4())[:8],
             title=title,
             url=url,
             source=source_name,
-            published_at=src.published_date or "",
-            tags=['publication_' + source_publication_status(src)] +
+            published_at=publication['publication_timestamp'] or src.published_date or "",
+            tags=['publication_' + status] +
+                 ([] if NewsSearchWindow.has_primary_provenance(src) else ['publication_supplement_only']) +
                  (['official_body_retrieved'] if _news_official_body(src) else []),
             summary=summary,
             full_text=src.content or summary,
@@ -387,19 +391,15 @@ def _backfill_refresh_item_dates(items: list[NewsItem]) -> list[NewsItem]:
             continue
         if not item.created_at:
             item.created_at = now_text
-        if item.published_at:
-            normalized = normalize_published_date(item.published_at)
-            if normalized:
-                item.published_at = normalized
-            continue
-        from .source_date_normalizer import publication_metadata_date
-        explicit = publication_metadata_date(item.full_text) or publication_metadata_date(item.summary)
-        inferred = explicit or normalize_published_date(item.url)
-        if inferred:
-            item.published_at = inferred
-            item.tags = [tag for tag in item.tags if tag not in
-                         {'publication_unknown', 'publication_inferred', 'publication_explicit'}]
-            item.tags.append('publication_explicit' if explicit else 'publication_inferred')
+        from .source_date_normalizer import news_publication_record
+        publication = news_publication_record(item)
+        # Preserve precise timestamps; normalising relative text must not erase its weak provenance.
+        if publication['published_date'] and (not item.published_at or
+                publication['publication_status'] != 'explicit' or len(str(item.published_at)) <= 10):
+            item.published_at = publication['publication_timestamp'] or publication['published_date']
+        item.tags = [tag for tag in item.tags if tag not in
+                     {'publication_unknown', 'publication_inferred', 'publication_explicit', 'publication_conflict'}]
+        item.tags.append('publication_' + publication['publication_status'])
     return items
 
 
@@ -518,11 +518,17 @@ def _fair_scheduled_news(items, pending_urls, portfolio):
     """Rotate recent pending, older eligible pending and new events, then categories."""
     recent, older, new = [], [], []
     from .deepseek_service import TASK
+    from .news_search_window import NEWS_EDITION_WINDOW
+    window = NEWS_EDITION_WINDOW.get()
     cutoff = (datetime.fromisoformat(TASK.get()[2]) if TASK.get()[2] else datetime.now()) - timedelta(hours=24)
+    def current(item):
+        if window:
+            return window.lane(item) == 'primary' and 'publication_supplement_only' not in item.tags
+        return bool((published := _effective_news_datetime(item)) and published >= cutoff)
     for item in items:
         if item.url not in pending_urls:
             new.append(item)
-        elif (published := _effective_news_datetime(item)) and published >= cutoff:
+        elif current(item):
             recent.append(item)
         else:
             older.append(item)
@@ -532,6 +538,8 @@ def _fair_scheduled_news(items, pending_urls, portfolio):
             rows = sorted(rows, key=lambda item: (item.created_at or '', -_news_quality_score(item, portfolio)))
         else:
             rows = _rank_news_for_ai(rows, portfolio)
+            if window:
+                rows.sort(key=lambda item: not current(item))
         groups = {}
         for item in rows:
             groups.setdefault(_correct_news_category(item), deque()).append(item)
@@ -747,27 +755,17 @@ def _is_trusted_refresh_news(item: NewsItem) -> bool:
 
 
 def _effective_news_datetime(item: NewsItem) -> datetime | None:
-    """Return the display recency timestamp for a news item.
-
-    Prefer the source-provided published_at, then an article date.
-    A storage timestamp cannot establish when the article was published.
-    """
-    published_text = (item.published_at or "").strip()
-    published = _parse_news_datetime(published_text)
-    if published is not None:
-        return published
-    if published_text:
-        return None
-    if getattr(item, "news_origin", "refresh") == "refresh":
-        embedded = _extract_embedded_news_datetime(item)
-        if embedded is not None:
-            return embedded
-    return None
+    from .source_date_normalizer import news_publication_record
+    record = news_publication_record(item, datetime.now())
+    return datetime.fromisoformat(record['published_datetime']).replace(tzinfo=None) if record['available_by_report_date'] else None
 
 
 def _query_refresh_news(repository: NewsRepository, hours: int) -> list[NewsItem]:
     """Query news generated by /news refresh only, with fake-repository fallback."""
     try:
+        query = getattr(repository, 'query_saved_recent', None)
+        if callable(query):
+            return query(hours=hours, news_origin='refresh')
         return repository.query_recent(hours=hours, news_origin="refresh")
     except TypeError:
         items = repository.query_recent(hours=hours)
@@ -775,25 +773,16 @@ def _query_refresh_news(repository: NewsRepository, hours: int) -> list[NewsItem
 
 
 def _filter_by_published_window(items: list[NewsItem], hours: int, keep_unknown_date: bool = True, *, as_of=None) -> list[NewsItem]:
-    now = datetime.combine(as_of, datetime.max.time()) if as_of else datetime.now()
-    cutoff = now - timedelta(hours=hours)
+    from .source_date_normalizer import news_in_publication_window, news_publication_record
+    end = as_of or datetime.now()
     result: list[NewsItem] = []
     for item in items:
-        published_text = (item.published_at or "").strip().lower()
-        if not keep_unknown_date and any(tag in item.tags for tag in ('publication_inferred', 'publication_unknown')):
-            continue
-        if hours <= 48 and re.search(r"\b(?:2|[3-9]|\d{2,})\s*days?\b", published_text):
-            continue
-        if hours <= 48 and re.search(r"(?:2|[3-9]|\d{2,})\s*天前", published_text):
-            continue
-        published = _effective_news_datetime(item)
-        if published is None:
+        audit = news_publication_record(item, end)
+        if audit['publication_status'] != 'explicit':
             if keep_unknown_date:
                 result.append(item)
             continue
-        if published >= cutoff:
-            if published.date() > now.date():
-                continue
+        if news_in_publication_window(item, hours, end):
             result.append(item)
     return result
 
@@ -839,10 +828,12 @@ from .deepseek_service import DeepSeekUnavailable, task_context
 def run_news_refresh(center, repository, progress=None, ai_model="deepseek"):
     from .ai_execution_control import execution_scope
     from .deepseek_service import TASK, RUN_ID
+    from .news_search_window import NEWS_EDITION_WINDOW
     # Reserve time for enrichment, classification and persistence, not just discovery.
     seconds = 45 * 60 if TASK.get()[1] else None
     journal = repository if TASK.get()[1] and isinstance(repository, NewsRepository) else None
-    day = TASK.get()[2] or datetime.now().date().isoformat()
+    window = NEWS_EDITION_WINDOW.get()
+    day = window.scheduled_day.isoformat() if window else TASK.get()[2] or datetime.now().date().isoformat()
     if journal:
         from tools.bot_watchdog import default_process_exists
         journal.recover_interrupted_refreshes(default_process_exists)
@@ -856,10 +847,14 @@ def run_news_refresh(center, repository, progress=None, ai_model="deepseek"):
             with execution_scope(paid_seconds, reason='news_classification_deadline'):
                 items, meta = _run_news_refresh(center, repository, progress, ai_model, **({'resume_saved':True} if resume else {}))
         if journal:
-            journal.record_refresh(RUN_ID.get(), day, 'finished', meta['classification_status'],
-                {key:meta.get(key) for key in ('ai_classified_count','pending_classification_summary','search_complete',
-                                               'classification_diagnostics','workload_plan',
-                                               'pending_progress','publication_date_gaps','publication_audit')})
+            detail = {key:meta.get(key) for key in ('ai_classified_count','pending_classification_summary','search_complete',
+                      'classification_diagnostics','workload_plan','pending_progress','publication_date_gaps',
+                      'publication_audit','search_publication_window')}
+            if window:
+                search = meta.get('minimax_diagnostics') or {}
+                detail['search_diagnostics'] = {key: search.get(key) for key in (
+                    'status', 'stop_reason', 'runs', 'critical_followup_limit', 'critical_gap_checks', 'deferred_search')}
+            journal.record_refresh(RUN_ID.get(), day, 'finished', meta['classification_status'], detail)
         return items, meta
     except BaseException as exc:
         if journal:
@@ -883,6 +878,7 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress, *,
     from .deepseek_service import TASK
     from .orchestrator import _GeminiDiscoveryRunner
     from .deepseek_search_service import scheduled_news_seed_sources
+    from .news_search_window import NEWS_EDITION_WINDOW, NEWS_PRIOR_EDITION_MISSED
     from datetime import date
     sources = []
     diagnostics = {}
@@ -895,15 +891,21 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress, *,
         _checkpoint_news_sources(repository, rows)
     request = CommandRequest(command="news", raw_text="/news refresh", target="台股財經新聞",
                              target_type="news", ai_model=ai_model, report_date=None)
-    if TASK.get()[1] and TASK.get()[2]:
+    window = NEWS_EDITION_WINDOW.get()
+    if window or (TASK.get()[1] and TASK.get()[2]):
         from dataclasses import replace
-        request = replace(request, report_date=date.fromisoformat(TASK.get()[2]))
-    seeds = (repository.recent_discovery_sources(request.report_date or datetime.now().date())
+        request = replace(request, report_date=window.scheduled_day if window else date.fromisoformat(TASK.get()[2]))
+    seeds = ((repository.recent_discovery_sources(window.end, hours=96) if window else
+              repository.recent_discovery_sources(request.report_date or datetime.now().date()))
              if TASK.get()[1] and callable(getattr(repository, 'recent_discovery_sources', None)) else [])
     sources.extend(seeds)
+    missed = NEWS_PRIOR_EDITION_MISSED.set(bool(window and isinstance(repository, NewsRepository) and
+                                                repository.missed_scheduled_edition(window.scheduled_day)))
     try:
         with execution_scope(search_seconds if TASK.get()[1] else None, reason='search_phase_deadline'), source_checkpoint(checkpoint), scheduled_news_seed_sources(seeds):
-            structured = {}
+            scheduled_official = bool(window and getattr(getattr(center, 'config', None), 'deepseek_only', False) is True)
+            structured = {'scheduled_holding_news_tasks': build_holding_news_discovery_queries(
+                portfolio, as_of=window.scheduled_day)} if scheduled_official else {}
             try:
                 found, _ = _GeminiDiscoveryRunner(center).run_discovery_flow(
                     request, sources=list(seeds), structured_data=structured, use_grounding=True, progress=progress)
@@ -911,7 +913,7 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress, *,
                 diagnostics = structured.get("deepseek_search_discovery", structured.get("minimax_search_discovery", {}))
                 _checkpoint_news_sources(repository, sources)
                 check_work()
-                holdings = _collect_holding_news_sources(center, portfolio, request, progress=progress)
+                holdings = [] if scheduled_official else _collect_holding_news_sources(center, portfolio, request, progress=progress)
                 sources.extend(holdings)
                 _checkpoint_news_sources(repository, sources)
             except DeepSeekUnavailable as exc:
@@ -933,10 +935,16 @@ def _discover_news_sources(center, repository, portfolio, ai_model, progress, *,
         if progress:
             progress(f"新聞搜尋未完整完成：{exc}；保留已保存來源。")
     finally:
+        NEWS_PRIOR_EDITION_MISSED.reset(missed)
         if isinstance(previous_limit, int):
             service.max_queries_per_task = previous_limit
-    from .orchestrator import _merge_sources
-    sources = _merge_sources([], sources)
+    if window:
+        from dataclasses import asdict
+        from .source_rank import make_source_items
+        sources = make_source_items([asdict(source) for source in sources])
+    else:
+        from .orchestrator import _merge_sources
+        sources = _merge_sources([], sources)
     return sources, diagnostics
 
 
@@ -960,10 +968,12 @@ def _run_news_refresh(
             progress(msg)
     saved_before = repository.article_count() if isinstance(repository, NewsRepository) else None
     from .deepseek_service import TASK
+    from .news_search_window import NEWS_EDITION_WINDOW
     scheduled = TASK.get()[1]
     official = getattr(getattr(center, "config", None), "deepseek_only", False) is True
     from datetime import date
-    analysis_day = date.fromisoformat(TASK.get()[2]) if scheduled and TASK.get()[2] else datetime.now().date()
+    window = NEWS_EDITION_WINDOW.get()
+    analysis_day = window.scheduled_day if window else date.fromisoformat(TASK.get()[2]) if scheduled and TASK.get()[2] else datetime.now().date()
 
     # Smoke test mode: limit MiniMax MCP Search queries per task to 2 to avoid long runs
     smoke_test = os.environ.get("NEWS_SMOKE_TEST") == "1"
@@ -1002,7 +1012,8 @@ def _run_news_refresh(
         if scheduled and isinstance(repository, NewsRepository):
             repository.record_refresh(RUN_ID.get(), analysis_day.isoformat(), 'classification' if workload['skip_search'] else 'search', detail=workload)
         if scheduled and workload['skip_search']:
-            all_sources = repository.recent_discovery_sources(analysis_day)
+            all_sources = (repository.recent_discovery_sources(window.end, hours=96) if window else
+                           repository.recent_discovery_sources(analysis_day))
             minimax_diag = {'complete': False, 'status': 'saved_sources_resume', 'deferred_search': True,
                 'reason': '優先判讀已保存新聞，新的搜尋缺口保留；未重送先前未結算搜尋。'}
             emit(minimax_diag['reason'])
@@ -1076,6 +1087,7 @@ def _run_news_refresh(
 
         if callable(getattr(repository, 'save_discovery_checkpoint', None)):
             repository.save_discovery_checkpoint(sorted_sources)
+        search_publication_window = window.audit(sorted_sources) if window else None
 
         web_fetch_diag = structured_data.get("web_fetch_diagnostics") or {}
         webfetch_success = int(web_fetch_diag.get("enriched_source_count") or web_fetch_diag.get("successful") or 0)
@@ -1088,7 +1100,8 @@ def _run_news_refresh(
 
         # Filter to Taiwan-finance relevant only
         items = _filter_taiwan_finance_news(items)
-        items = _filter_by_published_window(items, hours=168, as_of=analysis_day if scheduled else None)
+        cutoff = window.end - timedelta(microseconds=1) if window else analysis_day if scheduled else None
+        items = _filter_by_published_window(items, hours=168, as_of=cutoff)
         emit(f"台灣過濾後 {len(items)} 筆")
 
         items = _rank_news_for_ai(items, portfolio)
@@ -1096,7 +1109,7 @@ def _run_news_refresh(
         if official and hasattr(repository, "query_pending_classification"):
             pending_kwargs = {'as_of': analysis_day} if scheduled and isinstance(repository, NewsRepository) else {}
             pending = _filter_by_published_window(repository.query_pending_classification(limit=0 if scheduled else 6, **pending_kwargs), hours=168,
-                                                  as_of=analysis_day if scheduled else None)
+                                                  as_of=cutoff)
             pending_urls = {item.url for item in pending}
             pending_by_url = {item.url:item for item in pending}
             for item in items:
@@ -1159,7 +1172,7 @@ def _run_news_refresh(
         classified_urls = {item.url for item in items}
         search_notes = collect_search_context({'minimax_diagnostics': minimax_diag},
                                              [source for source in sorted_sources if source.url in classified_urls],
-                                             datetime.now().astimezone().date())
+                                             analysis_day if window else datetime.now().astimezone().date())
         classification_diagnostics = {}
         if search_halted:
             classified = _fallback_classification(items)
@@ -1285,6 +1298,7 @@ def _run_news_refresh(
             "classification_diagnostics": classification_diagnostics,
             "publication_date_gaps": publication_audit['gap_count'],
             "publication_audit": publication_audit,
+            "search_publication_window": search_publication_window,
             "pending_progress": pending_progress,
             "search_complete": search_complete,
             "remaining_search_gaps_status": 'declared_incomplete' if not search_complete else 'coverage_checked_not_fact_verified',
@@ -1665,13 +1679,21 @@ def _classification_payload(items: list[NewsItem], text_limit: int, lightweight:
 def _news_temporal_record(item: NewsItem) -> dict[str, Any]:
     from .source_date_normalizer import source_temporal_record
     from zoneinfo import ZoneInfo
-    status = 'inferred' if 'publication_inferred' in item.tags else 'unknown' if 'publication_unknown' in item.tags else None
+    from .source_date_normalizer import news_publication_record
     from .deepseek_service import TASK
     from datetime import date
-    report_date = date.fromisoformat(TASK.get()[2]) if TASK.get()[2] else datetime.now(ZoneInfo('Asia/Taipei')).date()
-    return {"analysis_date": report_date.isoformat(), **source_temporal_record(
-        {"source_id": item.id, "published_at": item.published_at, "date_status": status,
-         "fetched_at": item.created_at}, report_date)}
+    from .news_search_window import NEWS_EDITION_WINDOW
+    window = NEWS_EDITION_WINDOW.get()
+    report_date = window.scheduled_day if window else date.fromisoformat(TASK.get()[2]) if TASK.get()[2] else datetime.now(ZoneInfo('Asia/Taipei')).date()
+    publication = news_publication_record(item, window.end if window else report_date)
+    record = source_temporal_record({'source_id':item.id,'published_at':publication['published_date'],
+        'date_status':publication['publication_status'],'fetched_at':item.created_at}, report_date)
+    record.update(publication)
+    if window:
+        lane = window.lane(item)
+        record['scheduled_publication_lane'] = ('outside' if lane == 'primary' and
+                                               'publication_supplement_only' in item.tags else lane)
+    return record
 
 
 def _apply_classification_meta(batch: list[NewsItem], parsed: dict[str, Any]) -> list[NewsItem]:

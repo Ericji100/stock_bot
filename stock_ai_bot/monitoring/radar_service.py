@@ -1365,16 +1365,13 @@ def _attach_local_news(candidates: list[RadarCandidate], analysis_date: date) ->
     identity = company_identity_context()
     try:
         repository = NewsRepository()
-        items = repository.query_all_recent(hours=24 * 180)
+        items = repository.query_saved_recent(hours=24 * 180)
     except Exception:
         items = []
     for candidate in candidates:
         terms = {candidate.code, candidate.name, candidate.industry}
         matched = []
         for item in items:
-            published = parse_date_like(item.published_at) or parse_date_like(item.created_at)
-            if published and published > analysis_date:
-                continue
             haystack = " ".join(
                 [
                     item.title or "",
@@ -1402,6 +1399,14 @@ def _attach_local_news(candidates: list[RadarCandidate], analysis_date: date) ->
                     record = {'source': row, 'admission': admission}
                     if record not in quarantine:
                         quarantine.append(record)
+                    continue
+                from research_center.source_date_normalizer import news_in_publication_window, news_publication_record
+                if not news_in_publication_window(item, 24 * 180, analysis_date):
+                    pending = candidate.evidence_pack.setdefault('publication_pending_news', [])
+                    record = {'source':row, 'publication':news_publication_record(item, analysis_date),
+                              'usage':'發布日期未符合分析視窗，保留待查，不作近期消息或加分依據。'}
+                    if record not in pending:
+                        pending.append(record)
                     continue
                 matched.append(row)
         candidate.news_items = matched[:5]

@@ -37,7 +37,7 @@ class MonthlyBudgetTests(unittest.TestCase):
         repo.save_many([original])
         updated=NewsItem(url=original.url,title='更新新聞',full_text='第二版新增公告',summary='新摘要',published_at=original.published_at)
         repo.save_many([updated])
-        rows=repo.query_all_recent()
+        rows=repo.query_saved_recent()
         self.assertEqual(len(rows),1)
         self.assertEqual(rows[0].full_text,updated.full_text)
         self.assertEqual(rows[0].summary,'新摘要')
@@ -178,11 +178,13 @@ class MonthlyBudgetTests(unittest.TestCase):
         with patch.object(main,'load_config',return_value={'chat_id':123}), \
              patch('research_center.orchestrator.ResearchCenter',return_value=center), \
              patch.object(main,'_scheduled_ai_gate',new=AsyncMock(return_value='background_budget_exceeded')), \
+             patch.object(main,'_scheduled_outcome_notice',new=AsyncMock()) as notice, \
              patch.object(main,'run_news_refresh') as refresh:
             outcome=asyncio.run(main._scheduled_news_refresh(context))
         self.assertEqual(outcome['status'],'skipped_budget')
         refresh.assert_not_called()
         context.bot.send_message.assert_not_awaited()
+        self.assertEqual(notice.await_args.args[3]['block_reason'],'background_budget_exceeded')
 
     def test_news_mid_search_quota_failure_notifies_immediately_once(self):
         import main
@@ -191,6 +193,7 @@ class MonthlyBudgetTests(unittest.TestCase):
         def fail(*args,**kwargs): account.block(402)
         with patch.object(main,'load_config',return_value={'chat_id':123}), \
              patch('research_center.orchestrator.ResearchCenter',return_value=center), \
+             patch.object(main,'get_workdata_path',return_value=self.root/'outcomes'), \
              patch.object(main,'_scheduled_ai_gate',new=AsyncMock(return_value='')), \
              patch.object(main,'run_news_refresh',side_effect=fail), \
              patch.object(main,'safe_send_bot_message',new=AsyncMock()) as send:
@@ -198,7 +201,10 @@ class MonthlyBudgetTests(unittest.TestCase):
                 with self.assertRaises(DeepSeekUnavailable):
                     asyncio.run(main._scheduled_news_refresh(SimpleNamespace(bot=object())))
             self.assertEqual(send.await_count,1)
-            self.assertIn('官方餘額不足',send.await_args.args[2])
+            self.assertIn('服務可用額度不足',send.await_args.args[2])
+            self.assertIn('搜尋、分類或寫入新聞資料庫失敗',send.await_args.args[2])
+            self.assertNotIn('排程未執行',send.await_args.args[2])
+            self.assertIsNone(account.budget.claim_notice())
 
     def test_exhausted_monthly_scope_notifies_without_any_http(self):
         import main

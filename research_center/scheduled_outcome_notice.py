@@ -48,7 +48,7 @@ class ScheduledOutcomeNotices:
             previous = conn.execute('SELECT detail FROM outcomes WHERE command=? AND day=? ORDER BY recorded_at DESC, rowid DESC LIMIT 1',
                                     (command, previous_day)).fetchone()
         if command == 'news':
-            return await self._observe_news(command, day, detail, previous, send, provider_notice_sent)
+            return await self._observe_news(command, day, detail, send, provider_notice_sent)
         if command == 'topic_maintain':
             alert = detail.get('status') != 'success'
         else:
@@ -76,15 +76,14 @@ class ScheduledOutcomeNotices:
             conn.execute('UPDATE deliveries SET state=? WHERE command=? AND day=?', (state, command, day))
         return state
 
-    async def _observe_news(self, command, day, detail, previous, send, provider_notice_sent):
-        issues = _news_issues(detail, json.loads(previous[0]) if previous else {})
-        content_gap = bool(issues.keys() - {'failure', 'backlog'})
+    async def _observe_news(self, command, day, detail, send, provider_notice_sent):
+        issues = _news_alert_issues(detail)
         owns_legacy = False
         with self._db() as conn:
             # Serialize claims across processes; never hold the lock over send().
             conn.execute('BEGIN IMMEDIATE')
             if issues:
-                kind = 'alert'
+                kind = 'failure_alert'
                 existing = conn.execute(
                     'SELECT detail FROM news_notice_deliveries WHERE command=? AND day=? AND kind=?',
                     (command, day, kind)).fetchone()
@@ -95,19 +94,22 @@ class ScheduledOutcomeNotices:
                     conn.execute('UPDATE news_notice_deliveries SET detail=? WHERE command=? AND day=? AND kind=?',
                                  (json.dumps(merged, ensure_ascii=False), command, day, kind))
                     return 'duplicate'
-                legacy = conn.execute('SELECT state FROM deliveries WHERE command=? AND day=?',
+                legacy = conn.execute('SELECT detail FROM deliveries WHERE command=? AND day=?',
                                       (command, day)).fetchone()
-                if legacy and (legacy[0] != 'provider_notice' or not content_gap):
+                # A historical data-gap notice does not use up the day's real failure alert.
+                if legacy and _news_alert_issues(json.loads(legacy[0])):
                     return 'duplicate'
-                if provider_notice_sent and not content_gap:
+                if provider_notice_sent:
                     conn.execute('INSERT OR IGNORE INTO deliveries VALUES (?,?,?,?)',
                                  (command, day, 'provider_notice', json.dumps(detail, ensure_ascii=False)))
                     conn.execute('INSERT OR IGNORE INTO news_notice_deliveries VALUES (?,?,?,?,?)',
                                  (command, day, 'provider', 'provider_notice', json.dumps(
-                                     {'issues': issues, 'notified_issues': issues, 'latest_detail': detail},
+                                     {'issues': issues, 'notified_issues': issues, 'latest_detail': detail,
+                                      'alert_policy': 'execution_only'},
                                      ensure_ascii=False)))
                     return 'provider_notice'
-                payload = {'issues': issues, 'notified_issues': issues, 'latest_detail': detail}
+                payload = {'issues': issues, 'notified_issues': issues, 'latest_detail': detail,
+                           'alert_policy': 'execution_only'}
                 owns_legacy = bool(conn.execute('INSERT OR IGNORE INTO deliveries VALUES (?,?,?,?)',
                     (command, day, 'sending', json.dumps(detail, ensure_ascii=False))).rowcount)
                 text = format_outcome_notice(command, day, detail, issues=issues)
@@ -141,26 +143,38 @@ class ScheduledOutcomeNotices:
 
     @staticmethod
     def _notified_news_issues(conn, command, day):
+        # Do not generate retrospective recovery notifications for older nightly runs.
+        first_day = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
         recovery = conn.execute("SELECT rowid, day FROM news_notice_deliveries "
                                 "WHERE command=? AND day<=? AND kind='recovery' ORDER BY rowid DESC LIMIT 1",
                                 (command, day)).fetchone()
         after_row, after_day = recovery if recovery else (0, '')
         issues = {}
         # Keep old deliveries immutable and use their confirmed history as well.
-        for raw, in conn.execute("SELECT d.detail FROM deliveries d WHERE d.command=? AND d.day>? AND d.day<=? "
+        for raw, in conn.execute("SELECT d.detail FROM deliveries d WHERE d.command=? AND d.day>? AND d.day BETWEEN ? AND ? "
                                  "AND d.state IN ('sent','provider_notice') AND NOT EXISTS "
                                  "(SELECT 1 FROM news_notice_deliveries n WHERE n.command=d.command "
                                  "AND n.day=d.day AND (n.kind='provider' OR "
-                                 "(n.kind='alert' AND d.state!='provider_notice'))) ORDER BY d.day", (command, after_day, day)):
-            old = json.loads(raw)
-            old_issues = _news_issues(old)
-            if not old_issues and int(old.get('pending', 0) or 0) > 0:
-                old_issues.setdefault('backlog', '近期待辦連續兩天未減少')
-            issues.update(old_issues)
-        for raw, in conn.execute("SELECT detail FROM news_notice_deliveries WHERE command=? AND day<=? "
-                                 "AND rowid>? AND kind IN ('alert','provider') "
-                                 "AND state IN ('sent','provider_notice') ORDER BY rowid", (command, day, after_row)):
-            issues.update(json.loads(raw)['notified_issues'])
+                                 "(n.kind IN ('alert','failure_alert') AND d.state!='provider_notice'))) ORDER BY d.day",
+                                 (command, after_day, first_day, day)):
+            issues.update(_news_alert_issues(json.loads(raw)))
+        for raw, record_day, kind in conn.execute("SELECT detail,day,kind FROM news_notice_deliveries WHERE command=? AND day BETWEEN ? AND ? "
+                                 "AND rowid>? AND kind IN ('alert','failure_alert','provider') "
+                                 "AND state IN ('sent','provider_notice') ORDER BY rowid", (command, first_day, day, after_row)):
+            record = json.loads(raw)
+            notified = record['notified_issues']
+            # Re-evaluate the sent snapshot, never the later duplicate's diagnostics.
+            if 'alert_policy' in record:
+                issues.update(notified)
+            else:
+                snapshot = record.get('latest_detail') or {}
+                if kind == 'alert':
+                    sent = conn.execute("SELECT detail FROM deliveries WHERE command=? AND day=? AND state='sent'",
+                                        (command, record_day)).fetchone()
+                    if sent:
+                        snapshot = json.loads(sent[0])
+                issues.update({key: message for key, message in _news_alert_issues(snapshot).items()
+                               if key in notified or key == 'search_failure' and 'search' in notified})
         return issues
 
 
@@ -186,6 +200,9 @@ _NEWS_SEARCH_REASONS = {
     'work_cancelled': '本次處理已停止',
     'classification_timeout': '分類等待時間已到',
     'source_checkpoint_failed': '來源保存未完成',
+    'classification_checkpoint_failed': '判讀結果未能寫入資料庫',
+    'openai_credits_unavailable': '已設定的 OpenAI 帳戶額度不足',
+    'openai_job_budget_exceeded': '已達 OpenAI 單次費用保護上限',
     'authentication_failed': '服務驗證失敗',
     'rate_limited': '服務暫時限制請求',
     'provider_disabled': '服務目前停用',
@@ -210,11 +227,8 @@ _NEWS_SEARCH_GAPS_LABELS = {
 _NEWS_RECOVERY_LABELS = {
     'failure': '搜尋或分類作業已恢復',
     'classification': '本次選定新聞已完成判讀',
-    'processing': '新聞整理作業已恢復',
-    'categories': '必要新聞類別覆蓋已補齊',
-    'search': '搜尋覆蓋缺口已清除',
-    'dates': '來源日期缺口已清除',
-    'backlog': '近期待分類已清除',
+    'search_failure': '搜尋作業已恢復',
+    'blocked': '排程已能繼續處理',
 }
 
 
@@ -311,6 +325,42 @@ def _news_issues(detail, previous=None):
     return issues
 
 
+def _news_alert_issues(detail):
+    """Only execution failures or stops requiring attention reach Telegram."""
+    from .ai_budget_service import REASONS
+    from .ai_execution_control import is_graceful_search_stop
+
+    def stop_text(code):
+        if code == 'transport_unknown':
+            return '連線逾時或中斷，費用未知；保留原預留，不跨帳戶或模型重送'
+        return _NEWS_SEARCH_REASONS.get(code) or REASONS.get(code) or '處理未完成，詳見本地紀錄'
+
+    issues = {}
+    search_stop = detail.get('search_stop_reason')
+    classify_stop = detail.get('classification_stop_reason')
+    blocked = detail.get('block_reason')
+    if blocked or detail.get('status') == 'skipped_budget':
+        issues['blocked'] = '排程未執行：' + stop_text(blocked)
+    if search_stop and not is_graceful_search_stop(search_stop):
+        issues['search_failure'] = '搜尋中斷：' + stop_text(search_stop)
+    if classify_stop and classify_stop != search_stop:
+        issues['classification'] = '分類未完整：' + stop_text(classify_stop)
+    elif detail.get('classification_failed') is True or (
+        'classification_failed' not in detail and (
+            detail.get('selected_classification_complete') is False
+            or detail.get('classification_status') in {'failed', 'error', 'interrupted', 'timeout'}
+        )
+    ):
+        if not search_stop or is_graceful_search_stop(search_stop):
+            issues['classification'] = '分類未完整：本次選定新聞尚未全部完成判讀'
+    if detail.get('failed') or detail.get('status') in {'failed', 'error', 'interrupted', 'timeout'}:
+        if not issues:
+            issues['failure'] = _news_reason(detail.get('reason')) or '處理中斷，請查執行紀錄'
+            if code := detail.get('failure_code'):
+                issues['failure'] += '；' + stop_text(code)
+    return issues
+
+
 def _news_pending_progress(detail):
     progress = detail.get('pending_progress')
     if not isinstance(progress, dict):
@@ -327,22 +377,16 @@ def _news_pending_progress(detail):
 
 def _news_restored(issues, detail):
     complete = detail.get('status') in _NEWS_COMPLETE
+    classified = detail.get('selected_classification_complete') is True
+    evidence = complete or (detail.get('failed') is False and classified)
+    search_ran = detail.get('search_executed', detail.get('search_complete') is True)
     checks = {
-        'failure': complete or (detail.get('failed') is False
-                    and detail.get('selected_classification_complete') is True
-                    and detail.get('search_complete') is True),
-        'processing': complete,
-        'classification': detail.get('selected_classification_complete') is True or
+        'failure': evidence,
+        'classification': (classified and bool(detail.get('classified'))) or
                           (detail.get('selected_classification_complete') is not False and
-                           (detail.get('classification_status') in _NEWS_COMPLETE or
-                            ('classification_status' not in detail and complete))),
-        'categories': 'missing_categories' in detail and detail['missing_categories'] is not None
-                      and not _has_gaps(detail['missing_categories']),
-        'search': not _news_search_gap(detail) and (detail.get('search_complete') is True or
-                  ('search_complete' not in detail and 'search_stop_reason' in detail and not detail['search_stop_reason'])),
-        'dates': 'publication_date_gaps' in detail and detail['publication_date_gaps'] is not None
-                 and not _has_gaps(detail['publication_date_gaps']),
-        'backlog': 'pending' in detail and detail['pending'] is not None and int(detail['pending'] or 0) == 0,
+                           detail.get('classification_status') in _NEWS_COMPLETE and bool(detail.get('classified'))),
+        'search_failure': evidence and search_ran,
+        'blocked': evidence and (search_ran or bool(detail.get('classified'))),
     }
     return all(checks.get(issue, False) for issue in issues)
 
@@ -370,9 +414,10 @@ def format_outcome_notice(command, day, detail, *, issues=None):
                 '本次未套用正式題材庫，不可將草稿當作已確認更新；成功資料保留供後續續處理。')
     reasons = {key: _news_reason(value) for key, value in
                (issues if issues is not None else _news_issues(detail)).items()}
-    reason = _news_reason(detail.get('reason'))
-    if reason and reason not in reasons.values():
-        reasons['detail'] = reason
+    if 'blocked' in reasons:
+        retained = '未重新送出先前請求；既有保存資料與帳務紀錄不變。'
+    else:
+        retained = '已寫入的來源與結果保留；未完成項目請查看本地紀錄。'
     return (f'新聞背景整理狀態提醒｜{day}\n{_news_counts(detail)}\n'
             '原因：' + '；'.join(dict.fromkeys(reasons.values()) or ['待辦連續累積']) + '\n'
-            '原始來源與已完成結果已保存；未分類、日期不明與歷史資料不視為已完成判讀。')
+            + retained)

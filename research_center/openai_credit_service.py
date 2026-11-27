@@ -14,6 +14,7 @@ import sqlite3
 from uuid import uuid4
 
 from .deepseek_service import DeepSeekUnavailable, TASK, RUN_ID
+from .ai_budget_service import SCHEDULE_OWNS_AI_NOTICE
 
 ACCOUNT_PRIORITY = ('secondary', 'primary')
 _NOTICE_COMMANDS = {'research': '個股投研', 'value_scan': '價值重估', 'macro': '總體分析',
@@ -169,8 +170,9 @@ class OpenAICreditLedger:
         local_time = instant(now).astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
         text = f'【{label}｜{stage}】\n通知時間：{local_time}（台灣時間）\n{message}'
         identifier = uuid4().hex
+        state = 'local_only' if background and SCHEDULE_OWNS_AI_NOTICE.get() else 'pending'
         conn.execute('INSERT INTO notices VALUES (?,?,?,?,?,?)',
-                     (identifier, int(background), run_id, reason, text, 'pending'))
+                     (identifier, int(background), run_id, reason, text, state))
         conn.execute('''INSERT INTO notice_attribution
             (notice_id,purpose,command,operation,created_at,attributed_at,evidence) VALUES (?,?,?,?,?,?,?)''',
             (identifier, self.purpose, command, operation, now, now,

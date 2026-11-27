@@ -47,6 +47,7 @@ class WebFetchResult:
     failure_reason: str | None = None
     date_status: str | None = None
     updated_date: str | None = None
+    publication_times: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,10 +73,13 @@ def fetch_web_content(
     if load_research_config().deepseek_only:
         from .deepseek_service import configured_client
         from .deepseek_search_service import DeepSeekSearchService
+        from .news_search_window import NEWS_EDITION_WINDOW
         from dataclasses import asdict
         import hashlib
         client = configured_client()
-        cache_key = "page:publication-v3:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
+        scheduled_window = NEWS_EDITION_WINDOW.get()
+        version = 'v4' if scheduled_window else 'v3'
+        cache_key = f"page:publication-{version}:" + hashlib.sha256((url + repr(expected_terms or [])).encode()).hexdigest()
         cached = client.account.cached(cache_key)
         if cached is not None:
             if cached.get("title"):
@@ -85,6 +89,9 @@ def fetch_web_content(
             local_result = _fetch_with_requests(url, timeout, expected_terms=expected_terms)
             if local_result.content_status == "success":
                 client.account.cache(cache_key, asdict(local_result), 3600)
+                return local_result
+            if scheduled_window and local_result.date_status == 'explicit' and local_result.publication_times:
+                # A partial article can still objectively confirm its published clock.
                 return local_result
         except Exception:
             local_result = None
@@ -97,6 +104,7 @@ def fetch_web_content(
                 published_date=published_date, fetch_quality=quality, failure_reason=reason,
                 date_status=local_result.date_status if local_result else None,
                 updated_date=local_result.updated_date if local_result else None,
+                publication_times=local_result.publication_times if local_result else (),
                 content_status=("success" if quality != "low" else "partial") if content else "failed", fetch_provider=fetched.get('provider') or "deepseek_fetch")
             if result.content_status == "success":
                 client.account.cache(cache_key, asdict(result), 3600)
@@ -242,6 +250,8 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
         html = response.text
         soup = bs4.BeautifulSoup(html, "html.parser")
     published_date = _extract_html_published_date(soup, html, getattr(response, "url", None) or url)
+    date_status = _html_date_status(soup, published_date)
+    publication_times = _html_publication_times(soup, published_date) if date_status == 'explicit' else ()
 
     for tag in soup.find_all(["script", "style", "nav", "header", "footer", "aside"]):
         tag.decompose()
@@ -263,7 +273,8 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
             title=title_text,
             content=text[:15000],
             published_date=published_date,
-            date_status=_html_date_status(soup, published_date),
+            date_status=date_status,
+            publication_times=publication_times,
             updated_date=_html_updated_date(soup),
             content_status="success" if quality != "low" else "partial",
             fetch_provider="requests_bs4",
@@ -278,7 +289,8 @@ def _fetch_with_requests(url: str, timeout: float, expected_terms: list[str] | N
             title=title_text,
             content=text[:5000],
             published_date=published_date,
-            date_status=_html_date_status(soup, published_date),
+            date_status=date_status,
+            publication_times=publication_times,
             updated_date=_html_updated_date(soup),
             content_status="partial",
             fetch_provider="requests_bs4",
@@ -514,6 +526,17 @@ def _html_updated_date(soup) -> str | None:
     return None
 
 
+def _html_publication_times(soup, day):
+    from .source_date_normalizer import publication_metadata_value, publication_timestamp
+    values = [tag.get('content') or tag.get('datetime') or tag.get_text(' ', strip=True)
+              for tag in soup.select('meta[property="article:published_time"], meta[name="pubdate"], '
+                 'meta[name="publishdate"], meta[name="published_time"], meta[itemprop="datePublished"], '
+                 'time[pubdate], time[itemprop="datePublished"], time.article-body__time, time.article-content__time')]
+    values.extend(publication_metadata_value(tag.get_text(' ', strip=True))
+                  for tag in soup.select('script[type="application/ld+json"]'))
+    return tuple(sorted({stamp for value in values if (stamp := publication_timestamp(value)) and stamp[:10] == day}))
+
+
 def _html_date_status(soup, published: str | None) -> str:
     if not published:
         return 'unknown'
@@ -625,6 +648,7 @@ def _merge_fetch_results(primary: WebFetchResult, fallback: WebFetchResult) -> W
         failure_reason=fallback.failure_reason,
         date_status=fallback.date_status if fallback.published_date else primary.date_status,
         updated_date=fallback.updated_date or primary.updated_date,
+        publication_times=tuple(dict.fromkeys([*primary.publication_times, *fallback.publication_times])),
     )
 
 

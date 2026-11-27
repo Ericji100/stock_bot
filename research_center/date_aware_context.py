@@ -233,7 +233,8 @@ def build_saved_news_context(
         }
     max_window = max(windows)
     try:
-        raw_items = repo.query_all_recent(hours=max_window * 24 + 48)
+        raw_query = getattr(repo, 'query_saved_recent', None)
+        raw_items = (raw_query if callable(raw_query) else repo.query_all_recent)(hours=max_window * 24 + 48)
     except Exception as exc:
         return {
             "analysis_date": analysis_date.isoformat(),
@@ -251,13 +252,23 @@ def build_saved_news_context(
             "error": str(exc),
         }
     excluded_future = 0
+    from .source_date_normalizer import news_publication_record
+    pending_dates = []
+    valid_items = []
+    for item in raw_items:
+        audit = news_publication_record(item, analysis_date)
+        if not audit['available_by_report_date']:
+            pending_dates.append({'url':item.url, **audit})
+            excluded_future += int(audit['reason'] == 'future')
+        else:
+            valid_items.append(item)
     selected: list[NewsItem] = []
     window_used = windows[-1]
     for window in windows:
         start_date = analysis_date - timedelta(days=window)
         candidates: list[NewsItem] = []
-        for item in raw_items:
-            published = parse_date_like(item.published_at)
+        for item in valid_items:
+            published = parse_date_like(news_publication_record(item, analysis_date)['published_date'])
             if not published:
                 continue
             if published > analysis_date:
@@ -287,6 +298,8 @@ def build_saved_news_context(
         "excluded_after_analysis_date_count": excluded_future,
         "target_terms": terms[:20],
         "items": [_news_item_to_context(item, analysis_date, terms) for item in selected],
+        'publication_pending_count': len(pending_dates),
+        'publication_pending': pending_dates,
     }
 
 
@@ -347,7 +360,8 @@ def _news_matches_terms(item: NewsItem, terms: list[str], command: str) -> bool:
 
 
 def _news_sort_key(item: NewsItem, analysis_date: date, terms: list[str]) -> tuple[int, int, int]:
-    published = parse_date_like(item.published_at) or date.min
+    from .source_date_normalizer import news_publication_record
+    published = parse_date_like(news_publication_record(item, analysis_date)['published_date']) or date.min
     age_days = max((analysis_date - published).days, 0)
     recency_score = max(365 - age_days, 0)
     text = f"{item.title} {item.summary} {item.full_text}".lower()
@@ -357,12 +371,15 @@ def _news_sort_key(item: NewsItem, analysis_date: date, terms: list[str]) -> tup
 
 def _news_item_to_context(item: NewsItem, analysis_date: date, terms: list[str]) -> dict[str, Any]:
     item = apply_news_signal_tags(item)
-    published = parse_date_like(item.published_at)
+    from .source_date_normalizer import news_publication_record
+    publication = news_publication_record(item, analysis_date)
+    published = parse_date_like(publication['published_date'])
     return {
         "title": item.title,
         "url": item.url,
         "source": item.source,
-        "published_at": item.published_at,
+        "published_at": item.published_at or publication['published_date'],
+        'date_status': publication['publication_status'],
         "days_before_analysis_date": (analysis_date - published).days if published else None,
         "category": item.category,
         "classification_status": item.classification_status,

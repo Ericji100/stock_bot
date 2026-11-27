@@ -30,8 +30,9 @@ class DeepSeekServiceTests(unittest.TestCase):
                 'news_quality_policy': {'terms': ['台股']}}
         def recover(request, sources, diagnostics, progress=None):
             sources[:] = [replace(item, published_date='2026-11-04', date_status='explicit',
+                found_by=[marker for marker in item.found_by if not marker.startswith('source_date:')] + ['source_date:explicit'],
                 snippet='已抓原文與原摘要都保留 ' + (item.snippet or ''), document_kind='document_body') for item in sources]
-        def quality(rows, policy, as_of):
+        def quality(rows, policy, as_of, *, window=None):
             self.assertTrue(all(row['date_status'] == 'explicit' for row in rows))
             self.assertTrue(all(row['published_date'] == '2026-11-04' for row in rows))
             return {'passed': True}

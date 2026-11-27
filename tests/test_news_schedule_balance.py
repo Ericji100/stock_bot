@@ -114,7 +114,7 @@ def test_snapshots_merge_events_body_and_keep_original_versions(tmp_path):
                     search_summary_events=[{'event': 'second'}])
     repo.save_discovery_checkpoint([first, later])
     merged = repo.recent_discovery_sources(date.today())
-    assert len(merged) == 1 and merged[0].content == first.content
+    assert len(merged) == 1 and first.content in merged[0].content and later.content in merged[0].content
     assert {row['event'] for row in merged[0].search_summary_events} == {'first', 'second'}
     assert any('saved_publication:unknown' in marker for marker in merged[0].found_by)
     with sqlite3.connect(repo.db_path) as conn:

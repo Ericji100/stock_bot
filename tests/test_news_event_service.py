@@ -33,7 +33,8 @@ class NewsEventServiceTests(unittest.TestCase):
         attach_news_events(request, data)
 
         self.assertEqual(data["news_event_summary"]["schema_version"], "news_event_v1")
-        self.assertEqual(data["news_event_summary"]["event_count"], 1)
+        self.assertEqual(data["news_event_summary"]["event_count"], 0)
+        self.assertEqual(len(data['news_context']['items']), 1)
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ _EN_MONTH_DATE_RE = re.compile(
 )
 _META_DATE_RE = re.compile(
     r"(?:datePublished|article:published_time|pubdate|publishdate|published_time)"
-    r"[^>]{0,160}?(20\d{2}-\d{1,2}-\d{1,2})",
+    r"[^>]{0,160}?(20\d{2}-\d{1,2}-\d{1,2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?)",
     re.IGNORECASE,
 )
 _RELATIVE_TIME_RE = re.compile(
@@ -85,34 +85,118 @@ def normalize_published_date_with_status(
     return None, "unknown"
 
 
-def publication_metadata_date(value: Any) -> str | None:
-    """Read publication metadata only; an event or modification date is not publication."""
+def publication_metadata_value(value: Any) -> Any:
+    """Read the publisher's value, preserving an explicit clock and offset."""
     import json
     if isinstance(value, str):
         try:
             value = json.loads(value)
         except (TypeError, ValueError):
             if match := _META_DATE_RE.search(value):
-                return _valid_date(match.group(1))
+                return match.group(1)
             return None
     if isinstance(value, dict):
-        return normalize_published_date(*(value.get(key) for key in ('datePublished', 'article:published_time', 'published_date', 'published_at')))
+        values = [value.get(key) for key in ('datePublished', 'article:published_time', 'published_date', 'published_at')]
+        return next((item for item in values if normalize_published_date(item) and not
+            (_RELATIVE_TIME_RE.search(str(item)) or _ZH_RELATIVE_TIME_RE.search(str(item)))), None)
     return None
 
 
+def publication_metadata_date(value: Any) -> str | None:
+    return normalize_published_date(publication_metadata_value(value))
+
+
+PUBLICATION_TIME_MARKER = 'source_publication_time:'
+
+
+def publication_timestamp(value: Any) -> str | None:
+    if not isinstance(value, datetime):
+        if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}[^\n]*', value.strip()):
+            return None
+        try:
+            value = datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
+        except ValueError:
+            return None
+    zone = ZoneInfo('Asia/Taipei')
+    return (value.replace(tzinfo=zone) if value.tzinfo is None else value.astimezone(zone)).isoformat()
+
+
+def news_publication_record(source: Any, as_of: date | datetime | None = None) -> dict[str, Any]:
+    """One publication gate for news; storage/event/URL dates never prove freshness."""
+    import json
+    get = source.get if isinstance(source, dict) else lambda key, default=None: getattr(source, key, default)
+    zone = ZoneInfo('Asia/Taipei')
+    if isinstance(as_of, datetime):
+        end = as_of.replace(tzinfo=zone) if as_of.tzinfo is None else as_of.astimezone(zone)
+    elif isinstance(as_of, date):
+        end = datetime.combine(as_of, datetime.max.time(), zone)
+    else:
+        end = datetime.now(zone)
+    raw = get('published_at') or get('published_date') or get('datePublished') or get('article:published_time')
+    day = normalize_published_date(raw)
+    tags = get('tags', []) or []
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags)
+        except ValueError:
+            tags = []
+    markers = get('found_by', []) or []
+    status = get('date_status')
+    if status == 'conflict' or 'publication_conflict' in tags or 'source_date:conflict' in markers:
+        status = 'conflict'
+    elif 'publication_unknown' in tags or 'source_date:unknown' in markers:
+        status = 'unknown'
+    elif 'publication_inferred' in tags or 'source_date:inferred' in markers:
+        status = 'inferred'
+    elif 'publication_explicit' in tags or 'source_date:explicit' in markers:
+        status = status or 'explicit'
+    metadata_raw = publication_metadata_value(get('full_text') or get('content') or get('snippet') or '')
+    metadata = normalize_published_date(metadata_raw)
+    conflict = bool(metadata and day and status not in {'unknown', 'inferred'} and metadata != day)
+    if metadata and not conflict and status != 'conflict':
+        day, status = metadata, 'explicit'
+    elif raw and day and status is None:
+        status = 'inferred' if _RELATIVE_TIME_RE.search(str(raw)) or _ZH_RELATIVE_TIME_RE.search(str(raw)) else 'explicit'
+    if not metadata and status != 'conflict' and (_RELATIVE_TIME_RE.search(str(raw)) or _ZH_RELATIVE_TIME_RE.search(str(raw))):
+        status = 'inferred'
+    if not day:
+        day = normalize_published_date(get('date'), get('url'))
+        status = 'conflict' if status == 'conflict' else 'inferred' if day else 'unknown'
+    if get('document_kind') in {'reference_link', 'unavailable'}:
+        status = 'unknown'
+    if conflict:
+        status = 'conflict'
+    status = status if status in {'explicit', 'inferred', 'unknown', 'conflict'} else 'unknown'
+    stamp = None
+    times = set()
+    if day and status == 'explicit':
+        candidates = [raw, metadata_raw, *(m.removeprefix(PUBLICATION_TIME_MARKER) for m in markers
+                                          if m.startswith(PUBLICATION_TIME_MARKER))]
+        times = {instant for value in candidates if (instant := publication_timestamp(value)) and instant[:10] == day}
+        stamp = (datetime.fromisoformat(next(iter(times))) if len(times) == 1 else
+                 datetime.combine(date.fromisoformat(day), datetime.min.time(), zone))
+    usable = bool(stamp and stamp <= end)
+    return {'published_date': day, 'publication_status': status,
+            'published_datetime': stamp.isoformat() if stamp else None,
+            'publication_timestamp': next(iter(times)) if len(times) == 1 else None,
+            'publication_time_markers': sorted(PUBLICATION_TIME_MARKER + value for value in times),
+            'publication_time_conflict': len(times) > 1,
+            'available_by_report_date': usable, 'metadata_date': metadata,
+            'reason': 'confirmed' if usable else 'future' if stamp else status,
+            'analysis_date': end.date().isoformat()}
+
+
+def news_in_publication_window(source: Any, hours: float, as_of: date | datetime | None = None) -> bool:
+    zone = ZoneInfo('Asia/Taipei')
+    end = (as_of.replace(tzinfo=zone) if as_of.tzinfo is None else as_of.astimezone(zone)) if isinstance(as_of, datetime) else (
+        datetime.combine(as_of, datetime.max.time(), zone) if isinstance(as_of, date) else datetime.now(zone))
+    record = news_publication_record(source, end)
+    return bool(record['available_by_report_date'] and
+                end - timedelta(hours=hours) <= datetime.fromisoformat(record['published_datetime']) <= end)
+
+
 def source_publication_status(source: Any) -> str:
-    get = source.get if isinstance(source, dict) else lambda key, default=None: getattr(source,key,default)
-    if get('document_kind') in {'reference_link','unavailable'}:
-        return 'unknown'
-    if not normalize_published_date(get('published_date') or get('published_at')):
-        return 'unknown'
-    status=get('date_status')
-    if status in {'explicit','inferred','unknown'}:
-        return status
-    markers=get('found_by',[]) or []
-    if 'source_date:inferred' in markers:
-        return 'inferred'
-    return 'explicit' if normalize_published_date(get('published_date') or get('published_at')) else 'unknown'
+    return news_publication_record(source)['publication_status']
 
 
 def source_temporal_record(source: Any, report_date: date) -> dict[str, Any]:
@@ -216,7 +300,7 @@ def _extract_date(value: Any) -> str | None:
     if relative := _extract_relative_date(text):
         return relative
     if match := _META_DATE_RE.search(text):
-        return _valid_date(match.group(1))
+        return _extract_date(match.group(1))
     if match := _ISO_DATE_RE.search(text):
         return _valid_date("-".join(match.groups()))
     if match := _ROC_DATE_RE.search(text):

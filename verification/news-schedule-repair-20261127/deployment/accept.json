@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-27T11:48:43.780384+00:00",
+  "code_commit": "69d3aa4ea034a4b5722e44f9b510ba7f642982e2",
+  "pid": 26080,
+  "heartbeat": "2026-11-27T19:48:42+08:00",
+  "native_polling_after_restart": true,
+  "polling_success": "2026-11-27T19:48:34+08:00",
+  "polling_status": "healthy",
+  "queue_size": 0,
+  "current_task": null,
+  "etf_status": "READY",
+  "same_bot": true,
+  "command_count": 43,
+  "ten_ai_commands_registered": true,
+  "protected_files_unchanged": true,
+  "protected_file_count": 9,
+  "original_financial_tables_unchanged": true,
+  "financial_table_count": 13,
+  "unknown_reservations_preserved": true,
+  "backup_id": "cb-2f735a69fd634b468e3783c959513f1e",
+  "restart_count": 1,
+  "paid_requests": 0,
+  "messages_sent_by_acceptance": 0,
+  "main_regression": {
+    "": 1270,
+    "passed": 635,
+    "subtests passed": 78,
+    "warnings": 1
+  }
+}
